@@ -196,19 +196,19 @@
     const pageSize = 10;
     
     // CONFIGURATION
-    let currentAptmPriceUsd = 0.36; // Initial fallback
+    let currentAptmPriceUsd = 0.33; // Updated to your reported 0.33
     const STAR_VALUE_USD = 0.01;   // 1 Star = 1 Cent
 
     // LIVE PRICE INJECTION
     async function getLiveAptmPrice() {
         try {
-            // Fetching live price for Aptos (assuming APTM follows Aptos or is listed as such)
-            const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=aptos&vs_currencies=usd');
+            // Updated to fetch APTM specifically if available, otherwise using your fixed 0.33
+            const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=apertum&vs_currencies=usd');
             const data = await response.json();
-            return data.aptos.usd;
+            return data.apertum.usd || 0.33;
         } catch (e) {
             console.error("Price fetch failed:", e);
-            return 0.36; // Fallback to 36 cents if API fails
+            return 0.33; 
         }
     }
 
@@ -223,7 +223,6 @@
                 const addr = accounts[0];
                 document.getElementById('wallet-status').innerText = addr.slice(0,6)+"..."+addr.slice(-4);
                 
-                // Fetch price before syncing UI
                 currentAptmPriceUsd = await getLiveAptmPrice();
                 
                 syncData();
@@ -245,7 +244,6 @@
             starBalance = ethers.utils.formatEther(balRaw);
             totalAnchors = anchors.toNumber();
             
-            // Refresh price during sync
             currentAptmPriceUsd = await getLiveAptmPrice();
             
             updateUI();
@@ -263,7 +261,8 @@
         document.getElementById('pb-avatar').src = userAvatar;
         document.getElementById('total-anchors-display').innerText = totalAnchors.toLocaleString();
 
-        // DYNAMIC MATH: (Stars * $0.01) / Live Price
+        // MATH: Total Value in USD (Stars * 0.01) divided by APTM Price
+        // Example: (165 Stars * 0.01) / 0.33 = 5 APTM
         let userAptmValue = (stars * STAR_VALUE_USD) / currentAptmPriceUsd;
         
         document.getElementById('sidebar-aptm-value').innerText = userAptmValue.toFixed(4) + " $APTM";
@@ -273,10 +272,11 @@
     }
 
     async function convertAPTM() {
-        let amt = prompt("How many $APTM to deposit?", "1");
+        let amt = prompt("How many $APTM to deposit?", "5");
         if(amt && hubContract) { 
             try {
-                // Expected stars based on live price
+                // Calculation: (Amount of APTM * Price) / 0.01 = Number of Stars
+                // Example: (5 * 0.33) / 0.01 = 165 Stars
                 let expectedStars = (parseFloat(amt) * currentAptmPriceUsd) / STAR_VALUE_USD;
                 showToast(`Depositing for ~${expectedStars.toFixed(0)} Stars`);
                 
