@@ -194,9 +194,10 @@ const abi = [
     "function boostPost(uint256 _oneStarWei) public",
     "function interact(address _recipient, uint256 _oneStarWei) public",
     "function starBalances(address _user) view returns (uint256)",
+    "function aptmBalances(address) view returns (uint256)",
     "function totalAnchors() view returns (uint256)",
-    "function withdrawStars(uint256 _amountWei) public",
-    "function registry(uint256) view returns (address author, uint256 parentId)",
+    "function userWithdraw(uint256 _amountWei) public",
+    "function adminWithdraw() public",
     "function PLATFORM_ADMIN() view returns (address)"
 ];
 
@@ -387,32 +388,29 @@ async function settleToWallet() {
 
     try {
         const addr = await signer.getAddress();
-        // This calls the mapping in your Solidity: mapping(address => uint256) public aptmBalances;
+        // Updated to use the correct mapping name from your Solidity
         const rawBalance = await hubContract.aptmBalances(addr);
         const humanAmount = ethers.utils.formatEther(rawBalance);
 
-        let amt = prompt(`Withdraw Stars\nContract Balance: ${humanAmount} APTM`, humanAmount);
+        let amt = prompt(`Withdraw Stars\nBalance: ${humanAmount} APTM`, humanAmount);
 
-        if (amt) {
-            showToast("Processing Withdrawal...");
-            
-            // MATH: Converting the prompt amount to Wei
+        if (amt && hubContract) {
+            showToast("Opening MetaMask...");
             const withdrawWei = ethers.utils.parseUnits(parseFloat(amt).toFixed(18), 18);
 
-            // FIX: Calling 'userWithdraw' instead of 'withdrawStars'
+            // CHANGED: Matches the new ABI name 'userWithdraw'
             const tx = await hubContract.userWithdraw(withdrawWei, {
                 gasLimit: 500000
             });
 
             showToast("Transaction Pending...");
             await tx.wait();
-            showToast("Success! Funds moved.");
+            showToast("Success!");
             syncData();
         }
     } catch (e) {
-        console.error("Withdraw Error:", e);
-        // This will now show the REAL reason if it fails
-        alert("Failed: " + (e.reason || "Check Contract Name Mismatch"));
+        console.error("Full Error:", e);
+        alert("Failed: " + (e.reason || e.message).slice(0, 100));
     }
 }
 
