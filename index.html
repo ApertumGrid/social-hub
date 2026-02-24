@@ -211,113 +211,90 @@
 
 <script>
     // PART 1: SETUP AND DATA SYNC
-const contractAddress = "0x42E0A97844ac6623207F2a363aa318E83268910F";
-const abi = [
-    "function depositAPTM() public payable",
-    "function postContent(string memory _ipfsHash, uint256 _type, uint256 _oneStarWei) public",
-    "function boostPost(uint256 _oneStarWei) public",
-    "function interact(address _recipient, uint256 _oneStarWei) public",
-    "function starBalances(address _user) view returns (uint256)",
-    "function aptmBalances(address) view returns (uint256)",
-    "function totalAnchors() view returns (uint256)",
-    "function userWithdraw(uint256 _amountWei) public",
-    "function adminWithdraw() public",
-    "function PLATFORM_ADMIN() view returns (address)"
-];
+// PART 1: SETUP AND DATA SYNC
+    const contractAddress = "0x42E0A97844ac6623207F2a363aa318E83268910F";
+    const abi = [
+        "function depositAPTM() public payable",
+        "function postContent(string memory _ipfsHash, uint256 _type, uint256 _oneStarWei) public",
+        "function boostPost(uint256 _oneStarWei) public",
+        "function interact(address _recipient, uint256 _oneStarWei) public",
+        "function starBalances(address _user) view returns (uint256)",
+        "function aptmBalances(address) view returns (uint256)",
+        "function totalAnchors() view returns (uint256)",
+        "function userWithdraw(uint256 _amountWei) public",
+        "function adminWithdraw() public",
+        "function PLATFORM_ADMIN() view returns (address)"
+    ];
 
-let provider, signer, hubContract;
-let starBalance = "0";
-let totalAnchors = 0; 
-let userHandle = "Anonymous_Creator";
-let userAvatar = "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
-let visibleCount = 10;
-const pageSize = 10;
+    let provider, signer, hubContract;
+    let starBalance = "0";
+    let totalAnchors = 0; 
+    let userHandle = "Anonymous_Creator";
+    let userAvatar = "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
+    let visibleCount = 10;
+    const pageSize = 10;
+    const STAR_FIXED_USD = 0.01;
+    let currentAptmPriceUsd = 0.3391; 
 
-let currentAptmPriceUsd = 0.3391; 
-const STAR_FIXED_USD = 0.01;
-
-function getOneStarWei() {
-    const aptmAmount = STAR_FIXED_USD / currentAptmPriceUsd;
-    return ethers.utils.parseUnits(aptmAmount.toFixed(18), 18);
-}
-
-// --- UPDATED PRICE FUNCTION (NO MORE TRILLIONS) ---
-async function getLiveAptmPrice() {
-    const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
-    const aptmTokenAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57"; 
-
-    try {
-        if (!provider) return 0.329;
-        const poolContract = new ethers.Contract(poolAddress, [
-            "function getReserves() external view returns (uint112, uint112, uint32)",
-            "function token0() external view returns (address)"
-        ], provider);
-
-        const reserves = await poolContract.getReserves();
-        const t0 = await poolContract.token0();
-        
-        let resAptm, resUsdt;
-
-        if (t0.toLowerCase() === aptmTokenAddress.toLowerCase()) {
-            resAptm = Number(reserves[0]) / 1e18; 
-            resUsdt = Number(reserves[1]) / 1e6;  
-        } else {
-            resUsdt = Number(reserves[0]) / 1e6;  
-            resAptm = Number(reserves[1]) / 1e18; 
-        }
-
-        const priceInUsd = resUsdt / resAptm;
-        return priceInUsd || 0.329; 
-
-    } catch (e) {
-        console.warn("DEX fetch failed, using fallback price:", e);
-        return 0.329; 
-    }
-}
-
-// --- UPDATED SYNC DATA (THE ENGINE) ---
-async function syncData() {
-    // If the contract isn't ready, don't crash, just wait.
-    if(!hubContract || !signer) return;
-    
-    try {
-        const addr = await signer.getAddress();
-        const balRaw = await hubContract.aptmBalances(addr); 
-        const anchors = await hubContract.totalAnchors();
-        
-        currentAptmPriceUsd = await getLiveAptmPrice();
-
-        const aptmInEth = ethers.utils.formatEther(balRaw); 
-        const totalUsdValue = parseFloat(aptmInEth) * currentAptmPriceUsd; 
-        
-        // Ensure STAR_FIXED_USD is defined (usually 0.01)
-        const starFactor = (typeof STAR_FIXED_USD !== 'undefined') ? STAR_FIXED_USD : 0.01;
-        starBalance = Math.floor(totalUsdValue / starFactor).toString();
-        totalAnchors = anchors.toNumber();
-        
-        if (typeof updateUI === "function") {
-            updateUI();
-        }
-
-    } catch (e) { 
-        console.error("Sync Error:", e); 
-    }
-}
-async function connectWallet() {
-    if (window.ethereum) {
+    // --- UPDATED PRICE FUNCTION (FIXES TRILLIONS) ---
+    async function getLiveAptmPrice() {
+        const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
+        const aptmTokenAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57"; 
         try {
-            provider = new ethers.providers.Web3Provider(window.ethereum);
-            const accounts = await provider.send("eth_requestAccounts", []);
-            signer = provider.getSigner();
-            hubContract = new ethers.Contract(contractAddress, abi, signer);
-            const addr = accounts[0];
-            document.getElementById('wallet-status').innerText = addr.slice(0,6)+"..."+addr.slice(-4);
+            if (!provider) return 0.329;
+            const poolContract = new ethers.Contract(poolAddress, [
+                "function getReserves() external view returns (uint112, uint112, uint32)",
+                "function token0() external view returns (address)"
+            ], provider);
+            const reserves = await poolContract.getReserves();
+            const t0 = await poolContract.token0();
+            let resAptm, resUsdt;
+            if (t0.toLowerCase() === aptmTokenAddress.toLowerCase()) {
+                resAptm = Number(reserves[0]) / 1e18; 
+                resUsdt = Number(reserves[1]) / 1e6;  
+            } else {
+                resUsdt = Number(reserves[0]) / 1e6;  
+                resAptm = Number(reserves[1]) / 1e18; 
+            }
+            return (resUsdt / resAptm) || 0.329; 
+        } catch (e) { return 0.329; }
+    }
+
+    // --- CLEANED SYNC DATA (THE ENGINE) ---
+    async function syncData() {
+        if(!hubContract || !signer) return;
+        try {
+            const addr = await signer.getAddress();
+            const balRaw = await hubContract.aptmBalances(addr); 
+            const anchors = await hubContract.totalAnchors();
             currentAptmPriceUsd = await getLiveAptmPrice();
-            syncData();
-            showToast("Connected");
-        } catch (err) { console.error(err); showToast("Connection Failed"); }
-    } else { alert("MetaMask not found"); }
-}
+            const aptmInEth = ethers.utils.formatEther(balRaw); 
+            const totalUsdValue = parseFloat(aptmInEth) * currentAptmPriceUsd; 
+            starBalance = Math.floor(totalUsdValue / STAR_FIXED_USD).toString();
+            totalAnchors = anchors.toNumber();
+            updateUI();
+            
+            // Load comments for visible posts
+            document.querySelectorAll('.post-card').forEach(post => {
+                const id = post.getAttribute('data-id');
+                if(id) loadComments(id);
+            });
+        } catch (e) { console.error("Sync Error:", e); }
+    }
+
+    async function connectWallet() {
+        if (window.ethereum) {
+            try {
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                const accounts = await provider.send("eth_requestAccounts", []);
+                signer = provider.getSigner();
+                hubContract = new ethers.Contract(contractAddress, abi, signer);
+                document.getElementById('wallet-status').innerText = accounts[0].slice(0,6)+"..."+accounts[0].slice(-4);
+                await syncData();
+                showToast("Connected");
+            } catch (err) { console.error(err); showToast("Connection Failed"); }
+        } else { alert("MetaMask not found"); }
+    }
 
 // Ensure this is at the top of your script
 const STAR_FIXED_USD = 0.01; 
