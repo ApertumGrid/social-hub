@@ -384,49 +384,40 @@ async function convertAPTM() {
 
 async function settleToWallet() {
     if (!hubContract) return alert("Connect Wallet First");
+    const addr = await signer.getAddress();
 
     try {
-        const addr = await signer.getAddress();
-        const network = await provider.getNetwork();
-        
-        // Safety check for the specific chain you are on
-        if (network.chainId !== 2786) {
-            alert("Warning: You are on Chain " + network.chainId + ". Please switch to APTM Network (2786).");
+        // 1. Check the RAW balance from the contract mapping
+        const rawBalance = await hubContract.starBalances(addr);
+        console.log("Contract says your balance is:", ethers.utils.formatEther(rawBalance));
+
+        if (rawBalance.eq(0)) {
+            alert("The Contract Ledger shows 0 stars for this address. You cannot withdraw what isn't registered on-chain.");
             return;
         }
 
-        const rawBalanceWei = await hubContract.starBalances(addr);
-        const humanAmount = ethers.utils.formatEther(rawBalanceWei);
-
-        let amt = prompt(`Withdraw Stars\nAPTM Network Balance: ${humanAmount}`, "4");
-
+        let amt = prompt(`Withdraw Stars\nMax Available: ${ethers.utils.formatEther(rawBalance)}`, "4");
+        
         if (amt) {
-            showToast("Verifying with Chain 2786...");
-            
-            // MATH: Using direct Wei conversion to avoid rounding CALL_EXCEPTIONs
             const withdrawWei = ethers.utils.parseUnits(parseFloat(amt).toFixed(18), 18);
+            
+            // 2. CHECK LIQUIDITY: Does the contract have enough to pay you?
+            // This assumes APTM is the native currency on Chain 2786
+            const vaultBalance = await provider.getBalance("0x42E0A97844ac6623207F2a363aa318E83268910F");
+            console.log("Vault Liquidity:", ethers.utils.formatEther(vaultBalance));
 
-            // Simulation check to see WHY it's failing before spending gas
-            try {
-                await hubContract.callStatic.withdrawStars(withdrawWei);
-            } catch (simError) {
-                console.error("Chain Revert Reason:", simError);
-                alert("The Contract Reverted. Likely: Insufficient Contract Liquidity on Chain 2786.");
+            if (vaultBalance.lt(withdrawWei)) {
+                alert("The Hub Contract is empty. It has no APTM to pay you out.");
                 return;
             }
 
-            const tx = await hubContract.withdrawStars(withdrawWei, {
-                gasLimit: 800000 // High limit for custom chains
-            });
-
-            showToast("Pending on APTM Mainnet...");
+            const tx = await hubContract.withdrawStars(withdrawWei, { gasLimit: 500000 });
             await tx.wait();
             showToast("Success!");
-            syncData();
         }
     } catch (e) {
-        console.error("Full Chain Error:", e);
-        alert("Transaction Failed: " + (e.reason || "Check Network Connection"));
+        console.error("Diagnostic Error:", e);
+        alert("Blockchain Rejected: " + (e.reason || "Execution Reverted"));
     }
 }
 
