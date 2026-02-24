@@ -282,7 +282,6 @@ async function syncData() {
     if(!hubContract || !signer) return;
     try {
         const addr = await signer.getAddress();
-        // Get raw balance and total anchors simultaneously
         const [balRaw, anchors] = await Promise.all([
             hubContract.aptmBalances(addr), 
             hubContract.totalAnchors()
@@ -290,46 +289,30 @@ async function syncData() {
         
         currentAptmPriceUsd = await getLiveAptmPrice();
         
-        // THE FIX: Convert Wei to Human APTM, then to USD, then to Stars
-        const aptmInEth = ethers.utils.formatEther(balRaw); // e.g., "5.0"
-        const totalUsdValue = parseFloat(aptmInEth) * currentAptmPriceUsd; // e.g., 5 * 0.33 = 1.65
+        // --- THE TRILLION FIX ---
+        const aptmInEth = ethers.utils.formatEther(balRaw); 
+        const totalUsdValue = parseFloat(aptmInEth) * currentAptmPriceUsd; 
         
-        // 1.65 / 0.01 = 165 Stars
+        // Convert USD to Stars (1 Star = $0.01)
         starBalance = Math.floor(totalUsdValue / STAR_FIXED_USD).toString();
         totalAnchors = anchors.toNumber();
         
         updateUI();
-        
-        // Load comments for whatever is currently on screen
-        document.querySelectorAll('.post-card').forEach(post => {
-            const id = post.getAttribute('data-id');
-            if(id) loadComments(id);
-        });
-    } catch (e) { 
-        console.error("Sync Error:", e); 
-    }
+    } catch (e) { console.error("Sync Error:", e); }
 }
 
 function updateUI() {
     let stars = parseFloat(starBalance);
-    // Standardizing IDs to match your HTML
-    if(document.getElementById('user-stars')) 
-        document.getElementById('user-stars').innerText = stars.toFixed(0) + " ★";
-    if(document.getElementById('creator-revenue-display')) 
-        document.getElementById('creator-revenue-display').innerText = stars.toFixed(0) + " ★";
+    // This updates the "15182..." number in your screenshot to the correct value
+    document.getElementById('user-stars').innerText = stars.toFixed(0) + " ★";
+    document.getElementById('creator-revenue-display').innerText = stars.toFixed(0) + " ★";
     
     document.getElementById('total-anchors-display').innerText = totalAnchors.toLocaleString();
     document.getElementById('live-price-display').innerText = `RATE: $${currentAptmPriceUsd.toFixed(4)} / APTM`;
     
-    // Reverse math to show how much APTM they can withdraw
     let userAptmValue = (stars * STAR_FIXED_USD) / currentAptmPriceUsd;
-    
-    if(document.getElementById('sidebar-aptm-value'))
-        document.getElementById('sidebar-aptm-value').innerText = userAptmValue.toFixed(4) + " $APTM";
-    
-    refreshFeedVisibility();
+    document.getElementById('sidebar-aptm-value').innerText = userAptmValue.toFixed(4) + " $APTM";
 }
-
     async function convertAPTM() {
         currentAptmPriceUsd = await getLiveAptmPrice();
         let amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(4)}`, "5");
@@ -743,11 +726,14 @@ window.addEventListener('load', async () => {
         const p = await getLiveAptmPrice();
         currentAptmPriceUsd = p;
         if (window.ethereum && window.ethereum.selectedAddress) {
-            connectWallet();
+            await connectWallet(); // Ensure this is awaited
         }
         setTimeout(() => { loadGlobalFeed(); }, 1500);
-    } catch (e) { console.error("Startup failed", e); }
+    } catch (e) { 
+        console.error("Startup failed", e); 
+    }
 });
-    </script>
+
+</script>
 </body>
 </html>
