@@ -373,28 +373,58 @@ async function handleBroadcast() {
     const media = document.getElementById('post-media').value;
     if(!txt || !hubContract) return alert("Write something or connect wallet!");
 
-    let type = 1; 
-    if(media) type = (media.includes('mp4') || getYoutubeId(media)) ? 3 : 2;
+    // NEW PRICING LOGIC (100% to Platform)
+    let feeAmount = "1.2"; // Default for Text
+    let type = 1;
+
+    if (media) {
+        // Check if it's a video (mp4 or Youtube)
+        if (media.includes('mp4') || getYoutubeId(media)) {
+            feeAmount = "10"; 
+            type = 3;
+        } else {
+            // It's an image
+            feeAmount = "3"; 
+            type = 2;
+        }
+    }
+
+    // Convert the string amount to Wei for the blockchain
+    const feeWei = ethers.utils.parseEther(feeAmount);
 
     try {
-        showToast("Anchoring to Blockchain...");
+        const userAddr = await signer.getAddress();
+        const internalStars = await hubContract.aptmBalances(userAddr);
         
-        // 1. Blockchain Payment (Chain 2786)
-        const tx = await hubContract.postContent("", type, getOneStarWei(), { gasLimit: 500000 });
+        showToast(`Preparing ${feeAmount} Star Broadcast...`);
+        
+        let tx;
+        // Check internal bank (Stars) first
+        if (internalStars.gte(feeWei)) {
+            showToast("Using internal Stars fund...");
+            tx = await hubContract.postContent("", type, feeWei, { gasLimit: 500000 });
+        } else {
+            showToast(`Paying ${feeAmount} APTM from Wallet...`);
+            tx = await hubContract.postContent("", type, feeWei, { 
+                value: feeWei, 
+                gasLimit: 500000 
+            });
+        }
+
         await tx.wait();
+        showToast("Anchored! Syncing to Cloud...");
 
-        showToast("Syncing to Cloud...");
-
-        // 2. Firebase Save (Persistence)
+        // 2. Firebase Save
         const postData = {
             text: txt,
             media: media,
             author: userHandle,
-            authorAddr: await signer.getAddress(),
+            authorAddr: userAddr,
             avatar: userAvatar,
             timestamp: Date.now(),
             hypes: 0,
-            type: type
+            type: type,
+            feePaid: feeAmount // Optional: track how much they paid in the cloud
         };
 
         await window.fs.addDoc(window.fs.collection(window.db, "posts"), postData);
@@ -402,62 +432,66 @@ async function handleBroadcast() {
         // 3. Cleanup UI
         document.getElementById('post-text').value = "";
         document.getElementById('post-media').value = "";
-        showToast("Broadcast Successful!");
+        showToast("Post Live!");
         
         setTimeout(() => { syncData(); }, 2000);
     } catch (e) { 
         console.error(e);
-        alert("Broadcast failed. Check APTM balance."); 
+        alert("Broadcast failed. Check your APTM or Stars balance."); 
     }
 }
 
 // --- CLOUD FEED LISTENER ---
 
-function loadGlobalFeed() {
-    const feedContainer = document.getElementById('feed-items');
-    if (!feedContainer || !window.db) return;
+async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
+    if (!hubContract) return alert("Connect Wallet First");
+    
+    const inputId = isReply ? `reply-in-${parentId}` : `input-${postId}`;
+    const input = document.getElementById(inputId);
+    if(!input || !input.value) return;
 
-    // Pull posts from Firebase, newest first
-    const q = window.fs.query(window.fs.collection(window.db, "posts"), window.fs.orderBy("timestamp", "desc"));
+    try {
+        const userAddr = await signer.getAddress();
+        const internalStars = await hubContract.aptmBalances(userAddr);
+        const fee = getOneStarWei(); // 1 Star
+        
+        let tx;
+        showToast("Processing 1 Star Fee...");
 
-    window.fs.onSnapshot(q, (snapshot) => {
-        feedContainer.innerHTML = ""; // Clear existing dummy items
-        snapshot.forEach((docRef) => {
-            const post = docRef.data();
-            const postId = docRef.id;
-            
-            let mediaHtml = '';
-            const ytId = getYoutubeId(post.media || "");
-            if(ytId) mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
-            else if(post.media) mediaHtml = `<div class="post-media-container"><img src="${post.media}"></div>`;
+        // If internal Stars exist, use them. Otherwise, MetaMask popup for 1 APTM.
+        if (internalStars.gte(fee)) {
+            showToast("Using Stars (80% to Creator, 20% to Platform)...");
+            tx = await hubContract.interact(recipientAddress, fee, { gasLimit: 450000 });
+        } else {
+            showToast("Paying from Wallet (80% to Creator, 20% to Platform)...");
+            tx = await hubContract.interact(recipientAddress, fee, { value: fee, gasLimit: 450000 });
+        }
 
-            const item = document.createElement('div');
-            item.className = 'glass-panel';
-            item.id = `post-container-${postId}`;
-            
-            item.innerHTML = `
-                <div class='creator-header'>
-                    <img src="${post.avatar || userAvatar}" class="avatar-circle">
-                    <b>${post.author}</b>
-                </div>
-                ${mediaHtml}
-                <p>${post.text}</p>
-                <div class="feed-actions">
-                    <div class="feed-btn" onclick="hypeElement('${post.authorAddr}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">${post.hypes || 0}</span></div>
-                    <div class="feed-btn" onclick="toggleTray('${postId}')">💬 Comments</div>
-                    <div class="feed-btn" style="color:var(--gold)" onclick="boostPost('${postId}')">🚀 Boost</div>
-                </div>
-                <div class="comment-area" id="tray-${postId}">
-                    <div class="comment-list" id="list-${postId}"></div>
-                    <div style="display:flex; gap:10px;">
-                        <input type="text" class="input-field" style="margin-top:0;" placeholder="Add (1★)" id="input-${postId}">
-                        <button class="action-btn" style="margin-top:0; width:80px;" onclick="addComment('${post.authorAddr}', '${postId}')">SEND</button>
-                    </div>
-                </div>`;
-            feedContainer.appendChild(item);
-        });
-        refreshFeedVisibility();
-    });
+        await tx.wait();
+
+        // Save to Firebase Cloud
+        const commentData = {
+            text: input.value,
+            author: userHandle,
+            authorAddr: userAddr,
+            postId: postId,
+            parentId: parentId || null,
+            isReply: isReply,
+            timestamp: Date.now(),
+            hypes: 0
+        };
+
+        await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
+
+        input.value = "";
+        showToast("Comment Shared!");
+        
+        // Refresh balance UI
+        setTimeout(() => { syncData(); }, 2000);
+    } catch (e) { 
+        console.error(e);
+        alert("Comment failed. Check your Star balance."); 
+    }
 }
 
 // --- GLOBAL UTILITIES (Keep your existing ones) ---
@@ -532,25 +566,82 @@ function getYoutubeId(url) {
 }
 
 async function boostPost(postId) {
+    if (!hubContract) return alert("Connect Wallet First");
+    
     try {
-        showToast("Boosting...");
-        const tx = await hubContract.boostPost(getOneStarWei(), { gasLimit: 400000 }); 
+        const userAddr = await signer.getAddress();
+        const internalStars = await hubContract.aptmBalances(userAddr);
+        
+        // SETTING BOOST FEE TO 10 STARS
+        const boostFee = ethers.utils.parseEther("10"); 
+        
+        let tx;
+        showToast("Preparing 10-Star Boost...");
+
+        if (internalStars.gte(boostFee)) {
+            showToast("Boosting (10 Stars to Platform)...");
+            // Uses internal Stars balance
+            tx = await hubContract.boostPost(boostFee, { gasLimit: 400000 }); 
+        } else {
+            showToast("Paying 10 APTM from Wallet...");
+            // Triggers MetaMask payment popup for 10 APTM
+            tx = await hubContract.boostPost(boostFee, { value: boostFee, gasLimit: 400000 }); 
+        }
+
         await tx.wait();
+
+        // Update Firebase to "Bump" the post to the top
+        const postRef = window.fs.doc(window.db, "posts", postId);
+        await window.fs.updateDoc(postRef, {
+            timestamp: Date.now(),
+            isBoosted: true
+        });
+
+        showToast("🚀 POST BOOSTED TO TOP!");
+        
+        // Refresh balance UI
         setTimeout(() => { syncData(); }, 2000);
-    } catch (e) { alert("Boost failed"); }
+    } catch (e) { 
+        console.error(e);
+        alert("Boost failed. Ensure you have 10 Stars/APTM."); 
+    }
 }
 
 async function hypeElement(recipientAddress, displayId) {
+    if (!hubContract) return alert("Connect Wallet First");
     try {
-        showToast("Sending Hype...");
-        const tx = await hubContract.interact(recipientAddress, getOneStarWei(), { gasLimit: 400000 });
+        const userAddr = await signer.getAddress();
+        const internalStars = await hubContract.aptmBalances(userAddr);
+        const fee = getOneStarWei();
+        
+        showToast("Processing Hype...");
+        let tx;
+
+        if (internalStars.gte(fee)) {
+            // 80% to Creator, 20% to Platform
+            tx = await hubContract.interact(recipientAddress, fee, { gasLimit: 400000 });
+        } else {
+            tx = await hubContract.interact(recipientAddress, fee, { value: fee, gasLimit: 400000 });
+        }
+
         await tx.wait();
         
-        // Update Firebase hype count too? (Optional but good for stats)
-        // For now, let's keep it simple.
+        // --- NEW: SAVE TO FIREBASE ---
+        // We need to find the post in Firebase and increment the 'hypes' count
+        // The displayId is usually something like "hp-POST_ID"
+        const postId = displayId.replace('hp-', '');
+        const postRef = window.fs.doc(window.db, "posts", postId);
         
+        await window.fs.updateDoc(postRef, {
+            hypes: window.fs.increment(1)
+        });
+        
+        showToast("Hype Recorded on Cloud! ✨");
         setTimeout(() => { syncData(); }, 2000);
-    } catch (e) { alert("Hype failed"); }
+    } catch (e) { 
+        console.error(e);
+        alert("Hype failed. Check Stars balance."); 
+    }
 }
 
 function toggleTray(id) {
