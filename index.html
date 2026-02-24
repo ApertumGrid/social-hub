@@ -293,7 +293,6 @@
         if(amt && hubContract) { 
             try {
                 showToast(`Depositing ${amt} $APTM...`);
-                // FIXED: Direct call to contract with increased gas limit for Apertum burn
                 const tx = await hubContract.depositAPTM({ 
                     value: ethers.utils.parseEther(amt),
                     gasLimit: 150000 
@@ -309,17 +308,37 @@
 
     async function settleToWallet() {
         let starsToWithdraw = prompt("How many Stars to withdraw?", "34");
-        if(starsToWithdraw && hubContract) {
+        
+        if (starsToWithdraw && hubContract) {
             try {
-                const usdValue = parseFloat(starsToWithdraw) * STAR_FIXED_USD;
-                const aptmValue = usdValue / currentAptmPriceUsd;
-                const weiValue = ethers.utils.parseUnits(aptmValue.toFixed(18), 18);
-                const tx = await hubContract.withdrawStars(weiValue);
-                showToast("Settling...");
+                const starAmount = parseFloat(starsToWithdraw);
+                const currentBalance = parseFloat(starBalance);
+
+                if (starAmount > currentBalance) {
+                    alert("Insufficient Stars. You only have " + currentBalance.toFixed(0));
+                    return;
+                }
+
+                showToast("Calculating Exchange...");
+                
+                const usdValue = starAmount * STAR_FIXED_USD;
+                const aptmValue = (usdValue / currentAptmPriceUsd).toFixed(15);
+                const weiValue = ethers.utils.parseUnits(aptmValue, 18);
+
+                showToast("Settling to Wallet...");
+                
+                const tx = await hubContract.withdrawStars(weiValue, {
+                    gasLimit: 150000 
+                });
+                
                 await tx.wait();
+                showToast("Success! APTM Sent.");
                 setTimeout(() => { syncData(); }, 2000);
+                
             } catch (e) {
-                alert("Withdrawal failed.");
+                console.error("Withdrawal Error:", e);
+                const msg = e.data ? e.data.message : e.message;
+                alert("Withdrawal failed: " + msg);
             }
         }
     }
