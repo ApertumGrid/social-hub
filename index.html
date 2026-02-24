@@ -279,26 +279,26 @@ async function syncData() {
     try {
         const addr = await signer.getAddress();
         
-        // Pull raw data from Contract
-        const [balRaw, anchors] = await Promise.all([
-            hubContract.aptmBalances(addr), 
-            hubContract.totalAnchors()
-        ]);
+        // 1. Get the Raw Balance (This is your 'Escrow' balance in the contract)
+        const balRaw = await hubContract.aptmBalances(addr);
+        const anchors = await hubContract.totalAnchors();
         
-        // 1. Save the actual APTM amount (e.g. 5.0)
+        // 2. Convert to Human APTM (e.g., 5.0)
         currentAptmBalance = ethers.utils.formatEther(balRaw);
         
-        // 2. Get the Price
+        // 3. Get Live Price and Calculate Total Stars (Your spending power)
         currentAptmPriceUsd = await getLiveAptmPrice();
-        
-        // 3. Calculate Stars
         const usdValue = parseFloat(currentAptmBalance) * currentAptmPriceUsd;
+        
+        // This is your 'Running Balance'
         starBalance = Math.floor(usdValue / 0.01).toString();
         totalAnchors = anchors.toNumber();
         
+        // 4. Update EVERYTHING at once
         updateUI();
+        
     } catch (e) { 
-        console.error("Sync Error:", e); 
+        console.error("Master Sync Failed:", e); 
     }
 }
 
