@@ -103,7 +103,7 @@
         <div style="font-size: 0.6rem; color: #444; font-weight: 800; margin-bottom: 5px;">HUB BALANCE</div>
         <div style="font-size: 1.4rem; font-weight: 900; color: var(--gold);" id="user-stars">0 ★</div>
         <div class="aptm-indicator" id="sidebar-aptm-value">0.00 $APTM</div>
-        <button class="action-btn" onclick="convertAPTM()">DEPOSIT $APTM</button>
+        <button class="action-btn" onclick="convertAPTM()" id="deposit-btn">DEPOSIT $APTM</button>
         
         <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border);">
             <div style="font-size: 0.55rem; color: #444; font-weight: 800;">TOTAL LEDGER ANCHORS</div>
@@ -196,30 +196,59 @@
     let userAvatar = "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
     let visibleCount = 10;
     const pageSize = 10;
+    
+    // --- NEW: DYNAMIC PRICE TRACKING ---
+    let currentAptmPriceUsd = 0.36; // Default starting price
+
+    async function getLiveAptmPrice() {
+        // This function simulates tracking the blockchain price.
+        // In a production version, you would call a Chainlink Oracle or a DEX Pair contract.
+        // For now, it stays at 0.36, but can be updated via a fetch() call to an API.
+        return 0.36; 
+    }
 
     async function connectWallet() {
         if (window.ethereum) {
-            provider = new ethers.providers.Web3Provider(window.ethereum);
-            await provider.send("eth_requestAccounts", []);
-            signer = provider.getSigner();
-            hubContract = new ethers.Contract(contractAddress, abi, signer);
-            const addr = await signer.getAddress();
-            document.getElementById('wallet-status').innerText = addr.slice(0,6)+"..."+addr.slice(-4);
-            syncData();
-            showToast("Connected");
+            try {
+                // Corrected for GitHub/Live environment
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                const accounts = await provider.send("eth_requestAccounts", []);
+                signer = provider.getSigner();
+                hubContract = new ethers.Contract(contractAddress, abi, signer);
+                
+                const addr = accounts[0];
+                document.getElementById('wallet-status').innerText = addr.slice(0,6)+"..."+addr.slice(-4);
+                
+                // Fetch dynamic price before syncing UI
+                currentAptmPriceUsd = await getLiveAptmPrice();
+                
+                syncData();
+                showToast("Connected");
+            } catch (err) {
+                console.error(err);
+                showToast("Connection Failed");
+            }
         } else { alert("MetaMask not found"); }
     }
 
     async function syncData() {
         if(!hubContract) return;
-        const addr = await signer.getAddress();
-        const bal = await hubContract.starBalances(addr);
-        const anchors = await hubContract.totalAnchors();
-        
-        starBalance = bal.toNumber(); 
-        creatorRevenue = bal.toNumber(); // In this model, Stars in wallet = Earnings
-        totalAnchors = anchors.toNumber();
-        updateUI();
+        try {
+            const addr = await signer.getAddress();
+            const bal = await hubContract.starBalances(addr);
+            const anchors = await hubContract.totalAnchors();
+            
+            starBalance = bal.toNumber(); 
+            creatorRevenue = bal.toNumber(); 
+            totalAnchors = anchors.toNumber();
+            
+            // Re-check price during every sync
+            currentAptmPriceUsd = await getLiveAptmPrice();
+            
+            updateUI();
+        } catch (e) {
+            console.error("Sync Error:", e);
+        }
     }
 
     function updateUI() {
@@ -229,7 +258,12 @@
         document.getElementById('pb-avatar').src = userAvatar;
         document.getElementById('total-anchors-display').innerText = totalAnchors.toLocaleString();
 
-        let userAptm = (starBalance / 100);
+        // --- UPDATED LOGIC: Calculating APTM based on current price ---
+        // Assumption: 1 Star should always be worth approx $0.036 USD (based on your 36 cent APTM).
+        // If APTM price goes UP, the user gets MORE Stars per APTM.
+        let starValueInUsd = 0.036; 
+        let userAptm = (starBalance * starValueInUsd) / currentAptmPriceUsd;
+        
         document.getElementById('sidebar-aptm-value').innerText = userAptm.toFixed(2) + " $APTM";
         document.getElementById('earnings-aptm-value').innerText = "EQUIVALENT: " + userAptm.toFixed(2) + " $APTM";
         
@@ -237,22 +271,31 @@
     }
 
     async function convertAPTM() {
+        // This prompts user for APTM, but we calculate the Star yield based on price
         let amt = prompt("How many $APTM to deposit?", "1");
         if(amt && hubContract) { 
-            const tx = await hubContract.depositAPTM({ value: ethers.utils.parseEther(amt) });
-            showToast("Processing Deposit...");
-            await tx.wait();
-            syncData();
+            try {
+                const tx = await hubContract.depositAPTM({ value: ethers.utils.parseEther(amt) });
+                showToast("Processing Deposit...");
+                await tx.wait();
+                syncData();
+            } catch (e) {
+                alert("Transaction failed or rejected.");
+            }
         }
     }
 
     async function settleToWallet() {
         let amt = prompt("Stars to withdraw back to $APTM:", starBalance);
         if(amt && hubContract) {
-            const tx = await hubContract.withdrawStars(amt);
-            showToast("Withdrawing $APTM...");
-            await tx.wait();
-            syncData();
+            try {
+                const tx = await hubContract.withdrawStars(amt);
+                showToast("Withdrawing $APTM...");
+                await tx.wait();
+                syncData();
+            } catch (e) {
+                alert("Withdrawal failed.");
+            }
         }
     }
 
@@ -321,7 +364,6 @@
             const tx = await hubContract.createContent(0, type);
             await tx.wait();
             
-            // UI Generation Logic (Unchanged)
             const postId = Date.now(); 
             const hash = "0x" + Math.random().toString(16).slice(2, 10).toUpperCase();
             
