@@ -455,34 +455,37 @@ function getYoutubeId(url) {
 async function boostPost(postId) {
     try {
         showToast("Boosting...");
-        const tx = await hubContract.boostPost(getOneStarWei(), { gasLimit: 250000 }); 
+        const tx = await hubContract.boostPost(getOneStarWei(), { gasLimit: 400000 }); 
         await tx.wait();
         const postElement = document.getElementById(`post-container-${postId}`);
-        document.getElementById('feed-items').prepend(postElement);
+        if(postElement) document.getElementById('feed-items').prepend(postElement);
         setTimeout(() => { syncData(); }, 2000);
     } catch (e) { alert("Boost failed"); }
 }
+
 async function hypeElement(recipientAddress, displayId) {
     try {
         showToast("Sending Hype...");
-        const tx = await hubContract.interact(recipientAddress, getOneStarWei(), { gasLimit: 250000 });
+        const tx = await hubContract.interact(recipientAddress, getOneStarWei(), { gasLimit: 400000 });
         await tx.wait();
         const el = document.getElementById(displayId);
-        el.innerText = parseInt(el.innerText) + 1;
+        if(el) el.innerText = parseInt(el.innerText) + 1;
         setTimeout(() => { syncData(); }, 2000);
     } catch (e) { alert("Hype failed"); }
 }
+
 function toggleTray(id) {
     const t = document.getElementById(`tray-${id}`);
-    t.style.display = t.style.display === 'block' ? 'none' : 'block';
+    if(t) t.style.display = t.style.display === 'block' ? 'none' : 'block';
 }
+
 async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
     const inputId = isReply ? `reply-in-${parentId}` : `input-${postId}`;
     const input = document.getElementById(inputId);
-    if(!input.value) return;
+    if(!input || !input.value) return;
     try {
         showToast("Posting Comment...");
-        const tx = await hubContract.interact(recipientAddress, getOneStarWei(), { gasLimit: 300000 });
+        const tx = await hubContract.interact(recipientAddress, getOneStarWei(), { gasLimit: 450000 });
         await tx.wait();
         const commId = Date.now();
         const row = document.createElement('div');
@@ -490,18 +493,22 @@ async function addComment(recipientAddress, postId, isReply = false, parentId = 
         const userAddr = await signer.getAddress();
         row.innerHTML = `<b>${userHandle}</b>: ${input.value}<div class="comment-meta"><span class="meta-link" onclick="hypeElement('${userAddr}', 'hc-${commId}')">❤️ Hype (<span id="hc-${commId}">0</span>)</span><span class="meta-link" onclick="toggleReply('${commId}')">💬 Reply</span></div><div id="reply-box-${commId}" class="reply-box"><input type="text" class="input-field" style="height:35px;" placeholder="Write reply..." id="reply-in-${commId}"><button class="action-btn" style="width:60px; height:35px; padding:0;" onclick="addComment('${userAddr}', '${postId}', true, '${commId}')">GO</button></div><div id="replies-to-${commId}" class="nested-container"></div>`;
         const target = isReply ? document.getElementById(`replies-to-${parentId}`) : document.getElementById(`list-${postId}`);
-        target.appendChild(row);
+        if(target) target.appendChild(row);
         input.value = "";
         setTimeout(() => { syncData(); }, 2000);
     } catch (e) { alert("Comment failed"); }
 }
+
 function toggleReply(id) {
     const b = document.getElementById(`reply-box-${id}`);
-    b.style.display = b.style.display === 'block' ? 'none' : 'block';
+    if(b) b.style.display = b.style.display === 'block' ? 'none' : 'block';
 }
-    // AUTO-START
+
+// AUTO-START
 window.addEventListener('load', () => {
-    getLiveAptmPrice().then(p => { currentAptmPriceUsd = p; });
+    if (typeof getLiveAptmPrice === 'function') {
+        getLiveAptmPrice().then(p => { currentAptmPriceUsd = p; });
+    }
     if (window.ethereum && window.ethereum.selectedAddress) connectWallet();
 });
 </script>
