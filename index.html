@@ -457,24 +457,30 @@ async function addComment(recipientAddress, postId, isReply = false, parentId = 
 
     try {
         const userAddr = await signer.getAddress();
+        
+        // 1. Check internal balance (the "Bank")
         const internalStars = await hubContract.aptmBalances(userAddr);
-        const fee = getOneStarWei(); // 1 Star
+        
+        // 2. Define 1 Star cost (1.0 APTM in Wei)
+        const fee = ethers.utils.parseEther("1"); 
         
         let tx;
         showToast("Processing 1 Star Fee...");
 
-        // If internal Stars exist, use them. Otherwise, MetaMask popup for 1 APTM.
+        // 3. THE FIX: Explicitly check if balance is >= fee
         if (internalStars.gte(fee)) {
-            showToast("Using Stars (80% to Creator, 20% to Platform)...");
+            showToast("Using internal Stars...");
+            // Notice: No "value" sent here, so no MetaMask payment popup
             tx = await hubContract.interact(recipientAddress, fee, { gasLimit: 450000 });
         } else {
-            showToast("Paying from Wallet (80% to Creator, 20% to Platform)...");
+            showToast("No Stars found. Paying from Wallet...");
+            // This triggers the MetaMask payment popup
             tx = await hubContract.interact(recipientAddress, fee, { value: fee, gasLimit: 450000 });
         }
 
         await tx.wait();
 
-        // Save to Firebase Cloud
+        // 4. Save to Firebase
         const commentData = {
             text: input.value,
             author: userHandle,
@@ -491,11 +497,11 @@ async function addComment(recipientAddress, postId, isReply = false, parentId = 
         input.value = "";
         showToast("Comment Shared!");
         
-        // Refresh balance UI
+        // 5. Update UI so you see the new balance
         setTimeout(() => { syncData(); }, 2000);
     } catch (e) { 
-        console.error(e);
-        alert("Comment failed. Check your Star balance."); 
+        console.error("Comment Error:", e);
+        alert("Action failed. Check your wallet or Star balance."); 
     }
 }
 
