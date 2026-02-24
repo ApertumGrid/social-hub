@@ -764,6 +764,35 @@ window.addEventListener('load', async () => {
         console.error("Startup failed", e); 
     }
 });
+    async function diagnosticSync() {
+    if(!hubContract || !signer) return;
+    try {
+        const addr = await signer.getAddress();
+        const balRaw = await hubContract.aptmBalances(addr);
+        const price = await getLiveAptmPrice();
+        
+        console.log("--- SURGERY DIAGNOSTIC ---");
+        console.log("1. Raw Balance from Contract:", balRaw.toString());
+        
+        const humanAptm = ethers.utils.formatEther(balRaw);
+        console.log("2. Converted to Human APTM:", humanAptm);
+        
+        console.log("3. Current Price Used:", price);
+        
+        const usdValue = parseFloat(humanAptm) * price;
+        const stars = Math.floor(usdValue / 0.01);
+        console.log("4. Final Calculated Stars:", stars);
+        console.log("--------------------------");
+        
+        // Force the UI to show THIS calculation
+        document.getElementById('user-stars').innerText = stars.toLocaleString() + " ★";
+    } catch (e) {
+        console.error("Diagnostic Failed:", e);
+    }
+}
+
+// Call it once manually for testing
+setTimeout(diagnosticSync, 2000);
 
 </script>
 </body>
