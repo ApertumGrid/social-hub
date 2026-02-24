@@ -210,12 +210,19 @@
 <div id="toast">SUCCESS</div>
 
 <script>
+    // 1. GLOBAL VARIABLES (Declared ONLY ONCE)
     let currentAptmBalance = "0.0000";
-let starBalance = "0";
-let currentAptmPriceUsd = 0.3391;
-let totalAnchors = 0;
-    // PART 1: SETUP AND DATA SYNC
-// PART 1: SETUP AND DATA SYNC
+    let starBalance = "0";
+    let currentAptmPriceUsd = 0.3391;
+    let totalAnchors = 0;
+    let provider, signer, hubContract;
+    let userHandle = "Anonymous_Creator";
+    let userAvatar = "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
+    let visibleCount = 10;
+    const pageSize = 10;
+    const STAR_FIXED_USD = 0.01;
+
+    // 2. CONTRACT CONFIG
     const contractAddress = "0x42E0A97844ac6623207F2a363aa318E83268910F";
     const abi = [
         "function depositAPTM() public payable",
@@ -230,59 +237,34 @@ let totalAnchors = 0;
         "function PLATFORM_ADMIN() view returns (address)"
     ];
 
-    let provider, signer, hubContract;
-    let starBalance = "0";
-    let totalAnchors = 0; 
-    let userHandle = "Anonymous_Creator";
-    let userAvatar = "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
-    let visibleCount = 10;
-    const pageSize = 10;
-        let currentAptmPriceUsd = 0.3391; 
-
     // --- UPDATED PRICE FUNCTION (FIXES TRILLIONS) ---
     async function getLiveAptmPrice() {
-    const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57"; 
-    try {
-        if (!provider) return 0.3391;
-        const poolContract = new ethers.Contract(poolAddress, [
-            "function getReserves() external view returns (uint112, uint112, uint32)"
-        ], provider);
-
-        const reserves = await poolContract.getReserves();
-        
-        // Convert to standard Numbers to compare scale
-        let r0 = Number(reserves[0]);
-        let r1 = Number(reserves[1]);
-
-        let resAptm, resUsdt;
-
-        // APTM has 18 decimals, USDT has 6. 
-        // The APTM raw number will ALWAYS be significantly larger than the USDT raw number.
-        if (r0 > r1) {
-            resAptm = r0 / 1e18;
-            resUsdt = r1 / 1e6;
-        } else {
-            resUsdt = r0 / 1e6;
-            resAptm = r1 / 1e18;
+        const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57"; 
+        try {
+            if (!provider) return 0.3391;
+            const poolContract = new ethers.Contract(poolAddress, [
+                "function getReserves() external view returns (uint112, uint112, uint32)"
+            ], provider);
+            const reserves = await poolContract.getReserves();
+            let r0 = Number(reserves[0]);
+            let r1 = Number(reserves[1]);
+            let resAptm, resUsdt;
+            if (r0 > r1) {
+                resAptm = r0 / 1e18;
+                resUsdt = r1 / 1e6;
+            } else {
+                resUsdt = r0 / 1e6;
+                resAptm = r1 / 1e18;
+            }
+            const price = resUsdt / resAptm;
+            if (!price || price > 100 || price < 0.01) return 0.3391;
+            return price;
+        } catch (e) { 
+            return 0.3391; 
         }
-
-        const price = resUsdt / resAptm;
-        
-        // Final guard: if math fails or result is insane, use hardcoded market rate
-        if (!price || price > 100 || price < 0.01) {
-            console.log("Price out of bounds, using fallback");
-            return 0.3391;
-        }
-
-        console.log("CLEAN PRICE CALCULATED:", price);
-        return price;
-    } catch (e) { 
-        console.error("Price logic failed, using fallback:", e);
-        return 0.3391; 
     }
-}
 
-     async function connectWallet() {
+    async function connectWallet() {
         if (window.ethereum) {
             try {
                 provider = new ethers.providers.Web3Provider(window.ethereum);
