@@ -240,39 +240,24 @@
     try {
         if (!provider) return 0.3391;
         const poolContract = new ethers.Contract(poolAddress, [
-            "function getReserves() external view returns (uint112, uint112, uint32)",
-            "function token0() external view returns (address)"
+            "function getReserves() external view returns (uint112, uint112, uint32)"
         ], provider);
 
-        const [reserves, token0] = await Promise.all([
-            poolContract.getReserves(),
-            poolContract.token0()
-        ]);
+        const reserves = await poolContract.getReserves();
 
-        const APTM_ADDR = "0x42E0A97844ac6623207F2a363aa318E83268910F";
-        let resAptm, resUsdt;
-
-        // If Token0 is APTM (18 decimals), then Token1 is USDT (6 decimals)
-        if (token0.toLowerCase() === APTM_ADDR.toLowerCase()) {
-            resAptm = reserves[0]; // 18 decimals
-            resUsdt = reserves[1]; // 6 decimals
-        } else {
-            resUsdt = reserves[0]; // 6 decimals
-            resAptm = reserves[1]; // 18 decimals
-        }
-
-        // THE FIX: Move the decimals BEFORE dividing
-        // Convert both to "Human" numbers first
-        const humanAptm = parseFloat(ethers.utils.formatUnits(resAptm, 18));
-        const humanUsdt = parseFloat(ethers.utils.formatUnits(resUsdt, 6));
+        // BOTH are 18 decimals. We verified this via the Token0/Token1 console check.
+        // Token 0 is wAPTM (18 decimals)
+        // Token 1 is wUSDT (18 decimals)
+        const humanAptm = parseFloat(ethers.utils.formatUnits(reserves[0], 18));
+        const humanUsdt = parseFloat(ethers.utils.formatUnits(reserves[1], 18));
 
         const price = humanUsdt / humanAptm;
         
-        console.log("Price calculated safely:", price);
+        console.log("Price Fixed (18/18 math):", price);
         return price > 0 ? price : 0.3391;
 
     } catch (e) { 
-        console.error("Price Engine Mismatch:", e);
+        console.error("Price Engine Error:", e);
         return 0.3391; 
     }
 }
