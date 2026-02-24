@@ -289,11 +289,12 @@ async function syncData() {
         
         currentAptmPriceUsd = await getLiveAptmPrice();
         
-        // --- THE TRILLION FIX ---
+        // --- THE FIX ---
+        // formatEther turns the 15-digit Wei number into a human number (e.g., 5.0)
         const aptmInEth = ethers.utils.formatEther(balRaw); 
         const totalUsdValue = parseFloat(aptmInEth) * currentAptmPriceUsd; 
         
-        // Convert USD to Stars (1 Star = $0.01)
+        // Convert USD value to Stars (1 Star = $0.01)
         starBalance = Math.floor(totalUsdValue / STAR_FIXED_USD).toString();
         totalAnchors = anchors.toNumber();
         
@@ -303,15 +304,18 @@ async function syncData() {
 
 function updateUI() {
     let stars = parseFloat(starBalance);
-    // This updates the "15182..." number in your screenshot to the correct value
+    
+    // Updates the "15182..." numbers in your screenshots to the correct human values
     document.getElementById('user-stars').innerText = stars.toFixed(0) + " ★";
     document.getElementById('creator-revenue-display').innerText = stars.toFixed(0) + " ★";
     
     document.getElementById('total-anchors-display').innerText = totalAnchors.toLocaleString();
     document.getElementById('live-price-display').innerText = `RATE: $${currentAptmPriceUsd.toFixed(4)} / APTM`;
     
+    // Shows exactly how much APTM they can actually withdraw
     let userAptmValue = (stars * STAR_FIXED_USD) / currentAptmPriceUsd;
     document.getElementById('sidebar-aptm-value').innerText = userAptmValue.toFixed(4) + " $APTM";
+    document.getElementById('earnings-aptm-value').innerText = "EQUIVALENT: " + userAptmValue.toFixed(4) + " $APTM";
 }
     async function convertAPTM() {
         currentAptmPriceUsd = await getLiveAptmPrice();
@@ -726,7 +730,7 @@ window.addEventListener('load', async () => {
         const p = await getLiveAptmPrice();
         currentAptmPriceUsd = p;
         if (window.ethereum && window.ethereum.selectedAddress) {
-            await connectWallet(); // Ensure this is awaited
+            await connectWallet(); 
         }
         setTimeout(() => { loadGlobalFeed(); }, 1500);
     } catch (e) { 
