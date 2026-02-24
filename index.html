@@ -387,31 +387,46 @@ async function settleToWallet() {
 
     try {
         const addr = await signer.getAddress();
-        // Ask the contract for the real balance, not the website's guess
+        const network = await provider.getNetwork();
+        
+        // Safety check for the specific chain you are on
+        if (network.chainId !== 2786) {
+            alert("Warning: You are on Chain " + network.chainId + ". Please switch to APTM Network (2786).");
+            return;
+        }
+
         const rawBalanceWei = await hubContract.starBalances(addr);
         const humanAmount = ethers.utils.formatEther(rawBalanceWei);
 
-        let amt = prompt(`Withdraw Stars\nContract Balance: ${humanAmount} APTM equivalent`, humanAmount);
+        let amt = prompt(`Withdraw Stars\nAPTM Network Balance: ${humanAmount}`, "4");
 
         if (amt) {
-            showToast("Syncing with Ledger...");
+            showToast("Verifying with Chain 2786...");
             
-            // Cleanest math possible: No external price APIs
+            // MATH: Using direct Wei conversion to avoid rounding CALL_EXCEPTIONs
             const withdrawWei = ethers.utils.parseUnits(parseFloat(amt).toFixed(18), 18);
 
+            // Simulation check to see WHY it's failing before spending gas
+            try {
+                await hubContract.callStatic.withdrawStars(withdrawWei);
+            } catch (simError) {
+                console.error("Chain Revert Reason:", simError);
+                alert("The Contract Reverted. Likely: Insufficient Contract Liquidity on Chain 2786.");
+                return;
+            }
+
             const tx = await hubContract.withdrawStars(withdrawWei, {
-                gasLimit: 500000
+                gasLimit: 800000 // High limit for custom chains
             });
 
-            showToast("Processing on Blockchain...");
+            showToast("Pending on APTM Mainnet...");
             await tx.wait();
-            showToast("Success! Funds Sent.");
+            showToast("Success!");
             syncData();
         }
     } catch (e) {
-        console.error("Withdraw Error:", e);
-        const reason = e.data?.message || e.message || "Unknown Revert";
-        alert("Failed: " + reason.slice(0, 100));
+        console.error("Full Chain Error:", e);
+        alert("Transaction Failed: " + (e.reason || "Check Network Connection"));
     }
 }
 
