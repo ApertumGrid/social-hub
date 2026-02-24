@@ -286,21 +286,28 @@ async function syncData() {
     try {
         const addr = await signer.getAddress();
         
-        // Pull Balance and Anchors
+        // 1. Get Raw Data
         const [balRaw, anchors] = await Promise.all([
             hubContract.aptmBalances(addr), 
             hubContract.totalAnchors()
         ]);
         
-        currentAptmBalance = ethers.utils.formatEther(balRaw);
+        // 2. CONVERT TO HUMAN NUMBERS (This prevents the crazy star count)
+        const humanBalance = ethers.utils.formatEther(balRaw);
+        currentAptmBalance = humanBalance; // Store as "5.0"
         
-        // Recalculate Stars based on the latest known price
-        const usdValue = parseFloat(currentAptmBalance) * currentAptmPriceUsd;
+        // 3. Get Price & Calculate
+        currentAptmPriceUsd = await getLiveAptmPrice();
+        
+        // Force the math to use Floats, not BigNumbers
+        const usdValue = parseFloat(humanBalance) * parseFloat(currentAptmPriceUsd);
         starBalance = Math.floor(usdValue / 0.01).toString();
+        
         totalAnchors = anchors.toNumber();
         
-        // Immediately push to screen
+        // 4. Update UI
         updateUI();
+        
     } catch (e) { 
         console.error("Master Sync Failed:", e); 
     }
