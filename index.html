@@ -290,28 +290,28 @@ function updateUI() {
 
     async function settleToWallet() {
     const maxStars = Math.floor(parseFloat(starBalance));
-    let amt = prompt(`Withdraw Stars to $APTM\nYour Max: ${maxStars}`, "10"); // Defaulted to 10 for safety
+    let amt = prompt(`Withdraw Stars to $APTM\nYour Max: ${maxStars}`, "10"); 
     
     if (amt && hubContract) {
         try {
             const starAmount = parseFloat(amt);
             showToast("Syncing Live Price...");
             
-            // Re-fetch price right before the transaction to prevent slippage failure
             const freshPrice = await getLiveAptmPrice();
-            const usdValue = starAmount * STAR_FIXED_USD;
-            const aptmValue = (usdValue / freshPrice).toFixed(12); // Reduced decimals for compatibility
-            const weiValue = ethers.utils.parseUnits(aptmValue, 18);
+            
+            // FIXED MATH: We calculate the amount of APTM first
+            const aptmAmount = (starAmount * 0.01) / freshPrice;
+            
+            // We MUST cap the decimals at 18 or parseUnits will fail
+            const fixedAptm = aptmAmount.toFixed(18);
+            const weiValue = ethers.utils.parseUnits(fixedAptm, 18);
 
             showToast("Waiting for MetaMask...");
             
-            // MANUAL GAS OVERRIDE
-            // We set gasLimit high (400k) and force the price to ensure the miner picks it up
+            // Increased Gas Limit and removed the Gwei overrides which can cause failures 
+            // if the network doesn't support EIP-1559 fees properly.
             const tx = await hubContract.withdrawStars(weiValue, {
-                gasLimit: 400000,
-                // If you are on a network with high traffic, this helps:
-                maxPriorityFeePerGas: ethers.utils.parseUnits("2", "gwei"),
-                maxFeePerGas: ethers.utils.parseUnits("50", "gwei")
+                gasLimit: 500000 
             });
             
             showToast("Transaction Pending...");
@@ -320,8 +320,9 @@ function updateUI() {
             setTimeout(() => { syncData(); }, 2000);
         } catch (e) {
             console.error("Full Error Object:", e);
-            // This alert will now tell us the EXACT reason (e.g., "insufficient funds for gas")
-            alert("Failed: " + (e.reason || e.message).slice(0, 100));
+            // This will show the actual revert reason from the contract
+            const reason = e.data?.message || e.message;
+            alert("Failed: " + reason.slice(0, 100));
         }
     }
 }
