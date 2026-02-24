@@ -269,13 +269,18 @@ async function syncData() {
     if(!hubContract) return;
     try {
         const addr = await signer.getAddress();
-        const balRaw = await hubContract.starBalances(addr);
+        // This ensures the website looks at the "Internal Bank" (aptmBalances)
+        const balRaw = await hubContract.aptmBalances(addr); 
         const anchors = await hubContract.totalAnchors();
         currentAptmPriceUsd = await getLiveAptmPrice();
+
         const aptmInEth = ethers.utils.formatEther(balRaw);
         const totalUsdValue = parseFloat(aptmInEth) * currentAptmPriceUsd;
+        
+        // Calculate stars: $0.01 per star
         starBalance = (totalUsdValue / STAR_FIXED_USD).toString();
         totalAnchors = anchors.toNumber();
+        
         updateUI();
     } catch (e) { console.error("Sync Error:", e); }
 }
@@ -667,52 +672,6 @@ function toggleReply(id) {
             
             let mediaHtml = '';
             const ytId = getYoutubeId(post.media || "");
-            if(ytId) mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
-            else if(post.media) mediaHtml = `<div class="post-media-container"><img src="${post.media}"></div>`;
-
-            const item = document.createElement('div');
-            item.className = post.isBoosted ? 'glass-panel boosted-post' : 'glass-panel';
-            item.innerHTML = `
-                <div class='creator-header'>
-                    <img src="${post.avatar || userAvatar}" class="avatar-circle">
-                    <b>${post.author}</b>
-                </div>
-                ${mediaHtml}
-                <p>${post.text}</p>
-                <div class="feed-actions">
-                    <div class="feed-btn" onclick="hypeElement('${post.authorAddr}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">${post.hypes || 0}</span></div>
-                    <div class="feed-btn" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comments</div>
-                    <div class="feed-btn" style="color:var(--gold)" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
-                </div>
-                <div class="comment-area" id="tray-${postId}">
-                    <div class="comment-list" id="list-${postId}"></div>
-                    <div style="display:flex; gap:10px;">
-                        <input type="text" class="input-field" style="margin-top:0;" placeholder="Add (1★)" id="input-${postId}">
-                        <button class="action-btn" style="margin-top:0; width:80px;" onclick="addComment('${post.authorAddr}', '${postId}')">SEND</button>
-                    </div>
-                </div>`;
-            feedContainer.appendChild(item);
-        });
-        refreshFeedVisibility();
-    });
-}
-
-async function loadGlobalFeed() {
-    const feedContainer = document.getElementById('feed-items');
-    if (!feedContainer || !window.db) return;
-
-    // This tells Firebase to watch for new posts and show them newest-first
-    const q = window.fs.query(window.fs.collection(window.db, "posts"), window.fs.orderBy("timestamp", "desc"));
-
-    window.fs.onSnapshot(q, (snapshot) => {
-        feedContainer.innerHTML = ""; 
-        snapshot.forEach((docRef) => {
-            const post = docRef.data();
-            const postId = docRef.id;
-            
-            // Logic to display YouTube or Images
-            let mediaHtml = '';
-            const ytId = getYoutubeId(post.media || "");
             if(ytId) {
                 mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
             } else if(post.media) {
@@ -721,7 +680,7 @@ async function loadGlobalFeed() {
 
             const item = document.createElement('div');
             item.className = post.isBoosted ? 'glass-panel boosted-post' : 'glass-panel';
-            item.style.border = post.isBoosted ? '1px solid var(--gold)' : '1px solid var(--border)';
+            if(post.isBoosted) item.style.border = "2px solid #FFD700"; 
             
             item.innerHTML = `
                 <div class='creator-header'>
@@ -733,7 +692,7 @@ async function loadGlobalFeed() {
                 <div class="feed-actions">
                     <div class="feed-btn" onclick="hypeElement('${post.authorAddr}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">${post.hypes || 0}</span></div>
                     <div class="feed-btn" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comments</div>
-                    <div class="feed-btn" style="color:var(--gold)" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
+                    <div class="feed-btn" style="color:#FFD700" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
                 </div>
                 <div class="comment-area" id="tray-${postId}">
                     <div class="comment-list" id="list-${postId}"></div>
@@ -747,6 +706,7 @@ async function loadGlobalFeed() {
         refreshFeedVisibility();
     });
 }
+
 
 // Function to load the comments inside each post
 async function loadComments(postId) {
