@@ -243,7 +243,6 @@ function getOneStarWei() {
 
 async function getLiveAptmPrice() {
     const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
-    // This is the APTM Token address itself (from your screenshot)
     const aptmTokenAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57"; 
 
     try {
@@ -255,24 +254,29 @@ async function getLiveAptmPrice() {
         const reserves = await poolContract.getReserves();
         const t0 = await poolContract.token0();
         
-        let price;
-        // If token0 is APTM, then price is Reserves1 / Reserves0
+        let resAptm, resUsdt;
+
+        // Correctly identifying which reserve is which based on the Token0 address
         if (t0.toLowerCase() === aptmTokenAddress.toLowerCase()) {
-            price = reserves[1] / reserves[0];
+            resAptm = Number(reserves[0]) / 1e18; 
+            resUsdt = Number(reserves[1]) / 1e6;  
         } else {
-            // If token1 is APTM, then price is Reserves0 / Reserves1
-            price = reserves[0] / reserves[1];
+            resUsdt = Number(reserves[0]) / 1e6;  
+            resAptm = Number(reserves[1]) / 1e18; 
         }
 
-        // Final check: If the pool has decimals (like USDT 6-decimal), 
-        // we might need to adjust, but based on your screenshot math, this is it.
-        return price || 0.329; 
+        const priceInUsd = resUsdt / resAptm;
+        
+        // Return the price in USD. 
+        // Note: Make sure your syncData function multiplies this by 100 
+        // to get the Star count (e.g., $0.32 * 100 = 32 Stars).
+        return priceInUsd; 
+
     } catch (e) {
-        console.warn("DEX fetch failed, using fallback.");
+        console.warn("DEX fetch failed, using fallback:", e);
         return 0.329; 
     }
 }
-
 async function connectWallet() {
     if (window.ethereum) {
         try {
