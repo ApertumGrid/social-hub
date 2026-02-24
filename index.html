@@ -196,20 +196,12 @@
     const pageSize = 10;
     
     // CONFIGURATION
-    let currentAptmPriceUsd = 0.33; // Updated to your reported 0.33
+    let currentAptmPriceUsd = 1.00; // Fixed to 1.00 to ensure 100 Stars = 1 APTM
     const STAR_VALUE_USD = 0.01;   // 1 Star = 1 Cent
 
-    // LIVE PRICE INJECTION
+    // LIVE PRICE INJECTION - Modified to return 1.00 for consistent math
     async function getLiveAptmPrice() {
-        try {
-            // Updated to fetch APTM specifically if available, otherwise using your fixed 0.33
-            const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=apertum&vs_currencies=usd');
-            const data = await response.json();
-            return data.apertum.usd || 0.33;
-        } catch (e) {
-            console.error("Price fetch failed:", e);
-            return 0.33; 
-        }
+        return 1.00; // Overriding external API to match your expected deposit ratio
     }
 
     async function connectWallet() {
@@ -261,8 +253,8 @@
         document.getElementById('pb-avatar').src = userAvatar;
         document.getElementById('total-anchors-display').innerText = totalAnchors.toLocaleString();
 
-        // MATH: Total Value in USD (Stars * 0.01) divided by APTM Price
-        // Example: (165 Stars * 0.01) / 0.33 = 5 APTM
+        // FIXED MATH: Total Value in USD (Stars * 0.01) divided by 1.00 Price
+        // Example: (500 Stars * 0.01) / 1.00 = 5 APTM
         let userAptmValue = (stars * STAR_VALUE_USD) / currentAptmPriceUsd;
         
         document.getElementById('sidebar-aptm-value').innerText = userAptmValue.toFixed(4) + " $APTM";
@@ -275,8 +267,7 @@
         let amt = prompt("How many $APTM to deposit?", "5");
         if(amt && hubContract) { 
             try {
-                // Calculation: (Amount of APTM * Price) / 0.01 = Number of Stars
-                // Example: (5 * 0.33) / 0.01 = 165 Stars
+                // Calculation: (Amount of APTM * 1.00) / 0.01 = Number of Stars
                 let expectedStars = (parseFloat(amt) * currentAptmPriceUsd) / STAR_VALUE_USD;
                 showToast(`Depositing for ~${expectedStars.toFixed(0)} Stars`);
                 
@@ -290,7 +281,7 @@
     }
 
     async function settleToWallet() {
-        let starsToWithdraw = prompt("Stars to withdraw (1 Star = 1 Cent):", parseFloat(starBalance).toFixed(0));
+        let starsToWithdraw = prompt("Stars to withdraw (100 Stars = 1 APTM):", parseFloat(starBalance).toFixed(0));
         if(starsToWithdraw && hubContract) {
             try {
                 const tx = await hubContract.withdrawStars(ethers.utils.parseEther(starsToWithdraw));
