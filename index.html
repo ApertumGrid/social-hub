@@ -233,8 +233,7 @@
     let userAvatar = "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
     let visibleCount = 10;
     const pageSize = 10;
-    const STAR_FIXED_USD = 0.01;
-    let currentAptmPriceUsd = 0.3391; 
+        let currentAptmPriceUsd = 0.3391; 
 
     // --- UPDATED PRICE FUNCTION (FIXES TRILLIONS) ---
     async function getLiveAptmPrice() {
@@ -260,29 +259,7 @@
         } catch (e) { return 0.329; }
     }
 
-    // --- CLEANED SYNC DATA (THE ENGINE) ---
-    async function syncData() {
-        if(!hubContract || !signer) return;
-        try {
-            const addr = await signer.getAddress();
-            const balRaw = await hubContract.aptmBalances(addr); 
-            const anchors = await hubContract.totalAnchors();
-            currentAptmPriceUsd = await getLiveAptmPrice();
-            const aptmInEth = ethers.utils.formatEther(balRaw); 
-            const totalUsdValue = parseFloat(aptmInEth) * currentAptmPriceUsd; 
-            starBalance = Math.floor(totalUsdValue / STAR_FIXED_USD).toString();
-            totalAnchors = anchors.toNumber();
-            updateUI();
-            
-            // Load comments for visible posts
-            document.querySelectorAll('.post-card').forEach(post => {
-                const id = post.getAttribute('data-id');
-                if(id) loadComments(id);
-            });
-        } catch (e) { console.error("Sync Error:", e); }
-    }
-
-    async function connectWallet() {
+     async function connectWallet() {
         if (window.ethereum) {
             try {
                 provider = new ethers.providers.Web3Provider(window.ethereum);
