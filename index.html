@@ -612,14 +612,13 @@ function getYoutubeId(url) {
     return (match && match[2].length === 11) ? match[2] : null;
 }
 
+// --- PART 2: ACTIONS & INTERACTIONS ---
+
 async function boostPost(postId) {
     if (!hubContract) return alert("Connect Wallet First");
-    
     try {
         const userAddr = await signer.getAddress();
         const internalStars = await hubContract.aptmBalances(userAddr);
-        
-        // SETTING BOOST FEE TO 10 STARS
         const boostFee = ethers.utils.parseEther("10"); 
         
         let tx;
@@ -627,26 +626,16 @@ async function boostPost(postId) {
 
         if (internalStars.gte(boostFee)) {
             showToast("Boosting (10 Stars to Platform)...");
-            // Uses internal Stars balance
             tx = await hubContract.boostPost(boostFee, { gasLimit: 400000 }); 
         } else {
             showToast("Paying 10 APTM from Wallet...");
-            // Triggers MetaMask payment popup for 10 APTM
             tx = await hubContract.boostPost(boostFee, { value: boostFee, gasLimit: 400000 }); 
         }
 
         await tx.wait();
-
-        // Update Firebase to "Bump" the post to the top
         const postRef = window.fs.doc(window.db, "posts", postId);
-        await window.fs.updateDoc(postRef, {
-            timestamp: Date.now(),
-            isBoosted: true
-        });
-
-        showToast("🚀 POST BOOSTED TO TOP!");
-        
-        // Refresh balance UI
+        await window.fs.updateDoc(postRef, { timestamp: Date.now(), isBoosted: true });
+        showToast("🚀 POST BOOSTED!");
         setTimeout(() => { syncData(); }, 2000);
     } catch (e) { 
         console.error(e);
@@ -659,36 +648,25 @@ async function hypeElement(recipientAddress, displayId) {
     try {
         const userAddr = await signer.getAddress();
         const internalStars = await hubContract.aptmBalances(userAddr);
-        const fee = getOneStarWei();
+        // Uses the normalized price to get 1 Star's worth of Wei
+        const fee = ethers.utils.parseEther((STAR_FIXED_USD / currentAptmPriceUsd).toFixed(18));
         
         showToast("Processing Hype...");
         let tx;
-
         if (internalStars.gte(fee)) {
-            // 80% to Creator, 20% to Platform
             tx = await hubContract.interact(recipientAddress, fee, { gasLimit: 400000 });
         } else {
             tx = await hubContract.interact(recipientAddress, fee, { value: fee, gasLimit: 400000 });
         }
-
         await tx.wait();
         
-        // --- NEW: SAVE TO FIREBASE ---
-        // We need to find the post in Firebase and increment the 'hypes' count
-        // The displayId is usually something like "hp-POST_ID"
         const postId = displayId.replace('hp-', '');
         const postRef = window.fs.doc(window.db, "posts", postId);
+        await window.fs.updateDoc(postRef, { hypes: window.fs.increment(1) });
         
-        await window.fs.updateDoc(postRef, {
-            hypes: window.fs.increment(1)
-        });
-        
-        showToast("Hype Recorded on Cloud! ✨");
+        showToast("Hype Recorded! ✨");
         setTimeout(() => { syncData(); }, 2000);
-    } catch (e) { 
-        console.error(e);
-        alert("Hype failed. Check Stars balance."); 
-    }
+    } catch (e) { console.error(e); }
 }
 
 function toggleTray(id) {
@@ -700,7 +678,8 @@ function toggleReply(id) {
     const b = document.getElementById(`reply-box-${id}`);
     if(b) b.style.display = b.style.display === 'block' ? 'none' : 'block';
 }
-    async function loadGlobalFeed() {
+
+async function loadGlobalFeed() {
     const feedContainer = document.getElementById('feed-items');
     if (!feedContainer || !window.db) return;
 
@@ -711,7 +690,6 @@ function toggleReply(id) {
         snapshot.forEach((docRef) => {
             const post = docRef.data();
             const postId = docRef.id;
-            
             let mediaHtml = '';
             const ytId = getYoutubeId(post.media || "");
             if(ytId) {
@@ -721,7 +699,8 @@ function toggleReply(id) {
             }
 
             const item = document.createElement('div');
-            item.className = post.isBoosted ? 'glass-panel boosted-post' : 'glass-panel';
+            item.className = 'glass-panel post-card';
+            item.setAttribute('data-id', postId); // Critical for loadComments
             if(post.isBoosted) item.style.border = "2px solid #FFD700"; 
             
             item.innerHTML = `
@@ -749,61 +728,35 @@ function toggleReply(id) {
     });
 }
 
-
-// Function to load the comments inside each post
 async function loadComments(postId) {
     const list = document.getElementById(`list-${postId}`);
     if (!list) return;
 
-    console.log("Fetching comments for Post ID:", postId);
-
-    // Using the exact collection name 'comments' from your screenshot
     const q = window.fs.query(
         window.fs.collection(window.db, "comments"),
-        window.fs.where("postId", "==", postId)
+        window.fs.where("postId", "==", String(postId))
     );
 
     window.fs.onSnapshot(q, (snapshot) => {
         list.innerHTML = "";
-        if (snapshot.empty) {
-            console.log("No comments found in Firebase for this ID.");
-            return;
-        }
-
         snapshot.forEach((docRef) => {
             const comment = docRef.data();
-            const commentId = docRef.id;
             const row = document.createElement('div');
             row.className = 'comment-row';
-            row.style.padding = "10px 0";
-            row.style.borderBottom = "1px solid rgba(255,255,255,0.1)";
-            
-            row.innerHTML = `
-                <div style="font-size: 0.9em;">
-                    <b style="color: #FFD700;">${comment.author}</b>: ${comment.text}
-                </div>
-                <div class="comment-meta" style="font-size: 0.8em; opacity: 0.6; margin-top:4px;">
-                    <span class="meta-link" onclick="hypeElement('${comment.authorAddr}', 'hp-${commentId}')">❤️ Hype</span>
-                    <span class="meta-link" onclick="toggleReply('${commentId}')"> · Reply</span>
-                </div>`;
+            row.innerHTML = `<div style="font-size: 0.9em;"><b style="color: #FFD700;">${comment.author}</b>: ${comment.text}</div>`;
             list.appendChild(row);
         });
     });
 }
 
 // --- STARTUP ---
-
-window.addEventListener('load', () => {
-    if (typeof getLiveAptmPrice === 'function') {
-        getLiveAptmPrice().then(p => { currentAptmPriceUsd = p; });
-    }
-    
-    // Connect Wallet if already authorized
-    if (window.ethereum && window.ethereum.selectedAddress) connectWallet();
-    
-    // Wait a second for Firebase to initialize then load feed
-    setTimeout(() => { loadGlobalFeed(); }, 1500);
+window.addEventListener('load', async () => {
+    try {
+        const p = await getLiveAptmPrice();
+        currentAptmPriceUsd = p;
+        if (window.ethereum && window.ethereum.selectedAddress) {
+            connectWallet();
+        }
+        setTimeout(() => { loadGlobalFeed(); }, 1500);
+    } catch (e) { console.error("Startup failed", e); }
 });
-</script>
-</body>
-</html>
