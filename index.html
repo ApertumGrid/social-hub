@@ -256,24 +256,20 @@ async function getLiveAptmPrice() {
         
         let resAptm, resUsdt;
 
-        // Correctly identifying which reserve is which based on the Token0 address
+        // DIVIDING BY 1e18 and 1e6 is what kills the 'Trillions' error
         if (t0.toLowerCase() === aptmTokenAddress.toLowerCase()) {
-            resAptm = Number(reserves[0]) / 1e18; 
-            resUsdt = Number(reserves[1]) / 1e6;  
+            resAptm = Number(reserves[0]) / 1e18; // Corrects 18 decimals
+            resUsdt = Number(reserves[1]) / 1e6;  // Corrects 6 decimals (USDT)
         } else {
             resUsdt = Number(reserves[0]) / 1e6;  
             resAptm = Number(reserves[1]) / 1e18; 
         }
 
-        const priceInUsd = resUsdt / resAptm;
-        
-        // Return the price in USD. 
-        // Note: Make sure your syncData function multiplies this by 100 
-        // to get the Star count (e.g., $0.32 * 100 = 32 Stars).
+        const priceInUsd = resUsdt / resAptm; // This will be ~0.329
         return priceInUsd; 
 
     } catch (e) {
-        console.warn("DEX fetch failed, using fallback:", e);
+        console.error("DEX Error:", e);
         return 0.329; 
     }
 }
@@ -293,26 +289,38 @@ async function connectWallet() {
     } else { alert("MetaMask not found"); }
 }
 
+// Ensure this is at the top of your script
+const STAR_FIXED_USD = 0.01; 
+
 async function syncData() {
     if(!hubContract) return;
     try {
         const addr = await signer.getAddress();
-        // This ensures the website looks at the "Internal Bank" (aptmBalances)
         const balRaw = await hubContract.aptmBalances(addr); 
         const anchors = await hubContract.totalAnchors();
+        
+        // This will now return ~0.32 (not a trillion)
         currentAptmPriceUsd = await getLiveAptmPrice();
 
-        const aptmInEth = ethers.utils.formatEther(balRaw);
-        const totalUsdValue = parseFloat(aptmInEth) * currentAptmPriceUsd;
+        const aptmInEth = ethers.utils.formatEther(balRaw); // Returns "5.0"
+        const totalUsdValue = parseFloat(aptmInEth) * currentAptmPriceUsd; // 5 * 0.32 = 1.60
         
-        // Calculate stars: $0.01 per star
-        starBalance = (totalUsdValue / STAR_FIXED_USD).toString();
+        // 1.60 / 0.01 = 160 Stars
+        starBalance = Math.floor(totalUsdValue / STAR_FIXED_USD).toString();
         totalAnchors = anchors.toNumber();
         
         updateUI();
+        
+        // IMPORTANT: Trigger the comment load AFTER the UI updates
+        // This ensures the comments actually show up!
+        const allPosts = document.querySelectorAll('.post-card');
+        allPosts.forEach(post => {
+            const id = post.getAttribute('data-id');
+            if(id) loadComments(id);
+        });
+
     } catch (e) { console.error("Sync Error:", e); }
 }
-
 function updateUI() {
     let stars = parseFloat(starBalance);
     document.getElementById('user-stars').innerText = stars.toFixed(0) + " ★";
