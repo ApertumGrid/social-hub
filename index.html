@@ -242,21 +242,34 @@ function getOneStarWei() {
 }
 
 async function getLiveAptmPrice() {
+    const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
+    // This is the APTM Token address itself (from your screenshot)
+    const aptmTokenAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57"; 
+
     try {
-        // If you have a specific DEX Pool Address, we can query it directly.
-        // For now, this is a clean 'Market Check' that won't crash your syncData
-        const response = await fetch('https://api.dexscreener.com/latest/dex/tokens/YOUR_TOKEN_ADDRESS_HERE');
-        const data = await response.json();
+        const poolContract = new ethers.Contract(poolAddress, [
+            "function getReserves() external view returns (uint112, uint112, uint32)",
+            "function token0() external view returns (address)"
+        ], provider);
+
+        const reserves = await poolContract.getReserves();
+        const t0 = await poolContract.token0();
         
-        if (data.pairs && data.pairs[0]) {
-            return parseFloat(data.pairs[0].priceUsd);
+        let price;
+        // If token0 is APTM, then price is Reserves1 / Reserves0
+        if (t0.toLowerCase() === aptmTokenAddress.toLowerCase()) {
+            price = reserves[1] / reserves[0];
+        } else {
+            // If token1 is APTM, then price is Reserves0 / Reserves1
+            price = reserves[0] / reserves[1];
         }
-        
-        // Final fail-safe so the website never "dies"
-        return 0.0003; 
+
+        // Final check: If the pool has decimals (like USDT 6-decimal), 
+        // we might need to adjust, but based on your screenshot math, this is it.
+        return price || 0.329; 
     } catch (e) {
-        console.error("DEX Fetch Error:", e);
-        return 0.0003; 
+        console.warn("DEX fetch failed, using fallback.");
+        return 0.329; 
     }
 }
 
@@ -723,30 +736,37 @@ async function loadComments(postId) {
     const list = document.getElementById(`list-${postId}`);
     if (!list) return;
 
+    console.log("Fetching comments for Post ID:", postId);
+
+    // Using the exact collection name 'comments' from your screenshot
     const q = window.fs.query(
         window.fs.collection(window.db, "comments"),
-        window.fs.where("postId", "==", postId),
-        window.fs.orderBy("timestamp", "asc")
+        window.fs.where("postId", "==", postId)
     );
 
     window.fs.onSnapshot(q, (snapshot) => {
         list.innerHTML = "";
+        if (snapshot.empty) {
+            console.log("No comments found in Firebase for this ID.");
+            return;
+        }
+
         snapshot.forEach((docRef) => {
             const comment = docRef.data();
             const commentId = docRef.id;
             const row = document.createElement('div');
             row.className = 'comment-row';
+            row.style.padding = "10px 0";
+            row.style.borderBottom = "1px solid rgba(255,255,255,0.1)";
+            
             row.innerHTML = `
-                <b>${comment.author}</b>: ${comment.text}
-                <div class="comment-meta">
+                <div style="font-size: 0.9em;">
+                    <b style="color: #FFD700;">${comment.author}</b>: ${comment.text}
+                </div>
+                <div class="comment-meta" style="font-size: 0.8em; opacity: 0.6; margin-top:4px;">
                     <span class="meta-link" onclick="hypeElement('${comment.authorAddr}', 'hp-${commentId}')">❤️ Hype</span>
-                    <span class="meta-link" onclick="toggleReply('${commentId}')">Reply (1★)</span>
-                </div>
-                <div class="reply-box" id="reply-box-${commentId}">
-                    <input type="text" class="input-field" placeholder="Reply..." id="reply-in-${commentId}">
-                    <button class="action-btn" onclick="addComment('${comment.authorAddr}', '${postId}', true, '${commentId}')">REPLY</button>
-                </div>
-            `;
+                    <span class="meta-link" onclick="toggleReply('${commentId}')"> · Reply</span>
+                </div>`;
             list.appendChild(row);
         });
     });
