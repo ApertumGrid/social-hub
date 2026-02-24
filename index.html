@@ -187,7 +187,18 @@
 
 <script>
     const contractAddress = "0xe348feDea1850a0c2d4aC0fed3f903774dE1e16A";
-    const abi = [{"inputs":[],"name":"adminWithdraw","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_parentId","type":"uint256"},{"internalType":"uint256","name":"_type","type":"uint256"}],"name":"createContent","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"depositAPTM","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"}],"name":"hype","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_starAmount","type":"uint256"}],"name":"withdrawStars","outputs":[],"stateMutability":"nonpayable","type":"function"},{"stateMutability":"payable","type":"receive"},{"inputs":[],"name":"PLATFORM_ADMIN","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"registry","outputs":[{"internalType":"address","name":"author","type":"address"},{"internalType":"uint256","name":"parentId","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"starBalances","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalAnchors","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}];
+    // UPDATED V2 ABI
+    const abi = [
+        "function depositAPTM() public payable",
+        "function postContent(string memory _ipfsHash, uint256 _type, uint256 _oneStarWei) public",
+        "function boostPost(uint256 _oneStarWei) public",
+        "function interact(address _recipient, uint256 _oneStarWei) public",
+        "function starBalances(address _user) view returns (uint256)",
+        "function totalAnchors() view returns (uint256)",
+        "function withdrawStars(uint256 _amountWei) public",
+        "function registry(uint256) view returns (address author, uint256 parentId)",
+        "function PLATFORM_ADMIN() view returns (address)"
+    ];
 
     let provider, signer, hubContract;
     let starBalance = "0";
@@ -200,6 +211,12 @@
     // CONFIGURATION
     let currentAptmPriceUsd = 0.34; 
     const STAR_FIXED_USD = 0.01; // DO NOT CHANGE: A star is always one cent.
+
+    // Calculate current Wei value of 1 Star
+    function getOneStarWei() {
+        const aptmAmount = STAR_FIXED_USD / currentAptmPriceUsd;
+        return ethers.utils.parseUnits(aptmAmount.toFixed(18), 18);
+    }
 
     async function getLiveAptmPrice() {
         try {
@@ -236,9 +253,14 @@
             const addr = await signer.getAddress();
             const balRaw = await hubContract.starBalances(addr);
             const anchors = await hubContract.totalAnchors();
-            starBalance = ethers.utils.formatEther(balRaw);
-            totalAnchors = anchors.toNumber();
+            
+            // MATH UPDATE: Convert raw APTM Wei into Stars based on Price
             currentAptmPriceUsd = await getLiveAptmPrice();
+            const aptmInEth = ethers.utils.formatEther(balRaw);
+            const totalUsdValue = aptmInEth * currentAptmPriceUsd;
+            starBalance = (totalUsdValue / STAR_FIXED_USD).toString();
+
+            totalAnchors = anchors.toNumber();
             updateUI();
         } catch (e) {
             console.error("Sync Error:", e);
@@ -246,8 +268,6 @@
     }
 
     function updateUI() {
-        // Here we define the relationship between the contract balance and the Star value.
-        // We assume the contract returns the total value in 'cents' (Stars).
         let stars = parseFloat(starBalance);
         
         document.getElementById('user-stars').innerText = stars.toFixed(0) + " ★";
@@ -257,8 +277,6 @@
         document.getElementById('total-anchors-display').innerText = totalAnchors.toLocaleString();
         document.getElementById('live-price-display').innerText = `RATE: $${currentAptmPriceUsd.toFixed(2)} / APTM`;
 
-        // CALCULATING APTM EQUIVALENT:
-        // Total Dollars (Stars * 0.01) divided by Price of 1 APTM.
         let userAptmValue = (stars * STAR_FIXED_USD) / currentAptmPriceUsd;
         
         document.getElementById('sidebar-aptm-value').innerText = userAptmValue.toFixed(4) + " $APTM";
@@ -269,7 +287,7 @@
 
     async function convertAPTM() {
         currentAptmPriceUsd = await getLiveAptmPrice();
-        let amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(2)}\nYou will receive ${Math.floor((parseFloat(amt) * currentAptmPriceUsd) / STAR_FIXED_USD)} Stars.`, "5");
+        let amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(2)}`, "5");
         
         if(amt && hubContract) { 
             try {
@@ -287,7 +305,12 @@
         let starsToWithdraw = prompt("How many Stars to withdraw?", "34");
         if(starsToWithdraw && hubContract) {
             try {
-                const tx = await hubContract.withdrawStars(ethers.utils.parseEther(starsToWithdraw));
+                // Calculation: Stars to USD to APTM Wei
+                const usdValue = parseFloat(starsToWithdraw) * STAR_FIXED_USD;
+                const aptmValue = usdValue / currentAptmPriceUsd;
+                const weiValue = ethers.utils.parseUnits(aptmValue.toFixed(18), 18);
+
+                const tx = await hubContract.withdrawStars(weiValue);
                 showToast("Settling...");
                 await tx.wait();
                 setTimeout(() => { syncData(); }, 2000);
@@ -353,28 +376,34 @@
         const txt = document.getElementById('post-text').value;
         const media = document.getElementById('post-media').value;
         if(!txt) return;
-        let type = 1;
-        if(media) type = (media.includes('mp4') || getYoutubeId(media)) ? 3 : 2;
+        let type = 1; // 1.2 Stars
+        if(media) type = (media.includes('mp4') || getYoutubeId(media)) ? 3 : 2; // 10 or 3 Stars
+        
         try {
-            showToast("Requesting Anchor...");
-            const tx = await hubContract.createContent(0, type);
+            showToast("Anchoring Signal...");
+            // V2 uses postContent and passes current Star Wei value
+            const tx = await hubContract.postContent("", type, getOneStarWei());
             await tx.wait();
+            
             const postId = Date.now(); 
             const hash = "0x" + Math.random().toString(16).slice(2, 10).toUpperCase();
             let mediaHtml = '';
             const ytId = getYoutubeId(media);
             if(ytId) mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
             else if(media) mediaHtml = `<div class="post-media-container"><img src="${media}"></div>`;
+            
             const item = document.createElement('div');
             item.className = 'glass-panel';
             item.id = `post-container-${postId}`;
+            // Use current signer address for Hype logic
+            const userAddr = await signer.getAddress();
             item.innerHTML = `
                 <div class='creator-header'><img src="${userAvatar}" class="avatar-circle"><b>${userHandle}</b></div>
                 ${mediaHtml}
                 <p>${txt}</p>
                 <span class="hash-anchor">LEDGER ANCHOR: ${hash}</span>
                 <div class="feed-actions">
-                    <div class="feed-btn" onclick="hypeElement('${totalAnchors + 1}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">0</span></div>
+                    <div class="feed-btn" onclick="hypeElement('${userAddr}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">0</span></div>
                     <div class="feed-btn" onclick="toggleTray('${postId}')">💬 Comments</div>
                     <div class="feed-btn" style="color:var(--gold)" onclick="boostPost('${postId}')">🚀 Boost</div>
                 </div>
@@ -382,7 +411,7 @@
                     <div class="comment-list" id="list-${postId}"></div>
                     <div style="display:flex; gap:10px;">
                         <input type="text" class="input-field" style="margin-top:0;" placeholder="Add comment (1★)" id="input-${postId}">
-                        <button class="action-btn" style="margin-top:0; width:80px;" onclick="addComment('${totalAnchors + 1}', '${postId}')">SEND</button>
+                        <button class="action-btn" style="margin-top:0; width:80px;" onclick="addComment('${userAddr}', '${postId}')">SEND</button>
                     </div>
                 </div>
             `;
@@ -395,7 +424,8 @@
 
     async function boostPost(postId) {
         try {
-            const tx = await hubContract.createContent(0, 4); 
+            showToast("Boosting Signal...");
+            const tx = await hubContract.boostPost(getOneStarWei()); 
             await tx.wait();
             const postElement = document.getElementById(`post-container-${postId}`);
             document.getElementById('feed-items').prepend(postElement);
@@ -404,13 +434,14 @@
         } catch (e) { alert("Boost failed"); }
     }
 
-    async function hypeElement(blockchainId, displayId) {
+    async function hypeElement(recipientAddress, displayId) {
         try {
-            const tx = await hubContract.hype(blockchainId);
+            showToast("Sending Hype...");
+            const tx = await hubContract.interact(recipientAddress, getOneStarWei());
             await tx.wait();
             document.getElementById(displayId).innerText = parseInt(document.getElementById(displayId).innerText) + 1;
             setTimeout(() => { syncData(); }, 2000);
-            showToast("Hype Recorded!");
+            showToast("Hype Recorded (80/20 Split)!");
         } catch (e) { alert("Hype failed"); }
     }
 
@@ -419,25 +450,28 @@
         t.style.display = t.style.display === 'block' ? 'none' : 'block';
     }
 
-    async function addComment(parentBlockchainId, postId, isReply = false, parentId = null) {
+    async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
         const inputId = isReply ? `reply-in-${parentId}` : `input-${postId}`;
         const input = document.getElementById(inputId);
         if(!input.value) return;
         try {
-            const tx = await hubContract.createContent(parentBlockchainId, 1);
+            showToast("Posting Comment...");
+            const tx = await hubContract.interact(recipientAddress, getOneStarWei());
             await tx.wait();
+            
             const commId = Date.now();
             const row = document.createElement('div');
             row.className = 'comment-row';
+            const userAddr = await signer.getAddress();
             row.innerHTML = `
                 <b>${userHandle}</b>: ${input.value}
                 <div class="comment-meta">
-                    <span class="meta-link" onclick="hypeElement('${totalAnchors + 1}', 'hc-${commId}')">❤️ Hype (<span id="hc-${commId}">0</span>)</span>
+                    <span class="meta-link" onclick="hypeElement('${userAddr}', 'hc-${commId}')">❤️ Hype (<span id="hc-${commId}">0</span>)</span>
                     <span class="meta-link" onclick="toggleReply('${commId}')">💬 Reply</span>
                 </div>
                 <div id="reply-box-${commId}" class="reply-box">
                     <input type="text" class="input-field" style="height:35px;" placeholder="Write reply..." id="reply-in-${commId}">
-                    <button class="action-btn" style="width:60px; height:35px; padding:0;" onclick="addComment('${totalAnchors + 1}', '${postId}', true, '${commId}')">GO</button>
+                    <button class="action-btn" style="width:60px; height:35px; padding:0;" onclick="addComment('${userAddr}', '${postId}', true, '${commId}')">GO</button>
                 </div>
                 <div id="replies-to-${commId}" class="nested-container"></div>
             `;
