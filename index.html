@@ -241,18 +241,38 @@
         if (!provider) return 0.3391;
         const poolContract = new ethers.Contract(poolAddress, [
             "function getReserves() external view returns (uint112, uint112, uint32)",
-            "function token1() external view returns (address)"
+            "function token0() external view returns (address)"
         ], provider);
 
-        const reserves = await poolContract.getReserves();
-        // Math for 18 decimal token vs 6 decimal USDT
-        const resUsdt = reserves[0] / 1e6;
-        const resAptm = reserves[1] / 1e18;
+        const [reserves, token0] = await Promise.all([
+            poolContract.getReserves(),
+            poolContract.token0()
+        ]);
 
-        const price = resUsdt / resAptm;
+        const APTM_ADDR = "0x42E0A97844ac6623207F2a363aa318E83268910F";
+        let resAptm, resUsdt;
+
+        // If Token0 is APTM (18 decimals), then Token1 is USDT (6 decimals)
+        if (token0.toLowerCase() === APTM_ADDR.toLowerCase()) {
+            resAptm = reserves[0]; // 18 decimals
+            resUsdt = reserves[1]; // 6 decimals
+        } else {
+            resUsdt = reserves[0]; // 6 decimals
+            resAptm = reserves[1]; // 18 decimals
+        }
+
+        // THE FIX: Move the decimals BEFORE dividing
+        // Convert both to "Human" numbers first
+        const humanAptm = parseFloat(ethers.utils.formatUnits(resAptm, 18));
+        const humanUsdt = parseFloat(ethers.utils.formatUnits(resUsdt, 6));
+
+        const price = humanUsdt / humanAptm;
+        
+        console.log("Price calculated safely:", price);
         return price > 0 ? price : 0.3391;
+
     } catch (e) { 
-        console.error("Price Engine Blocked - Check Pool Address:", e);
+        console.error("Price Engine Mismatch:", e);
         return 0.3391; 
     }
 }
