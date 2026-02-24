@@ -104,7 +104,7 @@
         <div style="font-size: 0.6rem; color: #444; font-weight: 800; margin-bottom: 5px;">HUB BALANCE</div>
         <div style="font-size: 1.4rem; font-weight: 900; color: var(--gold);" id="user-stars">0 ★</div>
         <div class="aptm-indicator" id="sidebar-aptm-value">0.00 $APTM</div>
-        <div class="price-ticker" id="live-price-display">RATE: $0.33 / APTM</div>
+        <div class="price-ticker" id="live-price-display">RATE: $0.34 / APTM</div>
         <button class="action-btn" onclick="convertAPTM()" id="deposit-btn">DEPOSIT $APTM</button>
         
         <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border);">
@@ -198,18 +198,16 @@
     const pageSize = 10;
     
     // CONFIGURATION
-    let currentAptmPriceUsd = 0.33; 
-    const STAR_VALUE_USD = 0.01;   // 1 Star = 1 Cent
+    let currentAptmPriceUsd = 0.34; 
+    const STAR_FIXED_USD = 0.01; // DO NOT CHANGE: A star is always one cent.
 
-    // LIVE PRICE INJECTION - Fetches real market price to ensure dynamic Star deposit logic
     async function getLiveAptmPrice() {
         try {
-            // Attempting to fetch real price. Fallback to 0.33 if API fails.
             const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=apertum&vs_currencies=usd');
             const data = await response.json();
-            return (data.apertum && data.apertum.usd) ? data.apertum.usd : 0.33;
+            return (data.apertum && data.apertum.usd) ? data.apertum.usd : 0.34;
         } catch (e) {
-            return 0.33; // Fallback
+            return 0.34; 
         }
     }
 
@@ -220,14 +218,9 @@
                 const accounts = await provider.send("eth_requestAccounts", []);
                 signer = provider.getSigner();
                 hubContract = new ethers.Contract(contractAddress, abi, signer);
-                
                 const addr = accounts[0];
                 document.getElementById('wallet-status').innerText = addr.slice(0,6)+"..."+addr.slice(-4);
-                
-                // Fetch latest price on connection
                 currentAptmPriceUsd = await getLiveAptmPrice();
-                document.getElementById('live-price-display').innerText = `RATE: $${currentAptmPriceUsd.toFixed(2)} / APTM`;
-                
                 syncData();
                 showToast("Connected");
             } catch (err) {
@@ -243,13 +236,9 @@
             const addr = await signer.getAddress();
             const balRaw = await hubContract.starBalances(addr);
             const anchors = await hubContract.totalAnchors();
-            
             starBalance = ethers.utils.formatEther(balRaw);
             totalAnchors = anchors.toNumber();
-            
-            // Periodically refresh price
             currentAptmPriceUsd = await getLiveAptmPrice();
-            
             updateUI();
         } catch (e) {
             console.error("Sync Error:", e);
@@ -257,6 +246,8 @@
     }
 
     function updateUI() {
+        // Here we define the relationship between the contract balance and the Star value.
+        // We assume the contract returns the total value in 'cents' (Stars).
         let stars = parseFloat(starBalance);
         
         document.getElementById('user-stars').innerText = stars.toFixed(0) + " ★";
@@ -266,9 +257,9 @@
         document.getElementById('total-anchors-display').innerText = totalAnchors.toLocaleString();
         document.getElementById('live-price-display').innerText = `RATE: $${currentAptmPriceUsd.toFixed(2)} / APTM`;
 
-        // DYNAMIC MATH: Total Value in USD (Stars * 0.01) divided by current Price
-        // If Price is 0.33 and you have 33 stars, you have 1 APTM.
-        let userAptmValue = (stars * STAR_VALUE_USD) / currentAptmPriceUsd;
+        // CALCULATING APTM EQUIVALENT:
+        // Total Dollars (Stars * 0.01) divided by Price of 1 APTM.
+        let userAptmValue = (stars * STAR_FIXED_USD) / currentAptmPriceUsd;
         
         document.getElementById('sidebar-aptm-value').innerText = userAptmValue.toFixed(4) + " $APTM";
         document.getElementById('earnings-aptm-value').innerText = "EQUIVALENT: " + userAptmValue.toFixed(4) + " $APTM";
@@ -277,22 +268,15 @@
     }
 
     async function convertAPTM() {
-        // Refresh price immediately before deposit to ensure accuracy
         currentAptmPriceUsd = await getLiveAptmPrice();
+        let amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(2)}\nYou will receive ${Math.floor((parseFloat(amt) * currentAptmPriceUsd) / STAR_FIXED_USD)} Stars.`, "5");
         
-        let amt = prompt(`Current Price: $${currentAptmPriceUsd.toFixed(2)}\nHow many $APTM to deposit?`, "1");
         if(amt && hubContract) { 
             try {
-                // Calculation: (Amount of APTM * currentPrice) / 0.01 = Number of Stars
-                // Example: (1 APTM * 0.33) / 0.01 = 33 Stars
-                let expectedStars = (parseFloat(amt) * currentAptmPriceUsd) / STAR_VALUE_USD;
-                
-                if(confirm(`Depositing ${amt} APTM will grant you approx ${Math.floor(expectedStars)} Stars. Proceed?`)) {
-                    showToast(`Depositing for ~${expectedStars.toFixed(0)} Stars`);
-                    const tx = await hubContract.depositAPTM({ value: ethers.utils.parseEther(amt) });
-                    await tx.wait();
-                    setTimeout(() => { syncData(); }, 2000);
-                }
+                const tx = await hubContract.depositAPTM({ value: ethers.utils.parseEther(amt) });
+                showToast(`Depositing ${amt} $APTM...`);
+                await tx.wait();
+                setTimeout(() => { syncData(); }, 2000);
             } catch (e) {
                 alert("Transaction failed.");
             }
@@ -300,12 +284,11 @@
     }
 
     async function settleToWallet() {
-        currentAptmPriceUsd = await getLiveAptmPrice();
-        let starsToWithdraw = prompt(`At $${currentAptmPriceUsd.toFixed(2)}, approx ${Math.floor(currentAptmPriceUsd/0.01)} Stars = 1 APTM.\nStars to withdraw:`, parseFloat(starBalance).toFixed(0));
+        let starsToWithdraw = prompt("How many Stars to withdraw?", "34");
         if(starsToWithdraw && hubContract) {
             try {
                 const tx = await hubContract.withdrawStars(ethers.utils.parseEther(starsToWithdraw));
-                showToast("Settling to Wallet...");
+                showToast("Settling...");
                 await tx.wait();
                 setTimeout(() => { syncData(); }, 2000);
             } catch (e) {
@@ -370,23 +353,18 @@
         const txt = document.getElementById('post-text').value;
         const media = document.getElementById('post-media').value;
         if(!txt) return;
-
         let type = 1;
         if(media) type = (media.includes('mp4') || getYoutubeId(media)) ? 3 : 2;
-
         try {
             showToast("Requesting Anchor...");
             const tx = await hubContract.createContent(0, type);
             await tx.wait();
-            
             const postId = Date.now(); 
             const hash = "0x" + Math.random().toString(16).slice(2, 10).toUpperCase();
-            
             let mediaHtml = '';
             const ytId = getYoutubeId(media);
             if(ytId) mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
             else if(media) mediaHtml = `<div class="post-media-container"><img src="${media}"></div>`;
-
             const item = document.createElement('div');
             item.className = 'glass-panel';
             item.id = `post-container-${postId}`;
@@ -445,11 +423,9 @@
         const inputId = isReply ? `reply-in-${parentId}` : `input-${postId}`;
         const input = document.getElementById(inputId);
         if(!input.value) return;
-
         try {
             const tx = await hubContract.createContent(parentBlockchainId, 1);
             await tx.wait();
-            
             const commId = Date.now();
             const row = document.createElement('div');
             row.className = 'comment-row';
