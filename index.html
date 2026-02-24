@@ -241,11 +241,13 @@ function getOneStarWei() {
     return ethers.utils.parseUnits(aptmAmount.toFixed(18), 18);
 }
 
+// --- UPDATED PRICE FUNCTION (NO MORE TRILLIONS) ---
 async function getLiveAptmPrice() {
     const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
     const aptmTokenAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57"; 
 
     try {
+        if (!provider) return 0.329;
         const poolContract = new ethers.Contract(poolAddress, [
             "function getReserves() external view returns (uint112, uint112, uint32)",
             "function token0() external view returns (address)"
@@ -256,21 +258,49 @@ async function getLiveAptmPrice() {
         
         let resAptm, resUsdt;
 
-        // DIVIDING BY 1e18 and 1e6 is what kills the 'Trillions' error
         if (t0.toLowerCase() === aptmTokenAddress.toLowerCase()) {
-            resAptm = Number(reserves[0]) / 1e18; // Corrects 18 decimals
-            resUsdt = Number(reserves[1]) / 1e6;  // Corrects 6 decimals (USDT)
+            resAptm = Number(reserves[0]) / 1e18; 
+            resUsdt = Number(reserves[1]) / 1e6;  
         } else {
             resUsdt = Number(reserves[0]) / 1e6;  
             resAptm = Number(reserves[1]) / 1e18; 
         }
 
-        const priceInUsd = resUsdt / resAptm; // This will be ~0.329
-        return priceInUsd; 
+        const priceInUsd = resUsdt / resAptm;
+        return priceInUsd || 0.329; 
 
     } catch (e) {
-        console.error("DEX Error:", e);
+        console.warn("DEX fetch failed, using fallback price:", e);
         return 0.329; 
+    }
+}
+
+// --- UPDATED SYNC DATA (THE ENGINE) ---
+async function syncData() {
+    // If the contract isn't ready, don't crash, just wait.
+    if(!hubContract || !signer) return;
+    
+    try {
+        const addr = await signer.getAddress();
+        const balRaw = await hubContract.aptmBalances(addr); 
+        const anchors = await hubContract.totalAnchors();
+        
+        currentAptmPriceUsd = await getLiveAptmPrice();
+
+        const aptmInEth = ethers.utils.formatEther(balRaw); 
+        const totalUsdValue = parseFloat(aptmInEth) * currentAptmPriceUsd; 
+        
+        // Ensure STAR_FIXED_USD is defined (usually 0.01)
+        const starFactor = (typeof STAR_FIXED_USD !== 'undefined') ? STAR_FIXED_USD : 0.01;
+        starBalance = Math.floor(totalUsdValue / starFactor).toString();
+        totalAnchors = anchors.toNumber();
+        
+        if (typeof updateUI === "function") {
+            updateUI();
+        }
+
+    } catch (e) { 
+        console.error("Sync Error:", e); 
     }
 }
 async function connectWallet() {
