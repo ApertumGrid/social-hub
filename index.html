@@ -289,42 +289,42 @@ function updateUI() {
     }
 
     async function settleToWallet() {
-    // We get your current balance and round it down slightly to be safe
     const maxStars = Math.floor(parseFloat(starBalance));
-    let amt = prompt(`Withdraw Stars to $APTM\nYour Max: ${maxStars}`, maxStars);
+    let amt = prompt(`Withdraw Stars to $APTM\nYour Max: ${maxStars}`, "10"); // Defaulted to 10 for safety
     
     if (amt && hubContract) {
         try {
             const starAmount = parseFloat(amt);
-            if (starAmount > parseFloat(starBalance)) {
-                alert("Insufficient Stars. Try a slightly lower amount.");
-                return;
-            }
-
-            showToast("Calculating Exchange...");
-            // Convert Stars -> USD -> APTM -> Wei (The tiny units the blockchain uses)
+            showToast("Syncing Live Price...");
+            
+            // Re-fetch price right before the transaction to prevent slippage failure
+            const freshPrice = await getLiveAptmPrice();
             const usdValue = starAmount * STAR_FIXED_USD;
-            const aptmValue = (usdValue / currentAptmPriceUsd).toFixed(15);
+            const aptmValue = (usdValue / freshPrice).toFixed(12); // Reduced decimals for compatibility
             const weiValue = ethers.utils.parseUnits(aptmValue, 18);
 
-            showToast("Confirming in MetaMask...");
-            // Increased Gas Limit to 300,000 to prevent 'Failed' transactions
+            showToast("Waiting for MetaMask...");
+            
+            // MANUAL GAS OVERRIDE
+            // We set gasLimit high (400k) and force the price to ensure the miner picks it up
             const tx = await hubContract.withdrawStars(weiValue, {
-                gasLimit: 300000 
+                gasLimit: 400000,
+                // If you are on a network with high traffic, this helps:
+                maxPriorityFeePerGas: ethers.utils.parseUnits("2", "gwei"),
+                maxFeePerGas: ethers.utils.parseUnits("50", "gwei")
             });
             
+            showToast("Transaction Pending...");
             await tx.wait();
-            showToast("Success! $APTM Sent.");
+            showToast("Success! Check Wallet.");
             setTimeout(() => { syncData(); }, 2000);
         } catch (e) {
-            console.error("Withdraw Error:", e);
-            // This pulls the real error message from the blockchain if it exists
-            const msg = e.data ? e.data.message : e.message;
-            alert("Transaction Failed: " + (msg.includes("execution reverted") ? "Contract Error" : "Check Gas/Balance"));
+            console.error("Full Error Object:", e);
+            // This alert will now tell us the EXACT reason (e.g., "insufficient funds for gas")
+            alert("Failed: " + (e.reason || e.message).slice(0, 100));
         }
     }
 }
-
     function refreshFeedVisibility() {
         const posts = document.querySelectorAll('#feed-items > .glass-panel');
         posts.forEach((post, index) => {
