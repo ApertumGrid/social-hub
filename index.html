@@ -288,44 +288,6 @@ function updateUI() {
         }
     }
 
-    async function settleToWallet() {
-    const maxStars = Math.floor(parseFloat(starBalance));
-    let amt = prompt(`Withdraw Stars to $APTM\nYour Max: ${maxStars}`, "10"); 
-    
-    if (amt && hubContract) {
-        try {
-            const starAmount = parseFloat(amt);
-            showToast("Syncing Live Price...");
-            
-            const freshPrice = await getLiveAptmPrice();
-            
-            // FIXED MATH: We calculate the amount of APTM first
-            const aptmAmount = (starAmount * 0.01) / freshPrice;
-            
-            // We MUST cap the decimals at 18 or parseUnits will fail
-            const fixedAptm = aptmAmount.toFixed(18);
-            const weiValue = ethers.utils.parseUnits(fixedAptm, 18);
-
-            showToast("Waiting for MetaMask...");
-            
-            // Increased Gas Limit and removed the Gwei overrides which can cause failures 
-            // if the network doesn't support EIP-1559 fees properly.
-            const tx = await hubContract.withdrawStars(weiValue, {
-                gasLimit: 500000 
-            });
-            
-            showToast("Transaction Pending...");
-            await tx.wait();
-            showToast("Success! Check Wallet.");
-            setTimeout(() => { syncData(); }, 2000);
-        } catch (e) {
-            console.error("Full Error Object:", e);
-            // This will show the actual revert reason from the contract
-            const reason = e.data?.message || e.message;
-            alert("Failed: " + reason.slice(0, 100));
-        }
-    }
-}
     function refreshFeedVisibility() {
         const posts = document.querySelectorAll('#feed-items > .glass-panel');
         posts.forEach((post, index) => {
@@ -421,22 +383,35 @@ async function convertAPTM() {
 }
 
 async function settleToWallet() {
-    let starsToWithdraw = prompt("How many Stars to withdraw?", "34");
-    if (starsToWithdraw && hubContract) {
-        try {
-            const starAmount = parseFloat(starsToWithdraw);
-            const currentBalance = parseFloat(starBalance);
-            if (starAmount > currentBalance) { alert("Insufficient Stars."); return; }
-            showToast("Calculating Exchange...");
-            const usdValue = starAmount * STAR_FIXED_USD;
-            const aptmValue = (usdValue / currentAptmPriceUsd).toFixed(15);
-            const weiValue = ethers.utils.parseUnits(aptmValue, 18);
-            showToast("Settling to Wallet...");
-            const tx = await hubContract.withdrawStars(weiValue, { gasLimit: 200000 });
+    if (!hubContract) return alert("Connect Wallet First");
+
+    try {
+        const addr = await signer.getAddress();
+        // Ask the contract for the real balance, not the website's guess
+        const rawBalanceWei = await hubContract.starBalances(addr);
+        const humanAmount = ethers.utils.formatEther(rawBalanceWei);
+
+        let amt = prompt(`Withdraw Stars\nContract Balance: ${humanAmount} APTM equivalent`, humanAmount);
+
+        if (amt) {
+            showToast("Syncing with Ledger...");
+            
+            // Cleanest math possible: No external price APIs
+            const withdrawWei = ethers.utils.parseUnits(parseFloat(amt).toFixed(18), 18);
+
+            const tx = await hubContract.withdrawStars(withdrawWei, {
+                gasLimit: 500000
+            });
+
+            showToast("Processing on Blockchain...");
             await tx.wait();
-            showToast("Success!");
-            setTimeout(() => { syncData(); }, 2000);
-        } catch (e) { alert("Withdrawal failed."); }
+            showToast("Success! Funds Sent.");
+            syncData();
+        }
+    } catch (e) {
+        console.error("Withdraw Error:", e);
+        const reason = e.data?.message || e.message || "Unknown Revert";
+        alert("Failed: " + reason.slice(0, 100));
     }
 }
 
