@@ -236,67 +236,71 @@
 
     // --- UPDATED PRICE FUNCTION (FIXES TRILLIONS) ---
     async function getLiveAptmPrice() {
-        const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57"; 
-        try {
-            if (!provider) return 0.3391;
-            const poolContract = new ethers.Contract(poolAddress, [
-                "function getReserves() external view returns (uint112, uint112, uint32)"
-            ], provider);
-            const reserves = await poolContract.getReserves();
-            let r0 = Number(reserves[0]);
-            let r1 = Number(reserves[1]);
-            let resAptm, resUsdt;
-            if (r0 > r1) {
-                resAptm = r0 / 1e18;
-                resUsdt = r1 / 1e6;
-            } else {
-                resUsdt = r0 / 1e6;
-                resAptm = r1 / 1e18;
-            }
-            const price = resUsdt / resAptm;
-            if (!price || price > 100 || price < 0.01) return 0.3391;
-            return price;
-        } catch (e) { 
-            return 0.3391; 
-        }
+    const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57"; 
+    try {
+        if (!provider) return 0.3391;
+        const poolContract = new ethers.Contract(poolAddress, [
+            "function getReserves() external view returns (uint112, uint112, uint32)",
+            "function token1() external view returns (address)"
+        ], provider);
+
+        const reserves = await poolContract.getReserves();
+        // Math for 18 decimal token vs 6 decimal USDT
+        const resUsdt = reserves[0] / 1e6;
+        const resAptm = reserves[1] / 1e18;
+
+        const price = resUsdt / resAptm;
+        return price > 0 ? price : 0.3391;
+    } catch (e) { 
+        console.error("Price Engine Blocked - Check Pool Address:", e);
+        return 0.3391; 
     }
+}
 
     async function connectWallet() {
-        if (window.ethereum) {
-            try {
-                provider = new ethers.providers.Web3Provider(window.ethereum);
-                const accounts = await provider.send("eth_requestAccounts", []);
-                signer = provider.getSigner();
-                hubContract = new ethers.Contract(contractAddress, abi, signer);
-                document.getElementById('wallet-status').innerText = accounts[0].slice(0,6)+"..."+accounts[0].slice(-4);
-                await syncData();
-                showToast("Connected");
-            } catch (err) { console.error(err); showToast("Connection Failed"); }
-        } else { alert("MetaMask not found"); }
+    if (window.ethereum) {
+        try {
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+            const accounts = await provider.send("eth_requestAccounts", []);
+            signer = provider.getSigner();
+            hubContract = new ethers.Contract(contractAddress, abi, signer);
+            
+            document.getElementById('wallet-status').innerText = accounts[0].slice(0,6)+"..."+accounts[0].slice(-4);
+            
+            // 1. Fetch the data from blockchain
+            await syncData(); 
+            // 2. Explicitly force the UI to paint those numbers
+            updateUI(); 
+            
+            showToast("Connected & Synced");
+        } catch (err) { 
+            console.error(err); 
+            showToast("Connection Failed"); 
+        }
+    } else { 
+        alert("MetaMask not found"); 
     }
+}
 async function syncData() {
     if(!hubContract || !signer) return;
     try {
         const addr = await signer.getAddress();
         
-        // 1. Get the Raw Balance (This is your 'Escrow' balance in the contract)
-        const balRaw = await hubContract.aptmBalances(addr);
-        const anchors = await hubContract.totalAnchors();
+        // Pull Balance and Anchors
+        const [balRaw, anchors] = await Promise.all([
+            hubContract.aptmBalances(addr), 
+            hubContract.totalAnchors()
+        ]);
         
-        // 2. Convert to Human APTM (e.g., 5.0)
         currentAptmBalance = ethers.utils.formatEther(balRaw);
         
-        // 3. Get Live Price and Calculate Total Stars (Your spending power)
-        currentAptmPriceUsd = await getLiveAptmPrice();
+        // Recalculate Stars based on the latest known price
         const usdValue = parseFloat(currentAptmBalance) * currentAptmPriceUsd;
-        
-        // This is your 'Running Balance'
         starBalance = Math.floor(usdValue / 0.01).toString();
         totalAnchors = anchors.toNumber();
         
-        // 4. Update EVERYTHING at once
+        // Immediately push to screen
         updateUI();
-        
     } catch (e) { 
         console.error("Master Sync Failed:", e); 
     }
@@ -304,20 +308,25 @@ async function syncData() {
 
 function updateUI() {
     try {
-        // Star Display
+        // --- SIDEBAR UPDATES ---
         const sDisp = document.getElementById('user-stars');
         if(sDisp) sDisp.innerText = (starBalance || "0") + " ★";
         
-        // APTM Display (The 5.0 you want to see)
         const aDisp = document.getElementById('sidebar-aptm-value');
-        const eDisp = document.getElementById('earnings-aptm-value');
-        if(aDisp) aDisp.innerText = currentAptmBalance + " $APTM";
-        if(eDisp) eDisp.innerText = "VALUE: " + currentAptmBalance + " $APTM";
+        if(aDisp) aDisp.innerText = (currentAptmBalance || "0.0000") + " $APTM";
+
+        // --- CREATOR STUDIO UPDATES ---
+        const cStars = document.getElementById('creator-revenue-display');
+        if(cStars) cStars.innerText = (starBalance || "0") + " ★";
+
+        const cAptm = document.getElementById('earnings-aptm-value');
+        if(cAptm) cAptm.innerText = "VALUE: " + (currentAptmBalance || "0.0000") + " $APTM";
         
-        // Price Display
+        // --- LIVE PRICE TICKER ---
         const pDisp = document.getElementById('live-price-display');
         if(pDisp) pDisp.innerText = `RATE: $${parseFloat(currentAptmPriceUsd).toFixed(4)} / APTM`;
 
+        console.log("UI Sync Complete: Stars set to " + starBalance);
     } catch (e) {
         console.error("UI Update Error:", e);
     }
@@ -710,11 +719,12 @@ async function loadGlobalFeed() {
 
 async function loadComments(postId) {
     const list = document.getElementById(`list-${postId}`);
-    if (!list) return;
+    if (!list || !window.db) return;
 
     const q = window.fs.query(
         window.fs.collection(window.db, "comments"),
-        window.fs.where("postId", "==", String(postId))
+        window.fs.where("postId", "==", String(postId)),
+        window.fs.orderBy("timestamp", "asc")
     );
 
     window.fs.onSnapshot(q, (snapshot) => {
@@ -723,7 +733,7 @@ async function loadComments(postId) {
             const comment = docRef.data();
             const row = document.createElement('div');
             row.className = 'comment-row';
-            row.innerHTML = `<div style="font-size: 0.9em;"><b style="color: #FFD700;">${comment.author}</b>: ${comment.text}</div>`;
+            row.innerHTML = `<div style="font-size: 0.85rem;"><b style="color:#FFD700;">${comment.author}</b>: ${comment.text}</div>`;
             list.appendChild(row);
         });
     });
@@ -762,16 +772,33 @@ window.addEventListener('load', async () => {
         console.log("4. Final Calculated Stars:", stars);
         console.log("--------------------------");
         
-        // Force the UI to show THIS calculation
-        document.getElementById('user-stars').innerText = stars.toLocaleString() + " ★";
+        // Force the UI to show the calculated Stars
+        if (document.getElementById('user-stars')) {
+            document.getElementById('user-stars').innerText = starBalance + " ★";
+        }
+        
+        // Final UI push
+        updateUI();
+
     } catch (e) {
-        console.error("Diagnostic Failed:", e);
+        console.error("Operation Failed:", e);
     }
 }
 
-// Call it once manually for testing
-setTimeout(diagnosticSync, 2000);
+// --- THE HEARTBEAT ---
+// This keeps your 169 Stars and 5.0 APTM synced every 30 seconds
+setInterval(async () => { 
+    if (provider && hubContract) {
+        try {
+            currentAptmPriceUsd = await getLiveAptmPrice();
+            await syncData();
+            console.log("Heartbeat Sync: Dashboard Updated.");
+        } catch (e) {
+            console.error("Heartbeat failed:", e);
+        }
+    }
+}, 30000);
 
-</script>
+</script> 
 </body>
 </html>
