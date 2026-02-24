@@ -453,36 +453,28 @@ async function addComment(recipientAddress, postId, isReply = false, parentId = 
     
     const inputId = isReply ? `reply-in-${parentId}` : `input-${postId}`;
     const input = document.getElementById(inputId);
-    if(!input || !input.value) return;
+    const commentText = input.value; // Save the text immediately
+    if(!commentText) return;
 
     try {
         const userAddr = await signer.getAddress();
-        
-        // 1. Check internal balance (the "Bank")
         const internalStars = await hubContract.aptmBalances(userAddr);
-        
-        // 2. Define 1 Star cost (1.0 APTM in Wei)
         const fee = ethers.utils.parseEther("1"); 
         
+        showToast("Authenticating Comment...");
         let tx;
-        showToast("Processing 1 Star Fee...");
 
-        // 3. THE FIX: Explicitly check if balance is >= fee
+        // 1. Blockchain Part
         if (internalStars.gte(fee)) {
-            showToast("Using internal Stars...");
-            // Notice: No "value" sent here, so no MetaMask payment popup
-            tx = await hubContract.interact(recipientAddress, fee, { gasLimit: 450000 });
+            tx = await hubContract.interact(recipientAddress, fee, { gasLimit: 250000 });
         } else {
-            showToast("No Stars found. Paying from Wallet...");
-            // This triggers the MetaMask payment popup
-            tx = await hubContract.interact(recipientAddress, fee, { value: fee, gasLimit: 450000 });
+            tx = await hubContract.interact(recipientAddress, fee, { value: fee, gasLimit: 250000 });
         }
 
-        await tx.wait();
-
-        // 4. Save to Firebase
+        // 2. Firebase Part - WE DO THIS AS SOON AS THE TX IS SENT
+        // This ensures even if the page refreshes, the data is moving to the cloud
         const commentData = {
-            text: input.value,
+            text: commentText,
             author: userHandle,
             authorAddr: userAddr,
             postId: postId,
@@ -492,16 +484,17 @@ async function addComment(recipientAddress, postId, isReply = false, parentId = 
             hypes: 0
         };
 
+        // Don't wait for the tx.wait() to start the cloud save
         await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
+        
+        await tx.wait(); // Now wait for the blockchain to confirm
 
         input.value = "";
-        showToast("Comment Shared!");
-        
-        // 5. Update UI so you see the new balance
-        setTimeout(() => { syncData(); }, 2000);
+        showToast("Comment Live!");
+        setTimeout(() => { syncData(); }, 1000);
     } catch (e) { 
         console.error("Comment Error:", e);
-        alert("Action failed. Check your wallet or Star balance."); 
+        showToast("Failed to post. Check connection."); 
     }
 }
 
