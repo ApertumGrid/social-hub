@@ -210,6 +210,10 @@
 <div id="toast">SUCCESS</div>
 
 <script>
+    let currentAptmBalance = "0.0000";
+let starBalance = "0";
+let currentAptmPriceUsd = 0.3391;
+let totalAnchors = 0;
     // PART 1: SETUP AND DATA SYNC
 // PART 1: SETUP AND DATA SYNC
     const contractAddress = "0x42E0A97844ac6623207F2a363aa318E83268910F";
@@ -304,72 +308,48 @@ async function syncData() {
     if(!hubContract || !signer) return;
     try {
         const addr = await signer.getAddress();
-        const balRaw = await hubContract.aptmBalances(addr);
         
-        // This turns the big blockchain number into "5.0"
+        // Pull raw data from Contract
+        const [balRaw, anchors] = await Promise.all([
+            hubContract.aptmBalances(addr), 
+            hubContract.totalAnchors()
+        ]);
+        
+        // 1. Save the actual APTM amount (e.g. 5.0)
         currentAptmBalance = ethers.utils.formatEther(balRaw);
         
-        // ... rest of your sync logic ...
+        // 2. Get the Price
+        currentAptmPriceUsd = await getLiveAptmPrice();
+        
+        // 3. Calculate Stars
+        const usdValue = parseFloat(currentAptmBalance) * currentAptmPriceUsd;
+        starBalance = Math.floor(usdValue / 0.01).toString();
+        totalAnchors = anchors.toNumber();
         
         updateUI();
-    } catch (e) { console.error(e); }
-}
-        
-        const price = await getLiveAptmPrice();
-        
-        // --- THE HARD RESET ---
-        // 1. Convert the massive Wei number to human APTM (e.g., 5.0)
-        const humanAptm = parseFloat(ethers.utils.formatEther(balRaw));
-        
-        // 2. Convert human APTM to USD value
-        const usdValue = humanAptm * price;
-        
-        // 3. Convert USD to Stars (1 Star = $0.01)
-        const actualStars = Math.floor(usdValue / 0.01);
-        
-        console.log("SURGERY CHECK:", { humanAptm, price, actualStars });
-
-        // 4. Force the UI to show the corrected number directly
-        document.getElementById('user-stars').innerText = actualStars.toLocaleString() + " ★";
-        document.getElementById('creator-revenue-display').innerText = actualStars.toLocaleString() + " ★";
-        document.getElementById('total-anchors-display').innerText = anchors.toNumber().toLocaleString();
-        
-        // Update the global for other functions
-        starBalance = actualStars.toString();
-        totalAnchors = anchors.toNumber();
-        currentAptmPriceUsd = price;
-
     } catch (e) { 
         console.error("Sync Error:", e); 
     }
 }
+
 function updateUI() {
-    // 1. Get the Stars from the global variable
-    let stars = parseFloat(starBalance) || 0;
-    
-    // 2. Update Star Displays (The 169 you see now)
-    const starDisplay = document.getElementById('user-stars');
-    const studioDisplay = document.getElementById('creator-revenue-display');
-    if (starDisplay) starDisplay.innerText = stars.toFixed(0) + " ★";
-    if (studioDisplay) studioDisplay.innerText = stars.toFixed(0) + " ★";
-    
-    // 3. Update the APTM Value (The 5.0000 you want to see)
-    // We use the global 'currentAptmBalance' which we set in syncData
-    const aptmSidebar = document.getElementById('sidebar-aptm-value');
-    const aptmEarnings = document.getElementById('earnings-aptm-value');
-    
-    // Fallback to a global variable if syncData has run
-    let displayAptm = typeof currentAptmBalance !== 'undefined' ? currentAptmBalance : "0.0000";
+    try {
+        // Star Display
+        const sDisp = document.getElementById('user-stars');
+        if(sDisp) sDisp.innerText = (starBalance || "0") + " ★";
+        
+        // APTM Display (The 5.0 you want to see)
+        const aDisp = document.getElementById('sidebar-aptm-value');
+        const eDisp = document.getElementById('earnings-aptm-value');
+        if(aDisp) aDisp.innerText = currentAptmBalance + " $APTM";
+        if(eDisp) eDisp.innerText = "VALUE: " + currentAptmBalance + " $APTM";
+        
+        // Price Display
+        const pDisp = document.getElementById('live-price-display');
+        if(pDisp) pDisp.innerText = `RATE: $${parseFloat(currentAptmPriceUsd).toFixed(4)} / APTM`;
 
-    if (aptmSidebar) aptmSidebar.innerText = displayAptm + " $APTM";
-    if (aptmEarnings) aptmEarnings.innerText = "VALUE: " + displayAptm + " $APTM";
-
-    // 4. Update Price and Anchors
-    if (document.getElementById('live-price-display')) {
-        document.getElementById('live-price-display').innerText = `RATE: $${(currentAptmPriceUsd || 0.33).toFixed(4)} / APTM`;
-    }
-    if (document.getElementById('total-anchors-display')) {
-        document.getElementById('total-anchors-display').innerText = (totalAnchors || 0).toLocaleString();
+    } catch (e) {
+        console.error("UI Update Error:", e);
     }
 }
     async function convertAPTM() {
