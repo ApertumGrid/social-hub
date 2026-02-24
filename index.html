@@ -276,46 +276,57 @@
 // Ensure this is at the top of your script
 const STAR_FIXED_USD = 0.01; 
 
+// --- SURGICAL INJECTION: REPLACE YOUR EXISTING SYNC & UI FUNCTIONS WITH THESE ---
+
 async function syncData() {
-    if(!hubContract) return;
+    if(!hubContract || !signer) return;
     try {
         const addr = await signer.getAddress();
-        const balRaw = await hubContract.aptmBalances(addr); 
-        const anchors = await hubContract.totalAnchors();
+        // Get raw balance and total anchors simultaneously
+        const [balRaw, anchors] = await Promise.all([
+            hubContract.aptmBalances(addr), 
+            hubContract.totalAnchors()
+        ]);
         
-        // This will now return ~0.32 (not a trillion)
         currentAptmPriceUsd = await getLiveAptmPrice();
-
-        const aptmInEth = ethers.utils.formatEther(balRaw); // Returns "5.0"
-        const totalUsdValue = parseFloat(aptmInEth) * currentAptmPriceUsd; // 5 * 0.32 = 1.60
         
-        // 1.60 / 0.01 = 160 Stars
+        // THE FIX: Convert Wei to Human APTM, then to USD, then to Stars
+        const aptmInEth = ethers.utils.formatEther(balRaw); // e.g., "5.0"
+        const totalUsdValue = parseFloat(aptmInEth) * currentAptmPriceUsd; // e.g., 5 * 0.33 = 1.65
+        
+        // 1.65 / 0.01 = 165 Stars
         starBalance = Math.floor(totalUsdValue / STAR_FIXED_USD).toString();
         totalAnchors = anchors.toNumber();
         
         updateUI();
         
-        // IMPORTANT: Trigger the comment load AFTER the UI updates
-        // This ensures the comments actually show up!
-        const allPosts = document.querySelectorAll('.post-card');
-        allPosts.forEach(post => {
+        // Load comments for whatever is currently on screen
+        document.querySelectorAll('.post-card').forEach(post => {
             const id = post.getAttribute('data-id');
             if(id) loadComments(id);
         });
-
-    } catch (e) { console.error("Sync Error:", e); }
+    } catch (e) { 
+        console.error("Sync Error:", e); 
+    }
 }
+
 function updateUI() {
     let stars = parseFloat(starBalance);
-    document.getElementById('user-stars').innerText = stars.toFixed(0) + " ★";
-    document.getElementById('creator-revenue-display').innerText = stars.toFixed(0) + " ★";
-    document.getElementById('pb-handle').innerText = userHandle;
-    document.getElementById('pb-avatar').src = userAvatar;
+    // Standardizing IDs to match your HTML
+    if(document.getElementById('user-stars')) 
+        document.getElementById('user-stars').innerText = stars.toFixed(0) + " ★";
+    if(document.getElementById('creator-revenue-display')) 
+        document.getElementById('creator-revenue-display').innerText = stars.toFixed(0) + " ★";
+    
     document.getElementById('total-anchors-display').innerText = totalAnchors.toLocaleString();
     document.getElementById('live-price-display').innerText = `RATE: $${currentAptmPriceUsd.toFixed(4)} / APTM`;
+    
+    // Reverse math to show how much APTM they can withdraw
     let userAptmValue = (stars * STAR_FIXED_USD) / currentAptmPriceUsd;
-    document.getElementById('sidebar-aptm-value').innerText = userAptmValue.toFixed(4) + " $APTM";
-    document.getElementById('earnings-aptm-value').innerText = "EQUIVALENT: " + userAptmValue.toFixed(4) + " $APTM";
+    
+    if(document.getElementById('sidebar-aptm-value'))
+        document.getElementById('sidebar-aptm-value').innerText = userAptmValue.toFixed(4) + " $APTM";
+    
     refreshFeedVisibility();
 }
 
