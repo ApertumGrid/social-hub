@@ -186,8 +186,8 @@
 <div id="toast">SUCCESS</div>
 
 <script>
-    const contractAddress = "0xe348feDea1850a0c2d4aC0fed3f903774dE1e16A";
-    // UPDATED V2 ABI
+    // FIXED: Using the actual Social Hub Contract Address
+    const contractAddress = "0x42E0A97844ac6623207F2a363aa318E83268910F";
     const abi = [
         "function depositAPTM() public payable",
         "function postContent(string memory _ipfsHash, uint256 _type, uint256 _oneStarWei) public",
@@ -208,11 +208,9 @@
     let visibleCount = 10;
     const pageSize = 10;
     
-    // CONFIGURATION
-    let currentAptmPriceUsd = 0.34; 
-    const STAR_FIXED_USD = 0.01; // DO NOT CHANGE: A star is always one cent.
+    let currentAptmPriceUsd = 0.3391; 
+    const STAR_FIXED_USD = 0.01;
 
-    // Calculate current Wei value of 1 Star
     function getOneStarWei() {
         const aptmAmount = STAR_FIXED_USD / currentAptmPriceUsd;
         return ethers.utils.parseUnits(aptmAmount.toFixed(18), 18);
@@ -222,9 +220,9 @@
         try {
             const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=apertum&vs_currencies=usd');
             const data = await response.json();
-            return (data.apertum && data.apertum.usd) ? data.apertum.usd : 0.34;
+            return (data.apertum && data.apertum.usd) ? data.apertum.usd : 0.3391;
         } catch (e) {
-            return 0.34; 
+            return 0.3391; 
         }
     }
 
@@ -251,10 +249,17 @@
         if(!hubContract) return;
         try {
             const addr = await signer.getAddress();
+            
+            // Validate address is a contract before calling to prevent CALL_EXCEPTION
+            const code = await provider.getCode(contractAddress);
+            if(code === "0x") {
+                 console.error("Contract not found at address!");
+                 return;
+            }
+
             const balRaw = await hubContract.starBalances(addr);
             const anchors = await hubContract.totalAnchors();
             
-            // MATH UPDATE: Convert raw APTM Wei into Stars based on Price
             currentAptmPriceUsd = await getLiveAptmPrice();
             const aptmInEth = ethers.utils.formatEther(balRaw);
             const totalUsdValue = aptmInEth * currentAptmPriceUsd;
@@ -269,34 +274,35 @@
 
     function updateUI() {
         let stars = parseFloat(starBalance);
-        
         document.getElementById('user-stars').innerText = stars.toFixed(0) + " ★";
         document.getElementById('creator-revenue-display').innerText = stars.toFixed(0) + " ★";
         document.getElementById('pb-handle').innerText = userHandle;
         document.getElementById('pb-avatar').src = userAvatar;
         document.getElementById('total-anchors-display').innerText = totalAnchors.toLocaleString();
-        document.getElementById('live-price-display').innerText = `RATE: $${currentAptmPriceUsd.toFixed(2)} / APTM`;
+        document.getElementById('live-price-display').innerText = `RATE: $${currentAptmPriceUsd.toFixed(4)} / APTM`;
 
         let userAptmValue = (stars * STAR_FIXED_USD) / currentAptmPriceUsd;
-        
         document.getElementById('sidebar-aptm-value').innerText = userAptmValue.toFixed(4) + " $APTM";
         document.getElementById('earnings-aptm-value').innerText = "EQUIVALENT: " + userAptmValue.toFixed(4) + " $APTM";
-        
         refreshFeedVisibility();
     }
 
     async function convertAPTM() {
         currentAptmPriceUsd = await getLiveAptmPrice();
-        let amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(2)}`, "5");
-        
+        let amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(4)}`, "5");
         if(amt && hubContract) { 
             try {
-                const tx = await hubContract.depositAPTM({ value: ethers.utils.parseEther(amt) });
                 showToast(`Depositing ${amt} $APTM...`);
+                // FIXED: Direct call to contract with increased gas limit for Apertum burn
+                const tx = await hubContract.depositAPTM({ 
+                    value: ethers.utils.parseEther(amt),
+                    gasLimit: 150000 
+                });
                 await tx.wait();
                 setTimeout(() => { syncData(); }, 2000);
             } catch (e) {
-                alert("Transaction failed.");
+                console.error(e);
+                alert("Transaction failed. Check console for details.");
             }
         }
     }
@@ -305,11 +311,9 @@
         let starsToWithdraw = prompt("How many Stars to withdraw?", "34");
         if(starsToWithdraw && hubContract) {
             try {
-                // Calculation: Stars to USD to APTM Wei
                 const usdValue = parseFloat(starsToWithdraw) * STAR_FIXED_USD;
                 const aptmValue = usdValue / currentAptmPriceUsd;
                 const weiValue = ethers.utils.parseUnits(aptmValue.toFixed(18), 18);
-
                 const tx = await hubContract.withdrawStars(weiValue);
                 showToast("Settling...");
                 await tx.wait();
@@ -376,13 +380,12 @@
         const txt = document.getElementById('post-text').value;
         const media = document.getElementById('post-media').value;
         if(!txt) return;
-        let type = 1; // 1.2 Stars
-        if(media) type = (media.includes('mp4') || getYoutubeId(media)) ? 3 : 2; // 10 or 3 Stars
+        let type = 1; 
+        if(media) type = (media.includes('mp4') || getYoutubeId(media)) ? 3 : 2;
         
         try {
             showToast("Anchoring Signal...");
-            // V2 uses postContent and passes current Star Wei value
-            const tx = await hubContract.postContent("", type, getOneStarWei());
+            const tx = await hubContract.postContent("", type, getOneStarWei(), { gasLimit: 300000 });
             await tx.wait();
             
             const postId = Date.now(); 
@@ -395,7 +398,6 @@
             const item = document.createElement('div');
             item.className = 'glass-panel';
             item.id = `post-container-${postId}`;
-            // Use current signer address for Hype logic
             const userAddr = await signer.getAddress();
             item.innerHTML = `
                 <div class='creator-header'><img src="${userAvatar}" class="avatar-circle"><b>${userHandle}</b></div>
@@ -425,7 +427,7 @@
     async function boostPost(postId) {
         try {
             showToast("Boosting Signal...");
-            const tx = await hubContract.boostPost(getOneStarWei()); 
+            const tx = await hubContract.boostPost(getOneStarWei(), { gasLimit: 200000 }); 
             await tx.wait();
             const postElement = document.getElementById(`post-container-${postId}`);
             document.getElementById('feed-items').prepend(postElement);
@@ -437,11 +439,11 @@
     async function hypeElement(recipientAddress, displayId) {
         try {
             showToast("Sending Hype...");
-            const tx = await hubContract.interact(recipientAddress, getOneStarWei());
+            const tx = await hubContract.interact(recipientAddress, getOneStarWei(), { gasLimit: 200000 });
             await tx.wait();
             document.getElementById(displayId).innerText = parseInt(document.getElementById(displayId).innerText) + 1;
             setTimeout(() => { syncData(); }, 2000);
-            showToast("Hype Recorded (80/20 Split)!");
+            showToast("Hype Recorded!");
         } catch (e) { alert("Hype failed"); }
     }
 
@@ -456,7 +458,7 @@
         if(!input.value) return;
         try {
             showToast("Posting Comment...");
-            const tx = await hubContract.interact(recipientAddress, getOneStarWei());
+            const tx = await hubContract.interact(recipientAddress, getOneStarWei(), { gasLimit: 200000 });
             await tx.wait();
             
             const commId = Date.now();
