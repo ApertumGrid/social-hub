@@ -184,33 +184,26 @@
 <div id="toast">SUCCESS</div>
 
 <script>
-    // --- BLOCKCHAIN INTEGRATION ---
     const contractAddress = "0x82fE88fe8dFeDFF46513b17e49EDF3F5606c3500";
     const abi = [{"inputs":[],"name":"adminWithdraw","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_parentId","type":"uint256"},{"internalType":"uint256","name":"_type","type":"uint256"}],"name":"createContent","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"depositAPTM","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"}],"name":"hype","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_starAmount","type":"uint256"}],"name":"withdrawStars","outputs":[],"stateMutability":"nonpayable","type":"function"},{"stateMutability":"payable","type":"receive"},{"inputs":[],"name":"PLATFORM_ADMIN","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"registry","outputs":[{"internalType":"address","name":"author","type":"address"},{"internalType":"uint256","name":"parentId","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"starBalances","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalAnchors","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}];
 
     let provider, signer, hubContract;
-    let starBalance = 0;
-    let creatorRevenue = 0; 
+    let starBalance = "0";
     let totalAnchors = 0; 
     let userHandle = "Anonymous_Creator";
     let userAvatar = "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
     let visibleCount = 10;
     const pageSize = 10;
     
-    // --- NEW: DYNAMIC PRICE TRACKING ---
-    let currentAptmPriceUsd = 0.36; // Default starting price
+    let currentAptmPriceUsd = 0.36;
 
     async function getLiveAptmPrice() {
-        // This function simulates tracking the blockchain price.
-        // In a production version, you would call a Chainlink Oracle or a DEX Pair contract.
-        // For now, it stays at 0.36, but can be updated via a fetch() call to an API.
         return 0.36; 
     }
 
     async function connectWallet() {
         if (window.ethereum) {
             try {
-                // Corrected for GitHub/Live environment
                 provider = new ethers.providers.Web3Provider(window.ethereum);
                 const accounts = await provider.send("eth_requestAccounts", []);
                 signer = provider.getSigner();
@@ -219,7 +212,6 @@
                 const addr = accounts[0];
                 document.getElementById('wallet-status').innerText = addr.slice(0,6)+"..."+addr.slice(-4);
                 
-                // Fetch dynamic price before syncing UI
                 currentAptmPriceUsd = await getLiveAptmPrice();
                 
                 syncData();
@@ -235,16 +227,14 @@
         if(!hubContract) return;
         try {
             const addr = await signer.getAddress();
-            const bal = await hubContract.starBalances(addr);
+            const balRaw = await hubContract.starBalances(addr);
             const anchors = await hubContract.totalAnchors();
             
-            starBalance = bal.toNumber(); 
-            creatorRevenue = bal.toNumber(); 
+            // Format from Wei/BigNumber to readable string
+            starBalance = ethers.utils.formatEther(balRaw);
             totalAnchors = anchors.toNumber();
             
-            // Re-check price during every sync
             currentAptmPriceUsd = await getLiveAptmPrice();
-            
             updateUI();
         } catch (e) {
             console.error("Sync Error:", e);
@@ -252,17 +242,16 @@
     }
 
     function updateUI() {
-        document.getElementById('user-stars').innerText = starBalance.toLocaleString() + " ★";
-        document.getElementById('creator-revenue-display').innerText = starBalance.toLocaleString() + " ★";
+        let displayStars = parseFloat(starBalance);
+        
+        document.getElementById('user-stars').innerText = displayStars.toFixed(2) + " ★";
+        document.getElementById('creator-revenue-display').innerText = displayStars.toFixed(2) + " ★";
         document.getElementById('pb-handle').innerText = userHandle;
         document.getElementById('pb-avatar').src = userAvatar;
         document.getElementById('total-anchors-display').innerText = totalAnchors.toLocaleString();
 
-        // --- UPDATED LOGIC: Calculating APTM based on current price ---
-        // Assumption: 1 Star should always be worth approx $0.036 USD (based on your 36 cent APTM).
-        // If APTM price goes UP, the user gets MORE Stars per APTM.
         let starValueInUsd = 0.036; 
-        let userAptm = (starBalance * starValueInUsd) / currentAptmPriceUsd;
+        let userAptm = (displayStars * starValueInUsd) / currentAptmPriceUsd;
         
         document.getElementById('sidebar-aptm-value').innerText = userAptm.toFixed(2) + " $APTM";
         document.getElementById('earnings-aptm-value').innerText = "EQUIVALENT: " + userAptm.toFixed(2) + " $APTM";
@@ -271,14 +260,13 @@
     }
 
     async function convertAPTM() {
-        // This prompts user for APTM, but we calculate the Star yield based on price
         let amt = prompt("How many $APTM to deposit?", "1");
         if(amt && hubContract) { 
             try {
                 const tx = await hubContract.depositAPTM({ value: ethers.utils.parseEther(amt) });
                 showToast("Processing Deposit...");
                 await tx.wait();
-                syncData();
+                setTimeout(() => { syncData(); }, 2000);
             } catch (e) {
                 alert("Transaction failed or rejected.");
             }
@@ -289,10 +277,10 @@
         let amt = prompt("Stars to withdraw back to $APTM:", starBalance);
         if(amt && hubContract) {
             try {
-                const tx = await hubContract.withdrawStars(amt);
+                const tx = await hubContract.withdrawStars(ethers.utils.parseEther(amt));
                 showToast("Withdrawing $APTM...");
                 await tx.wait();
-                syncData();
+                setTimeout(() => { syncData(); }, 2000);
             } catch (e) {
                 alert("Withdrawal failed.");
             }
@@ -396,17 +384,17 @@
             document.getElementById('feed-items').prepend(item);
             document.getElementById('post-text').value = "";
             document.getElementById('post-media').value = "";
-            syncData();
+            setTimeout(() => { syncData(); }, 2000);
         } catch (e) { alert("Blockchain Error or Insufficient Stars"); }
     }
 
     async function boostPost(postId) {
         try {
-            const tx = await hubContract.createContent(0, 4); // Type 4 = Boost
+            const tx = await hubContract.createContent(0, 4); 
             await tx.wait();
             const postElement = document.getElementById(`post-container-${postId}`);
             document.getElementById('feed-items').prepend(postElement);
-            syncData();
+            setTimeout(() => { syncData(); }, 2000);
             showToast("Signal Boosted! 🚀");
         } catch (e) { alert("Boost failed"); }
     }
@@ -416,7 +404,7 @@
             const tx = await hubContract.hype(blockchainId);
             await tx.wait();
             document.getElementById(displayId).innerText = parseInt(document.getElementById(displayId).innerText) + 1;
-            syncData();
+            setTimeout(() => { syncData(); }, 2000);
             showToast("Hype Recorded!");
         } catch (e) { alert("Hype failed"); }
     }
@@ -453,7 +441,7 @@
             const target = isReply ? document.getElementById(`replies-to-${parentId}`) : document.getElementById(`list-${postId}`);
             target.appendChild(row);
             input.value = "";
-            syncData();
+            setTimeout(() => { syncData(); }, 2000);
         } catch (e) { alert("Comment failed"); }
     }
 
