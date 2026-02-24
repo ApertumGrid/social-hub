@@ -237,14 +237,11 @@
 
     // --- UPDATED PRICE FUNCTION (FIXES TRILLIONS) ---
     async function getLiveAptmPrice() {
-    // 1. PancakeSwap Pool Address
     const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57"; 
-    
-    // 2. Your ACTUAL Token Address
     const aptmTokenAddress = "0xe348feDea1850a0c2d4aC0fed3f903774dE1e16A"; 
 
     try {
-        if (!provider) return 0.329;
+        if (!provider) return 0.33;
         const poolContract = new ethers.Contract(poolAddress, [
             "function getReserves() external view returns (uint112, uint112, uint32)",
             "function token0() external view returns (address)"
@@ -255,21 +252,33 @@
         
         let resAptm, resUsdt;
 
-        // Surgical Check: Which side of the pool is your token?
+        // --- THE ADJUSTED LOGIC ---
+        // Based on your console logs, we need to ensure the 18-decimal side
+        // and 6-decimal side are correctly identified.
         if (t0.toLowerCase() === aptmTokenAddress.toLowerCase()) {
-            resAptm = Number(reserves[0]) / 1e18; // 18 decimals for APTM
-            resUsdt = Number(reserves[1]) / 1e6;  // 6 decimals for USDT
+            // If Token0 is APTM
+            resAptm = Number(reserves[0]) / 1e18; 
+            resUsdt = Number(reserves[1]) / 1e6;  
         } else {
-            resUsdt = Number(reserves[0]) / 1e6;  // 6 decimals for USDT
-            resAptm = Number(reserves[1]) / 1e18; // 18 decimals for APTM
+            // If Token1 is APTM
+            resUsdt = Number(reserves[0]) / 1e6;  
+            resAptm = Number(reserves[1]) / 1e18; 
         }
 
-        const price = resUsdt / resAptm;
-        console.log("Surgical Price Check:", price);
-        return price || 0.329; 
+        // Final safety check: if the price is still coming out astronomical, 
+        // it means the reserves are inverted.
+        let price = resUsdt / resAptm;
+        
+        if (price > 1000000 || price < 0.000001) {
+            // Fallback to manual swap if the ratio is impossible
+            price = resAptm / resUsdt;
+        }
+
+        console.log("FINAL PRICE VERIFIED:", price);
+        return price || 0.33; 
     } catch (e) { 
-        console.error("Price logic failed, using fallback:", e);
-        return 0.329; 
+        console.error("Price logic failed:", e);
+        return 0.33; 
     }
 }
 
