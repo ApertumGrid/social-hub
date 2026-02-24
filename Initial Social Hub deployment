@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOCIAL HUB | DISRUPTOR ALPHA</title>
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #05070a;
+            --accent-cyan: #00f2ff;
+            --accent-purple: #bc00ff;
+            --gold: #ffcc00;
+            --glass: rgba(15, 15, 25, 0.7);
+            --border: rgba(255, 255, 255, 0.12);
+        }
+
+        body {
+            margin: 0; font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            background-image: radial-gradient(circle at 0% 0%, #1a1033 0%, #05070a 100%);
+            color: white; display: flex; height: 100vh; overflow: hidden;
+        }
+
+        #sidebar {
+            width: 280px; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(20px);
+            border-right: 1px solid var(--border); display: flex;
+            flex-direction: column; padding: 40px 25px; z-index: 100;
+        }
+
+        .logo { font-size: 1.6rem; font-weight: 900; margin-bottom: 40px; letter-spacing: -1px; }
+        .logo span { color: var(--accent-cyan); }
+
+        .nav-item {
+            padding: 14px 18px; margin-bottom: 8px; border-radius: 12px;
+            cursor: pointer; color: #777; font-weight: 700; transition: 0.2s;
+            display: flex; align-items: center; gap: 12px;
+        }
+        .nav-item.active { background: linear-gradient(90deg, rgba(0,242,255,0.1), transparent); color: var(--accent-cyan); border-left: 3px solid var(--accent-cyan); }
+
+        #viewport { flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; scroll-behavior: smooth; }
+        .top-bar { padding: 20px 50px; display: flex; justify-content: flex-end; align-items: center; position: sticky; top: 0; z-index: 90; background: rgba(5,7,10,0.8); backdrop-filter: blur(10px); }
+        #main-content { flex-grow: 1; padding: 0 50px 50px 50px; max-width: 750px; margin: 0 auto; width: 100%; }
+
+        .glass-panel { 
+            background: var(--glass); border: 1px solid var(--border); 
+            border-radius: 24px; padding: 25px; margin-bottom: 25px; backdrop-filter: blur(10px);
+        }
+        
+        .creator-header { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; }
+        .avatar-circle { width: 44px; height: 44px; border-radius: 50%; background: #111; border: 2px solid var(--accent-cyan); object-fit: cover; }
+
+        .wallet-pill { background: rgba(0, 242, 255, 0.1); border: 1px solid var(--accent-cyan); padding: 8px 16px; border-radius: 50px; font-size: 0.7rem; font-weight: 900; color: var(--accent-cyan); cursor: pointer; }
+
+        .action-btn { width: 100%; background: var(--gold); border: none; padding: 12px; border-radius: 12px; font-weight: 900; color: #000; cursor: pointer; margin-top: 10px; transition: 0.2s; }
+        .input-field { width: 100%; padding: 12px; border-radius: 10px; background: rgba(0,0,0,0.3); border: 1px solid #333; color: white; margin-top: 8px; outline: none; box-sizing: border-box; }
+
+        #media-preview-container { margin-top: 10px; display: none; text-align: center; background: #000; border-radius: 12px; padding: 10px; border: 1px dashed var(--accent-cyan); }
+        #preview-img { max-width: 100%; max-height: 200px; border-radius: 8px; }
+
+        .post-media-container { width: 100%; max-height: 400px; border-radius: 18px; overflow: hidden; margin: 15px 0; border: 1px solid #222; background: #000; display: flex; justify-content: center; }
+        .post-media-container img, .post-media-container iframe { width: 100%; height: 100%; border: none; }
+
+        .feed-actions { display: flex; justify-content: space-around; margin-top: 15px; padding-top: 15px; border-top: 1px solid #222; }
+        .feed-btn { cursor: pointer; font-size: 0.8rem; font-weight: 800; color: #666; display: flex; align-items: center; gap: 6px; }
+        
+        .comment-area { margin-top: 15px; padding-top: 15px; display: none; border-top: 1px dashed #222; }
+        .comment-list { max-height: 400px; overflow-y: auto; margin-bottom: 10px; padding-right: 10px; }
+        
+        .comment-row { font-size: 0.85rem; margin-bottom: 15px; color: #bbb; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 12px; position: relative; }
+        .comment-meta { font-size: 0.65rem; color: #555; margin-top: 8px; display: flex; gap: 15px; }
+        .meta-link { cursor: pointer; color: var(--accent-purple); font-weight: 800; }
+
+        .reply-box { display: none; margin-top: 10px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; border: 1px solid #333; }
+        .nested-container { margin-left: 20px; border-left: 1px solid #333; padding-left: 15px; margin-top: 10px; }
+
+        .hash-anchor { font-family: monospace; font-size: 0.6rem; color: #3a3d42; display: block; margin-top: 10px; letter-spacing: 1px; }
+        .aptm-indicator { font-size: 0.65rem; color: var(--accent-cyan); font-weight: 800; display: block; margin-top: 2px; text-transform: uppercase; }
+
+        .tok-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .tok-label { color: #888; font-size: 0.9rem; }
+        .tok-value { font-weight: 900; color: var(--accent-cyan); }
+        .tok-section-title { font-size: 0.7rem; color: var(--gold); letter-spacing: 2px; margin: 25px 0 10px 0; font-weight: 900; text-transform: uppercase; }
+
+        .page { display: none; }
+        .page.active { display: block; }
+        #toast { position: fixed; bottom: 20px; right: 20px; background: var(--accent-cyan); color: black; padding: 12px 24px; border-radius: 8px; font-weight: 900; opacity: 0; transition: 0.3s; z-index: 1000; pointer-events: none; }
+
+        #load-more-btn { display: none; margin: 20px auto; width: 200px; background: transparent; border: 1px solid #333; color: #666; font-size: 0.7rem; }
+        .hidden-post { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div class="logo">SOCIAL<span>HUB</span></div>
+    <div class="nav-item active" onclick="switchPage('home', this)">🏠 Global Feed</div>
+    <div class="nav-item" onclick="switchPage('earnings', this)">💎 Creator Studio</div>
+    <div class="nav-item" onclick="switchPage('profile', this)">👤 My Profile</div>
+    <div class="nav-item" onclick="switchPage('info', this)">ℹ️ Tokenomics</div>
+    <div style="margin-top: auto;">
+        <div style="font-size: 0.6rem; color: #444; font-weight: 800; margin-bottom: 5px;">HUB BALANCE</div>
+        <div style="font-size: 1.4rem; font-weight: 900; color: var(--gold);" id="user-stars">0 ★</div>
+        <div class="aptm-indicator" id="sidebar-aptm-value">0.00 $APTM</div>
+        <button class="action-btn" onclick="convertAPTM()">DEPOSIT $APTM</button>
+        
+        <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border);">
+            <div style="font-size: 0.55rem; color: #444; font-weight: 800;">TOTAL LEDGER ANCHORS</div>
+            <div style="font-size: 0.9rem; font-weight: 900; color: #fff;" id="total-anchors-display">0</div>
+        </div>
+    </div>
+</div>
+
+<div id="viewport">
+    <div class="top-bar">
+        <div id="wallet-status" class="wallet-pill" onclick="connectWallet()">CONNECT WALLET</div>
+    </div>
+    <div id="main-content">
+        <div id="page-home" class="page active">
+            <div class="glass-panel" style="border: 1px solid var(--accent-cyan);">
+                <div class="creator-header">
+                    <img id="pb-avatar" class="avatar-circle" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub">
+                    <b id="pb-handle">Anonymous_Creator</b>
+                </div>
+                <textarea id="post-text" class="input-field" style="min-height: 60px;" placeholder="What's the signal?"></textarea>
+                <input type="text" id="post-media" class="input-field" placeholder="Media URL (Image: 3★ | Video: 10★)" oninput="updatePreview(this.value)">
+                <div id="media-preview-container">
+                    <div style="font-size:0.6rem; color:var(--accent-cyan); margin-bottom:5px;">MEDIA PREVIEW</div>
+                    <img id="preview-img" src="">
+                </div>
+                <button class="action-btn" style="background: var(--accent-cyan);" onclick="handleBroadcast()">BROADCAST SIGNAL</button>
+            </div>
+            <div id="feed-items"></div>
+            <button id="load-more-btn" class="action-btn" onclick="showNextPage()">LOAD MORE SIGNALS</button>
+        </div>
+
+        <div id="page-profile" class="page">
+            <h1 style="font-weight:900;">Identity Management</h1>
+            <div class="glass-panel">
+                <input type="text" id="handle-input" class="input-field" placeholder="@Username">
+                <input type="text" id="avatar-input" class="input-field" placeholder="Avatar URL">
+                <button class="action-btn" onclick="saveProfile()">SYNC IDENTITY</button>
+            </div>
+        </div>
+
+        <div id="page-earnings" class="page">
+            <h1 style="font-weight:900;">Creator Studio</h1>
+            <div class="glass-panel">
+                <div style="font-size: 0.7rem; color: #888;">NETWORK EARNINGS</div>
+                <div style="font-size: 2.5rem; font-weight: 900; color: var(--gold);" id="creator-revenue-display">0 ★</div>
+                <div class="aptm-indicator" id="earnings-aptm-value" style="font-size: 1rem; margin-bottom: 20px;">EQUIVALENT: 0.00 $APTM</div>
+                <button class="action-btn" style="width:auto; padding:15px 30px;" onclick="settleToWallet()">SETTLE TO WALLET</button>
+            </div>
+        </div>
+
+        <div id="page-info" class="page">
+            <h1 style="font-weight:900;">Tokenomics</h1>
+            <div class="glass-panel">
+                <div class="tok-section-title">Broadcast Costs (Platform Fees)</div>
+                <div class="tok-row"><span class="tok-label">Text Signal</span><span class="tok-value">1.2 ★</span></div>
+                <div class="tok-row"><span class="tok-label">Image Signal</span><span class="tok-value">3.0 ★</span></div>
+                <div class="tok-row"><span class="tok-label">Video Signal</span><span class="tok-value">10.0 ★</span></div>
+                <div class="tok-row" style="border:none;"><span class="tok-label" style="color:var(--accent-cyan)">Boost Signal to Top (Global Placement)</span><span class="tok-value">10.0 ★</span></div>
+
+                <div class="tok-section-title">Interaction Mechanics (Costs)</div>
+                <div class="tok-row"><span class="tok-label">Hype a Signal</span><span class="tok-value">1.0 ★</span></div>
+                <div class="tok-row" style="border:none;"><span class="tok-label">Post a Comment / Reply</span><span class="tok-value">1.0 ★</span></div>
+
+                <div class="tok-section-title">Creator Rewards (80% Payout)</div>
+                <div class="tok-row"><span class="tok-label">Receive Hype on your Post</span><span class="tok-value">+0.8 ★</span></div>
+                <div class="tok-row"><span class="tok-label">Receive Comment on your Post</span><span class="tok-value">+0.8 ★</span></div>
+                <div class="tok-row"><span class="tok-label">Receive Hype on your Comment</span><span class="tok-value">+0.8 ★</span></div>
+                <div class="tok-row" style="border:none;"><span class="tok-label">Receive Reply to your Comment</span><span class="tok-value">+0.8 ★</span></div>
+
+                <div style="margin-top:25px; padding-top:15px; border-top: 1px solid #333; font-size: 0.75rem; color: #666; line-height: 1.5;">
+                    <b style="color:#888;">Protocol Note:</b> The 1.2★ base broadcast fee and the 20% interaction tax (0.2★ per action) fuel the platform infrastructure and storage on the permanent ledger.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toast">SUCCESS</div>
+
+<script>
+    // --- BLOCKCHAIN INTEGRATION ---
+    const contractAddress = "0x82fE88fe8dFeDFF46513b17e49EDF3F5606c3500";
+    const abi = [{"inputs":[],"name":"adminWithdraw","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_parentId","type":"uint256"},{"internalType":"uint256","name":"_type","type":"uint256"}],"name":"createContent","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"depositAPTM","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"}],"name":"hype","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_starAmount","type":"uint256"}],"name":"withdrawStars","outputs":[],"stateMutability":"nonpayable","type":"function"},{"stateMutability":"payable","type":"receive"},{"inputs":[],"name":"PLATFORM_ADMIN","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"registry","outputs":[{"internalType":"address","name":"author","type":"address"},{"internalType":"uint256","name":"parentId","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"starBalances","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalAnchors","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}];
+
+    let provider, signer, hubContract;
+    let starBalance = 0;
+    let creatorRevenue = 0; 
+    let totalAnchors = 0; 
+    let userHandle = "Anonymous_Creator";
+    let userAvatar = "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
+    let visibleCount = 10;
+    const pageSize = 10;
+
+    async function connectWallet() {
+        if (window.ethereum) {
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+            await provider.send("eth_requestAccounts", []);
+            signer = provider.getSigner();
+            hubContract = new ethers.Contract(contractAddress, abi, signer);
+            const addr = await signer.getAddress();
+            document.getElementById('wallet-status').innerText = addr.slice(0,6)+"..."+addr.slice(-4);
+            syncData();
+            showToast("Connected");
+        } else { alert("MetaMask not found"); }
+    }
+
+    async function syncData() {
+        if(!hubContract) return;
+        const addr = await signer.getAddress();
+        const bal = await hubContract.starBalances(addr);
+        const anchors = await hubContract.totalAnchors();
+        
+        starBalance = bal.toNumber(); 
+        creatorRevenue = bal.toNumber(); // In this model, Stars in wallet = Earnings
+        totalAnchors = anchors.toNumber();
+        updateUI();
+    }
+
+    function updateUI() {
+        document.getElementById('user-stars').innerText = starBalance.toLocaleString() + " ★";
+        document.getElementById('creator-revenue-display').innerText = starBalance.toLocaleString() + " ★";
+        document.getElementById('pb-handle').innerText = userHandle;
+        document.getElementById('pb-avatar').src = userAvatar;
+        document.getElementById('total-anchors-display').innerText = totalAnchors.toLocaleString();
+
+        let userAptm = (starBalance / 100);
+        document.getElementById('sidebar-aptm-value').innerText = userAptm.toFixed(2) + " $APTM";
+        document.getElementById('earnings-aptm-value').innerText = "EQUIVALENT: " + userAptm.toFixed(2) + " $APTM";
+        
+        refreshFeedVisibility();
+    }
+
+    async function convertAPTM() {
+        let amt = prompt("How many $APTM to deposit?", "1");
+        if(amt && hubContract) { 
+            const tx = await hubContract.depositAPTM({ value: ethers.utils.parseEther(amt) });
+            showToast("Processing Deposit...");
+            await tx.wait();
+            syncData();
+        }
+    }
+
+    async function settleToWallet() {
+        let amt = prompt("Stars to withdraw back to $APTM:", starBalance);
+        if(amt && hubContract) {
+            const tx = await hubContract.withdrawStars(amt);
+            showToast("Withdrawing $APTM...");
+            await tx.wait();
+            syncData();
+        }
+    }
+
+    function refreshFeedVisibility() {
+        const posts = document.querySelectorAll('#feed-items > .glass-panel');
+        posts.forEach((post, index) => {
+            if (index < visibleCount) post.classList.remove('hidden-post');
+            else post.classList.add('hidden-post');
+        });
+        const loadMore = document.getElementById('load-more-btn');
+        if(loadMore) loadMore.style.display = (posts.length > visibleCount) ? 'block' : 'none';
+    }
+
+    function showNextPage() {
+        visibleCount += pageSize;
+        updateUI();
+    }
+
+    function updatePreview(url) {
+        const container = document.getElementById('media-preview-container');
+        const img = document.getElementById('preview-img');
+        if(url && (url.startsWith('http'))) {
+            img.src = url;
+            container.style.display = 'block';
+        } else {
+            container.style.display = 'none';
+        }
+    }
+
+    function showToast(m) {
+        const t = document.getElementById('toast');
+        t.innerText = m; t.style.opacity = 1;
+        setTimeout(() => t.style.opacity = 0, 2000);
+    }
+
+    function switchPage(p, el) {
+        document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
+        document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+        document.getElementById('page-'+p).classList.add('active');
+        el.classList.add('active');
+    }
+
+    function saveProfile() {
+        userHandle = document.getElementById('handle-input').value || userHandle;
+        userAvatar = document.getElementById('avatar-input').value || userAvatar;
+        updateUI();
+        showToast("Identity Updated");
+    }
+
+    function getYoutubeId(url) {
+        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+        const match = url.match(regExp);
+        return (match && match[2].length === 11) ? match[2] : null;
+    }
+
+    async function handleBroadcast() {
+        const txt = document.getElementById('post-text').value;
+        const media = document.getElementById('post-media').value;
+        if(!txt) return;
+
+        let type = 1;
+        if(media) type = (media.includes('mp4') || getYoutubeId(media)) ? 3 : 2;
+
+        try {
+            showToast("Requesting Anchor...");
+            const tx = await hubContract.createContent(0, type);
+            await tx.wait();
+            
+            // UI Generation Logic (Unchanged)
+            const postId = Date.now(); 
+            const hash = "0x" + Math.random().toString(16).slice(2, 10).toUpperCase();
+            
+            let mediaHtml = '';
+            const ytId = getYoutubeId(media);
+            if(ytId) mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
+            else if(media) mediaHtml = `<div class="post-media-container"><img src="${media}"></div>`;
+
+            const item = document.createElement('div');
+            item.className = 'glass-panel';
+            item.id = `post-container-${postId}`;
+            item.innerHTML = `
+                <div class='creator-header'><img src="${userAvatar}" class="avatar-circle"><b>${userHandle}</b></div>
+                ${mediaHtml}
+                <p>${txt}</p>
+                <span class="hash-anchor">LEDGER ANCHOR: ${hash}</span>
+                <div class="feed-actions">
+                    <div class="feed-btn" onclick="hypeElement('${totalAnchors + 1}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">0</span></div>
+                    <div class="feed-btn" onclick="toggleTray('${postId}')">💬 Comments</div>
+                    <div class="feed-btn" style="color:var(--gold)" onclick="boostPost('${postId}')">🚀 Boost</div>
+                </div>
+                <div class="comment-area" id="tray-${postId}">
+                    <div class="comment-list" id="list-${postId}"></div>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" class="input-field" style="margin-top:0;" placeholder="Add comment (1★)" id="input-${postId}">
+                        <button class="action-btn" style="margin-top:0; width:80px;" onclick="addComment('${totalAnchors + 1}', '${postId}')">SEND</button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('feed-items').prepend(item);
+            document.getElementById('post-text').value = "";
+            document.getElementById('post-media').value = "";
+            syncData();
+        } catch (e) { alert("Blockchain Error or Insufficient Stars"); }
+    }
+
+    async function boostPost(postId) {
+        try {
+            const tx = await hubContract.createContent(0, 4); // Type 4 = Boost
+            await tx.wait();
+            const postElement = document.getElementById(`post-container-${postId}`);
+            document.getElementById('feed-items').prepend(postElement);
+            syncData();
+            showToast("Signal Boosted! 🚀");
+        } catch (e) { alert("Boost failed"); }
+    }
+
+    async function hypeElement(blockchainId, displayId) {
+        try {
+            const tx = await hubContract.hype(blockchainId);
+            await tx.wait();
+            document.getElementById(displayId).innerText = parseInt(document.getElementById(displayId).innerText) + 1;
+            syncData();
+            showToast("Hype Recorded!");
+        } catch (e) { alert("Hype failed"); }
+    }
+
+    function toggleTray(id) {
+        const t = document.getElementById(`tray-${id}`);
+        t.style.display = t.style.display === 'block' ? 'none' : 'block';
+    }
+
+    async function addComment(parentBlockchainId, postId, isReply = false, parentId = null) {
+        const inputId = isReply ? `reply-in-${parentId}` : `input-${postId}`;
+        const input = document.getElementById(inputId);
+        if(!input.value) return;
+
+        try {
+            const tx = await hubContract.createContent(parentBlockchainId, 1);
+            await tx.wait();
+            
+            const commId = Date.now();
+            const row = document.createElement('div');
+            row.className = 'comment-row';
+            row.innerHTML = `
+                <b>${userHandle}</b>: ${input.value}
+                <div class="comment-meta">
+                    <span class="meta-link" onclick="hypeElement('${totalAnchors + 1}', 'hc-${commId}')">❤️ Hype (<span id="hc-${commId}">0</span>)</span>
+                    <span class="meta-link" onclick="toggleReply('${commId}')">💬 Reply</span>
+                </div>
+                <div id="reply-box-${commId}" class="reply-box">
+                    <input type="text" class="input-field" style="height:35px;" placeholder="Write reply..." id="reply-in-${commId}">
+                    <button class="action-btn" style="width:60px; height:35px; padding:0;" onclick="addComment('${totalAnchors + 1}', '${postId}', true, '${commId}')">GO</button>
+                </div>
+                <div id="replies-to-${commId}" class="nested-container"></div>
+            `;
+            const target = isReply ? document.getElementById(`replies-to-${parentId}`) : document.getElementById(`list-${postId}`);
+            target.appendChild(row);
+            input.value = "";
+            syncData();
+        } catch (e) { alert("Comment failed"); }
+    }
+
+    function toggleReply(id) {
+        const b = document.getElementById(`reply-box-${id}`);
+        b.style.display = b.style.display === 'block' ? 'none' : 'block';
+    }
+</script>
+</body>
+</html>
