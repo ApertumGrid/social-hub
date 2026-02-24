@@ -653,6 +653,134 @@ function toggleReply(id) {
     const b = document.getElementById(`reply-box-${id}`);
     if(b) b.style.display = b.style.display === 'block' ? 'none' : 'block';
 }
+    async function loadGlobalFeed() {
+    const feedContainer = document.getElementById('feed-items');
+    if (!feedContainer || !window.db) return;
+
+    const q = window.fs.query(window.fs.collection(window.db, "posts"), window.fs.orderBy("timestamp", "desc"));
+
+    window.fs.onSnapshot(q, (snapshot) => {
+        feedContainer.innerHTML = ""; 
+        snapshot.forEach((docRef) => {
+            const post = docRef.data();
+            const postId = docRef.id;
+            
+            let mediaHtml = '';
+            const ytId = getYoutubeId(post.media || "");
+            if(ytId) mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
+            else if(post.media) mediaHtml = `<div class="post-media-container"><img src="${post.media}"></div>`;
+
+            const item = document.createElement('div');
+            item.className = post.isBoosted ? 'glass-panel boosted-post' : 'glass-panel';
+            item.innerHTML = `
+                <div class='creator-header'>
+                    <img src="${post.avatar || userAvatar}" class="avatar-circle">
+                    <b>${post.author}</b>
+                </div>
+                ${mediaHtml}
+                <p>${post.text}</p>
+                <div class="feed-actions">
+                    <div class="feed-btn" onclick="hypeElement('${post.authorAddr}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">${post.hypes || 0}</span></div>
+                    <div class="feed-btn" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comments</div>
+                    <div class="feed-btn" style="color:var(--gold)" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
+                </div>
+                <div class="comment-area" id="tray-${postId}">
+                    <div class="comment-list" id="list-${postId}"></div>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" class="input-field" style="margin-top:0;" placeholder="Add (1★)" id="input-${postId}">
+                        <button class="action-btn" style="margin-top:0; width:80px;" onclick="addComment('${post.authorAddr}', '${postId}')">SEND</button>
+                    </div>
+                </div>`;
+            feedContainer.appendChild(item);
+        });
+        refreshFeedVisibility();
+    });
+}
+
+async function loadGlobalFeed() {
+    const feedContainer = document.getElementById('feed-items');
+    if (!feedContainer || !window.db) return;
+
+    // This tells Firebase to watch for new posts and show them newest-first
+    const q = window.fs.query(window.fs.collection(window.db, "posts"), window.fs.orderBy("timestamp", "desc"));
+
+    window.fs.onSnapshot(q, (snapshot) => {
+        feedContainer.innerHTML = ""; 
+        snapshot.forEach((docRef) => {
+            const post = docRef.data();
+            const postId = docRef.id;
+            
+            // Logic to display YouTube or Images
+            let mediaHtml = '';
+            const ytId = getYoutubeId(post.media || "");
+            if(ytId) {
+                mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
+            } else if(post.media) {
+                mediaHtml = `<div class="post-media-container"><img src="${post.media}"></div>`;
+            }
+
+            const item = document.createElement('div');
+            item.className = post.isBoosted ? 'glass-panel boosted-post' : 'glass-panel';
+            item.style.border = post.isBoosted ? '1px solid var(--gold)' : '1px solid var(--border)';
+            
+            item.innerHTML = `
+                <div class='creator-header'>
+                    <img src="${post.avatar || userAvatar}" class="avatar-circle">
+                    <b>${post.author}</b>
+                </div>
+                ${mediaHtml}
+                <p>${post.text}</p>
+                <div class="feed-actions">
+                    <div class="feed-btn" onclick="hypeElement('${post.authorAddr}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">${post.hypes || 0}</span></div>
+                    <div class="feed-btn" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comments</div>
+                    <div class="feed-btn" style="color:var(--gold)" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
+                </div>
+                <div class="comment-area" id="tray-${postId}">
+                    <div class="comment-list" id="list-${postId}"></div>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" class="input-field" style="margin-top:0;" placeholder="Add (1★)" id="input-${postId}">
+                        <button class="action-btn" style="margin-top:0; width:80px;" onclick="addComment('${post.authorAddr}', '${postId}')">SEND</button>
+                    </div>
+                </div>`;
+            feedContainer.appendChild(item);
+        });
+        refreshFeedVisibility();
+    });
+}
+
+// Function to load the comments inside each post
+async function loadComments(postId) {
+    const list = document.getElementById(`list-${postId}`);
+    if (!list) return;
+
+    const q = window.fs.query(
+        window.fs.collection(window.db, "comments"),
+        window.fs.where("postId", "==", postId),
+        window.fs.orderBy("timestamp", "asc")
+    );
+
+    window.fs.onSnapshot(q, (snapshot) => {
+        list.innerHTML = "";
+        snapshot.forEach((docRef) => {
+            const comment = docRef.data();
+            const commentId = docRef.id;
+            const row = document.createElement('div');
+            row.className = 'comment-row';
+            row.innerHTML = `
+                <b>${comment.author}</b>: ${comment.text}
+                <div class="comment-meta">
+                    <span class="meta-link" onclick="hypeElement('${comment.authorAddr}', 'hp-${commentId}')">❤️ Hype</span>
+                    <span class="meta-link" onclick="toggleReply('${commentId}')">Reply (1★)</span>
+                </div>
+                <div class="reply-box" id="reply-box-${commentId}">
+                    <input type="text" class="input-field" placeholder="Reply..." id="reply-in-${commentId}">
+                    <button class="action-btn" onclick="addComment('${comment.authorAddr}', '${postId}', true, '${commentId}')">REPLY</button>
+                </div>
+            `;
+            list.appendChild(row);
+        });
+    });
+}
 
 // --- STARTUP ---
 
