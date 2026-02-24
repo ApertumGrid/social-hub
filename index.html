@@ -301,21 +301,34 @@ async function syncData() {
             hubContract.totalAnchors()
         ]);
         
-        currentAptmPriceUsd = await getLiveAptmPrice();
+        const price = await getLiveAptmPrice();
         
-        // --- THE FIX ---
-        // formatEther turns the 15-digit Wei number into a human number (e.g., 5.0)
-        const aptmInEth = ethers.utils.formatEther(balRaw); 
-        const totalUsdValue = parseFloat(aptmInEth) * currentAptmPriceUsd; 
+        // --- THE HARD RESET ---
+        // 1. Convert the massive Wei number to human APTM (e.g., 5.0)
+        const humanAptm = parseFloat(ethers.utils.formatEther(balRaw));
         
-        // Convert USD value to Stars (1 Star = $0.01)
-        starBalance = Math.floor(totalUsdValue / STAR_FIXED_USD).toString();
-        totalAnchors = anchors.toNumber();
+        // 2. Convert human APTM to USD value
+        const usdValue = humanAptm * price;
         
-        updateUI();
-    } catch (e) { console.error("Sync Error:", e); }
-}
+        // 3. Convert USD to Stars (1 Star = $0.01)
+        const actualStars = Math.floor(usdValue / 0.01);
+        
+        console.log("SURGERY CHECK:", { humanAptm, price, actualStars });
 
+        // 4. Force the UI to show the corrected number directly
+        document.getElementById('user-stars').innerText = actualStars.toLocaleString() + " ★";
+        document.getElementById('creator-revenue-display').innerText = actualStars.toLocaleString() + " ★";
+        document.getElementById('total-anchors-display').innerText = anchors.toNumber().toLocaleString();
+        
+        // Update the global for other functions
+        starBalance = actualStars.toString();
+        totalAnchors = anchors.toNumber();
+        currentAptmPriceUsd = price;
+
+    } catch (e) { 
+        console.error("Sync Error:", e); 
+    }
+}
 function updateUI() {
     let stars = parseFloat(starBalance);
     
