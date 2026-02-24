@@ -297,14 +297,23 @@ const STAR_FIXED_USD = 0.01;
 
 // --- SURGICAL INJECTION: REPLACE YOUR EXISTING SYNC & UI FUNCTIONS WITH THESE ---
 
+// At the very top of your script, add this if it isn't there:
+let currentAptmBalance = "0.0000";
+
 async function syncData() {
     if(!hubContract || !signer) return;
     try {
         const addr = await signer.getAddress();
-        const [balRaw, anchors] = await Promise.all([
-            hubContract.aptmBalances(addr), 
-            hubContract.totalAnchors()
-        ]);
+        const balRaw = await hubContract.aptmBalances(addr);
+        
+        // This turns the big blockchain number into "5.0"
+        currentAptmBalance = ethers.utils.formatEther(balRaw);
+        
+        // ... rest of your sync logic ...
+        
+        updateUI();
+    } catch (e) { console.error(e); }
+}
         
         const price = await getLiveAptmPrice();
         
@@ -335,19 +344,33 @@ async function syncData() {
     }
 }
 function updateUI() {
-    let stars = parseFloat(starBalance);
+    // 1. Get the Stars from the global variable
+    let stars = parseFloat(starBalance) || 0;
     
-    // Updates the "15182..." numbers in your screenshots to the correct human values
-    document.getElementById('user-stars').innerText = stars.toFixed(0) + " ★";
-    document.getElementById('creator-revenue-display').innerText = stars.toFixed(0) + " ★";
+    // 2. Update Star Displays (The 169 you see now)
+    const starDisplay = document.getElementById('user-stars');
+    const studioDisplay = document.getElementById('creator-revenue-display');
+    if (starDisplay) starDisplay.innerText = stars.toFixed(0) + " ★";
+    if (studioDisplay) studioDisplay.innerText = stars.toFixed(0) + " ★";
     
-    document.getElementById('total-anchors-display').innerText = totalAnchors.toLocaleString();
-    document.getElementById('live-price-display').innerText = `RATE: $${currentAptmPriceUsd.toFixed(4)} / APTM`;
+    // 3. Update the APTM Value (The 5.0000 you want to see)
+    // We use the global 'currentAptmBalance' which we set in syncData
+    const aptmSidebar = document.getElementById('sidebar-aptm-value');
+    const aptmEarnings = document.getElementById('earnings-aptm-value');
     
-    // Shows exactly how much APTM they can actually withdraw
-    let userAptmValue = (stars * STAR_FIXED_USD) / currentAptmPriceUsd;
-    document.getElementById('sidebar-aptm-value').innerText = userAptmValue.toFixed(4) + " $APTM";
-    document.getElementById('earnings-aptm-value').innerText = "EQUIVALENT: " + userAptmValue.toFixed(4) + " $APTM";
+    // Fallback to a global variable if syncData has run
+    let displayAptm = typeof currentAptmBalance !== 'undefined' ? currentAptmBalance : "0.0000";
+
+    if (aptmSidebar) aptmSidebar.innerText = displayAptm + " $APTM";
+    if (aptmEarnings) aptmEarnings.innerText = "VALUE: " + displayAptm + " $APTM";
+
+    // 4. Update Price and Anchors
+    if (document.getElementById('live-price-display')) {
+        document.getElementById('live-price-display').innerText = `RATE: $${(currentAptmPriceUsd || 0.33).toFixed(4)} / APTM`;
+    }
+    if (document.getElementById('total-anchors-display')) {
+        document.getElementById('total-anchors-display').innerText = (totalAnchors || 0).toLocaleString();
+    }
 }
     async function convertAPTM() {
         currentAptmPriceUsd = await getLiveAptmPrice();
