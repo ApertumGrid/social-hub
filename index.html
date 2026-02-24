@@ -289,41 +289,41 @@ function updateUI() {
     }
 
     async function settleToWallet() {
-        let starsToWithdraw = prompt("How many Stars to withdraw?", "34");
-        
-        if (starsToWithdraw && hubContract) {
-            try {
-                const starAmount = parseFloat(starsToWithdraw);
-                const currentBalance = parseFloat(starBalance);
-
-                if (starAmount > currentBalance) {
-                    alert("Insufficient Stars. You only have " + currentBalance.toFixed(0));
-                    return;
-                }
-
-                showToast("Calculating Exchange...");
-                
-                const usdValue = starAmount * STAR_FIXED_USD;
-                const aptmValue = (usdValue / currentAptmPriceUsd).toFixed(15);
-                const weiValue = ethers.utils.parseUnits(aptmValue, 18);
-
-                showToast("Settling to Wallet...");
-                
-                const tx = await hubContract.withdrawStars(weiValue, {
-                    gasLimit: 150000 
-                });
-                
-                await tx.wait();
-                showToast("Success! APTM Sent.");
-                setTimeout(() => { syncData(); }, 2000);
-                
-            } catch (e) {
-                console.error("Withdrawal Error:", e);
-                const msg = e.data ? e.data.message : e.message;
-                alert("Withdrawal failed: " + msg);
+    // We get your current balance and round it down slightly to be safe
+    const maxStars = Math.floor(parseFloat(starBalance));
+    let amt = prompt(`Withdraw Stars to $APTM\nYour Max: ${maxStars}`, maxStars);
+    
+    if (amt && hubContract) {
+        try {
+            const starAmount = parseFloat(amt);
+            if (starAmount > parseFloat(starBalance)) {
+                alert("Insufficient Stars. Try a slightly lower amount.");
+                return;
             }
+
+            showToast("Calculating Exchange...");
+            // Convert Stars -> USD -> APTM -> Wei (The tiny units the blockchain uses)
+            const usdValue = starAmount * STAR_FIXED_USD;
+            const aptmValue = (usdValue / currentAptmPriceUsd).toFixed(15);
+            const weiValue = ethers.utils.parseUnits(aptmValue, 18);
+
+            showToast("Confirming in MetaMask...");
+            // Increased Gas Limit to 300,000 to prevent 'Failed' transactions
+            const tx = await hubContract.withdrawStars(weiValue, {
+                gasLimit: 300000 
+            });
+            
+            await tx.wait();
+            showToast("Success! $APTM Sent.");
+            setTimeout(() => { syncData(); }, 2000);
+        } catch (e) {
+            console.error("Withdraw Error:", e);
+            // This pulls the real error message from the blockchain if it exists
+            const msg = e.data ? e.data.message : e.message;
+            alert("Transaction Failed: " + (msg.includes("execution reverted") ? "Contract Error" : "Check Gas/Balance"));
         }
     }
+}
 
     function refreshFeedVisibility() {
         const posts = document.querySelectorAll('#feed-items > .glass-panel');
