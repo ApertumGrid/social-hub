@@ -384,40 +384,35 @@ async function convertAPTM() {
 
 async function settleToWallet() {
     if (!hubContract) return alert("Connect Wallet First");
-    const addr = await signer.getAddress();
 
     try {
-        // 1. Check the RAW balance from the contract mapping
-        const rawBalance = await hubContract.starBalances(addr);
-        console.log("Contract says your balance is:", ethers.utils.formatEther(rawBalance));
+        const addr = await signer.getAddress();
+        // This calls the mapping in your Solidity: mapping(address => uint256) public aptmBalances;
+        const rawBalance = await hubContract.aptmBalances(addr);
+        const humanAmount = ethers.utils.formatEther(rawBalance);
 
-        if (rawBalance.eq(0)) {
-            alert("The Contract Ledger shows 0 stars for this address. You cannot withdraw what isn't registered on-chain.");
-            return;
-        }
+        let amt = prompt(`Withdraw Stars\nContract Balance: ${humanAmount} APTM`, humanAmount);
 
-        let amt = prompt(`Withdraw Stars\nMax Available: ${ethers.utils.formatEther(rawBalance)}`, "4");
-        
         if (amt) {
-            const withdrawWei = ethers.utils.parseUnits(parseFloat(amt).toFixed(18), 18);
+            showToast("Processing Withdrawal...");
             
-            // 2. CHECK LIQUIDITY: Does the contract have enough to pay you?
-            // This assumes APTM is the native currency on Chain 2786
-            const vaultBalance = await provider.getBalance("0x42E0A97844ac6623207F2a363aa318E83268910F");
-            console.log("Vault Liquidity:", ethers.utils.formatEther(vaultBalance));
+            // MATH: Converting the prompt amount to Wei
+            const withdrawWei = ethers.utils.parseUnits(parseFloat(amt).toFixed(18), 18);
 
-            if (vaultBalance.lt(withdrawWei)) {
-                alert("The Hub Contract is empty. It has no APTM to pay you out.");
-                return;
-            }
+            // FIX: Calling 'userWithdraw' instead of 'withdrawStars'
+            const tx = await hubContract.userWithdraw(withdrawWei, {
+                gasLimit: 500000
+            });
 
-            const tx = await hubContract.withdrawStars(withdrawWei, { gasLimit: 500000 });
+            showToast("Transaction Pending...");
             await tx.wait();
-            showToast("Success!");
+            showToast("Success! Funds moved.");
+            syncData();
         }
     } catch (e) {
-        console.error("Diagnostic Error:", e);
-        alert("Blockchain Rejected: " + (e.reason || "Execution Reverted"));
+        console.error("Withdraw Error:", e);
+        // This will now show the REAL reason if it fails
+        alert("Failed: " + (e.reason || "Check Contract Name Mismatch"));
     }
 }
 
