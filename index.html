@@ -5,6 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SOCIAL HUB | DISRUPTOR ALPHA</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyANZhaAodV4TvfLk84dzwscI7cSSiwyyv4",
+    authDomain: "socialhub-33014.firebaseapp.com",
+    projectId: "socialhub-33014",
+    storageBucket: "socialhub-33014.firebasestorage.app",
+    messagingSenderId: "864088350104",
+    appId: "1:864088350104:web:9a5044bd40c6621fa7dfed",
+    measurementId: "G-B2C1K1LVGQ"
+  };
+
+  // Initialize
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // Expose db to your other functions
+  window.db = db;
+  window.fs = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment };
+  
+  console.log("Firebase Database Linked!");
+</script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -342,33 +366,101 @@ function updateUI() {
     }
 
     // PART 2: ACTIONS & INTERACTIONS
+// --- UPDATED ACTIONS & INTERACTIONS ---
+
 async function handleBroadcast() {
     const txt = document.getElementById('post-text').value;
     const media = document.getElementById('post-media').value;
-    if(!txt) return;
+    if(!txt || !hubContract) return alert("Write something or connect wallet!");
+
     let type = 1; 
     if(media) type = (media.includes('mp4') || getYoutubeId(media)) ? 3 : 2;
+
     try {
-        showToast("Anchoring Signal...");
-        const tx = await hubContract.postContent("", type, getOneStarWei(), { gasLimit: 400000 });
+        showToast("Anchoring to Blockchain...");
+        
+        // 1. Blockchain Payment (Chain 2786)
+        const tx = await hubContract.postContent("", type, getOneStarWei(), { gasLimit: 500000 });
         await tx.wait();
-        const postId = Date.now(); 
-        const hash = "0x" + Math.random().toString(16).slice(2, 10).toUpperCase();
-        let mediaHtml = '';
-        const ytId = getYoutubeId(media);
-        if(ytId) mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
-        else if(media) mediaHtml = `<div class="post-media-container"><img src="${media}"></div>`;
-        const item = document.createElement('div');
-        item.className = 'glass-panel';
-        item.id = `post-container-${postId}`;
-        const userAddr = await signer.getAddress();
-        item.innerHTML = `<div class='creator-header'><img src="${userAvatar}" class="avatar-circle"><b>${userHandle}</b></div>${mediaHtml}<p>${txt}</p><span class="hash-anchor">LEDGER ANCHOR: ${hash}</span><div class="feed-actions"><div class="feed-btn" onclick="hypeElement('${userAddr}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">0</span></div><div class="feed-btn" onclick="toggleTray('${postId}')">💬 Comments</div><div class="feed-btn" style="color:var(--gold)" onclick="boostPost('${postId}')">🚀 Boost</div></div><div class="comment-area" id="tray-${postId}"><div class="comment-list" id="list-${postId}"></div><div style="display:flex; gap:10px;"><input type="text" class="input-field" style="margin-top:0;" placeholder="Add (1★)" id="input-${postId}"><button class="action-btn" style="margin-top:0; width:80px;" onclick="addComment('${userAddr}', '${postId}')">SEND</button></div></div>`;
-        document.getElementById('feed-items').prepend(item);
+
+        showToast("Syncing to Cloud...");
+
+        // 2. Firebase Save (Persistence)
+        const postData = {
+            text: txt,
+            media: media,
+            author: userHandle,
+            authorAddr: await signer.getAddress(),
+            avatar: userAvatar,
+            timestamp: Date.now(),
+            hypes: 0,
+            type: type
+        };
+
+        await window.fs.addDoc(window.fs.collection(window.db, "posts"), postData);
+
+        // 3. Cleanup UI
         document.getElementById('post-text').value = "";
         document.getElementById('post-media').value = "";
+        showToast("Broadcast Successful!");
+        
         setTimeout(() => { syncData(); }, 2000);
-    } catch (e) { alert("Broadcast failed"); }
+    } catch (e) { 
+        console.error(e);
+        alert("Broadcast failed. Check APTM balance."); 
+    }
 }
+
+// --- CLOUD FEED LISTENER ---
+
+function loadGlobalFeed() {
+    const feedContainer = document.getElementById('feed-items');
+    if (!feedContainer || !window.db) return;
+
+    // Pull posts from Firebase, newest first
+    const q = window.fs.query(window.fs.collection(window.db, "posts"), window.fs.orderBy("timestamp", "desc"));
+
+    window.fs.onSnapshot(q, (snapshot) => {
+        feedContainer.innerHTML = ""; // Clear existing dummy items
+        snapshot.forEach((docRef) => {
+            const post = docRef.data();
+            const postId = docRef.id;
+            
+            let mediaHtml = '';
+            const ytId = getYoutubeId(post.media || "");
+            if(ytId) mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
+            else if(post.media) mediaHtml = `<div class="post-media-container"><img src="${post.media}"></div>`;
+
+            const item = document.createElement('div');
+            item.className = 'glass-panel';
+            item.id = `post-container-${postId}`;
+            
+            item.innerHTML = `
+                <div class='creator-header'>
+                    <img src="${post.avatar || userAvatar}" class="avatar-circle">
+                    <b>${post.author}</b>
+                </div>
+                ${mediaHtml}
+                <p>${post.text}</p>
+                <div class="feed-actions">
+                    <div class="feed-btn" onclick="hypeElement('${post.authorAddr}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">${post.hypes || 0}</span></div>
+                    <div class="feed-btn" onclick="toggleTray('${postId}')">💬 Comments</div>
+                    <div class="feed-btn" style="color:var(--gold)" onclick="boostPost('${postId}')">🚀 Boost</div>
+                </div>
+                <div class="comment-area" id="tray-${postId}">
+                    <div class="comment-list" id="list-${postId}"></div>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" class="input-field" style="margin-top:0;" placeholder="Add (1★)" id="input-${postId}">
+                        <button class="action-btn" style="margin-top:0; width:80px;" onclick="addComment('${post.authorAddr}', '${postId}')">SEND</button>
+                    </div>
+                </div>`;
+            feedContainer.appendChild(item);
+        });
+        refreshFeedVisibility();
+    });
+}
+
+// --- GLOBAL UTILITIES (Keep your existing ones) ---
 
 async function convertAPTM() {
     currentAptmPriceUsd = await getLiveAptmPrice();
@@ -385,33 +477,20 @@ async function convertAPTM() {
 
 async function settleToWallet() {
     if (!hubContract) return alert("Connect Wallet First");
-
     try {
         const addr = await signer.getAddress();
-        // Updated to use the correct mapping name from your Solidity
         const rawBalance = await hubContract.aptmBalances(addr);
         const humanAmount = ethers.utils.formatEther(rawBalance);
-
         let amt = prompt(`Withdraw Stars\nBalance: ${humanAmount} APTM`, humanAmount);
-
         if (amt && hubContract) {
             showToast("Opening MetaMask...");
             const withdrawWei = ethers.utils.parseUnits(parseFloat(amt).toFixed(18), 18);
-
-            // CHANGED: Matches the new ABI name 'userWithdraw'
-            const tx = await hubContract.userWithdraw(withdrawWei, {
-                gasLimit: 500000
-            });
-
-            showToast("Transaction Pending...");
+            const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
             await tx.wait();
             showToast("Success!");
             syncData();
         }
-    } catch (e) {
-        console.error("Full Error:", e);
-        alert("Failed: " + (e.reason || e.message).slice(0, 100));
-    }
+    } catch (e) { console.error(e); alert("Failed: " + (e.reason || e.message).slice(0, 100)); }
 }
 
 function refreshFeedVisibility() {
@@ -433,8 +512,7 @@ function updatePreview(url) {
 }
 function showToast(m) {
     const t = document.getElementById('toast');
-    t.innerText = m; t.style.opacity = 1;
-    setTimeout(() => t.style.opacity = 0, 2000);
+    if(t) { t.innerText = m; t.style.opacity = 1; setTimeout(() => t.style.opacity = 0, 2000); }
 }
 function switchPage(p, el) {
     document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
@@ -452,13 +530,12 @@ function getYoutubeId(url) {
     const match = url.match(regExp);
     return (match && match[2].length === 11) ? match[2] : null;
 }
+
 async function boostPost(postId) {
     try {
         showToast("Boosting...");
         const tx = await hubContract.boostPost(getOneStarWei(), { gasLimit: 400000 }); 
         await tx.wait();
-        const postElement = document.getElementById(`post-container-${postId}`);
-        if(postElement) document.getElementById('feed-items').prepend(postElement);
         setTimeout(() => { syncData(); }, 2000);
     } catch (e) { alert("Boost failed"); }
 }
@@ -468,8 +545,10 @@ async function hypeElement(recipientAddress, displayId) {
         showToast("Sending Hype...");
         const tx = await hubContract.interact(recipientAddress, getOneStarWei(), { gasLimit: 400000 });
         await tx.wait();
-        const el = document.getElementById(displayId);
-        if(el) el.innerText = parseInt(el.innerText) + 1;
+        
+        // Update Firebase hype count too? (Optional but good for stats)
+        // For now, let's keep it simple.
+        
         setTimeout(() => { syncData(); }, 2000);
     } catch (e) { alert("Hype failed"); }
 }
@@ -479,37 +558,23 @@ function toggleTray(id) {
     if(t) t.style.display = t.style.display === 'block' ? 'none' : 'block';
 }
 
-async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
-    const inputId = isReply ? `reply-in-${parentId}` : `input-${postId}`;
-    const input = document.getElementById(inputId);
-    if(!input || !input.value) return;
-    try {
-        showToast("Posting Comment...");
-        const tx = await hubContract.interact(recipientAddress, getOneStarWei(), { gasLimit: 450000 });
-        await tx.wait();
-        const commId = Date.now();
-        const row = document.createElement('div');
-        row.className = 'comment-row';
-        const userAddr = await signer.getAddress();
-        row.innerHTML = `<b>${userHandle}</b>: ${input.value}<div class="comment-meta"><span class="meta-link" onclick="hypeElement('${userAddr}', 'hc-${commId}')">❤️ Hype (<span id="hc-${commId}">0</span>)</span><span class="meta-link" onclick="toggleReply('${commId}')">💬 Reply</span></div><div id="reply-box-${commId}" class="reply-box"><input type="text" class="input-field" style="height:35px;" placeholder="Write reply..." id="reply-in-${commId}"><button class="action-btn" style="width:60px; height:35px; padding:0;" onclick="addComment('${userAddr}', '${postId}', true, '${commId}')">GO</button></div><div id="replies-to-${commId}" class="nested-container"></div>`;
-        const target = isReply ? document.getElementById(`replies-to-${parentId}`) : document.getElementById(`list-${postId}`);
-        if(target) target.appendChild(row);
-        input.value = "";
-        setTimeout(() => { syncData(); }, 2000);
-    } catch (e) { alert("Comment failed"); }
-}
-
 function toggleReply(id) {
     const b = document.getElementById(`reply-box-${id}`);
     if(b) b.style.display = b.style.display === 'block' ? 'none' : 'block';
 }
 
-// AUTO-START
+// --- STARTUP ---
+
 window.addEventListener('load', () => {
     if (typeof getLiveAptmPrice === 'function') {
         getLiveAptmPrice().then(p => { currentAptmPriceUsd = p; });
     }
+    
+    // Connect Wallet if already authorized
     if (window.ethereum && window.ethereum.selectedAddress) connectWallet();
+    
+    // Wait a second for Firebase to initialize then load feed
+    setTimeout(() => { loadGlobalFeed(); }, 1500);
 });
 </script>
 </body>
