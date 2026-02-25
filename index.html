@@ -688,58 +688,54 @@ async function loadGlobalFeed() {
 
     window.fs.onSnapshot(q, (snapshot) => {
         feedContainer.innerHTML = ""; 
-snapshot.forEach((docRef) => {
-    const post = docRef.data();
-    const postId = docRef.id;
+        snapshot.forEach((docRef) => {
+            const post = docRef.data();
+            const postId = docRef.id;
 
-    // --- IDENTITY LOGIC START ---
-    // Check if this post belongs to the current user
-    const isMe = (post.authorAddr && userAddress && post.authorAddr.toLowerCase() === userAddress.toLowerCase());
-    
-    // Grab your saved local data
-    const localName = localStorage.getItem('hub_userName');
-    const localPic = localStorage.getItem('hub_userPic');
+            // --- IDENTITY LOGIC ---
+            const isMe = (post.authorAddr && typeof userAddress !== 'undefined' && userAddress && post.authorAddr.toLowerCase() === userAddress.toLowerCase());
+            const localName = localStorage.getItem('hub_userName');
+            const localPic = localStorage.getItem('hub_userPic');
 
-    // Decide which name and picture to show
-    const displayPic = (isMe && localPic) ? localPic : (post.avatar || "https://via.placeholder.com/50");
-    const displayName = (isMe && localName) ? localName : (post.author || "Anonymous");
-    // --- IDENTITY LOGIC END ---
+            const displayPic = (isMe && localPic) ? localPic : (post.avatar || "https://via.placeholder.com/50");
+            const displayName = (isMe && localName) ? localName : (post.author || "Anonymous");
 
-    let mediaHtml = '';
-    const ytId = getYoutubeId(post.media || "");
-    if(ytId) {
-        mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
-    } else if(post.media) {
-        mediaHtml = `<div class="post-media-container"><img src="${post.media}"></div>`;
-    }
+            let mediaHtml = '';
+            const ytId = getYoutubeId(post.media || "");
+            if(ytId) {
+                mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
+            } else if(post.media) {
+                mediaHtml = `<div class="post-media-container"><img src="${post.media}"></div>`;
+            }
 
-    const item = document.createElement('div');
-    item.className = 'glass-panel post-card';
-    item.setAttribute('data-id', postId);
-    if(post.isBoosted) item.style.border = "2px solid #FFD700"; 
-    
-    item.innerHTML = `
-        <div class='creator-header'>
-            <img src="${displayPic}" class="avatar-circle">
-            <b>${displayName}</b>
-        </div>
-        ${mediaHtml}
-        <p>${post.text}</p>
-        <div class="feed-actions">
-            <div class="feed-btn" onclick="hypeElement('${post.authorAddr}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">${post.hypes || 0}</span></div>
-            <div class="feed-btn" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comments</div>
-            <div class="feed-btn" style="color:#FFD700" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
-        </div>
-        <div class="comment-area" id="tray-${postId}">
-            <div class="comment-list" id="list-${postId}"></div>
-            <div style="display:flex; gap:10px;">
-                <input type="text" class="input-field" style="margin-top:0;" placeholder="Add (1★)" id="input-${postId}">
-                <button class="action-btn" style="margin-top:0; width:80px;" onclick="addComment('${post.authorAddr}', '${postId}')">SEND</button>
-            </div>
-        </div>`;
-    feedContainer.appendChild(item);
-});
-refreshFeedVisibility();
+            const item = document.createElement('div');
+            item.className = 'glass-panel post-card';
+            item.setAttribute('data-id', postId);
+            if(post.isBoosted) item.style.border = "2px solid #FFD700"; 
+            
+            item.innerHTML = `
+                <div class='creator-header'>
+                    <img src="${displayPic}" class="avatar-circle">
+                    <b>${displayName}</b>
+                </div>
+                ${mediaHtml}
+                <p>${post.text}</p>
+                <div class="feed-actions">
+                    <div class="feed-btn" onclick="hypeElement('${post.authorAddr}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">${post.hypes || 0}</span></div>
+                    <div class="feed-btn" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comments</div>
+                    <div class="feed-btn" style="color:#FFD700" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
+                </div>
+                <div class="comment-area" id="tray-${postId}">
+                    <div class="comment-list" id="list-${postId}"></div>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" class="input-field" style="margin-top:0;" placeholder="Add (1★)" id="input-${postId}">
+                        <button class="action-btn" style="margin-top:0; width:80px;" onclick="addComment('${post.authorAddr}', '${postId}')">SEND</button>
+                    </div>
+                </div>`;
+            feedContainer.appendChild(item);
+        });
+        if (typeof refreshFeedVisibility === "function") refreshFeedVisibility();
+    });
 }
 
 async function loadComments(postId) {
