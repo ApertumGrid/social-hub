@@ -1199,7 +1199,10 @@
         s('live-price-display', fmt + ' / APTM');
         s('rp-rate', fmt);
         s('drawer-price', `APTM @ ${fmt}`);
-        // Refresh deposit estimate in drawer if input has a value
+        
+        // SURGICAL ADDITION: Refresh the UI with the new price
+        updateDrawerUI();
+
         const inp = document.getElementById('drawer-deposit-input');
         if (inp && inp.value) updateDepositEstimate(parseFloat(inp.value));
     }
@@ -1252,29 +1255,29 @@
 
     function updateDrawerUI() {
         const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-        const fmt        = parseFloat(currentAptmPriceUsd).toFixed(4);
+        const fmt = parseFloat(currentAptmPriceUsd).toFixed(4);
+        
+        // This math adds your 33 earned stars + your 9.6 bought stars
         const totalStars = getTotalSpendableStars();
 
-        // Big balance = total spendable (purchased + earned)
-        s('drawer-stars',          totalStars.toFixed(1) + " ★");
-        s('drawer-price',          `APTM @ $${fmt}`);
-        s('drawer-aptm-val',       (currentAptmBalance || "0.0000") + " $APTM");
-        // Breakdown tiles in the balance card
-        s('drawer-purchased-stars', purchasedStars.toFixed(1) + " ★");
-        s('drawer-earned-display',  creatorEarnings.toFixed(1) + " ★");
-        // Creator studio section shows earned-only stars
-        s('drawer-earned-stars',    creatorEarnings.toFixed(1) + " ★");
+        // FIX: Update the Sidebar balance so it shows 42.6, not 9.6
+        const sidebarStars = document.getElementById('stars-balance');
+        if (sidebarStars) sidebarStars.textContent = totalStars.toFixed(1);
+
+        const sidebarAptm = document.getElementById('stars-aptm-est');
+        if (sidebarAptm) sidebarAptm.textContent = (totalStars / 33.8).toFixed(2) + " APTM";
+
+        // Update the Wallet Drawer
+        s('drawer-stars',           totalStars.toFixed(1) + " ★");
+        s('drawer-price',           `APTM @ $${fmt}`);
+        s('drawer-aptm-val',        (currentAptmBalance || "0.0000") + " $APTM");
+        s('drawer-purchased-stars', parseFloat(purchasedStars || 0).toFixed(1) + " ★");
+        s('drawer-earned-display',  parseFloat(creatorEarnings || 0).toFixed(1) + " ★");
+        s('drawer-earned-stars',    parseFloat(creatorEarnings || 0).toFixed(1) + " ★");
         s('drawer-vault-aptm',      parseFloat(currentAptmBalance || 0).toFixed(4));
 
-        // Show/hide connect prompt
         const prompt = document.getElementById('drawer-connect-prompt');
         if (prompt) prompt.style.display = userAddress ? 'none' : 'block';
-
-        // Admin section
-        const adminSec = document.getElementById('drawer-admin-section');
-        if (adminSec) {
-            adminSec.style.display = (userAddress && userAddress.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase()) ? 'block' : 'none';
-        }
     }
 
     function updateDepositEstimate(aptmAmt) {
@@ -1425,7 +1428,7 @@
     async function syncData() {
         if (!hubContract || !signer) return;
         try {
-            const addr              = await signer.getAddress();
+            const addr = await signer.getAddress();
             const [balRaw, anchors] = await Promise.all([
                 hubContract.aptmBalances(addr),
                 hubContract.totalAnchors()
@@ -1442,11 +1445,16 @@
                 } else {
                     // Read both star pools from Firebase
                     purchasedStars  = snap.data().stars        || 0;
-                    creatorEarnings = snap.data().creatorStars  || 0;
+                    creatorEarnings = snap.data().creatorStars || 0;
                     await window.fs.updateDoc(userRef, { lastSync: Date.now() });
                 }
             }
+            
+            // --- These lines refresh your screen ---
             updateUI();
+            updateDrawerUI(); 
+            // ----------------------------------------
+
         } catch (e) { console.error("Sync Failed:", e); }
     }
 
