@@ -8,7 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
    <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyANZhaAodV4TvfLk84dzwscI7cSSiwyyv4",
@@ -24,7 +24,7 @@
   const db = getFirestore(app);
 
   window.db = db;
-  window.fs = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where };
+  window.fs = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc };
   
   console.log("Firebase Database Fully Linked with 'where' clause!");
 </script>
@@ -172,9 +172,15 @@
         <div id="page-earnings" class="page">
             <h1 style="font-weight:900;">Creator Studio</h1>
             <div class="glass-panel">
-                <div style="font-size: 0.7rem; color: #888;">NETWORK EARNINGS</div>
+                <div style="font-size: 0.7rem; color: #888; letter-spacing: 1px;">CREATOR EARNINGS (STAR ECONOMY)</div>
                 <div style="font-size: 2.5rem; font-weight: 900; color: var(--gold);" id="creator-revenue-display">0 ★</div>
-                <div class="aptm-indicator" id="earnings-aptm-value" style="font-size: 1rem; margin-bottom: 20px;">EQUIVALENT: 0.00 $APTM</div>
+                <div style="font-size: 0.7rem; color: #555; margin-top: 4px; margin-bottom: 20px;">Stars earned from Hypes & Comments on your content</div>
+
+                <div style="border-top: 1px solid #222; padding-top: 20px; margin-top: 5px;">
+                    <div style="font-size: 0.7rem; color: #888; letter-spacing: 1px;">BLOCKCHAIN BALANCE ($APTM)</div>
+                    <div class="aptm-indicator" id="earnings-aptm-value" style="font-size: 1.2rem; margin-top: 6px; margin-bottom: 20px;">0.00 $APTM</div>
+                </div>
+
                 <button class="action-btn" style="width:auto; padding:15px 30px;" onclick="settleToWallet()">SETTLE TO WALLET</button>
             </div>
         </div>
@@ -212,6 +218,7 @@
     // GLOBAL STATE
     let currentAptmBalance = "0.0000";
     let starBalance = "0";
+    let creatorEarnings = 0;   // ★ Firebase star economy earnings (separate from blockchain)
     let currentAptmPriceUsd = 0.3391;
     let totalAnchors = 0;
     let provider, signer, hubContract;
@@ -271,6 +278,7 @@
                 
                 await syncData(); 
                 updateUI(); 
+                subscribeToEarnings(userAddress);  // ★ Live-subscribe to Firebase earnings
                 
                 if (typeof loadGlobalFeed === "function") loadGlobalFeed(); 
 
@@ -307,19 +315,20 @@
     // ✅ FIX 2: updateUI now also updates the post composer header (pb-avatar and pb-handle)
     function updateUI() {
         try {
-            // Sidebar
+            // Sidebar — shows blockchain-derived star balance (spending power)
             const sDisp = document.getElementById('user-stars');
             if(sDisp) sDisp.innerText = (starBalance || "0") + " ★";
             
             const aDisp = document.getElementById('sidebar-aptm-value');
             if(aDisp) aDisp.innerText = (currentAptmBalance || "0.0000") + " $APTM";
 
-            // Creator Studio
+            // Creator Studio — earnings from Firebase star economy
             const cStars = document.getElementById('creator-revenue-display');
-            if(cStars) cStars.innerText = (starBalance || "0") + " ★";
+            if(cStars) cStars.innerText = creatorEarnings.toFixed(1) + " ★";
 
+            // Blockchain balance shown separately in Creator Studio
             const cAptm = document.getElementById('earnings-aptm-value');
-            if(cAptm) cAptm.innerText = "VALUE: " + (currentAptmBalance || "0.0000") + " $APTM";
+            if(cAptm) cAptm.innerText = (currentAptmBalance || "0.0000") + " $APTM";
             
             // Price ticker
             const pDisp = document.getElementById('live-price-display');
@@ -332,7 +341,7 @@
             const pbHandle = document.getElementById('pb-handle');
             if(pbHandle) pbHandle.innerText = userHandle;
 
-            console.log("UI Sync Complete: Stars=" + starBalance + " Handle=" + userHandle);
+            console.log("UI Sync Complete: Stars=" + starBalance + " Earnings=" + creatorEarnings + " Handle=" + userHandle);
         } catch (e) {
             console.error("UI Update Error:", e);
         }
@@ -356,6 +365,45 @@
         } else {
             alert("Please enter both a name and an image URL");
         }
+    }
+
+    // ═══════════════════════════════════════════════════
+    // STAR ECONOMY — Firebase balance helpers
+    // ═══════════════════════════════════════════════════
+
+    // Atomically adjust a user's internal star balance in Firebase.
+    // amount can be positive (credit) or negative (debit).
+    async function adjustFirebaseBalance(walletAddr, amount) {
+        if (!walletAddr || walletAddr === "unknown" || !window.db) return;
+        const addr = walletAddr.toLowerCase();
+        const ref = window.fs.doc(window.db, "user_balances", addr);
+        try {
+            await window.fs.runTransaction(window.db, async (txn) => {
+                const snap = await txn.get(ref);
+                const current = snap.exists() ? (snap.data().stars || 0) : 0;
+                const next = Math.max(0, current + amount);
+                txn.set(ref, { stars: next, lastUpdated: Date.now() }, { merge: true });
+            });
+        } catch (e) {
+            console.error("Balance adjustment failed for", addr, e);
+        }
+    }
+
+    // Subscribe to the current user's Firebase earnings — live updates Creator Studio.
+    function subscribeToEarnings(walletAddr) {
+        if (!walletAddr || !window.db) return;
+        const addr = walletAddr.toLowerCase();
+        const ref = window.fs.doc(window.db, "user_balances", addr);
+        window.fs.onSnapshot(ref, (snap) => {
+            if (snap.exists()) {
+                creatorEarnings = snap.data().stars || 0;
+            } else {
+                creatorEarnings = 0;
+            }
+            // Update only the Creator Studio display (not the sidebar spending balance)
+            const cStars = document.getElementById('creator-revenue-display');
+            if (cStars) cStars.innerText = creatorEarnings.toFixed(1) + " ★";
+        });
     }
 
     async function convertAPTM() {
@@ -492,15 +540,15 @@
     }
 
     async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
-        // ✅ No MetaMask needed — local star check only
+        // ★ STAR ECONOMY: Sender loses 1★, Creator gets 0.8★, Platform keeps 0.2★
         if (parseInt(starBalance) < 1) {
             return alert("Not enough Stars! Please deposit APTM to continue.");
         }
 
         const inputId = isReply ? `reply-in-${parentId}` : `input-${postId}`;
         const input = document.getElementById(inputId);
-        const commentText = input.value;
-        if(!commentText) return;
+        const commentText = input ? input.value.trim() : "";
+        if (!commentText) return;
 
         try {
             // ✅ Always read identity fresh from localStorage
@@ -511,22 +559,34 @@
                 text: commentText,
                 author: authorName,
                 authorAddr: userAddress || "unknown",
-                postId: postId,
+                avatar: authorPic,
+                postId: String(postId),        // ★ FIX: always a clean string so the query matches
                 parentId: parentId || null,
                 isReply: isReply,
                 timestamp: Date.now(),
                 hypes: 0
             };
 
-            // ✅ Save to Firebase — no blockchain tx, no MetaMask popup
+            // 1. Save comment to Firebase
             await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
 
-            // ✅ Deduct 1 star locally so UI reflects cost immediately
+            // 2. 80/20 Split: credit post author 0.8★ in Firebase
+            if (recipientAddress && recipientAddress !== "unknown") {
+                await adjustFirebaseBalance(recipientAddress, 0.8);
+            }
+
+            // 3. Deduct 1★ from sender's local spending balance
             starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
 
-            input.value = "";
-            showToast("Comment Live! (-1★)");
+            // 4. Clear input and keep tray open (do NOT toggle it closed)
+            if (input) input.value = "";
+
+            // 5. Make sure the tray is visible (it may not have been opened yet)
+            const tray = document.getElementById(`tray-${postId}`);
+            if (tray) tray.style.display = 'block';
+
+            showToast("Comment Live! Creator +0.8★");
         } catch (e) { 
             console.error("Comment Error:", e);
             showToast("Failed to post. Check connection."); 
@@ -579,7 +639,7 @@
     }
 
     async function hypeElement(recipientAddress, displayId) {
-        // ✅ No MetaMask needed — local star check only
+        // ★ STAR ECONOMY: Sender loses 1★, Creator gets 0.8★, Platform keeps 0.2★
         if (parseInt(starBalance) < 1) {
             return alert("Not enough Stars! Please deposit APTM to continue.");
         }
@@ -587,15 +647,20 @@
         try {
             const postId = displayId.replace('hp-', '');
 
-            // ✅ Update hype count in Firebase — no blockchain tx, no MetaMask popup
+            // 1. Update hype count in Firebase (visible counter on post)
             const postRef = window.fs.doc(window.db, "posts", postId);
             await window.fs.updateDoc(postRef, { hypes: window.fs.increment(1) });
 
-            // ✅ Deduct 1 star locally so UI reflects cost immediately
+            // 2. 80/20 Split: credit creator 0.8★ in Firebase
+            if (recipientAddress && recipientAddress !== "unknown") {
+                await adjustFirebaseBalance(recipientAddress, 0.8);
+            }
+
+            // 3. Deduct 1★ from sender's local spending balance (blockchain-derived)
             starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
 
-            showToast("Hype Recorded! ✨ (-1★)");
+            showToast("Hype Recorded! ✨ Creator +0.8★");
         } catch (e) { 
             console.error("Hype Error:", e);
             showToast("Hype failed. Check connection.");
@@ -604,7 +669,10 @@
 
     function toggleTray(id) {
         const t = document.getElementById(`tray-${id}`);
-        if(t) t.style.display = t.style.display === 'block' ? 'none' : 'block';
+        if (!t) return;
+        // Toggle: if currently hidden or not yet shown, open it; otherwise close it
+        const isOpen = t.style.display === 'block';
+        t.style.display = isOpen ? 'none' : 'block';
     }
 
     function toggleReply(id) {
@@ -620,6 +688,11 @@
 
         window.fs.onSnapshot(q, (snapshot) => {
             feedContainer.innerHTML = ""; 
+            // Clear comment listener registry since the DOM elements are gone
+            Object.keys(_commentListeners).forEach(k => {
+                if (typeof _commentListeners[k] === 'function') _commentListeners[k](); // unsubscribe
+                delete _commentListeners[k];
+            });
             snapshot.forEach((docRef) => {
                 const post = docRef.data();
                 const postId = docRef.id;
@@ -669,9 +742,15 @@
         });
     }
 
+    // Track active comment listeners so we don't create duplicates
+    const _commentListeners = {};
+
     async function loadComments(postId) {
         const list = document.getElementById(`list-${postId}`);
         if (!list || !window.db) return;
+
+        // If we already have a live listener for this post, don't add another
+        if (_commentListeners[postId]) return;
 
         const q = window.fs.query(
             window.fs.collection(window.db, "comments"),
@@ -679,14 +758,38 @@
             window.fs.orderBy("timestamp", "asc")
         );
 
-        window.fs.onSnapshot(q, (snapshot) => {
+        // Store the unsubscribe function so we can deduplicate
+        _commentListeners[postId] = window.fs.onSnapshot(q, (snapshot) => {
             list.innerHTML = "";
+            if (snapshot.empty) {
+                list.innerHTML = `<div style="font-size:0.75rem; color:#555; padding:8px;">No comments yet. Be first!</div>`;
+                return;
+            }
             snapshot.forEach((docRef) => {
                 const comment = docRef.data();
                 const row = document.createElement('div');
                 row.className = 'comment-row';
-                row.innerHTML = `<div style="font-size: 0.85rem;"><b style="color:#FFD700;">${comment.author}</b>: ${comment.text}</div>`;
+                row.innerHTML = `<div style="font-size: 0.85rem;"><b style="color:#FFD700;">${comment.author || "Anonymous"}</b>: ${comment.text}</div>`;
                 list.appendChild(row);
+            });
+        }, (err) => {
+            console.error("Comment listener error for", postId, err);
+            // If the composite index isn't built yet, fall back to timestamp-only query
+            const fallbackQ = window.fs.query(
+                window.fs.collection(window.db, "comments"),
+                window.fs.where("postId", "==", String(postId))
+            );
+            _commentListeners[postId] = window.fs.onSnapshot(fallbackQ, (snapshot) => {
+                list.innerHTML = "";
+                const sorted = [];
+                snapshot.forEach(d => sorted.push(d.data()));
+                sorted.sort((a, b) => a.timestamp - b.timestamp);
+                sorted.forEach(comment => {
+                    const row = document.createElement('div');
+                    row.className = 'comment-row';
+                    row.innerHTML = `<div style="font-size: 0.85rem;"><b style="color:#FFD700;">${comment.author || "Anonymous"}</b>: ${comment.text}</div>`;
+                    list.appendChild(row);
+                });
             });
         });
     }
