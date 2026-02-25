@@ -4,18 +4,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCIALHUB — Signal Protocol</title>
+    <title>SOCIALHUB — Signal Protocol v10</title>
 
     <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 
-    <!-- 2. Irys WebIrys browser SDK (Fix #1) -->
+    <!-- 2. Irys WebIrys browser SDK -->
     <script src="https://gateway.irys.xyz/sdk/v0.2.8"></script>
 
     <!-- 3. Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+
         const firebaseConfig = {
             apiKey: "AIzaSyANZhaAodV4TvfLk84dzwscI7cSSiwyyv4",
             authDomain: "socialhub-33014.firebaseapp.com",
@@ -26,12 +28,16 @@
             measurementId: "G-B2C1K1LVGQ"
         };
         const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+        const db  = getFirestore(app);
+        const storage = getStorage(app);
         window.db = db;
+        window.storage = storage;
         window.fs = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc };
+        window.fsStorage = { ref, uploadBytesResumable, getDownloadURL };
     </script>
 
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
     <style>
         :root {
             --bg-outer:    #0d1117;
@@ -64,6 +70,7 @@
             --radius-xl:  20px;
             --font-body: 'Sora', sans-serif;
             --font-mono: 'JetBrains Mono', monospace;
+            --bottom-nav-h: 60px;
         }
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -288,6 +295,37 @@
         .upload-zone-text { font-size: 0.78rem; color: var(--text-secondary); pointer-events: none; }
         .upload-zone-text strong { display: block; color: var(--purple-lt); font-size: 0.82rem; margin-bottom: 3px; }
 
+        /* ── UPLOAD PROGRESS BAR (NEW V10) ── */
+        #upload-progress-wrap {
+            display: none;
+            margin-top: 10px;
+        }
+        .progress-label {
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 0.68rem; color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+        .progress-label span { font-family: var(--font-mono); color: var(--purple-lt); font-weight: 600; }
+        .progress-track {
+            width: 100%; height: 6px;
+            background: var(--bg-input);
+            border-radius: 99px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            border-radius: 99px;
+            background: linear-gradient(90deg, var(--purple), var(--teal));
+            transition: width 0.2s ease;
+            box-shadow: 0 0 8px rgba(124,92,191,0.5);
+        }
+        .progress-status {
+            font-size: 0.64rem; color: var(--text-muted);
+            margin-top: 5px; font-family: var(--font-mono);
+        }
+
         #irys-status {
             font-size: 0.7rem; margin-top: 8px; padding: 7px 12px;
             border-radius: var(--radius-sm);
@@ -408,6 +446,25 @@
         .cmt-input-row { display: flex; gap: 8px; }
         .cmt-input-row .field { margin-top: 0; flex: 1; }
 
+        /* ── CLOSE COMMENTS BUTTON (NEW V10) ── */
+        .close-comments-btn {
+            display: block;
+            width: 100%;
+            padding: 7px 14px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-muted);
+            font-family: var(--font-body);
+            font-size: 0.72rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            margin-top: 10px;
+            transition: all 0.13s;
+        }
+        .close-comments-btn:hover { border-color: var(--purple-lt); color: var(--purple-lt); background: var(--purple-glow); }
+
         /* Right panel */
         #right-panel {
             border-left: 1px solid var(--border);
@@ -467,6 +524,23 @@
 
         /* Admin panel — hidden by default, shown for admin wallet only */
         #admin-revenue-panel { display: none; }
+
+        /* ── ADMIN WITHDRAW BUTTON (NEW V10) ── */
+        #admin-withdraw-btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            margin-top: 12px;
+            padding: 9px 18px;
+            background: linear-gradient(135deg, rgba(240,180,41,0.2), rgba(240,180,41,0.08));
+            border: 1px solid rgba(240,180,41,0.4);
+            border-radius: var(--radius-md);
+            color: var(--gold);
+            font-family: var(--font-body);
+            font-size: 0.8rem; font-weight: 700;
+            cursor: pointer;
+            transition: all 0.18s;
+            letter-spacing: 0.3px;
+        }
+        #admin-withdraw-btn:hover { background: rgba(240,180,41,0.18); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(240,180,41,0.15); }
 
         /* Tokenomics */
         .tok-section {
@@ -540,6 +614,121 @@
             background: linear-gradient(90deg, var(--purple-lt), var(--teal));
             clip-path: polygon(0 60%, 15% 30%, 30% 55%, 45% 20%, 60% 40%, 75% 15%, 90% 35%, 100% 25%, 100% 100%, 0 100%);
         }
+
+        /* ── FIREBASE STORAGE BADGE ── */
+        .firebase-tag {
+            display: inline-flex; align-items: center; gap: 5px;
+            font-family: var(--font-mono); font-size: 0.58rem;
+            background: rgba(255,160,0,0.1); border: 1px solid rgba(255,160,0,0.25);
+            color: #ffb300; padding: 2px 8px; border-radius: 4px;
+            margin-bottom: 8px;
+        }
+
+        /* ══════════════════════════════════════════════════
+           MOBILE RESPONSIVE — < 768px  (NEW V10)
+        ══════════════════════════════════════════════════ */
+        @media (max-width: 768px) {
+            body { align-items: stretch; justify-content: stretch; }
+
+            #app-shell {
+                width: 100vw;
+                height: 100vh;
+                border-radius: 0;
+                border: none;
+            }
+
+            /* Hide sidebars on mobile */
+            #sidebar, #right-panel { display: none !important; }
+
+            #body-layout {
+                grid-template-columns: 1fr;
+            }
+
+            #feed-col {
+                padding: 12px;
+                padding-bottom: calc(var(--bottom-nav-h) + 20px);
+            }
+
+            /* Edge-to-edge media on mobile */
+            .post-card {
+                border-radius: var(--radius-md);
+                padding: 14px 0;
+                background: transparent;
+                border: none;
+                border-bottom: 1px solid var(--border);
+                border-radius: 0;
+            }
+            .post-card .post-header,
+            .post-card .post-body,
+            .post-card .post-actions,
+            .post-card .comment-tray {
+                padding-left: 14px;
+                padding-right: 14px;
+            }
+            .post-media {
+                width: 100%;
+                max-height: none;
+                border-radius: 0;
+                border-left: none;
+                border-right: none;
+                margin-bottom: 12px;
+            }
+            .post-media img { max-height: 60vw; }
+            .post-media iframe { height: 56vw; }
+
+            /* Composer card on mobile */
+            .card { border-radius: var(--radius-md); }
+
+            /* Top nav on mobile — compact */
+            #topnav { padding: 0 14px; }
+            .user-pill-name { display: none; }
+            .user-pill-sub  { display: none; }
+            .user-pill { padding: 5px; }
+
+            /* Bottom navigation bar */
+            #bottom-nav {
+                display: flex;
+            }
+
+            /* Hide toast above bottom nav */
+            #toast { bottom: calc(var(--bottom-nav-h) + 14px); }
+        }
+
+        /* ── BOTTOM NAVIGATION BAR (NEW V10, mobile only) ── */
+        #bottom-nav {
+            display: none; /* shown only on mobile via media query */
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            height: var(--bottom-nav-h);
+            background: var(--bg-panel);
+            border-top: 1px solid var(--border);
+            z-index: 100;
+            align-items: stretch;
+        }
+        .bnav-item {
+            flex: 1;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 4px;
+            cursor: pointer;
+            color: var(--text-muted);
+            font-size: 0.6rem; font-weight: 600;
+            letter-spacing: 0.5px;
+            transition: all 0.15s;
+            border: none; background: transparent;
+            text-transform: uppercase;
+        }
+        .bnav-item .bnav-icon { font-size: 1.2rem; }
+        .bnav-item.active { color: var(--purple-lt); }
+        .bnav-item:hover  { color: var(--text-primary); }
+        /* Post button — special */
+        .bnav-post {
+            background: var(--purple);
+            color: #fff !important;
+            border-radius: 14px;
+            margin: 8px 10px;
+            flex: 1.2;
+        }
+        .bnav-post:hover { background: var(--purple-lt); }
     </style>
 </head>
 <body>
@@ -575,13 +764,13 @@
         <div id="sidebar">
             <div class="sidebar-section">
                 <div class="sidebar-section-label">Navigation</div>
-                <div class="nav-item active" onclick="switchPage('home', this)"><span class="nav-icon">⊞</span> Home Feed</div>
-                <div class="nav-item" onclick="switchPage('earnings', this)">
+                <div class="nav-item active" id="nav-home" onclick="switchPage('home', this)"><span class="nav-icon">⊞</span> Home Feed</div>
+                <div class="nav-item" id="nav-earnings" onclick="switchPage('earnings', this)">
                     <span class="nav-icon">◆</span> Creator Studio
                     <span class="nav-badge" id="sidebar-stars-badge">0 ★</span>
                 </div>
-                <div class="nav-item" onclick="switchPage('profile', this)"><span class="nav-icon">◉</span> My Profile</div>
-                <div class="nav-item" onclick="switchPage('info', this)"><span class="nav-icon">◎</span> Tokenomics</div>
+                <div class="nav-item" id="nav-profile" onclick="switchPage('profile', this)"><span class="nav-icon">◉</span> My Profile</div>
+                <div class="nav-item" id="nav-info" onclick="switchPage('info', this)"><span class="nav-icon">◎</span> Tokenomics</div>
             </div>
 
             <div class="sidebar-vault">
@@ -620,7 +809,7 @@
 
                     <div class="media-tabs">
                         <div class="mtab active" id="tab-url"  onclick="setMediaTab('url')">🔗 URL</div>
-                        <div class="mtab"        id="tab-file" onclick="setMediaTab('file')">📁 File → Arweave</div>
+                        <div class="mtab"        id="tab-file" onclick="setMediaTab('file')">☁ Firebase Upload</div>
                     </div>
 
                     <!-- URL input panel -->
@@ -631,14 +820,14 @@
                         </div>
                     </div>
 
-                    <!-- File upload panel (Irys) -->
+                    <!-- Firebase file upload panel -->
                     <div id="file-input-wrap" style="display:none;">
                         <div class="upload-zone">
                             <input type="file" id="media-file-input" accept="image/*,video/*" onchange="handleFileSelect(this)">
                             <div class="upload-zone-text">
                                 <strong>↑ Click or drop to upload</strong>
-                                Stored permanently via Irys on Arweave.<br>
-                                <span style="color:var(--purple-lt); font-size:0.68rem;">Tiny fee paid via MetaMask (MATIC).</span>
+                                Stored on <span style="color:#ffb300;">Firebase Storage</span>.<br>
+                                <span style="font-size:0.68rem; color:var(--text-muted);">No MetaMask required for upload.</span>
                             </div>
                         </div>
                         <div id="file-preview-wrap" style="display:none; margin-top:10px;">
@@ -646,6 +835,18 @@
                             <video id="file-preview-vid" controls style="max-width:100%; border-radius:10px; display:none;"></video>
                             <div id="file-info" style="font-size:0.7rem; color:var(--text-muted); margin-top:5px;"></div>
                         </div>
+                    </div>
+
+                    <!-- UPLOAD PROGRESS BAR (NEW V10) -->
+                    <div id="upload-progress-wrap">
+                        <div class="progress-label">
+                            <span id="progress-label-text">Uploading to Firebase…</span>
+                            <span id="progress-pct">0%</span>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-bar" id="progress-bar"></div>
+                        </div>
+                        <div class="progress-status" id="progress-status">Preparing…</div>
                     </div>
 
                     <div id="irys-status"></div>
@@ -693,12 +894,22 @@
                     <div id="ledger-list"><div class="ledger-empty">Connect wallet to view history.</div></div>
                 </div>
 
-                <!-- Admin Revenue Panel — only shown to CONFIG.ADMIN_ADDRESS -->
+                <!--
+                    ══════════════════════════════════════════════════════
+                    ADMIN REVENUE PANEL (V10)
+                    Visible ONLY when connected wallet === CONFIG.ADMIN_ADDRESS
+                    Shows: Total Platform Revenue + Withdraw button → adminWithdraw()
+                    ══════════════════════════════════════════════════════
+                -->
                 <div class="card" id="admin-revenue-panel" style="border-color:rgba(240,180,41,0.2);">
                     <div style="font-family:var(--font-mono); font-size:0.58rem; color:var(--gold); letter-spacing:2px; text-transform:uppercase; font-weight:700; margin-bottom:4px;">🔐 Platform Revenue — Admin</div>
-                    <div style="font-size:0.62rem; color:var(--text-muted); margin-bottom:12px;">Cumulative 20% platform fee from all interactions</div>
-                    <div style="font-family:var(--font-mono); font-size:1.8rem; font-weight:700; color:var(--teal);" id="admin-revenue-display">0 ★</div>
+                    <div style="font-size:0.62rem; color:var(--text-muted); margin-bottom:12px;">Cumulative fees: 100% from posts + 20% from interactions</div>
+                    <div style="font-size:0.68rem; color:var(--text-secondary); margin-bottom:2px;">Total Platform Revenue</div>
+                    <div style="font-family:var(--font-mono); font-size:2rem; font-weight:700; color:var(--teal);" id="admin-revenue-display">0 ★</div>
                     <div style="font-size:0.62rem; color:var(--text-muted); margin-top:4px;" id="admin-revenue-count">0 fee events</div>
+                    <button id="admin-withdraw-btn" onclick="adminWithdraw()">
+                        ⬇ Withdraw to Admin Wallet
+                    </button>
                 </div>
             </div>
 
@@ -717,23 +928,23 @@
             <div id="page-info" class="page">
                 <div class="page-heading">Token<span>omics</span></div>
                 <div class="card">
-                    <div class="tok-section">Broadcast Costs</div>
+                    <div class="tok-section">Broadcast Costs (100% Admin Revenue)</div>
                     <div class="tok-row"><span class="tok-label">Text Signal</span><span class="tok-value">1.2 ★</span></div>
-                    <div class="tok-row"><span class="tok-label">Image Signal</span><span class="tok-value">3.0 ★ + Irys fee</span></div>
-                    <div class="tok-row"><span class="tok-label">Video Signal</span><span class="tok-value">10.0 ★ + Irys fee</span></div>
+                    <div class="tok-row"><span class="tok-label">Image Signal</span><span class="tok-value">3.0 ★</span></div>
+                    <div class="tok-row"><span class="tok-label">Video Signal</span><span class="tok-value">10.0 ★</span></div>
                     <div class="tok-row"><span class="tok-label">Boost to Top</span><span class="tok-value">10.0 ★</span></div>
                     <div class="tok-section">Interaction Costs</div>
                     <div class="tok-row"><span class="tok-label">Hype a Signal</span><span class="tok-value">1.0 ★</span></div>
                     <div class="tok-row"><span class="tok-label">Comment / Reply</span><span class="tok-value">1.0 ★</span></div>
-                    <div class="tok-section">Creator Rewards (80%)</div>
+                    <div class="tok-section">Creator Rewards (80% split)</div>
                     <div class="tok-row"><span class="tok-label">Receive Hype on Post</span><span class="tok-value">+0.8 ★</span></div>
                     <div class="tok-row"><span class="tok-label">Receive Comment on Post</span><span class="tok-value">+0.8 ★</span></div>
                     <div class="tok-row"><span class="tok-label">Receive Hype on Comment</span><span class="tok-value">+0.8 ★</span></div>
                     <div class="tok-row"><span class="tok-label">Receive Reply</span><span class="tok-value">+0.8 ★</span></div>
-                    <div class="tok-section">Decentralized Storage</div>
-                    <div class="tok-row"><span class="tok-label">Provider</span><span class="tok-value" style="color:var(--teal);">Irys / Arweave</span></div>
-                    <div class="tok-row"><span class="tok-label">Developer API Key</span><span class="tok-value" style="color:var(--green);">None Required</span></div>
-                    <div class="tok-row"><span class="tok-label">Fee Payer</span><span class="tok-value" style="color:var(--text-white);">User via MetaMask (MATIC)</span></div>
+                    <div class="tok-section">Media Storage</div>
+                    <div class="tok-row"><span class="tok-label">Provider</span><span class="tok-value" style="color:#ffb300;">Firebase Storage</span></div>
+                    <div class="tok-row"><span class="tok-label">No MetaMask for Upload</span><span class="tok-value" style="color:var(--green);">✓ Zero Popups</span></div>
+                    <div class="tok-row"><span class="tok-label">MetaMask Only For</span><span class="tok-value" style="color:var(--text-white);">Deposit / Withdraw / Register</span></div>
                 </div>
             </div>
 
@@ -777,11 +988,11 @@
             <div class="rp-card">
                 <div class="rp-heading">Storage</div>
                 <div style="font-size:0.72rem; color:var(--text-secondary); line-height:1.6; margin-bottom:10px;">
-                    Media is stored permanently on <span style="color:var(--teal); font-weight:600;">Arweave</span> via <span style="color:var(--purple-lt); font-weight:600;">Irys</span> using <strong style="color:var(--text-white);">MATIC</strong> token. No dev API key needed — users pay their own tiny fee via MetaMask.
+                    Media is stored on <span style="color:#ffb300; font-weight:600;">Firebase Storage</span> (Blaze Plan). No MetaMask required for uploads — just post and go.
                 </div>
                 <div style="display:flex; align-items:center; gap:6px; margin-top:8px;">
-                    <span class="a-dot" style="background:var(--teal);"></span>
-                    <span style="font-family:var(--font-mono); font-size:0.6rem; color:var(--teal);">PERMANENT STORAGE ACTIVE</span>
+                    <span class="a-dot" style="background:#ffb300;"></span>
+                    <span style="font-family:var(--font-mono); font-size:0.6rem; color:#ffb300;">FIREBASE STORAGE ACTIVE</span>
                 </div>
             </div>
 
@@ -790,13 +1001,27 @@
     </div><!-- /body-layout -->
 </div><!-- /app-shell -->
 
+<!-- ── BOTTOM NAVIGATION BAR (Mobile, NEW V10) ── -->
+<div id="bottom-nav">
+    <button class="bnav-item active" id="bnav-home" onclick="switchPage('home', null); setBnav('home')">
+        <span class="bnav-icon">⊞</span>
+        Home
+    </button>
+    <button class="bnav-item bnav-post" onclick="scrollToCompose()">
+        <span class="bnav-icon">+</span>
+        Post
+    </button>
+    <button class="bnav-item" id="bnav-studio" onclick="switchPage('earnings', null); setBnav('studio')">
+        <span class="bnav-icon">◆</span>
+        Studio
+    </button>
+</div>
+
 <div id="toast"></div>
 
 <script>
     // ═══════════════════════════════════════════════════════════════════
-    // ⚙️  GLOBAL CONFIG
-    //     Fix #2: Both addresses hardcoded lowercase to prevent checksum
-    //     Fix #3: Fees confirmed TEXT=1.2, PHOTO=3.0, VIDEO=10.0
+    // ⚙️  GLOBAL CONFIG  (V10)
     // ═══════════════════════════════════════════════════════════════════
     const CONFIG = {
         ADMIN_ADDRESS:    "0xe348fedea1850a0c2d4ac0fed3f903774de1e16a",
@@ -806,11 +1031,12 @@
         PLATFORM_CUT:     0.2,
         CREATOR_CUT:      0.8,
         FEES: {
-            TEXT:  1.2,   // ★ Fix #3
-            PHOTO: 3.0,   // ★ Fix #3
-            VIDEO: 10.0,  // ★ Fix #3
+            TEXT:  1.2,
+            PHOTO: 3.0,
+            VIDEO: 10.0,
             BOOST: 10,
-        }
+        },
+        STORAGE_BUCKET: "gs://socialhub-33014.firebasestorage.app"
     };
 
     // ═══════════════════════════════════════════════════════════════════
@@ -846,6 +1072,22 @@
     let selectedFile = null;
 
     // ═══════════════════════════════════════════════════════════════════
+    // MOBILE BOTTOM NAV
+    // ═══════════════════════════════════════════════════════════════════
+    function setBnav(active) {
+        document.querySelectorAll('.bnav-item').forEach(b => b.classList.remove('active'));
+        const el = document.getElementById('bnav-' + active);
+        if (el) el.classList.add('active');
+    }
+
+    function scrollToCompose() {
+        const compose = document.querySelector('#page-home .card');
+        if (compose) compose.scrollIntoView({ behavior: 'smooth' });
+        switchPage('home', null);
+        setBnav('home');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // MEDIA TABS
     // ═══════════════════════════════════════════════════════════════════
     function setMediaTab(mode) {
@@ -864,7 +1106,7 @@
         let cost = CONFIG.FEES.TEXT.toFixed(1) + ' ★';
         if (mediaTabMode === 'file' && selectedFile) {
             const isVid = selectedFile.type.startsWith('video/');
-            cost = (isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO).toFixed(1) + ' ★  +  Irys fee (MATIC via MetaMask)';
+            cost = (isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO).toFixed(1) + ' ★  (Firebase upload — no MetaMask)';
         } else if (url) {
             const isVid = url.includes('mp4') || getYoutubeId(url);
             cost = (isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO).toFixed(1) + ' ★';
@@ -889,73 +1131,84 @@
             vid.src = objUrl; vid.style.display = 'block';
         }
         const kb = (selectedFile.size / 1024).toFixed(1);
-        info.innerHTML = `<span style="color:var(--purple-lt);">◈ ${selectedFile.name}</span> · ${kb} KB · Will upload to Arweave via Irys (MATIC)`;
+        info.innerHTML = `<span style="color:#ffb300;">◈ ${selectedFile.name}</span> · ${kb} KB · Will upload to Firebase Storage`;
         updatePostFeeDisplay();
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // FIX #1 — IRYS UPLOAD  (WebIrys, node1.irys.xyz, token: matic)
+    // FIREBASE STORAGE UPLOAD WITH REAL-TIME PROGRESS BAR (NEW V10)
     //
-    // The SDK is loaded via the <script> tag in <head>.
-    // WebIrys is available at window.WebIrys after that script executes.
-    // The user's MetaMask is used to sign the fund + upload transactions.
-    // The Arweave URL is returned and stored BEFORE Firebase write.
+    // Rules: Posts, Comments, Hypes = Firebase only, NO MetaMask popup
+    // MetaMask ONLY for: Deposit, Withdraw, Register
     // ═══════════════════════════════════════════════════════════════════
-    async function uploadToIrys(file) {
-        if (!window.ethereum) throw new Error("MetaMask not found");
+    function uploadToFirebaseStorage(file) {
+        return new Promise((resolve, reject) => {
+            if (!window.storage || !window.fsStorage) {
+                return reject(new Error("Firebase Storage not ready yet. Try again in a moment."));
+            }
 
-        const statusEl = document.getElementById('irys-status');
-        const show = (msg, color) => {
-            statusEl.style.display = 'block';
-            statusEl.style.color   = color || 'var(--purple-lt)';
-            statusEl.textContent   = '◈ Irys: ' + msg;
-        };
+            const timestamp  = Date.now();
+            const safeName   = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const storagePath = `media/${timestamp}_${safeName}`;
+            const storageRef  = window.fsStorage.ref(window.storage, storagePath);
+            const uploadTask  = window.fsStorage.uploadBytesResumable(storageRef, file);
 
-        show('Initialising Irys WebIrys…');
+            // Show progress UI
+            const progressWrap   = document.getElementById('upload-progress-wrap');
+            const progressBar    = document.getElementById('progress-bar');
+            const progressPct    = document.getElementById('progress-pct');
+            const progressStatus = document.getElementById('progress-status');
+            const progressLabel  = document.getElementById('progress-label-text');
 
-        // Build the WebIrys instance using the injected MetaMask provider
-        // token: "matic" — user pays storage fee in MATIC (Polygon)
-        const webIrys = new WebIrys({
-            url:    "https://node1.irys.xyz",
-            token:  "matic",
-            wallet: { rpcUrl: "https://polygon-rpc.com", name: "ethersv5", provider: new ethers.providers.Web3Provider(window.ethereum) }
+            progressWrap.style.display = 'block';
+            progressBar.style.width    = '0%';
+            progressPct.textContent    = '0%';
+            progressLabel.textContent  = `Uploading ${file.name}…`;
+            progressStatus.textContent = 'Starting upload…';
+
+            uploadTask.on('state_changed',
+                (snapshot) => {
+                    // PROGRESS EVENT — 0–100%
+                    const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+                    progressBar.style.width   = pct + '%';
+                    progressPct.textContent   = pct + '%';
+
+                    const kb = (snapshot.bytesTransferred / 1024).toFixed(1);
+                    const total = (snapshot.totalBytes / 1024).toFixed(1);
+
+                    switch (snapshot.state) {
+                        case 'paused':
+                            progressStatus.textContent = 'Upload paused.';
+                            break;
+                        case 'running':
+                            progressStatus.textContent = `${kb} KB / ${total} KB transferred`;
+                            break;
+                    }
+                },
+                (error) => {
+                    // UPLOAD FAILED
+                    progressWrap.style.display = 'none';
+                    reject(error);
+                },
+                async () => {
+                    // UPLOAD COMPLETE — get download URL
+                    progressBar.style.width   = '100%';
+                    progressPct.textContent   = '100%';
+                    progressStatus.textContent = 'Processing…';
+
+                    try {
+                        const downloadURL = await window.fsStorage.getDownloadURL(uploadTask.snapshot.ref);
+                        progressStatus.textContent = '✓ Upload complete!';
+                        progressLabel.textContent  = 'Stored on Firebase';
+                        setTimeout(() => { progressWrap.style.display = 'none'; }, 2500);
+                        resolve(downloadURL);
+                    } catch (e) {
+                        progressWrap.style.display = 'none';
+                        reject(e);
+                    }
+                }
+            );
         });
-
-        await webIrys.ready();
-        show('Connected to Irys node1. Estimating fee…');
-
-        // Get the cost in atomic MATIC for this file size
-        const price = await webIrys.getPrice(file.size);
-        const humanPrice = webIrys.utils.fromAtomic(price);
-        show(`Storage fee: ${parseFloat(humanPrice).toFixed(6)} MATIC — opening MetaMask…`, 'var(--teal)');
-
-        // Check loaded balance; fund if needed — this triggers MetaMask
-        const balance = await webIrys.getLoadedBalance();
-        if (balance.lt(price)) {
-            show('Funding Irys node (MetaMask will open)…', 'var(--teal)');
-            // Fund with 1.2x to cover any minor variance
-            await webIrys.fund(price.multipliedBy(1.2).integerValue());
-            show('Funded! Uploading file to Arweave…');
-        } else {
-            show('Balance sufficient. Uploading file to Arweave…');
-        }
-
-        // Read the file as a Buffer and upload with its MIME type as a tag
-        const arrayBuffer = await file.arrayBuffer();
-        const dataBuffer  = Buffer.from(arrayBuffer);
-
-        const receipt = await webIrys.uploadData(dataBuffer, {
-            tags: [
-                { name: "Content-Type",   value: file.type },
-                { name: "App-Name",       value: "SocialHub-Signal-Protocol" },
-                { name: "App-Version",    value: "9.0" }
-            ]
-        });
-
-        const arweaveUrl = `https://gateway.irys.xyz/${receipt.id}`;
-        show(`✓ Permanent! TX: ${receipt.id.slice(0, 14)}…  →  gateway.irys.xyz`, 'var(--green)');
-        console.log("Irys receipt:", receipt);
-        return arweaveUrl;
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -979,7 +1232,7 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // WALLET
+    // WALLET (MetaMask only for: Deposit, Withdraw, Register)
     // ═══════════════════════════════════════════════════════════════════
     async function connectWallet() {
         if (!window.ethereum) return alert("MetaMask not found");
@@ -988,7 +1241,6 @@
             const accts = await provider.send("eth_requestAccounts", []);
             userAddress = accts[0];
             signer      = provider.getSigner();
-            // Fix #2: CONTRACT_ADDRESS already lowercase, ethers accepts it fine
             hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
 
             const statusEl = document.getElementById('wallet-status');
@@ -1106,12 +1358,22 @@
         }).catch(e => console.warn("logTransaction:", e));
     }
 
-    function logPlatformRevenue(sourceAddress, actionType, amount) {
+    // Admin revenue: logs to `admin_revenue` global document (Firestore)
+    function logAdminRevenue(sourceAddress, actionType, amount) {
         if (!window.db) return;
+        // Append to collection for itemized view
         window.fs.addDoc(window.fs.collection(window.db, "platform_revenue"), {
             sourceAddress: (sourceAddress || "unknown").toLowerCase(),
             actionType, amount, timestamp: Date.now()
-        }).catch(e => console.warn("logPlatformRevenue:", e));
+        }).catch(e => console.warn("logAdminRevenue:", e));
+
+        // Also increment the global admin_revenue document for easy total reads
+        const globalRef = window.fs.doc(window.db, "admin_revenue", "global");
+        window.fs.runTransaction(window.db, async (txn) => {
+            const snap = await txn.get(globalRef);
+            const prev = snap.exists() ? (snap.data().total || 0) : 0;
+            txn.set(globalRef, { total: prev + amount, lastUpdated: Date.now() }, { merge: true });
+        }).catch(e => console.warn("logAdminRevenue global:", e));
     }
 
     function subscribeLedger(walletAddr) {
@@ -1158,21 +1420,26 @@
         });
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // ADMIN REVENUE PANEL (V10)
+    // Shows Total Platform Revenue + Withdraw button
+    // Only visible to CONFIG.ADMIN_ADDRESS
+    // ═══════════════════════════════════════════════════════════════════
     function subscribeAdminRevenue(walletAddr) {
         if (!walletAddr || !window.db) return;
-        // Security gate — only show panel + data if wallet matches ADMIN_ADDRESS
         if (walletAddr.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) return;
 
         const panel = document.getElementById('admin-revenue-panel');
         if (panel) panel.style.display = 'block';
 
+        // Subscribe to itemized revenue collection for counts + breakdown
         const q = window.fs.query(
             window.fs.collection(window.db, "platform_revenue"),
             window.fs.orderBy("timestamp", "desc")
         );
         const render = (snap) => {
             let total = 0; snap.forEach(d => { total += (d.data().amount || 0); });
-            const dEl = document.getElementById('admin-revenue-display'); if (dEl) dEl.textContent = total.toFixed(1) + " ★";
+            const dEl = document.getElementById('admin-revenue-display'); if (dEl) dEl.textContent = total.toFixed(2) + " ★";
             const cEl = document.getElementById('admin-revenue-count');   if (cEl) cEl.textContent = snap.size + " fee events";
         };
         window.fs.onSnapshot(q, render, () => {
@@ -1180,8 +1447,28 @@
         });
     }
 
+    // Admin Withdraw — calls smart contract adminWithdraw()
+    // This IS a MetaMask-required action (withdrawal)
+    async function adminWithdraw() {
+        if (!hubContract) return alert("Connect Wallet First");
+        if (!userAddress || userAddress.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) {
+            return alert("Admin only.");
+        }
+        try {
+            showToast("Calling adminWithdraw()…");
+            const tx = await hubContract.adminWithdraw({ gasLimit: 300000 });
+            await tx.wait();
+            showToast("Admin Withdrawal Successful ✓");
+            logTransaction(userAddress, "settle", 0, "Admin withdrew platform revenue to wallet");
+            syncData();
+        } catch (e) {
+            console.error(e);
+            alert("Admin withdraw failed: " + (e.reason || e.message).slice(0, 120));
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════════
-    // WALLET ACTIONS
+    // WALLET ACTIONS (MetaMask gated: Deposit, User Withdraw)
     // ═══════════════════════════════════════════════════════════════════
     async function convertAPTM() {
         currentAptmPriceUsd = await getLiveAptmPrice();
@@ -1268,114 +1555,128 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // FIX #4 — BROADCAST
-    // Irys upload fully awaited BEFORE Firebase write.
-    // mediaUrl is guaranteed to hold the Arweave URL (or empty) when
-    // the post document is created.
+    // BROADCAST (V10)
+    //
+    // ZERO POPUPS for posting:
+    //   - Text: pure Firestore write, star deducted from Firebase balance
+    //   - Photo/Video (file): Firebase Storage upload → Firestore write
+    //   - Photo/Video (url): Firestore write
+    // Admin revenue logged to `admin_revenue` collection (100% of post fee)
+    // MetaMask is NOT called here.
     // ═══════════════════════════════════════════════════════════════════
     async function handleBroadcast() {
         const txt = document.getElementById('post-text').value.trim();
-        if (!txt)         return alert("Write something first!");
-        if (!hubContract) return alert("Connect your wallet first!");
+        if (!txt) return showToast("Write something first!");
+        if (!userAddress) return showToast("Connect your wallet first!");
+
+        // Check Firebase star balance (internal ledger)
+        let currentFbStars = 0;
+        if (window.db) {
+            try {
+                const userRef = window.fs.doc(window.db, "user_balances", userAddress.toLowerCase());
+                const snap    = await window.fs.getDoc(userRef);
+                currentFbStars = snap.exists() ? (snap.data().stars || 0) : 0;
+            } catch (e) { console.warn("Balance check failed:", e); }
+        }
 
         let mediaUrl  = "";
         let feeAmount = CONFIG.FEES.TEXT;
-        let type      = 1;
-        let isArweave = false;
+        let postType  = 1; // 1=text, 2=photo, 3=video
+        let isFirebase = false;
 
-        // ── Step 1: Irys upload (if file mode) ──
+        // Determine post type and fee
         if (mediaTabMode === 'file' && selectedFile) {
             const isVid = selectedFile.type.startsWith('video/');
             feeAmount   = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
-            type        = isVid ? 3 : 2;
-
-            showToast("Step 1/3: Uploading to Arweave via Irys…");
-            try {
-                mediaUrl  = await uploadToIrys(selectedFile);   // ← fully awaited
-                isArweave = true;
-                showToast("Step 1/3: ✓ Stored on Arweave!");
-            } catch (e) {
-                console.error("Irys upload failed:", e);
-                return alert("Irys upload failed: " + e.message + "\n\nCheck MetaMask and ensure you're on Polygon network.");
-            }
+            postType    = isVid ? 3 : 2;
+            isFirebase  = true;
         } else {
-            // URL path
             const url = document.getElementById('post-media').value.trim();
             if (url) {
-                if (url.includes('mp4') || getYoutubeId(url)) { feeAmount = CONFIG.FEES.VIDEO; type = 3; }
-                else { feeAmount = CONFIG.FEES.PHOTO; type = 2; }
+                if (url.includes('mp4') || getYoutubeId(url)) { feeAmount = CONFIG.FEES.VIDEO; postType = 3; }
+                else { feeAmount = CONFIG.FEES.PHOTO; postType = 2; }
                 mediaUrl = url;
             }
         }
 
-        // ── Step 2: On-chain contract call (stars deduction) ──
-        const feeWei = ethers.utils.parseEther(feeAmount.toString());
-        let onChainTx;
-        try {
-            const userAddr      = await signer.getAddress();
-            const internalStars = await hubContract.aptmBalances(userAddr);
-
-            showToast(`Step 2/3: Paying ${feeAmount}★ on-chain…`);
-
-            if (internalStars.gte(feeWei)) {
-                onChainTx = await hubContract.postContent("", type, feeWei, { gasLimit: 500000 });
-            } else {
-                onChainTx = await hubContract.postContent("", type, feeWei, { value: feeWei, gasLimit: 500000 });
-            }
-            await onChainTx.wait();
-        } catch (e) {
-            console.error("On-chain tx failed:", e);
-            return alert("On-chain transaction failed. Check your APTM / Stars balance.\n\n" + (e.reason || e.message).slice(0, 120));
+        // Check sufficient stars (Firebase internal balance)
+        if (currentFbStars < feeAmount) {
+            return alert(`Insufficient Stars!\nRequired: ${feeAmount}★\nYour balance: ${currentFbStars.toFixed(1)}★\n\nDeposit APTM to get more Stars.`);
         }
 
-        // ── Step 3: Write post to Firebase (mediaUrl guaranteed) ──
+        // Step 1: Firebase Storage upload if file selected (NO MetaMask)
+        if (isFirebase && selectedFile) {
+            showToast("Uploading to Firebase Storage…");
+            try {
+                mediaUrl = await uploadToFirebaseStorage(selectedFile);
+                showToast("Upload complete! Writing post…");
+            } catch (e) {
+                console.error("Firebase upload failed:", e);
+                return alert("Upload failed: " + e.message);
+            }
+        }
+
+        // Step 2: Deduct stars from Firebase (internal ledger) — NO MetaMask
         try {
-            const userAddr       = await signer.getAddress();
+            await adjustFirebaseBalance(userAddress, -feeAmount);
+        } catch (e) {
+            console.error("Star deduction failed:", e);
+            return alert("Failed to deduct stars. Please try again.");
+        }
+
+        // Step 3: Log 100% of post fee as admin revenue
+        logAdminRevenue(userAddress, postType === 1 ? "text_post" : postType === 2 ? "photo_post" : "video_post", feeAmount);
+        logTransaction(userAddress, "spend", feeAmount, `Paid ${feeAmount}★ for ${postType === 1 ? 'Text' : postType === 2 ? 'Photo' : 'Video'} Broadcast`);
+
+        // Step 4: Write post to Firestore — NO MetaMask
+        try {
             const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
             const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
 
             const postData = {
-                text:      txt,
-                media:     mediaUrl,      // ← Arweave URL or external URL, captured before this write
-                arweave:   isArweave,
-                author:    postAuthorName,
-                authorAddr: userAddr,
-                avatar:    postAuthorPic,
-                timestamp: Date.now(),
-                hypes:     0,
-                type,
-                feePaid:   feeAmount
+                text:       txt,
+                media:      mediaUrl,
+                firebase:   isFirebase,
+                author:     postAuthorName,
+                authorAddr: userAddress,
+                avatar:     postAuthorPic,
+                timestamp:  Date.now(),
+                hypes:      0,
+                type:       postType,
+                feePaid:    feeAmount
             };
 
-            showToast("Step 3/3: Writing to Firebase…");
             await window.fs.addDoc(window.fs.collection(window.db, "posts"), postData);
 
-            // Clean up composer
+            // Reset composer
             document.getElementById('post-text').value  = "";
             document.getElementById('post-media').value = "";
-            document.getElementById('irys-status').style.display = 'none';
             selectedFile = null;
             const fPrev = document.getElementById('file-preview-wrap');
             if (fPrev) fPrev.style.display = 'none';
+            const progWrap = document.getElementById('upload-progress-wrap');
+            if (progWrap) progWrap.style.display = 'none';
+
+            // Update local star balance optimistically
+            starBalance = Math.max(0, parseFloat(starBalance) - feeAmount).toString();
+            updateUI();
 
             showToast("Signal Live! ◈");
-            logTransaction(userAddr, "spend", parseFloat(feeAmount), `Paid ${feeAmount}★ for Content Broadcast`);
-            setTimeout(() => { syncData(); }, 2000);
         } catch (e) {
             console.error("Firebase write failed:", e);
-            alert("Post anchored on-chain but Firebase write failed: " + e.message);
+            alert("Post failed: " + e.message);
         }
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // BOOST
+    // BOOST (still on-chain — MetaMask required)
     // ═══════════════════════════════════════════════════════════════════
     async function boostPost(postId) {
         if (!hubContract) return alert("Connect Wallet First");
         try {
-            const userAddr      = await signer.getAddress();
+            const userAddr  = await signer.getAddress();
             const internalStars = await hubContract.aptmBalances(userAddr);
-            const boostFee      = ethers.utils.parseEther(CONFIG.FEES.BOOST.toString());
+            const boostFee  = ethers.utils.parseEther(CONFIG.FEES.BOOST.toString());
             let tx;
             showToast("Preparing 10★ Boost…");
             if (internalStars.gte(boostFee)) {
@@ -1392,33 +1693,50 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // HYPE  (80/20 split preserved)
+    // HYPE — Firebase only, NO MetaMask (80/20 split)
     // ═══════════════════════════════════════════════════════════════════
     async function hypeElement(recipientAddress, displayId) {
-        if (parseInt(starBalance) < 1) return alert("Not enough Stars! Deposit APTM to continue.");
+        if (!userAddress) return showToast("Connect wallet first!");
+
+        // Check Firebase star balance
+        let currentFbStars = 0;
+        if (window.db) {
+            try {
+                const userRef  = window.fs.doc(window.db, "user_balances", userAddress.toLowerCase());
+                const snap     = await window.fs.getDoc(userRef);
+                currentFbStars = snap.exists() ? (snap.data().stars || 0) : 0;
+            } catch (e) { /* use cached */ currentFbStars = parseInt(starBalance) || 0; }
+        }
+        if (currentFbStars < 1) return showToast("Not enough Stars! Deposit APTM.");
+
         try {
             const isComment = displayId.startsWith('hc-');
             const entityId  = displayId.replace(isComment ? 'hc-' : 'hp-', '');
 
+            // Update hype count in Firestore (no MetaMask)
             if (isComment) {
                 await window.fs.updateDoc(window.fs.doc(window.db, "comments", entityId), { hypes: window.fs.increment(1) });
             } else {
-                await window.fs.updateDoc(window.fs.doc(window.db, "posts", entityId),    { hypes: window.fs.increment(1) });
+                await window.fs.updateDoc(window.fs.doc(window.db, "posts", entityId), { hypes: window.fs.increment(1) });
             }
 
+            // 80% to creator
             if (recipientAddress && recipientAddress !== "unknown") {
                 await adjustFirebaseBalance(recipientAddress, CONFIG.CREATOR_CUT);
-                logTransaction(
-                    recipientAddress, "earn", CONFIG.CREATOR_CUT,
-                    isComment ? "Earned 0.8★ — someone hyped your comment" : "Earned 0.8★ — someone hyped your post"
-                );
+                logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
+                    isComment ? "Earned 0.8★ — someone hyped your comment" : "Earned 0.8★ — someone hyped your post");
             }
 
+            // Deduct 1★ from sender
+            await adjustFirebaseBalance(userAddress, -1);
+
+            // 20% admin revenue
+            logAdminRevenue(userAddress, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
+            logTransaction(userAddress, "spend", 1, isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype");
+
+            // Update local display
             starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
-            logTransaction(userAddress, "spend", 1, isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype");
-            logPlatformRevenue(userAddress, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
-
             const counterEl = document.getElementById(displayId);
             if (counterEl) counterEl.textContent = (parseInt(counterEl.textContent || "0") + 1);
             showToast("Hyped! Creator +0.8★");
@@ -1426,7 +1744,7 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // COMMENTS
+    // COMMENTS — Firebase only, NO MetaMask
     // ═══════════════════════════════════════════════════════════════════
     function toggleTray(id) {
         const t = document.getElementById(`tray-${id}`);
@@ -1435,11 +1753,24 @@
     }
 
     async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
-        if (parseInt(starBalance) < 1) return alert("Not enough Stars!");
+        if (!userAddress) return showToast("Connect wallet first!");
+
+        // Check Firebase star balance
+        let currentFbStars = 0;
+        if (window.db) {
+            try {
+                const userRef  = window.fs.doc(window.db, "user_balances", userAddress.toLowerCase());
+                const snap     = await window.fs.getDoc(userRef);
+                currentFbStars = snap.exists() ? (snap.data().stars || 0) : 0;
+            } catch (e) { currentFbStars = parseInt(starBalance) || 0; }
+        }
+        if (currentFbStars < 1) return showToast("Not enough Stars! Deposit APTM.");
+
         const inputId    = isReply ? `reply-in-${parentId}` : `input-${postId}`;
         const input      = document.getElementById(inputId);
         const commentText = input ? input.value.trim() : "";
         if (!commentText) return;
+
         try {
             const authorName = localStorage.getItem('hub_userName') || userHandle;
             const authorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
@@ -1449,18 +1780,25 @@
                 postId: String(postId), parentId: parentId || null,
                 isReply, timestamp: Date.now(), hypes: 0
             };
+
+            // Write to Firestore — no MetaMask
             await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
 
+            // 80% to creator
             if (recipientAddress && recipientAddress !== "unknown") {
                 await adjustFirebaseBalance(recipientAddress, CONFIG.CREATOR_CUT);
                 logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, "Earned 0.8★ — someone commented on your content");
             }
 
+            // Deduct 1★ from commenter
+            await adjustFirebaseBalance(userAddress, -1);
+
+            // 20% admin revenue
+            logAdminRevenue(userAddress, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
+            logTransaction(userAddress, "spend", 1, isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment");
+
             starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
-            logTransaction(userAddress, "spend", 1, isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment");
-            logPlatformRevenue(userAddress, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
-
             if (input) input.value = "";
             const tray = document.getElementById(`tray-${postId}`);
             if (tray) tray.style.display = 'block';
@@ -1584,14 +1922,20 @@
 
                 let mediaHtml  = '';
                 const ytId     = getYoutubeId(post.media || "");
-                const arwBadge = post.arweave
-                    ? `<div style="margin-bottom:8px;"><span class="arweave-tag"><span class="a-dot"></span>PERMANENT · ARWEAVE</span></div>`
+
+                // Badge: Firebase or plain
+                const storageBadge = post.firebase
+                    ? `<div style="margin-bottom:8px;"><span class="firebase-tag"><span class="a-dot" style="background:#ffb300;"></span>FIREBASE STORAGE</span></div>`
                     : '';
 
                 if (ytId) {
-                    mediaHtml = `${arwBadge}<div class="post-media"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
+                    mediaHtml = `${storageBadge}<div class="post-media"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
                 } else if (post.media) {
-                    mediaHtml = `${arwBadge}<div class="post-media"><img src="${post.media}" loading="lazy"></div>`;
+                    if (post.type === 3 && !ytId) {
+                        mediaHtml = `${storageBadge}<div class="post-media"><video src="${post.media}" controls style="width:100%;max-height:320px;"></video></div>`;
+                    } else {
+                        mediaHtml = `${storageBadge}<div class="post-media"><img src="${post.media}" loading="lazy"></div>`;
+                    }
                 }
 
                 const item = document.createElement('div');
@@ -1621,6 +1965,7 @@
                             <input type="text" class="field" style="font-size:0.8rem;" placeholder="Add a comment (1★)…" id="input-${postId}">
                             <button class="btn btn-purple btn-sm" onclick="addComment('${post.authorAddr}','${postId}')">Send</button>
                         </div>
+                        <button class="close-comments-btn" onclick="toggleTray('${postId}')">↑ Close Comments</button>
                     </div>`;
                 feedContainer.appendChild(item);
             });
