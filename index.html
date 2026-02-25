@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCIALHUB — Signal Protocol v12</title>
+    <title>SOCIALHUB — Signal Protocol v13</title>
 
     <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
@@ -776,9 +776,13 @@
                 <div class="nav-item" id="nav-info" onclick="switchPage('info', this)"><span class="nav-icon">◎</span> Tokenomics</div>
             </div>
             <div class="sidebar-vault">
-                <div class="vault-label">Active Stars</div>
+                <div class="vault-label">Total Spendable ★</div>
                 <div class="vault-stars" id="user-stars">0 ★</div>
-                <div class="vault-label" style="margin-top:8px;">APTM Vault</div>
+                <div style="font-size:0.58rem; color:var(--text-muted); margin-bottom:8px; line-height:1.6;">
+                    Purchased: <span style="color:var(--gold); font-family:var(--font-mono);" id="sidebar-purchased-stars">0</span> ★ &nbsp;|&nbsp;
+                    Earned: <span style="color:var(--green); font-family:var(--font-mono);" id="sidebar-earned-stars">0</span> ★
+                </div>
+                <div class="vault-label" style="margin-top:4px;">APTM Vault</div>
                 <div class="vault-aptm" id="sidebar-aptm-value">0.0000 $APTM</div>
                 <div class="vault-rate" id="live-price-display">$0.3391 / APTM</div>
                 <button class="btn btn-purple btn-sm" style="margin-top:12px; width:100%; font-size:0.72rem;" onclick="convertAPTM()">DEPOSIT $APTM</button>
@@ -1027,9 +1031,19 @@
 
             <!-- STAR BALANCE + PRICE -->
             <div class="rp-card">
-                <div class="drawer-section-label">Your Star Balance</div>
+                <div class="drawer-section-label">Total Spendable Stars</div>
                 <div class="drawer-stars-display" id="drawer-stars">0 ★</div>
                 <div class="drawer-price-display" id="drawer-price">APTM @ $0.3391</div>
+                <div style="margin-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 10px;">
+                        <div style="font-size:0.56rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:2px;">Purchased</div>
+                        <div style="font-family:var(--font-mono); font-size:1rem; font-weight:700; color:var(--gold);" id="drawer-purchased-stars">0 ★</div>
+                    </div>
+                    <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 10px;">
+                        <div style="font-size:0.56rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:2px;">Earned</div>
+                        <div style="font-family:var(--font-mono); font-size:1rem; font-weight:700; color:var(--green);" id="drawer-earned-display">0 ★</div>
+                    </div>
+                </div>
                 <div style="margin-top:8px; font-size:0.72rem; color:var(--text-muted);">
                     APTM Vault: <span style="color:var(--teal); font-family:var(--font-mono); font-weight:600;" id="drawer-aptm-val">0.0000 $APTM</span>
                 </div>
@@ -1115,8 +1129,8 @@
     // GLOBAL STATE
     // ═══════════════════════════════════════════════════════════════════
     let currentAptmBalance    = "0.0000";
-    let starBalance           = "0";
-    let creatorEarnings       = 0;
+    let purchasedStars        = 0;   // Stars from APTM deposits (user_balances.stars)
+    let creatorEarnings       = 0;   // Stars earned from hypes/comments (user_balances.creatorStars)
     let currentAptmPriceUsd   = 0.3391;
     let totalAnchors          = 0;
     let provider, signer, hubContract;
@@ -1125,6 +1139,11 @@
     let userAvatar   = localStorage.getItem('hub_userPic')  || "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
     let visibleCount = 10;
     const pageSize   = 10;
+
+    // V13: Total spendable = purchased + earned. Used everywhere for balance checks.
+    function getTotalSpendableStars() {
+        return parseFloat(purchasedStars || 0) + parseFloat(creatorEarnings || 0);
+    }
 
     const abi = [
         "function depositAPTM() public payable",
@@ -1143,28 +1162,31 @@
     let selectedFile = null;
 
     // ═══════════════════════════════════════════════════════════════════
-    // PRICE HEARTBEAT  (V12 FIX)
+    // PRICE HEARTBEAT  (V13 FIX — CORS PROXY)
     //
-    // getLiveAptmPrice() runs for ALL visitors — no wallet, no RPC,
-    // no blockchain provider needed. Simple fetch to CoinGecko for
-    // the 'apertum' coin. Falls back to 0.3391 on any error.
+    // Direct CoinGecko calls are blocked by CORS on GitHub Pages.
+    // We route through allorigins.win which adds the required headers.
+    // Response comes back as JSON with the real payload in data.contents
+    // (a stringified JSON string that we parse manually).
+    // Falls back to 0.3391 on any error.
     // ═══════════════════════════════════════════════════════════════════
     async function getLiveAptmPrice() {
         try {
-            const res  = await fetch(
-                "https://api.coingecko.com/api/v3/simple/price?ids=apertum&vs_currencies=usd",
-                { headers: { "Accept": "application/json" } }
-            );
-            if (!res.ok) throw new Error("CoinGecko HTTP " + res.status);
-            const data  = await res.json();
-            const price = data?.apertum?.usd;
+            const cgUrl  = "https://api.coingecko.com/api/v3/simple/price?ids=apertum&vs_currencies=usd";
+            const proxy  = "https://api.allorigins.win/get?url=" + encodeURIComponent(cgUrl);
+            const res    = await fetch(proxy);
+            if (!res.ok) throw new Error("Proxy HTTP " + res.status);
+            const outer  = await res.json();
+            // allorigins wraps the real response body as a string in outer.contents
+            const inner  = JSON.parse(outer.contents);
+            const price  = inner?.apertum?.usd;
             if (price && price > 0) {
-                console.log(`[Heartbeat] APTM Price: $${price.toFixed(4)} (CoinGecko)`);
+                console.log(`[Heartbeat] APTM Price: $${price.toFixed(4)} (CoinGecko via allorigins)`);
                 return price;
             }
             throw new Error("No price in response");
         } catch (err) {
-            console.warn(`[Heartbeat] CoinGecko fetch failed (${err.message}). Using fallback $0.3391`);
+            console.warn(`[Heartbeat] Price fetch failed (${err.message}). Using fallback $0.3391`);
             return 0.3391;
         }
     }
@@ -1230,12 +1252,19 @@
 
     function updateDrawerUI() {
         const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-        const fmt  = parseFloat(currentAptmPriceUsd).toFixed(4);
-        s('drawer-stars',         (starBalance || "0") + " ★");
-        s('drawer-price',         `APTM @ $${fmt}`);
-        s('drawer-aptm-val',      (currentAptmBalance || "0.0000") + " $APTM");
-        s('drawer-earned-stars',  creatorEarnings.toFixed(1) + " ★");
-        s('drawer-vault-aptm',    parseFloat(currentAptmBalance || 0).toFixed(4));
+        const fmt        = parseFloat(currentAptmPriceUsd).toFixed(4);
+        const totalStars = getTotalSpendableStars();
+
+        // Big balance = total spendable (purchased + earned)
+        s('drawer-stars',          totalStars.toFixed(1) + " ★");
+        s('drawer-price',          `APTM @ $${fmt}`);
+        s('drawer-aptm-val',       (currentAptmBalance || "0.0000") + " $APTM");
+        // Breakdown tiles in the balance card
+        s('drawer-purchased-stars', purchasedStars.toFixed(1) + " ★");
+        s('drawer-earned-display',  creatorEarnings.toFixed(1) + " ★");
+        // Creator studio section shows earned-only stars
+        s('drawer-earned-stars',    creatorEarnings.toFixed(1) + " ★");
+        s('drawer-vault-aptm',      parseFloat(currentAptmBalance || 0).toFixed(4));
 
         // Show/hide connect prompt
         const prompt = document.getElementById('drawer-connect-prompt');
@@ -1403,16 +1432,17 @@
             ]);
             const humanBalance  = ethers.utils.formatEther(balRaw);
             currentAptmBalance  = humanBalance;
-            const usdValue      = parseFloat(humanBalance) * parseFloat(currentAptmPriceUsd);
-            starBalance         = Math.floor(usdValue / CONFIG.STAR_USD).toString();
             totalAnchors        = anchors.toNumber();
 
             if (window.db) {
                 const userRef = window.fs.doc(window.db, "user_balances", addr.toLowerCase());
                 const snap    = await window.fs.getDoc(userRef);
                 if (!snap.exists()) {
-                    await window.fs.setDoc(userRef, { stars: 0, lastSync: Date.now(), address: addr.toLowerCase() });
+                    await window.fs.setDoc(userRef, { stars: 0, creatorStars: 0, lastSync: Date.now(), address: addr.toLowerCase() });
                 } else {
+                    // Read both star pools from Firebase
+                    purchasedStars  = snap.data().stars        || 0;
+                    creatorEarnings = snap.data().creatorStars  || 0;
                     await window.fs.updateDoc(userRef, { lastSync: Date.now() });
                 }
             }
@@ -1423,10 +1453,18 @@
     function updateUI() {
         try {
             const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-            const fmt = `$${parseFloat(currentAptmPriceUsd).toFixed(4)}`;
-            s('user-stars',              (starBalance || "0") + " ★");
-            s('sidebar-stars-badge',     (starBalance || "0") + " ★");
-            s('rp-stars',                (starBalance || "0") + " ★");
+            const fmt         = `$${parseFloat(currentAptmPriceUsd).toFixed(4)}`;
+            const totalStars  = getTotalSpendableStars();
+            const totalStr    = totalStars.toFixed(1) + " ★";
+
+            // Sidebar vault — shows TOTAL spendable (purchased + earned)
+            s('user-stars',              totalStr);
+            s('sidebar-purchased-stars', purchasedStars.toFixed(1));
+            s('sidebar-earned-stars',    creatorEarnings.toFixed(1));
+            // Studio nav badge — shows creator-earned stars specifically
+            s('sidebar-stars-badge',     creatorEarnings.toFixed(1) + " ★");
+            // Right panel — total spendable
+            s('rp-stars',                totalStr);
             s('sidebar-aptm-value',      (currentAptmBalance || "0.0000") + " $APTM");
             s('earnings-aptm-value',     (currentAptmBalance || "0.0000") + " $APTM");
             s('rp-aptm',                 parseFloat(currentAptmBalance || 0).toFixed(4));
@@ -1460,9 +1498,63 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // STAR ECONOMY — Firebase balance helpers
+    // STAR ECONOMY — Firebase balance helpers  (V13 REWRITE)
+    //
+    // Two separate star pools per user in Firestore user_balances doc:
+    //   stars        — purchased stars (from APTM deposits)
+    //   creatorStars — earned stars (from hypes/comments received)
+    //
+    // Total spendable = stars + creatorStars.
+    //
+    // Deduction waterfall:
+    //   1. Subtract from `stars` (purchased) first.
+    //   2. If `stars` hits 0 and cost remainder > 0, take from `creatorStars`.
     // ═══════════════════════════════════════════════════════════════════
-    async function adjustFirebaseBalance(walletAddr, amount) {
+
+    // Deduct `amount` from the user's spendable balance using the waterfall.
+    async function deductSpendableStars(walletAddr, amount) {
+        if (!walletAddr || walletAddr === "unknown" || !window.db) return;
+        const addr = walletAddr.toLowerCase();
+        const ref  = window.fs.doc(window.db, "user_balances", addr);
+        await window.fs.runTransaction(window.db, async (txn) => {
+            const snap          = await txn.get(ref);
+            let purchased       = snap.exists() ? (snap.data().stars        || 0) : 0;
+            let earned          = snap.exists() ? (snap.data().creatorStars  || 0) : 0;
+            let remaining       = amount;
+
+            // Step 1: drain purchased stars first
+            const fromPurchased = Math.min(purchased, remaining);
+            purchased          -= fromPurchased;
+            remaining          -= fromPurchased;
+
+            // Step 2: overflow into earned stars
+            const fromEarned    = Math.min(earned, remaining);
+            earned             -= fromEarned;
+
+            txn.set(ref, {
+                stars:        Math.max(0, purchased),
+                creatorStars: Math.max(0, earned),
+                lastUpdated:  Date.now()
+            }, { merge: true });
+        });
+    }
+
+    // Credit earned stars to creatorStars pool (hype/comment rewards received)
+    async function creditCreatorStars(walletAddr, amount) {
+        if (!walletAddr || walletAddr === "unknown" || !window.db) return;
+        const addr = walletAddr.toLowerCase();
+        const ref  = window.fs.doc(window.db, "user_balances", addr);
+        try {
+            await window.fs.runTransaction(window.db, async (txn) => {
+                const snap    = await txn.get(ref);
+                const current = snap.exists() ? (snap.data().creatorStars || 0) : 0;
+                txn.set(ref, { creatorStars: current + amount, lastUpdated: Date.now() }, { merge: true });
+            });
+        } catch (e) { console.error("creditCreatorStars failed:", e); }
+    }
+
+    // Credit purchased stars to the `stars` pool (deposit)
+    async function creditPurchasedStars(walletAddr, amount) {
         if (!walletAddr || walletAddr === "unknown" || !window.db) return;
         const addr = walletAddr.toLowerCase();
         const ref  = window.fs.doc(window.db, "user_balances", addr);
@@ -1470,19 +1562,35 @@
             await window.fs.runTransaction(window.db, async (txn) => {
                 const snap    = await txn.get(ref);
                 const current = snap.exists() ? (snap.data().stars || 0) : 0;
-                txn.set(ref, { stars: Math.max(0, current + amount), lastUpdated: Date.now() }, { merge: true });
+                txn.set(ref, { stars: current + amount, lastUpdated: Date.now() }, { merge: true });
             });
-        } catch (e) { console.error("Balance adjustment failed:", e); }
+        } catch (e) { console.error("creditPurchasedStars failed:", e); }
+    }
+
+    // Legacy wrapper kept so existing hype/comment calls that pass a negative
+    // amount to the OLD adjustFirebaseBalance still work during transition.
+    async function adjustFirebaseBalance(walletAddr, amount) {
+        if (amount < 0) {
+            await deductSpendableStars(walletAddr, Math.abs(amount));
+        } else {
+            await creditCreatorStars(walletAddr, amount);
+        }
     }
 
     function subscribeToEarnings(walletAddr) {
         if (!walletAddr || !window.db) return;
         const ref = window.fs.doc(window.db, "user_balances", walletAddr.toLowerCase());
         window.fs.onSnapshot(ref, (snap) => {
-            creatorEarnings = snap.exists() ? (snap.data().stars || 0) : 0;
+            if (snap.exists()) {
+                purchasedStars  = snap.data().stars        || 0;
+                creatorEarnings = snap.data().creatorStars  || 0;
+            } else {
+                purchasedStars  = 0;
+                creatorEarnings = 0;
+            }
             const el = document.getElementById('creator-revenue-display');
             if (el) el.textContent = creatorEarnings.toFixed(1) + " ★";
-            updateDrawerUI();
+            updateUI();
         });
     }
 
@@ -1617,6 +1725,8 @@
             const tx = await hubContract.depositAPTM({ value: ethers.utils.parseEther(String(parseFloat(amt))), gasLimit: 150000 });
             await tx.wait();
             const starsReceived = Math.floor(parseFloat(amt) * currentAptmPriceUsd / CONFIG.STAR_USD);
+            // Credit to purchased stars pool
+            await creditPurchasedStars(userAddress, starsReceived);
             logTransaction(userAddress, "deposit", starsReceived, `Deposited ${parseFloat(amt).toFixed(2)} $APTM → ${starsReceived} Stars`);
             showToast("Deposit Successful ✓");
             setTimeout(() => { syncData(); }, 2000);
@@ -1713,15 +1823,20 @@
         if (!txt) return showToast("Write something first!");
         if (!userAddress) return showToast("Connect your wallet first!");
 
-        // Read Firebase star balance
-        let currentFbStars = 0;
+        // V13 FIX: Read BOTH star pools from Firebase and sum them
+        let livePurchased = 0;
+        let liveEarned    = 0;
         if (window.db) {
             try {
                 const userRef = window.fs.doc(window.db, "user_balances", userAddress.toLowerCase());
                 const snap    = await window.fs.getDoc(userRef);
-                currentFbStars = snap.exists() ? (snap.data().stars || 0) : 0;
+                if (snap.exists()) {
+                    livePurchased = snap.data().stars        || 0;
+                    liveEarned    = snap.data().creatorStars  || 0;
+                }
             } catch (e) { console.warn("Balance check failed:", e); }
         }
+        const totalAvailable = livePurchased + liveEarned;
 
         let mediaUrl   = "";
         let feeAmount  = CONFIG.FEES.TEXT;
@@ -1742,8 +1857,16 @@
             }
         }
 
-        if (currentFbStars < feeAmount) {
-            return alert(`Insufficient Stars!\nRequired: ${feeAmount}★\nYour balance: ${currentFbStars.toFixed(1)}★\n\nDeposit APTM to get more Stars.`);
+        // V13 FIX: Check against COMBINED balance (purchased + earned)
+        if (totalAvailable < feeAmount) {
+            return alert(
+                `Insufficient Stars!\n` +
+                `Required:        ${feeAmount.toFixed(1)}★\n` +
+                `Purchased Stars: ${livePurchased.toFixed(1)}★\n` +
+                `Earned Stars:    ${liveEarned.toFixed(1)}★\n` +
+                `Total Available: ${totalAvailable.toFixed(1)}★\n\n` +
+                `Deposit more APTM to increase your balance.`
+            );
         }
 
         // Firebase Storage upload (NO MetaMask)
@@ -1758,9 +1881,9 @@
             }
         }
 
-        // Deduct stars (NO MetaMask)
+        // V13 FIX: Deduct using waterfall (purchased first, then earned remainder)
         try {
-            await adjustFirebaseBalance(userAddress, -feeAmount);
+            await deductSpendableStars(userAddress, feeAmount);
         } catch (e) {
             console.error("Star deduction failed:", e);
             return alert("Failed to deduct stars. Please try again.");
@@ -1798,7 +1921,6 @@
             const progWrap = document.getElementById('upload-progress-wrap');
             if (progWrap) progWrap.style.display = 'none';
 
-            starBalance = Math.max(0, parseFloat(starBalance) - feeAmount).toString();
             updateUI();
             showToast("Signal Live! ◈");
         } catch (e) {
@@ -1837,15 +1959,19 @@
     async function hypeElement(recipientAddress, displayId) {
         if (!userAddress) return showToast("Connect wallet first!");
 
-        let currentFbStars = 0;
+        // V13: Check combined total spendable balance
+        let livePurchased = 0, liveEarned = 0;
         if (window.db) {
             try {
                 const userRef  = window.fs.doc(window.db, "user_balances", userAddress.toLowerCase());
                 const snap     = await window.fs.getDoc(userRef);
-                currentFbStars = snap.exists() ? (snap.data().stars || 0) : 0;
-            } catch (_) { currentFbStars = parseInt(starBalance) || 0; }
+                if (snap.exists()) {
+                    livePurchased = snap.data().stars        || 0;
+                    liveEarned    = snap.data().creatorStars  || 0;
+                }
+            } catch (_) { livePurchased = purchasedStars; liveEarned = creatorEarnings; }
         }
-        if (currentFbStars < 1) return showToast("Not enough Stars! Deposit APTM.");
+        if ((livePurchased + liveEarned) < 1) return showToast("Not enough Stars! Deposit APTM.");
 
         try {
             const isComment = displayId.startsWith('hc-');
@@ -1857,21 +1983,20 @@
                 await window.fs.updateDoc(window.fs.doc(window.db, "posts", entityId), { hypes: window.fs.increment(1) });
             }
 
-            // 80% to creator
+            // 80% to creator — goes into their creatorStars pool
             if (recipientAddress && recipientAddress !== "unknown") {
-                await adjustFirebaseBalance(recipientAddress, CONFIG.CREATOR_CUT);
+                await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
                 logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
                     isComment ? "Earned 0.8★ — someone hyped your comment" : "Earned 0.8★ — someone hyped your post");
             }
 
-            // Deduct 1★ from sender
-            await adjustFirebaseBalance(userAddress, -1);
+            // Deduct 1★ from sender using waterfall (purchased first, then earned)
+            await deductSpendableStars(userAddress, 1);
 
             // 20% admin revenue
             logAdminRevenue(userAddress, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
             logTransaction(userAddress, "spend", 1, isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype");
 
-            starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
             const counterEl = document.getElementById(displayId);
             if (counterEl) counterEl.textContent = (parseInt(counterEl.textContent || "0") + 1);
@@ -1891,15 +2016,19 @@
     async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
         if (!userAddress) return showToast("Connect wallet first!");
 
-        let currentFbStars = 0;
+        // V13: Check combined total spendable balance
+        let livePurchased = 0, liveEarned = 0;
         if (window.db) {
             try {
                 const userRef  = window.fs.doc(window.db, "user_balances", userAddress.toLowerCase());
                 const snap     = await window.fs.getDoc(userRef);
-                currentFbStars = snap.exists() ? (snap.data().stars || 0) : 0;
-            } catch (_) { currentFbStars = parseInt(starBalance) || 0; }
+                if (snap.exists()) {
+                    livePurchased = snap.data().stars        || 0;
+                    liveEarned    = snap.data().creatorStars  || 0;
+                }
+            } catch (_) { livePurchased = purchasedStars; liveEarned = creatorEarnings; }
         }
-        if (currentFbStars < 1) return showToast("Not enough Stars! Deposit APTM.");
+        if ((livePurchased + liveEarned) < 1) return showToast("Not enough Stars! Deposit APTM.");
 
         const inputId     = isReply ? `reply-in-${parentId}` : `input-${postId}`;
         const input       = document.getElementById(inputId);
@@ -1918,20 +2047,19 @@
 
             await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
 
-            // 80% to creator
+            // 80% to creator — goes into their creatorStars pool
             if (recipientAddress && recipientAddress !== "unknown") {
-                await adjustFirebaseBalance(recipientAddress, CONFIG.CREATOR_CUT);
+                await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
                 logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, "Earned 0.8★ — someone commented on your content");
             }
 
-            // Deduct 1★ from commenter
-            await adjustFirebaseBalance(userAddress, -1);
+            // Deduct 1★ from commenter using waterfall (purchased first, then earned)
+            await deductSpendableStars(userAddress, 1);
 
             // 20% admin revenue
             logAdminRevenue(userAddress, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
             logTransaction(userAddress, "spend", 1, isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment");
 
-            starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
             if (input) input.value = "";
             const tray = document.getElementById(`tray-${postId}`);
@@ -2119,7 +2247,7 @@
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP (V11)
+    // STARTUP (V13)
     // ═══════════════════════════════════════════════════════════════════
     window.addEventListener('load', async () => {
         try {
@@ -2138,7 +2266,7 @@
 
     // ═══════════════════════════════════════════════════════════════════
     // UNCONDITIONAL PRICE HEARTBEAT — fires for ALL visitors, every 30s
-    // Simple CoinGecko fetch for 'apertum'. No wallet, no RPC needed.
+    // CoinGecko via allorigins CORS proxy. No wallet, no RPC needed.
     // ═══════════════════════════════════════════════════════════════════
     runPriceHeartbeat();                          // immediate on script load
     setInterval(runPriceHeartbeat, 30_000);       // every 30 seconds unconditionally
