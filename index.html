@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,7 +24,6 @@
   const db = getFirestore(app);
 
   window.db = db;
-  // ADDED 'where' HERE:
   window.fs = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where };
   
   console.log("Firebase Database Fully Linked with 'where' clause!");
@@ -209,14 +209,18 @@
 <div id="toast">SUCCESS</div>
 
 <script>
-    // GLOBAL STATE - Declared ONLY ONCE
+    // GLOBAL STATE
     let currentAptmBalance = "0.0000";
     let starBalance = "0";
     let currentAptmPriceUsd = 0.3391;
     let totalAnchors = 0;
     let provider, signer, hubContract;
-    let userHandle = "Anonymous_Creator";
-    let userAvatar = "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
+    let userAddress = "";
+
+    // ✅ FIX 1: Load identity from localStorage on startup so it's always available
+    let userHandle = localStorage.getItem('hub_userName') || "Anonymous_Creator";
+    let userAvatar = localStorage.getItem('hub_userPic') || "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
+
     let visibleCount = 10;
     const pageSize = 10;
     const STAR_FIXED_USD = 0.01;
@@ -234,131 +238,126 @@
         "function PLATFORM_ADMIN() view returns (address)"
     ];
 
-    // --- UPDATED PRICE FUNCTION (FIXES TRILLIONS) ---
     async function getLiveAptmPrice() {
-    const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57"; 
-    try {
-        if (!provider) return 0.3391;
-        const poolContract = new ethers.Contract(poolAddress, [
-            "function getReserves() external view returns (uint112, uint112, uint32)"
-        ], provider);
-
-        const reserves = await poolContract.getReserves();
-
-        // BOTH are 18 decimals. We verified this via the Token0/Token1 console check.
-        // Token 0 is wAPTM (18 decimals)
-        // Token 1 is wUSDT (18 decimals)
-        const humanAptm = parseFloat(ethers.utils.formatUnits(reserves[0], 18));
-        const humanUsdt = parseFloat(ethers.utils.formatUnits(reserves[1], 18));
-
-        const price = humanUsdt / humanAptm;
-        
-        console.log("Price Fixed (18/18 math):", price);
-        return price > 0 ? price : 0.3391;
-
-    } catch (e) { 
-        console.error("Price Engine Error:", e);
-        return 0.3391; 
-    }
-}
-
-    // 1. MAKE SURE THIS IS AT THE VERY TOP OF YOUR SCRIPT (outside any function)
-let userAddress = ""; 
-
-async function connectWallet() {
-    if (window.ethereum) {
+        const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57"; 
         try {
-            provider = new ethers.providers.Web3Provider(window.ethereum);
-            const accounts = await provider.send("eth_requestAccounts", []);
-            
-            // --- THIS SAVES YOUR WALLET GLOBALLY ---
-            userAddress = accounts[0]; 
-            
-            signer = provider.getSigner();
-            hubContract = new ethers.Contract(contractAddress, abi, signer);
-            
-            // Updates the display at the top of your page
-            const statusEl = document.getElementById('wallet-status');
-            if(statusEl) {
-                statusEl.innerText = userAddress.slice(0,6)+"..."+userAddress.slice(-4);
-            }
-            
-            // 1. Fetch the data from blockchain
-            await syncData(); 
-            // 2. Explicitly force the UI to paint those numbers
-            updateUI(); 
-            
-            // 3. Refresh the feed so it finally sees 'userAddress' and shows your picture
-            if (typeof loadGlobalFeed === "function") {
-                loadGlobalFeed(); 
-            }
-
-            showToast("Connected & Synced");
-        } catch (err) { 
-            console.error(err); 
-            showToast("Connection Failed"); 
+            if (!provider) return 0.3391;
+            const poolContract = new ethers.Contract(poolAddress, [
+                "function getReserves() external view returns (uint112, uint112, uint32)"
+            ], provider);
+            const reserves = await poolContract.getReserves();
+            const humanAptm = parseFloat(ethers.utils.formatUnits(reserves[0], 18));
+            const humanUsdt = parseFloat(ethers.utils.formatUnits(reserves[1], 18));
+            const price = humanUsdt / humanAptm;
+            console.log("Price Fixed (18/18 math):", price);
+            return price > 0 ? price : 0.3391;
+        } catch (e) { 
+            console.error("Price Engine Error:", e);
+            return 0.3391; 
         }
-    } else { 
-        alert("MetaMask not found"); 
     }
-}
-async function syncData() {
-    if(!hubContract || !signer) return;
-    try {
-        const addr = await signer.getAddress();
-        
-        // 1. Get Raw Data
-        const [balRaw, anchors] = await Promise.all([
-            hubContract.aptmBalances(addr), 
-            hubContract.totalAnchors()
-        ]);
-        
-        // 2. CONVERT TO HUMAN NUMBERS (This prevents the crazy star count)
-        const humanBalance = ethers.utils.formatEther(balRaw);
-        currentAptmBalance = humanBalance; // Store as "5.0"
-        
-        // 3. Get Price & Calculate
-        currentAptmPriceUsd = await getLiveAptmPrice();
-        
-        // Force the math to use Floats, not BigNumbers
-        const usdValue = parseFloat(humanBalance) * parseFloat(currentAptmPriceUsd);
-        starBalance = Math.floor(usdValue / 0.01).toString();
-        
-        totalAnchors = anchors.toNumber();
-        
-        // 4. Update UI
-        updateUI();
-        
-    } catch (e) { 
-        console.error("Master Sync Failed:", e); 
+
+    async function connectWallet() {
+        if (window.ethereum) {
+            try {
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                const accounts = await provider.send("eth_requestAccounts", []);
+                userAddress = accounts[0]; 
+                signer = provider.getSigner();
+                hubContract = new ethers.Contract(contractAddress, abi, signer);
+                
+                const statusEl = document.getElementById('wallet-status');
+                if(statusEl) statusEl.innerText = userAddress.slice(0,6)+"..."+userAddress.slice(-4);
+                
+                await syncData(); 
+                updateUI(); 
+                
+                if (typeof loadGlobalFeed === "function") loadGlobalFeed(); 
+
+                showToast("Connected & Synced");
+            } catch (err) { 
+                console.error(err); 
+                showToast("Connection Failed"); 
+            }
+        } else { 
+            alert("MetaMask not found"); 
+        }
     }
-}
 
-function updateUI() {
-    try {
-        // --- SIDEBAR UPDATES ---
-        const sDisp = document.getElementById('user-stars');
-        if(sDisp) sDisp.innerText = (starBalance || "0") + " ★";
-        
-        const aDisp = document.getElementById('sidebar-aptm-value');
-        if(aDisp) aDisp.innerText = (currentAptmBalance || "0.0000") + " $APTM";
-
-        // --- CREATOR STUDIO UPDATES ---
-        const cStars = document.getElementById('creator-revenue-display');
-        if(cStars) cStars.innerText = (starBalance || "0") + " ★";
-
-        const cAptm = document.getElementById('earnings-aptm-value');
-        if(cAptm) cAptm.innerText = "VALUE: " + (currentAptmBalance || "0.0000") + " $APTM";
-        
-        // --- LIVE PRICE TICKER ---
-        const pDisp = document.getElementById('live-price-display');
-        if(pDisp) pDisp.innerText = `RATE: $${parseFloat(currentAptmPriceUsd).toFixed(4)} / APTM`;
-
-        console.log("UI Sync Complete: Stars set to " + starBalance);
-    } catch (e) {
-        console.error("UI Update Error:", e);
+    async function syncData() {
+        if(!hubContract || !signer) return;
+        try {
+            const addr = await signer.getAddress();
+            const [balRaw, anchors] = await Promise.all([
+                hubContract.aptmBalances(addr), 
+                hubContract.totalAnchors()
+            ]);
+            const humanBalance = ethers.utils.formatEther(balRaw);
+            currentAptmBalance = humanBalance;
+            currentAptmPriceUsd = await getLiveAptmPrice();
+            const usdValue = parseFloat(humanBalance) * parseFloat(currentAptmPriceUsd);
+            starBalance = Math.floor(usdValue / 0.01).toString();
+            totalAnchors = anchors.toNumber();
+            updateUI();
+        } catch (e) { 
+            console.error("Master Sync Failed:", e); 
+        }
     }
-}
+
+    // ✅ FIX 2: updateUI now also updates the post composer header (pb-avatar and pb-handle)
+    function updateUI() {
+        try {
+            // Sidebar
+            const sDisp = document.getElementById('user-stars');
+            if(sDisp) sDisp.innerText = (starBalance || "0") + " ★";
+            
+            const aDisp = document.getElementById('sidebar-aptm-value');
+            if(aDisp) aDisp.innerText = (currentAptmBalance || "0.0000") + " $APTM";
+
+            // Creator Studio
+            const cStars = document.getElementById('creator-revenue-display');
+            if(cStars) cStars.innerText = (starBalance || "0") + " ★";
+
+            const cAptm = document.getElementById('earnings-aptm-value');
+            if(cAptm) cAptm.innerText = "VALUE: " + (currentAptmBalance || "0.0000") + " $APTM";
+            
+            // Price ticker
+            const pDisp = document.getElementById('live-price-display');
+            if(pDisp) pDisp.innerText = `RATE: $${parseFloat(currentAptmPriceUsd).toFixed(4)} / APTM`;
+
+            // ✅ Post composer header — was missing, this is why name/pic didn't show
+            const pbAvatar = document.getElementById('pb-avatar');
+            if(pbAvatar) pbAvatar.src = userAvatar;
+
+            const pbHandle = document.getElementById('pb-handle');
+            if(pbHandle) pbHandle.innerText = userHandle;
+
+            console.log("UI Sync Complete: Stars=" + starBalance + " Handle=" + userHandle);
+        } catch (e) {
+            console.error("UI Update Error:", e);
+        }
+    }
+
+    // ✅ FIX 3: Single, correct saveProfile() — saves to localStorage, updates globals, refreshes UI and feed
+    function saveProfile() {
+        const nameVal = document.getElementById('handle-input').value;
+        const picVal = document.getElementById('avatar-input').value;
+
+        if (nameVal && picVal) {
+            localStorage.setItem('hub_userName', nameVal);
+            localStorage.setItem('hub_userPic', picVal);
+            
+            userHandle = nameVal;
+            userAvatar = picVal;
+
+            updateUI();
+            showToast("Identity Saved!");
+            loadGlobalFeed(); 
+        } else {
+            alert("Please enter both a name and an image URL");
+        }
+    }
+
     async function convertAPTM() {
         currentAptmPriceUsd = await getLiveAptmPrice();
         let amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(4)}`, "5");
@@ -390,13 +389,13 @@ function updateUI() {
 
     function showNextPage() {
         visibleCount += pageSize;
-        updateUI();
+        refreshFeedVisibility();
     }
 
     function updatePreview(url) {
         const container = document.getElementById('media-preview-container');
         const img = document.getElementById('preview-img');
-        if(url && (url.startsWith('http'))) {
+        if(url && url.startsWith('http')) {
             img.src = url;
             container.style.display = 'block';
         } else {
@@ -406,8 +405,7 @@ function updateUI() {
 
     function showToast(m) {
         const t = document.getElementById('toast');
-        t.innerText = m; t.style.opacity = 1;
-        setTimeout(() => t.style.opacity = 0, 2000);
+        if(t) { t.innerText = m; t.style.opacity = 1; setTimeout(() => t.style.opacity = 0, 2000); }
     }
 
     function switchPage(p, el) {
@@ -417,466 +415,311 @@ function updateUI() {
         el.classList.add('active');
     }
 
-    function saveProfile() {
-    // 1. Get the name and picture you typed in the boxes
-    const nameVal = document.getElementById('handle-input').value;
-    const picVal = document.getElementById('avatar-input').value;
-
-    if (nameVal && picVal) {
-        // 2. This is the "Memory" part. It saves it to your browser.
-        localStorage.setItem('hub_userName', nameVal);
-        localStorage.setItem('hub_userPic', picVal);
-        
-        // 3. Update the variables the rest of the code uses
-        userHandle = nameVal;
-        userAvatar = picVal;
-
-        // 4. Update the screen so you see it immediately
-        updateUI(); 
-        showToast("Identity Saved to Browser!");
-        
-        // 5. Refresh the feed so it sees the new name
-        loadGlobalFeed(); 
-    } else {
-        alert("Please enter both a name and an image URL");
-    }
-}
-
     function getYoutubeId(url) {
         const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
         const match = url.match(regExp);
         return (match && match[2].length === 11) ? match[2] : null;
     }
 
-    // PART 2: ACTIONS & INTERACTIONS
-// --- UPDATED ACTIONS & INTERACTIONS ---
+    async function handleBroadcast() {
+        const txt = document.getElementById('post-text').value;
+        const media = document.getElementById('post-media').value;
+        if(!txt || !hubContract) return alert("Write something or connect wallet!");
 
-async function handleBroadcast() {
-    const txt = document.getElementById('post-text').value;
-    const media = document.getElementById('post-media').value;
-    if(!txt || !hubContract) return alert("Write something or connect wallet!");
+        let feeAmount = "1.2";
+        let type = 1;
 
-    // NEW PRICING LOGIC (100% to Platform)
-    let feeAmount = "1.2"; // Default for Text
-    let type = 1;
-
-    if (media) {
-        // Check if it's a video (mp4 or Youtube)
-        if (media.includes('mp4') || getYoutubeId(media)) {
-            feeAmount = "10"; 
-            type = 3;
-        } else {
-            // It's an image
-            feeAmount = "3"; 
-            type = 2;
-        }
-    }
-
-    // Convert the string amount to Wei for the blockchain
-    const feeWei = ethers.utils.parseEther(feeAmount);
-
-    try {
-        const userAddr = await signer.getAddress();
-        const internalStars = await hubContract.aptmBalances(userAddr);
-        
-        showToast(`Preparing ${feeAmount} Star Broadcast...`);
-        
-        let tx;
-        // Check internal bank (Stars) first
-        if (internalStars.gte(feeWei)) {
-            showToast("Using internal Stars fund...");
-            tx = await hubContract.postContent("", type, feeWei, { gasLimit: 500000 });
-        } else {
-            showToast(`Paying ${feeAmount} APTM from Wallet...`);
-            tx = await hubContract.postContent("", type, feeWei, { 
-                value: feeWei, 
-                gasLimit: 500000 
-            });
+        if (media) {
+            if (media.includes('mp4') || getYoutubeId(media)) {
+                feeAmount = "10"; 
+                type = 3;
+            } else {
+                feeAmount = "3"; 
+                type = 2;
+            }
         }
 
-        await tx.wait();
-        showToast("Anchored! Syncing to Cloud...");
+        const feeWei = ethers.utils.parseEther(feeAmount);
 
-        // 2. Firebase Save
-        const postData = {
-            text: txt,
-            media: media,
-            author: userHandle,
-            authorAddr: userAddr,
-            avatar: userAvatar,
-            timestamp: Date.now(),
-            hypes: 0,
-            type: type,
-            feePaid: feeAmount // Optional: track how much they paid in the cloud
-        };
-
-        await window.fs.addDoc(window.fs.collection(window.db, "posts"), postData);
-
-        // 3. Cleanup UI
-        document.getElementById('post-text').value = "";
-        document.getElementById('post-media').value = "";
-        showToast("Post Live!");
-        
-        setTimeout(() => { syncData(); }, 2000);
-    } catch (e) { 
-        console.error(e);
-        alert("Broadcast failed. Check your APTM or Stars balance."); 
-    }
-}
-
-// --- CLOUD FEED LISTENER ---
-
-async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
-    if (!hubContract) return alert("Connect Wallet First");
-    
-    const inputId = isReply ? `reply-in-${parentId}` : `input-${postId}`;
-    const input = document.getElementById(inputId);
-    const commentText = input.value; // Save the text immediately
-    if(!commentText) return;
-
-    try {
-        const userAddr = await signer.getAddress();
-        const internalStars = await hubContract.aptmBalances(userAddr);
-        const fee = ethers.utils.parseEther("1"); 
-        
-        showToast("Authenticating Comment...");
-        let tx;
-
-        // 1. Blockchain Part
-        if (internalStars.gte(fee)) {
-            tx = await hubContract.interact(recipientAddress, fee, { gasLimit: 250000 });
-        } else {
-            tx = await hubContract.interact(recipientAddress, fee, { value: fee, gasLimit: 250000 });
-        }
-
-        // 2. Firebase Part - WE DO THIS AS SOON AS THE TX IS SENT
-        // This ensures even if the page refreshes, the data is moving to the cloud
-        const commentData = {
-            text: commentText,
-            author: userHandle,
-            authorAddr: userAddr,
-            postId: postId,
-            parentId: parentId || null,
-            isReply: isReply,
-            timestamp: Date.now(),
-            hypes: 0
-        };
-
-        // Don't wait for the tx.wait() to start the cloud save
-        await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
-        
-        await tx.wait(); // Now wait for the blockchain to confirm
-
-        input.value = "";
-        showToast("Comment Live!");
-        setTimeout(() => { syncData(); }, 1000);
-    } catch (e) { 
-        console.error("Comment Error:", e);
-        showToast("Failed to post. Check connection."); 
-    }
-}
-
-// --- GLOBAL UTILITIES (Keep your existing ones) ---
-
-async function convertAPTM() {
-    currentAptmPriceUsd = await getLiveAptmPrice();
-    let amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(4)}`, "5");
-    if(amt && hubContract) { 
         try {
-            showToast(`Depositing ${amt} $APTM...`);
-            const tx = await hubContract.depositAPTM({ value: ethers.utils.parseEther(amt), gasLimit: 150000 });
-            await tx.wait();
-            setTimeout(() => { syncData(); }, 2000);
-        } catch (e) { alert("Transaction failed."); }
-    }
-}
-
-async function settleToWallet() {
-    if (!hubContract) return alert("Connect Wallet First");
-    try {
-        const addr = await signer.getAddress();
-        const rawBalance = await hubContract.aptmBalances(addr);
-        const humanAmount = ethers.utils.formatEther(rawBalance);
-        let amt = prompt(`Withdraw Stars\nBalance: ${humanAmount} APTM`, humanAmount);
-        if (amt && hubContract) {
-            showToast("Opening MetaMask...");
-            const withdrawWei = ethers.utils.parseUnits(parseFloat(amt).toFixed(18), 18);
-            const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
-            await tx.wait();
-            showToast("Success!");
-            syncData();
-        }
-    } catch (e) { console.error(e); alert("Failed: " + (e.reason || e.message).slice(0, 100)); }
-}
-
-function refreshFeedVisibility() {
-    const posts = document.querySelectorAll('#feed-items > .glass-panel');
-    posts.forEach((post, index) => {
-        if (index < visibleCount) post.classList.remove('hidden-post');
-        else post.classList.add('hidden-post');
-    });
-    const loadMore = document.getElementById('load-more-btn');
-    if(loadMore) loadMore.style.display = (posts.length > visibleCount) ? 'block' : 'none';
-}
-
-function showNextPage() { visibleCount += pageSize; updateUI(); }
-function updatePreview(url) {
-    const container = document.getElementById('media-preview-container');
-    const img = document.getElementById('preview-img');
-    if(url && url.startsWith('http')) { img.src = url; container.style.display = 'block'; }
-    else { container.style.display = 'none'; }
-}
-function showToast(m) {
-    const t = document.getElementById('toast');
-    if(t) { t.innerText = m; t.style.opacity = 1; setTimeout(() => t.style.opacity = 0, 2000); }
-}
-function switchPage(p, el) {
-    document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
-    document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
-    document.getElementById('page-'+p).classList.add('active');
-    el.classList.add('active');
-}
-function saveProfile() {
-    userHandle = document.getElementById('handle-input').value || userHandle;
-    userAvatar = document.getElementById('avatar-input').value || userAvatar;
-    updateUI(); showToast("Identity Updated");
-}
-function getYoutubeId(url) {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
-}
-
-// --- PART 2: ACTIONS & INTERACTIONS ---
-
-async function boostPost(postId) {
-    if (!hubContract) return alert("Connect Wallet First");
-    try {
-        const userAddr = await signer.getAddress();
-        const internalStars = await hubContract.aptmBalances(userAddr);
-        const boostFee = ethers.utils.parseEther("10"); 
-        
-        let tx;
-        showToast("Preparing 10-Star Boost...");
-
-        if (internalStars.gte(boostFee)) {
-            showToast("Boosting (10 Stars to Platform)...");
-            tx = await hubContract.boostPost(boostFee, { gasLimit: 400000 }); 
-        } else {
-            showToast("Paying 10 APTM from Wallet...");
-            tx = await hubContract.boostPost(boostFee, { value: boostFee, gasLimit: 400000 }); 
-        }
-
-        await tx.wait();
-        const postRef = window.fs.doc(window.db, "posts", postId);
-        await window.fs.updateDoc(postRef, { timestamp: Date.now(), isBoosted: true });
-        showToast("🚀 POST BOOSTED!");
-        setTimeout(() => { syncData(); }, 2000);
-    } catch (e) { 
-        console.error(e);
-        alert("Boost failed. Ensure you have 10 Stars/APTM."); 
-    }
-}
-
-async function hypeElement(recipientAddress, displayId) {
-    if (!hubContract) return alert("Connect Wallet First");
-    try {
-        const userAddr = await signer.getAddress();
-        const internalStars = await hubContract.aptmBalances(userAddr);
-        // Uses the normalized price to get 1 Star's worth of Wei
-        const fee = ethers.utils.parseEther((STAR_FIXED_USD / currentAptmPriceUsd).toFixed(18));
-        
-        showToast("Processing Hype...");
-        let tx;
-        if (internalStars.gte(fee)) {
-            tx = await hubContract.interact(recipientAddress, fee, { gasLimit: 400000 });
-        } else {
-            tx = await hubContract.interact(recipientAddress, fee, { value: fee, gasLimit: 400000 });
-        }
-        await tx.wait();
-        
-        const postId = displayId.replace('hp-', '');
-        const postRef = window.fs.doc(window.db, "posts", postId);
-        await window.fs.updateDoc(postRef, { hypes: window.fs.increment(1) });
-        
-        showToast("Hype Recorded! ✨");
-        setTimeout(() => { syncData(); }, 2000);
-    } catch (e) { console.error(e); }
-}
-
-function toggleTray(id) {
-    const t = document.getElementById(`tray-${id}`);
-    if(t) t.style.display = t.style.display === 'block' ? 'none' : 'block';
-}
-
-function toggleReply(id) {
-    const b = document.getElementById(`reply-box-${id}`);
-    if(b) b.style.display = b.style.display === 'block' ? 'none' : 'block';
-}
-
-async function loadGlobalFeed() {
-    const feedContainer = document.getElementById('feed-items');
-    if (!feedContainer || !window.db) return;
-
-    const q = window.fs.query(window.fs.collection(window.db, "posts"), window.fs.orderBy("timestamp", "desc"));
-
-    window.fs.onSnapshot(q, (snapshot) => {
-        feedContainer.innerHTML = ""; 
-        snapshot.forEach((docRef) => {
-            const post = docRef.data();
-            const postId = docRef.id;
-
-            // --- IDENTITY LOGIC ---
-            const isMe = (post.authorAddr && typeof userAddress !== 'undefined' && userAddress && post.authorAddr.toLowerCase() === userAddress.toLowerCase());
-            const localName = localStorage.getItem('hub_userName');
-            const localPic = localStorage.getItem('hub_userPic');
-
-            const displayPic = (isMe && localPic) ? localPic : (post.avatar || "https://via.placeholder.com/50");
-            const displayName = (isMe && localName) ? localName : (post.author || "Anonymous");
-
-            let mediaHtml = '';
-            const ytId = getYoutubeId(post.media || "");
-            if(ytId) {
-                mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
-            } else if(post.media) {
-                mediaHtml = `<div class="post-media-container"><img src="${post.media}"></div>`;
+            const userAddr = await signer.getAddress();
+            const internalStars = await hubContract.aptmBalances(userAddr);
+            
+            showToast(`Preparing ${feeAmount} Star Broadcast...`);
+            
+            let tx;
+            if (internalStars.gte(feeWei)) {
+                showToast("Using internal Stars fund...");
+                tx = await hubContract.postContent("", type, feeWei, { gasLimit: 500000 });
+            } else {
+                showToast(`Paying ${feeAmount} APTM from Wallet...`);
+                tx = await hubContract.postContent("", type, feeWei, { 
+                    value: feeWei, 
+                    gasLimit: 500000 
+                });
             }
 
-            const item = document.createElement('div');
-            item.className = 'glass-panel post-card';
-            item.setAttribute('data-id', postId);
-            if(post.isBoosted) item.style.border = "2px solid #FFD700"; 
+            await tx.wait();
+            showToast("Anchored! Syncing to Cloud...");
+
+            const postData = {
+                text: txt,
+                media: media,
+                author: userHandle,
+                authorAddr: userAddr,
+                avatar: userAvatar,
+                timestamp: Date.now(),
+                hypes: 0,
+                type: type,
+                feePaid: feeAmount
+            };
+
+            await window.fs.addDoc(window.fs.collection(window.db, "posts"), postData);
+
+            document.getElementById('post-text').value = "";
+            document.getElementById('post-media').value = "";
+            showToast("Post Live!");
             
-            item.innerHTML = `
-                <div class='creator-header'>
-                    <img src="${displayPic}" class="avatar-circle">
-                    <b>${displayName}</b>
-                </div>
-                ${mediaHtml}
-                <p>${post.text}</p>
-                <div class="feed-actions">
-                    <div class="feed-btn" onclick="hypeElement('${post.authorAddr}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">${post.hypes || 0}</span></div>
-                    <div class="feed-btn" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comments</div>
-                    <div class="feed-btn" style="color:#FFD700" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
-                </div>
-                <div class="comment-area" id="tray-${postId}">
-                    <div class="comment-list" id="list-${postId}"></div>
-                    <div style="display:flex; gap:10px;">
-                        <input type="text" class="input-field" style="margin-top:0;" placeholder="Add (1★)" id="input-${postId}">
-                        <button class="action-btn" style="margin-top:0; width:80px;" onclick="addComment('${post.authorAddr}', '${postId}')">SEND</button>
-                    </div>
-                </div>`;
-            feedContainer.appendChild(item);
-        });
-        if (typeof refreshFeedVisibility === "function") refreshFeedVisibility();
-    });
-}
-
-async function loadComments(postId) {
-    const list = document.getElementById(`list-${postId}`);
-    if (!list || !window.db) return;
-
-    const q = window.fs.query(
-        window.fs.collection(window.db, "comments"),
-        window.fs.where("postId", "==", String(postId)),
-        window.fs.orderBy("timestamp", "asc")
-    );
-
-    window.fs.onSnapshot(q, (snapshot) => {
-        list.innerHTML = "";
-        snapshot.forEach((docRef) => {
-            const comment = docRef.data();
-            const row = document.createElement('div');
-            row.className = 'comment-row';
-            row.innerHTML = `<div style="font-size: 0.85rem;"><b style="color:#FFD700;">${comment.author}</b>: ${comment.text}</div>`;
-            list.appendChild(row);
-        });
-    });
-}
-
-// --- STARTUP ---
-window.addEventListener('load', async () => {
-    try {
-        const p = await getLiveAptmPrice();
-        currentAptmPriceUsd = p;
-        if (window.ethereum && window.ethereum.selectedAddress) {
-            await connectWallet(); 
+            setTimeout(() => { syncData(); }, 2000);
+        } catch (e) { 
+            console.error(e);
+            alert("Broadcast failed. Check your APTM or Stars balance."); 
         }
-        setTimeout(() => { loadGlobalFeed(); }, 1500);
-    } catch (e) { 
-        console.error("Startup failed", e); 
     }
-});
-    async function diagnosticSync() {
-    if(!hubContract || !signer) return;
-    try {
-        const addr = await signer.getAddress();
-        const balRaw = await hubContract.aptmBalances(addr);
-        const price = await getLiveAptmPrice();
-        
-        console.log("--- SURGERY DIAGNOSTIC ---");
-        console.log("1. Raw Balance from Contract:", balRaw.toString());
-        
-        const humanAptm = ethers.utils.formatEther(balRaw);
-        console.log("2. Converted to Human APTM:", humanAptm);
-        
-        console.log("3. Current Price Used:", price);
-        
-        const usdValue = parseFloat(humanAptm) * price;
-        const stars = Math.floor(usdValue / 0.01);
-        console.log("4. Final Calculated Stars:", stars);
-        console.log("--------------------------");
-        
-        // Force the UI to show the calculated Stars
-        if (document.getElementById('user-stars')) {
-            document.getElementById('user-stars').innerText = starBalance + " ★";
-        }
-        
-        // Final UI push
-        updateUI();
 
-    } catch (e) {
-        console.error("Operation Failed:", e);
-    }
-}
+    async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
+        if (!hubContract) return alert("Connect Wallet First");
+        
+        const inputId = isReply ? `reply-in-${parentId}` : `input-${postId}`;
+        const input = document.getElementById(inputId);
+        const commentText = input.value;
+        if(!commentText) return;
 
-// --- THE HEARTBEAT ---
-// This keeps your 169 Stars and 5.0 APTM synced every 30 seconds
-setInterval(async () => { 
-    if (provider && hubContract) {
         try {
-            currentAptmPriceUsd = await getLiveAptmPrice();
-            await syncData();
-            console.log("Heartbeat Sync: Dashboard Updated.");
-        } catch (e) {
-            console.error("Heartbeat failed:", e);
-        }
-    }
-}, 30000);
-    async function syncIdentity() {
-    // These lines find the input boxes on your screen
-    const nameInput = document.getElementById('identity-name');
-    const picInput = document.getElementById('identity-pic');
-
-    if (nameInput && picInput) {
-        const nameVal = nameInput.value;
-        const picVal = picInput.value;
-
-        if (nameVal && picVal) {
-            // This locks the data into your browser's memory
-            localStorage.setItem('hub_userName', nameVal);
-            localStorage.setItem('hub_userPic', picVal);
+            const userAddr = await signer.getAddress();
+            const internalStars = await hubContract.aptmBalances(userAddr);
+            const fee = ethers.utils.parseEther("1"); 
             
-            alert("Identity Saved! Refreshing your profile...");
-            location.reload(); 
-        } else {
-            alert("Please enter both your Name and a JPG URL first!");
-        }
-    } else {
-        console.error("Could not find the identity input boxes on this page.");
-    }
-}
+            showToast("Authenticating Comment...");
+            let tx;
 
+            if (internalStars.gte(fee)) {
+                tx = await hubContract.interact(recipientAddress, fee, { gasLimit: 250000 });
+            } else {
+                tx = await hubContract.interact(recipientAddress, fee, { value: fee, gasLimit: 250000 });
+            }
+
+            const commentData = {
+                text: commentText,
+                author: userHandle,
+                authorAddr: userAddr,
+                postId: postId,
+                parentId: parentId || null,
+                isReply: isReply,
+                timestamp: Date.now(),
+                hypes: 0
+            };
+
+            await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
+            await tx.wait();
+
+            input.value = "";
+            showToast("Comment Live!");
+            setTimeout(() => { syncData(); }, 1000);
+        } catch (e) { 
+            console.error("Comment Error:", e);
+            showToast("Failed to post. Check connection."); 
+        }
+    }
+
+    async function settleToWallet() {
+        if (!hubContract) return alert("Connect Wallet First");
+        try {
+            const addr = await signer.getAddress();
+            const rawBalance = await hubContract.aptmBalances(addr);
+            const humanAmount = ethers.utils.formatEther(rawBalance);
+            let amt = prompt(`Withdraw Stars\nBalance: ${humanAmount} APTM`, humanAmount);
+            if (amt && hubContract) {
+                showToast("Opening MetaMask...");
+                const withdrawWei = ethers.utils.parseUnits(parseFloat(amt).toFixed(18), 18);
+                const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
+                await tx.wait();
+                showToast("Success!");
+                syncData();
+            }
+        } catch (e) { console.error(e); alert("Failed: " + (e.reason || e.message).slice(0, 100)); }
+    }
+
+    async function boostPost(postId) {
+        if (!hubContract) return alert("Connect Wallet First");
+        try {
+            const userAddr = await signer.getAddress();
+            const internalStars = await hubContract.aptmBalances(userAddr);
+            const boostFee = ethers.utils.parseEther("10"); 
+            
+            let tx;
+            showToast("Preparing 10-Star Boost...");
+
+            if (internalStars.gte(boostFee)) {
+                tx = await hubContract.boostPost(boostFee, { gasLimit: 400000 }); 
+            } else {
+                tx = await hubContract.boostPost(boostFee, { value: boostFee, gasLimit: 400000 }); 
+            }
+
+            await tx.wait();
+            const postRef = window.fs.doc(window.db, "posts", postId);
+            await window.fs.updateDoc(postRef, { timestamp: Date.now(), isBoosted: true });
+            showToast("🚀 POST BOOSTED!");
+            setTimeout(() => { syncData(); }, 2000);
+        } catch (e) { 
+            console.error(e);
+            alert("Boost failed. Ensure you have 10 Stars/APTM."); 
+        }
+    }
+
+    async function hypeElement(recipientAddress, displayId) {
+        if (!hubContract) return alert("Connect Wallet First");
+        try {
+            const userAddr = await signer.getAddress();
+            const internalStars = await hubContract.aptmBalances(userAddr);
+            const fee = ethers.utils.parseEther((STAR_FIXED_USD / currentAptmPriceUsd).toFixed(18));
+            
+            showToast("Processing Hype...");
+            let tx;
+            if (internalStars.gte(fee)) {
+                tx = await hubContract.interact(recipientAddress, fee, { gasLimit: 400000 });
+            } else {
+                tx = await hubContract.interact(recipientAddress, fee, { value: fee, gasLimit: 400000 });
+            }
+            await tx.wait();
+            
+            const postId = displayId.replace('hp-', '');
+            const postRef = window.fs.doc(window.db, "posts", postId);
+            await window.fs.updateDoc(postRef, { hypes: window.fs.increment(1) });
+            
+            showToast("Hype Recorded! ✨");
+            setTimeout(() => { syncData(); }, 2000);
+        } catch (e) { console.error(e); }
+    }
+
+    function toggleTray(id) {
+        const t = document.getElementById(`tray-${id}`);
+        if(t) t.style.display = t.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function toggleReply(id) {
+        const b = document.getElementById(`reply-box-${id}`);
+        if(b) b.style.display = b.style.display === 'block' ? 'none' : 'block';
+    }
+
+    async function loadGlobalFeed() {
+        const feedContainer = document.getElementById('feed-items');
+        if (!feedContainer || !window.db) return;
+
+        const q = window.fs.query(window.fs.collection(window.db, "posts"), window.fs.orderBy("timestamp", "desc"));
+
+        window.fs.onSnapshot(q, (snapshot) => {
+            feedContainer.innerHTML = ""; 
+            snapshot.forEach((docRef) => {
+                const post = docRef.data();
+                const postId = docRef.id;
+
+                const isMe = (post.authorAddr && userAddress && post.authorAddr.toLowerCase() === userAddress.toLowerCase());
+                const localName = localStorage.getItem('hub_userName');
+                const localPic = localStorage.getItem('hub_userPic');
+
+                const displayPic = (isMe && localPic) ? localPic : (post.avatar || "https://via.placeholder.com/50");
+                const displayName = (isMe && localName) ? localName : (post.author || "Anonymous");
+
+                let mediaHtml = '';
+                const ytId = getYoutubeId(post.media || "");
+                if(ytId) {
+                    mediaHtml = `<div class="post-media-container"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
+                } else if(post.media) {
+                    mediaHtml = `<div class="post-media-container"><img src="${post.media}"></div>`;
+                }
+
+                const item = document.createElement('div');
+                item.className = 'glass-panel post-card';
+                item.setAttribute('data-id', postId);
+                if(post.isBoosted) item.style.border = "2px solid #FFD700"; 
+                
+                item.innerHTML = `
+                    <div class='creator-header'>
+                        <img src="${displayPic}" class="avatar-circle">
+                        <b>${displayName}</b>
+                    </div>
+                    ${mediaHtml}
+                    <p>${post.text}</p>
+                    <div class="feed-actions">
+                        <div class="feed-btn" onclick="hypeElement('${post.authorAddr}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">${post.hypes || 0}</span></div>
+                        <div class="feed-btn" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comments</div>
+                        <div class="feed-btn" style="color:#FFD700" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
+                    </div>
+                    <div class="comment-area" id="tray-${postId}">
+                        <div class="comment-list" id="list-${postId}"></div>
+                        <div style="display:flex; gap:10px;">
+                            <input type="text" class="input-field" style="margin-top:0;" placeholder="Add (1★)" id="input-${postId}">
+                            <button class="action-btn" style="margin-top:0; width:80px;" onclick="addComment('${post.authorAddr}', '${postId}')">SEND</button>
+                        </div>
+                    </div>`;
+                feedContainer.appendChild(item);
+            });
+            if (typeof refreshFeedVisibility === "function") refreshFeedVisibility();
+        });
+    }
+
+    async function loadComments(postId) {
+        const list = document.getElementById(`list-${postId}`);
+        if (!list || !window.db) return;
+
+        const q = window.fs.query(
+            window.fs.collection(window.db, "comments"),
+            window.fs.where("postId", "==", String(postId)),
+            window.fs.orderBy("timestamp", "asc")
+        );
+
+        window.fs.onSnapshot(q, (snapshot) => {
+            list.innerHTML = "";
+            snapshot.forEach((docRef) => {
+                const comment = docRef.data();
+                const row = document.createElement('div');
+                row.className = 'comment-row';
+                row.innerHTML = `<div style="font-size: 0.85rem;"><b style="color:#FFD700;">${comment.author}</b>: ${comment.text}</div>`;
+                list.appendChild(row);
+            });
+        });
+    }
+
+    // STARTUP
+    window.addEventListener('load', async () => {
+        try {
+            // ✅ FIX 4: Paint the identity immediately on load from localStorage (before any async calls)
+            updateUI();
+
+            const p = await getLiveAptmPrice();
+            currentAptmPriceUsd = p;
+            if (window.ethereum && window.ethereum.selectedAddress) {
+                await connectWallet(); 
+            }
+            setTimeout(() => { loadGlobalFeed(); }, 1500);
+        } catch (e) { 
+            console.error("Startup failed", e); 
+        }
+    });
+
+    // HEARTBEAT
+    setInterval(async () => { 
+        if (provider && hubContract) {
+            try {
+                currentAptmPriceUsd = await getLiveAptmPrice();
+                await syncData();
+                console.log("Heartbeat Sync: Dashboard Updated.");
+            } catch (e) {
+                console.error("Heartbeat failed:", e);
+            }
+        }
+    }, 30000);
 </script> 
 </body>
 </html>
