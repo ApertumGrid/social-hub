@@ -138,6 +138,22 @@
             padding: 8px 14px; border-radius: 8px; font-weight: 900; font-size: 0.75rem;
             cursor: pointer; white-space: nowrap; flex-shrink: 0;
         }
+
+        /* Transaction Ledger */
+        .ledger-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+            gap: 12px;
+        }
+        .ledger-row:last-child { border-bottom: none; }
+        .ledger-desc { font-size: 0.8rem; color: #aaa; flex: 1; line-height: 1.3; }
+        .ledger-desc small { display: block; font-size: 0.65rem; color: #555; margin-top: 2px; }
+        .ledger-amount { font-size: 0.85rem; font-weight: 900; white-space: nowrap; }
+        .ledger-amount.earn  { color: #4ade80; }
+        .ledger-amount.spend { color: #f87171; }
+        .ledger-amount.neutral { color: #888; }
+        .ledger-empty { font-size: 0.75rem; color: #444; padding: 12px 0; text-align: center; }
+        .balance-note { font-size: 0.6rem; color: #555; font-weight: 600; margin-top: 3px; letter-spacing: 0.02em; }
     </style>
 </head>
 <body>
@@ -199,14 +215,23 @@
             <div class="glass-panel">
                 <div style="font-size: 0.7rem; color: #888; letter-spacing: 1px;">CREATOR EARNINGS (STAR ECONOMY)</div>
                 <div style="font-size: 2.5rem; font-weight: 900; color: var(--gold);" id="creator-revenue-display">0 ★</div>
-                <div style="font-size: 0.7rem; color: #555; margin-top: 4px; margin-bottom: 20px;">Stars earned from Hypes & Comments on your content</div>
+                <div class="balance-note">⚡ Active Credits — updates on every interaction</div>
+                <div style="font-size: 0.7rem; color: #555; margin-top: 6px; margin-bottom: 20px;">Stars earned from Hypes & Comments on your content</div>
 
                 <div style="border-top: 1px solid #222; padding-top: 20px; margin-top: 5px;">
                     <div style="font-size: 0.7rem; color: #888; letter-spacing: 1px;">BLOCKCHAIN BALANCE ($APTM)</div>
-                    <div class="aptm-indicator" id="earnings-aptm-value" style="font-size: 1.2rem; margin-top: 6px; margin-bottom: 20px;">0.00 $APTM</div>
+                    <div class="aptm-indicator" id="earnings-aptm-value" style="font-size: 1.2rem; margin-top: 6px; margin-bottom: 4px;">0.00 $APTM</div>
+                    <div class="balance-note">🔒 Blockchain Vault — updates on Deposit / Withdrawal only</div>
                 </div>
 
-                <button class="action-btn" style="width:auto; padding:15px 30px;" onclick="settleToWallet()">SETTLE TO WALLET</button>
+                <button class="action-btn" style="width:auto; padding:15px 30px; margin-top:20px;" onclick="settleToWallet()">SETTLE TO WALLET</button>
+            </div>
+
+            <div class="glass-panel">
+                <div style="font-size: 0.7rem; color: var(--gold); letter-spacing: 2px; font-weight: 900; margin-bottom: 16px;">📋 RECENT ACTIVITY</div>
+                <div id="ledger-list">
+                    <div class="ledger-empty">Connect wallet to view your transaction history.</div>
+                </div>
             </div>
         </div>
 
@@ -304,6 +329,7 @@
                 await syncData(); 
                 updateUI(); 
                 subscribeToEarnings(userAddress);  // ★ Live-subscribe to Firebase earnings
+                subscribeLedger(userAddress);       // 📋 Live-subscribe to transaction ledger
                 
                 if (typeof loadGlobalFeed === "function") loadGlobalFeed(); 
 
@@ -431,6 +457,101 @@
         });
     }
 
+    // ═══════════════════════════════════════════════════
+    // TRANSACTION LEDGER — Firebase `transactions` collection
+    // ═══════════════════════════════════════════════════
+
+    // Write one transaction record. Fire-and-forget (non-blocking).
+    function logTransaction(address, type, amount, description) {
+        if (!address || !window.db) return;
+        const addr = address.toLowerCase();
+        window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
+            address: addr,
+            type:    type,         // "earn" | "spend" | "deposit" | "settle"
+            amount:  amount,       // positive number
+            description: description,
+            timestamp: Date.now()
+        }).catch(e => console.warn("logTransaction failed:", e));
+    }
+
+    // Subscribe to the last 10 transactions for this user — renders them live.
+    function subscribeLedger(walletAddr) {
+        if (!walletAddr || !window.db) return;
+        const addr = walletAddr.toLowerCase();
+        const q = window.fs.query(
+            window.fs.collection(window.db, "transactions"),
+            window.fs.where("address", "==", addr),
+            window.fs.orderBy("timestamp", "desc")
+        );
+
+        window.fs.onSnapshot(q, (snapshot) => {
+            const el = document.getElementById('ledger-list');
+            if (!el) return;
+
+            if (snapshot.empty) {
+                el.innerHTML = `<div class="ledger-empty">No activity yet — start interacting!</div>`;
+                return;
+            }
+
+            el.innerHTML = "";
+            let count = 0;
+            snapshot.forEach((docRef) => {
+                if (count >= 10) return; // cap at last 10
+                count++;
+                const tx = docRef.data();
+                const isEarn = tx.type === "earn" || tx.type === "deposit";
+                const amountStr = (isEarn ? "+" : "−") + parseFloat(tx.amount).toFixed(1) + " ★";
+                const cls = isEarn ? "earn" : (tx.type === "settle" ? "neutral" : "spend");
+                const date = new Date(tx.timestamp).toLocaleString([], {
+                    month: "short", day: "numeric",
+                    hour: "2-digit", minute: "2-digit"
+                });
+
+                const row = document.createElement('div');
+                row.className = 'ledger-row';
+                row.innerHTML = `
+                    <div class="ledger-desc">
+                        ${tx.description}
+                        <small>${date}</small>
+                    </div>
+                    <div class="ledger-amount ${cls}">${amountStr}</div>
+                `;
+                el.appendChild(row);
+            });
+        }, (err) => {
+            // Fallback if composite index not yet built — sort client-side
+            console.warn("Ledger listener error, trying fallback:", err.message);
+            const fallQ = window.fs.query(
+                window.fs.collection(window.db, "transactions"),
+                window.fs.where("address", "==", addr)
+            );
+            window.fs.onSnapshot(fallQ, (snap) => {
+                const el = document.getElementById('ledger-list');
+                if (!el) return;
+                const docs = [];
+                snap.forEach(d => docs.push(d.data()));
+                docs.sort((a, b) => b.timestamp - a.timestamp);
+                el.innerHTML = "";
+                docs.slice(0, 10).forEach(tx => {
+                    const isEarn = tx.type === "earn" || tx.type === "deposit";
+                    const amountStr = (isEarn ? "+" : "−") + parseFloat(tx.amount).toFixed(1) + " ★";
+                    const cls = isEarn ? "earn" : (tx.type === "settle" ? "neutral" : "spend");
+                    const date = new Date(tx.timestamp).toLocaleString([], {
+                        month: "short", day: "numeric",
+                        hour: "2-digit", minute: "2-digit"
+                    });
+                    const row = document.createElement('div');
+                    row.className = 'ledger-row';
+                    row.innerHTML = `
+                        <div class="ledger-desc">${tx.description}<small>${date}</small></div>
+                        <div class="ledger-amount ${cls}">${amountStr}</div>
+                    `;
+                    el.appendChild(row);
+                });
+            });
+        });
+    }
+
     async function convertAPTM() {
         currentAptmPriceUsd = await getLiveAptmPrice();
         let amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(4)}`, "5");
@@ -442,6 +563,9 @@
                     gasLimit: 150000 
                 });
                 await tx.wait();
+                // 📋 Log deposit transaction
+                const starsReceived = Math.floor(parseFloat(amt) * currentAptmPriceUsd / 0.01);
+                logTransaction(userAddress, "deposit", starsReceived, `Deposited ${parseFloat(amt).toFixed(2)} $APTM → ${starsReceived} Stars`);
                 setTimeout(() => { syncData(); }, 2000);
             } catch (e) {
                 console.error(e);
@@ -556,7 +680,8 @@
             document.getElementById('post-text').value = "";
             document.getElementById('post-media').value = "";
             showToast("Post Live!");
-            
+            // 📋 Log broadcast spend
+            logTransaction(userAddr, "spend", parseFloat(feeAmount), `Paid ${feeAmount} Stars for Content Broadcast`);
             setTimeout(() => { syncData(); }, 2000);
         } catch (e) { 
             console.error(e);
@@ -598,11 +723,16 @@
             // 2. 80/20 Split: credit post author 0.8★ in Firebase
             if (recipientAddress && recipientAddress !== "unknown") {
                 await adjustFirebaseBalance(recipientAddress, 0.8);
+                // 📋 Log earn for recipient
+                logTransaction(recipientAddress, "earn", 0.8, "Earned 0.8 Stars — someone commented on your content");
             }
 
             // 3. Deduct 1★ from sender's local spending balance
             starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
+
+            // 📋 Log spend for sender
+            logTransaction(userAddress, "spend", 1, isReply ? "Spent 1 Star on a Reply" : "Spent 1 Star on a Comment");
 
             // 4. Clear input and keep tray open (do NOT toggle it closed)
             if (input) input.value = "";
@@ -630,6 +760,8 @@
                 const withdrawWei = ethers.utils.parseUnits(parseFloat(amt).toFixed(18), 18);
                 const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
                 await tx.wait();
+                // 📋 Log settle transaction
+                logTransaction(addr, "settle", parseFloat(amt), `Settled ${parseFloat(amt).toFixed(4)} $APTM to wallet`);
                 showToast("Success!");
                 syncData();
             }
@@ -687,11 +819,18 @@
             // 80/20 Split: credit recipient 0.8★ in Firebase
             if (recipientAddress && recipientAddress !== "unknown") {
                 await adjustFirebaseBalance(recipientAddress, 0.8);
+                // 📋 Log earn for recipient
+                const earnDesc = isComment ? "Earned 0.8 Stars — someone hyped your comment" : "Earned 0.8 Stars — someone hyped your post";
+                logTransaction(recipientAddress, "earn", 0.8, earnDesc);
             }
 
             // Deduct 1★ from sender's local spending balance
             starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
+
+            // 📋 Log spend for sender
+            const spendDesc = isComment ? "Spent 1 Star on a Comment Hype" : "Spent 1 Star on a Post Hype";
+            logTransaction(userAddress, "spend", 1, spendDesc);
 
             // Update the hype counter in the UI immediately
             const counterEl = document.getElementById(displayId);
