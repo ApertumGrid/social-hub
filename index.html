@@ -4,15 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCIALHUB — Signal Protocol v10</title>
+    <title>SOCIALHUB — Signal Protocol v12</title>
 
     <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 
-    <!-- 2. Irys WebIrys browser SDK -->
-    <script src="https://gateway.irys.xyz/sdk/v0.2.8"></script>
-
-    <!-- 3. Firebase -->
+    <!-- 2. Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -27,18 +24,21 @@
             appId: "1:864088350104:web:9a5044bd40c6621fa7dfed",
             measurementId: "G-B2C1K1LVGQ"
         };
-        const app = initializeApp(firebaseConfig);
-        const db  = getFirestore(app);
+        const app     = initializeApp(firebaseConfig);
+        const db      = getFirestore(app);
         const storage = getStorage(app);
-        window.db = db;
+        window.db  = db;
         window.storage = storage;
-        window.fs = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc };
+        window.fs  = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc };
         window.fsStorage = { ref, uploadBytesResumable, getDownloadURL };
     </script>
 
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 
     <style>
+        /* ═══════════════════════════════════════════════════════════════
+           CSS VARIABLES & RESET
+        ═══════════════════════════════════════════════════════════════ */
         :root {
             --bg-outer:    #0d1117;
             --bg-app:      #161b27;
@@ -67,22 +67,24 @@
             --radius-sm:  8px;
             --radius-md:  12px;
             --radius-lg:  16px;
-            --radius-xl:  20px;
             --font-body: 'Sora', sans-serif;
             --font-mono: 'JetBrains Mono', monospace;
-            --bottom-nav-h: 60px;
+            --bottom-nav-h: 62px;
+            --sidebar-w:  210px;
+            --rp-w:       250px;
         }
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { height: 100%; }
 
+        /* ═══════════════════════════════════════════════════════════════
+           DESKTOP LAYOUT — FULL BROWSER WIDTH (V11 FIX)
+           Removed max-width. App fills 100% of viewport on desktop.
+        ═══════════════════════════════════════════════════════════════ */
         body {
             font-family: var(--font-body);
             background: var(--bg-outer);
             color: var(--text-primary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
             min-height: 100vh;
             position: relative;
             overflow: hidden;
@@ -105,18 +107,15 @@
             background-size: 28px 28px;
         }
 
-        /* ── APP SHELL ── */
+        /* App shell: full width, full height, no border-radius on desktop */
         #app-shell {
             position: relative; z-index: 5;
-            width: min(1120px, 97vw);
-            height: min(820px, 96vh);
+            width: 100vw;
+            height: 100vh;
             background: var(--bg-app);
-            border-radius: 24px;
-            border: 1px solid var(--border-md);
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            box-shadow: 0 40px 100px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
         }
 
         /* ── TOP NAV ── */
@@ -127,6 +126,7 @@
             border-bottom: 1px solid var(--border);
             background: var(--bg-panel);
             gap: 16px;
+            z-index: 10;
         }
         .brand {
             display: flex; align-items: center; gap: 10px;
@@ -168,12 +168,14 @@
         #wallet-btn:hover { border-color: var(--purple-lt); color: var(--purple-lt); background: var(--purple-glow); }
         .wallet-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); flex-shrink: 0; }
 
-        /* ── BODY LAYOUT ── */
+        /* ── BODY LAYOUT — 3-column, feed stretches ── */
         #body-layout {
             flex-grow: 1;
             display: grid;
-            grid-template-columns: 200px 1fr 240px;
+            /* V11: feed column is 1fr — stretches between fixed sidebars */
+            grid-template-columns: var(--sidebar-w) 1fr var(--rp-w);
             overflow: hidden;
+            min-height: 0;
         }
 
         /* ── LEFT SIDEBAR ── */
@@ -183,6 +185,7 @@
             display: flex; flex-direction: column;
             padding: 16px 10px;
             overflow-y: auto;
+            min-width: 0;
         }
         .nav-item {
             display: flex; align-items: center; gap: 11px;
@@ -226,11 +229,12 @@
         .vault-aptm  { font-size: 0.72rem; color: var(--teal); font-weight: 600; margin-bottom: 2px; }
         .vault-rate  { font-family: var(--font-mono); font-size: 0.58rem; color: var(--text-muted); }
 
-        /* ── FEED COLUMN ── */
+        /* ── FEED COLUMN — stretches to fill all space ── */
         #feed-col {
             overflow-y: auto;
             padding: 20px;
             display: flex; flex-direction: column; gap: 14px;
+            min-width: 0; /* critical for proper flex/grid shrink */
         }
         #feed-col::-webkit-scrollbar { width: 3px; }
         #feed-col::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 3px; }
@@ -295,11 +299,8 @@
         .upload-zone-text { font-size: 0.78rem; color: var(--text-secondary); pointer-events: none; }
         .upload-zone-text strong { display: block; color: var(--purple-lt); font-size: 0.82rem; margin-bottom: 3px; }
 
-        /* ── UPLOAD PROGRESS BAR (NEW V10) ── */
-        #upload-progress-wrap {
-            display: none;
-            margin-top: 10px;
-        }
+        /* Upload Progress Bar */
+        #upload-progress-wrap { display: none; margin-top: 10px; }
         .progress-label {
             display: flex; justify-content: space-between; align-items: center;
             font-size: 0.68rem; color: var(--text-secondary);
@@ -314,30 +315,15 @@
             border: 1px solid var(--border);
         }
         .progress-bar {
-            height: 100%;
-            width: 0%;
+            height: 100%; width: 0%;
             border-radius: 99px;
             background: linear-gradient(90deg, var(--purple), var(--teal));
             transition: width 0.2s ease;
             box-shadow: 0 0 8px rgba(124,92,191,0.5);
         }
-        .progress-status {
-            font-size: 0.64rem; color: var(--text-muted);
-            margin-top: 5px; font-family: var(--font-mono);
-        }
+        .progress-status { font-size: 0.64rem; color: var(--text-muted); margin-top: 5px; font-family: var(--font-mono); }
 
-        #irys-status {
-            font-size: 0.7rem; margin-top: 8px; padding: 7px 12px;
-            border-radius: var(--radius-sm);
-            background: var(--purple-dim); border: 1px solid rgba(124,92,191,0.2);
-            color: var(--purple-lt); display: none;
-        }
-
-        .fee-display {
-            font-family: var(--font-mono);
-            font-size: 0.62rem; color: var(--text-muted);
-            text-align: right; margin-top: 6px;
-        }
+        .fee-display { font-family: var(--font-mono); font-size: 0.62rem; color: var(--text-muted); text-align: right; margin-top: 6px; }
 
         /* Buttons */
         .btn {
@@ -348,20 +334,20 @@
             font-weight: 600; font-size: 0.82rem;
             cursor: pointer; transition: all 0.16s;
         }
-        .btn-purple {
-            background: var(--purple);
-            color: #fff;
-            width: 100%; margin-top: 12px;
-        }
+        .btn-purple { background: var(--purple); color: #fff; width: 100%; margin-top: 12px; }
         .btn-purple:hover { background: var(--purple-lt); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(124,92,191,0.3); }
-        .btn-outline {
-            background: transparent; border: 1px solid var(--border-md);
-            color: var(--text-secondary); width: 100%; margin-top: 10px;
-        }
+        .btn-outline { background: transparent; border: 1px solid var(--border-md); color: var(--text-secondary); width: 100%; margin-top: 10px; }
         .btn-outline:hover { border-color: var(--purple-lt); color: var(--purple-lt); }
         .btn-sm { padding: 6px 13px; font-size: 0.75rem; border-radius: var(--radius-sm); }
         .btn-teal { background: var(--teal); color: #0d1117; font-weight: 700; }
         .btn-teal:hover { filter: brightness(1.08); }
+        .btn-gold {
+            background: linear-gradient(135deg, rgba(240,180,41,0.2), rgba(240,180,41,0.08));
+            border: 1px solid rgba(240,180,41,0.4);
+            color: var(--gold);
+            font-weight: 700;
+        }
+        .btn-gold:hover { background: rgba(240,180,41,0.18); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(240,180,41,0.15); }
 
         /* Post cards */
         .post-card { animation: fadeUp 0.25s ease both; }
@@ -381,18 +367,18 @@
         .post-media {
             width: 100%; border-radius: var(--radius-md); overflow: hidden;
             margin-bottom: 12px; background: #000;
-            max-height: 320px;
+            max-height: 360px;
             display: flex; justify-content: center;
             border: 1px solid var(--border);
         }
-        .post-media img  { width: 100%; max-height: 320px; object-fit: cover; display: block; }
-        .post-media iframe { width: 100%; height: 260px; border: none; }
+        .post-media img  { width: 100%; max-height: 360px; object-fit: cover; display: block; }
+        .post-media iframe { width: 100%; height: 280px; border: none; }
 
-        .arweave-tag {
+        .firebase-tag {
             display: inline-flex; align-items: center; gap: 5px;
             font-family: var(--font-mono); font-size: 0.58rem;
-            background: var(--purple-dim); border: 1px solid rgba(124,92,191,0.25);
-            color: var(--purple-lt); padding: 2px 8px; border-radius: 4px;
+            background: rgba(255,160,0,0.1); border: 1px solid rgba(255,160,0,0.25);
+            color: #ffb300; padding: 2px 8px; border-radius: 4px;
             margin-bottom: 8px;
         }
         .a-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--purple-lt); animation: blink 2s infinite; }
@@ -445,23 +431,17 @@
         .reply-row .field { margin-top: 0; flex: 1; }
         .cmt-input-row { display: flex; gap: 8px; }
         .cmt-input-row .field { margin-top: 0; flex: 1; }
-
-        /* ── CLOSE COMMENTS BUTTON (NEW V10) ── */
         .close-comments-btn {
-            display: block;
-            width: 100%;
+            display: block; width: 100%;
             padding: 7px 14px;
             background: transparent;
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
             color: var(--text-muted);
             font-family: var(--font-body);
-            font-size: 0.72rem;
-            font-weight: 600;
-            cursor: pointer;
-            text-align: center;
-            margin-top: 10px;
-            transition: all 0.13s;
+            font-size: 0.72rem; font-weight: 600;
+            cursor: pointer; text-align: center;
+            margin-top: 10px; transition: all 0.13s;
         }
         .close-comments-btn:hover { border-color: var(--purple-lt); color: var(--purple-lt); background: var(--purple-glow); }
 
@@ -472,6 +452,7 @@
             overflow-y: auto;
             padding: 16px 14px;
             display: flex; flex-direction: column; gap: 14px;
+            min-width: 0;
         }
         #right-panel::-webkit-scrollbar { width: 3px; }
         #right-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 3px; }
@@ -480,16 +461,8 @@
             font-size: 0.85rem; font-weight: 700; color: var(--text-white);
             margin-bottom: 10px;
         }
-        .rp-card {
-            background: var(--bg-card2);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            padding: 14px;
-        }
-        .stat-row {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 9px 0; border-bottom: 1px solid var(--border);
-        }
+        .rp-card { background: var(--bg-card2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px; }
+        .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); }
         .stat-row:last-child { border-bottom: none; }
         .stat-label { font-size: 0.75rem; color: var(--text-secondary); }
         .stat-label span { display: block; font-size: 0.62rem; color: var(--text-muted); margin-top: 1px; }
@@ -500,18 +473,11 @@
         .stat-val.green  { color: var(--green); }
 
         /* Ledger */
-        .ledger-row {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.03); gap: 8px;
-        }
+        .ledger-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.03); gap: 8px; }
         .ledger-row:last-child { border-bottom: none; }
         .ledger-desc { font-size: 0.75rem; color: var(--text-secondary); flex: 1; line-height: 1.4; }
         .ledger-desc small { display: block; font-size: 0.6rem; color: var(--text-muted); margin-top: 1px; }
-        .ledger-badge {
-            font-family: var(--font-mono); font-size: 0.52rem; font-weight: 700;
-            padding: 2px 7px; border-radius: 4px; text-transform: uppercase;
-            width: 58px; text-align: center; flex-shrink: 0;
-        }
+        .ledger-badge { font-family: var(--font-mono); font-size: 0.52rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; width: 58px; text-align: center; flex-shrink: 0; }
         .ledger-badge.earn    { background: rgba(62,207,142,0.12); color: var(--green); }
         .ledger-badge.spend   { background: rgba(248,113,113,0.12); color: var(--red); }
         .ledger-badge.deposit { background: var(--teal-dim); color: var(--teal); }
@@ -522,37 +488,23 @@
         .ledger-amount.neutral { color: var(--text-muted); }
         .ledger-empty { font-size: 0.72rem; color: var(--text-muted); padding: 14px 0; text-align: center; }
 
-        /* Admin panel — hidden by default, shown for admin wallet only */
+        /* Admin panel — hidden by default */
         #admin-revenue-panel { display: none; }
-
-        /* ── ADMIN WITHDRAW BUTTON (NEW V10) ── */
         #admin-withdraw-btn {
             display: inline-flex; align-items: center; gap: 8px;
-            margin-top: 12px;
-            padding: 9px 18px;
+            margin-top: 12px; padding: 9px 18px;
             background: linear-gradient(135deg, rgba(240,180,41,0.2), rgba(240,180,41,0.08));
             border: 1px solid rgba(240,180,41,0.4);
             border-radius: var(--radius-md);
             color: var(--gold);
-            font-family: var(--font-body);
-            font-size: 0.8rem; font-weight: 700;
-            cursor: pointer;
-            transition: all 0.18s;
-            letter-spacing: 0.3px;
+            font-family: var(--font-body); font-size: 0.8rem; font-weight: 700;
+            cursor: pointer; transition: all 0.18s; letter-spacing: 0.3px;
         }
         #admin-withdraw-btn:hover { background: rgba(240,180,41,0.18); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(240,180,41,0.15); }
 
         /* Tokenomics */
-        .tok-section {
-            font-family: var(--font-mono); font-size: 0.56rem;
-            color: var(--gold); letter-spacing: 2.5px;
-            text-transform: uppercase; margin: 18px 0 8px; font-weight: 700;
-        }
-        .tok-row {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
-            font-size: 0.84rem;
-        }
+        .tok-section { font-family: var(--font-mono); font-size: 0.56rem; color: var(--gold); letter-spacing: 2.5px; text-transform: uppercase; margin: 18px 0 8px; font-weight: 700; }
+        .tok-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.84rem; }
         .tok-row:last-of-type { border-bottom: none; }
         .tok-label { color: var(--text-secondary); }
         .tok-value { font-family: var(--font-mono); font-weight: 700; color: var(--purple-lt); font-size: 0.8rem; }
@@ -568,6 +520,16 @@
         #load-more-btn:hover { border-color: var(--purple-lt); color: var(--purple-lt); }
         #media-preview-container { display: none; margin-top: 10px; border-radius: var(--radius-md); overflow: hidden; background: #000; border: 1px solid var(--border); }
         #preview-img { max-width: 100%; max-height: 200px; display: block; margin: 0 auto; }
+        .page-heading { font-size: 1.1rem; font-weight: 700; color: var(--text-white); margin-bottom: 14px; }
+        .page-heading span { color: var(--purple-lt); }
+        .info-box { padding: 12px 14px; background: var(--purple-dim); border: 1px solid rgba(124,92,191,0.2); border-radius: var(--radius-md); font-size: 0.78rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 14px; }
+        .info-box strong { color: var(--purple-lt); }
+        .balance-note { font-size: 0.62rem; color: var(--text-muted); margin-top: 2px; }
+
+        /* Sparkline */
+        .sparkline { height: 50px; border-radius: var(--radius-sm); background: var(--bg-input); margin: 10px 0 4px; position: relative; overflow: hidden; }
+        .sparkline::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--purple-lt), var(--teal), transparent); opacity: 0.4; }
+        .sparkline-line { position: absolute; bottom: 10px; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, var(--purple-lt), var(--teal)); clip-path: polygon(0 60%, 15% 30%, 30% 55%, 45% 20%, 60% 40%, 75% 15%, 90% 35%, 100% 25%, 100% 100%, 0 100%); }
 
         /* Toast */
         #toast {
@@ -583,66 +545,109 @@
         }
         #toast.show { opacity: 1; transform: translateY(0); }
 
-        .page-heading { font-size: 1.1rem; font-weight: 700; color: var(--text-white); margin-bottom: 14px; }
-        .page-heading span { color: var(--purple-lt); }
+        /* ══════════════════════════════════════════════════════════════
+           MOBILE WALLET DRAWER (V11 NEW)
+           Full-screen slide-up overlay triggered from bottom nav Wallet icon
+        ══════════════════════════════════════════════════════════════ */
+        #wallet-drawer {
+            display: none; /* toggled by JS */
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+        }
+        #wallet-drawer.open { display: flex; flex-direction: column; }
 
-        .info-box {
-            padding: 12px 14px; background: var(--purple-dim);
-            border: 1px solid rgba(124,92,191,0.2);
-            border-radius: var(--radius-md);
-            font-size: 0.78rem; color: var(--text-secondary);
-            line-height: 1.6; margin-bottom: 14px;
-        }
-        .info-box strong { color: var(--purple-lt); }
-        .balance-note { font-size: 0.62rem; color: var(--text-muted); margin-top: 2px; }
-
-        /* Sparkline */
-        .sparkline {
-            height: 50px; border-radius: var(--radius-sm);
-            background: var(--bg-input);
-            margin: 10px 0 4px;
-            position: relative; overflow: hidden;
-        }
-        .sparkline::after {
-            content: ''; position: absolute; bottom: 0; left: 0; right: 0;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, var(--purple-lt), var(--teal), transparent);
-            opacity: 0.4;
-        }
-        .sparkline-line {
-            position: absolute; bottom: 10px; left: 0; right: 0; height: 1px;
-            background: linear-gradient(90deg, var(--purple-lt), var(--teal));
-            clip-path: polygon(0 60%, 15% 30%, 30% 55%, 45% 20%, 60% 40%, 75% 15%, 90% 35%, 100% 25%, 100% 100%, 0 100%);
+        /* Dark backdrop behind the drawer panel */
+        #wallet-drawer-backdrop {
+            position: absolute; inset: 0;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(3px);
         }
 
-        /* ── FIREBASE STORAGE BADGE ── */
-        .firebase-tag {
-            display: inline-flex; align-items: center; gap: 5px;
-            font-family: var(--font-mono); font-size: 0.58rem;
-            background: rgba(255,160,0,0.1); border: 1px solid rgba(255,160,0,0.25);
-            color: #ffb300; padding: 2px 8px; border-radius: 4px;
+        /* The sliding panel itself */
+        #wallet-drawer-panel {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            max-height: 92vh;
+            background: var(--bg-app);
+            border-radius: 24px 24px 0 0;
+            border-top: 1px solid var(--border-md);
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            transform: translateY(100%);
+            transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        #wallet-drawer.open #wallet-drawer-panel {
+            transform: translateY(0);
+        }
+
+        /* Sticky back button at top of drawer */
+        #drawer-back-btn {
+            display: flex; align-items: center; gap: 10px;
+            padding: 16px 20px;
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            cursor: pointer;
+            font-size: 0.82rem; font-weight: 700;
+            color: var(--text-primary);
+            border: none; width: 100%; text-align: left;
+            letter-spacing: 0.2px;
+        }
+        #drawer-back-btn:hover { background: var(--bg-hover); }
+        #drawer-back-btn span { font-size: 1rem; }
+
+        /* Scrollable content area of drawer */
+        #wallet-drawer-content {
+            overflow-y: auto;
+            padding: 20px;
+            display: flex; flex-direction: column; gap: 16px;
+            flex-grow: 1;
+        }
+        #wallet-drawer-content::-webkit-scrollbar { width: 3px; }
+        #wallet-drawer-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 3px; }
+
+        /* Drawer section headers */
+        .drawer-section-label {
+            font-family: var(--font-mono); font-size: 0.56rem;
+            color: var(--text-muted); letter-spacing: 2px;
+            text-transform: uppercase; font-weight: 700;
             margin-bottom: 8px;
         }
 
-        /* ══════════════════════════════════════════════════
-           MOBILE RESPONSIVE — < 768px  (NEW V10)
-        ══════════════════════════════════════════════════ */
+        /* Big star balance display in drawer */
+        .drawer-stars-display {
+            font-family: var(--font-mono);
+            font-size: 3rem; font-weight: 700;
+            color: var(--gold);
+            line-height: 1; margin-bottom: 4px;
+        }
+        .drawer-price-display {
+            font-size: 0.78rem; color: var(--teal);
+            font-family: var(--font-mono); font-weight: 600;
+        }
+
+        /* Admin section in drawer */
+        #drawer-admin-section { display: none; }
+        .drawer-admin-header {
+            display: flex; align-items: center; gap: 8px;
+            font-family: var(--font-mono); font-size: 0.6rem;
+            color: var(--gold); letter-spacing: 2px; text-transform: uppercase;
+            font-weight: 700; margin-bottom: 12px;
+        }
+        .drawer-revenue-num {
+            font-family: var(--font-mono); font-size: 1.8rem; font-weight: 700;
+            color: var(--teal); margin-bottom: 4px;
+        }
+
+        /* ══════════════════════════════════════════════════════════════
+           MOBILE RESPONSIVE — < 768px  (V10 + V11 additions)
+        ══════════════════════════════════════════════════════════════ */
         @media (max-width: 768px) {
-            body { align-items: stretch; justify-content: stretch; }
-
-            #app-shell {
-                width: 100vw;
-                height: 100vh;
-                border-radius: 0;
-                border: none;
-            }
-
             /* Hide sidebars on mobile */
             #sidebar, #right-panel { display: none !important; }
 
-            #body-layout {
-                grid-template-columns: 1fr;
-            }
+            #body-layout { grid-template-columns: 1fr; }
 
             #feed-col {
                 padding: 12px;
@@ -651,7 +656,6 @@
 
             /* Edge-to-edge media on mobile */
             .post-card {
-                border-radius: var(--radius-md);
                 padding: 14px 0;
                 background: transparent;
                 border: none;
@@ -666,37 +670,35 @@
                 padding-right: 14px;
             }
             .post-media {
-                width: 100%;
-                max-height: none;
+                width: 100%; max-height: none;
                 border-radius: 0;
-                border-left: none;
-                border-right: none;
+                border-left: none; border-right: none;
                 margin-bottom: 12px;
             }
             .post-media img { max-height: 60vw; }
             .post-media iframe { height: 56vw; }
-
-            /* Composer card on mobile */
             .card { border-radius: var(--radius-md); }
 
-            /* Top nav on mobile — compact */
+            /* Top nav compact */
             #topnav { padding: 0 14px; }
             .user-pill-name { display: none; }
             .user-pill-sub  { display: none; }
             .user-pill { padding: 5px; }
 
-            /* Bottom navigation bar */
-            #bottom-nav {
-                display: flex;
-            }
+            /* Show bottom nav */
+            #bottom-nav { display: flex; }
 
-            /* Hide toast above bottom nav */
+            /* Toast above bottom nav */
             #toast { bottom: calc(var(--bottom-nav-h) + 14px); }
+
+            /* Show wallet drawer on mobile */
+            #wallet-drawer { display: none; }
+            #wallet-drawer.open { display: flex; }
         }
 
-        /* ── BOTTOM NAVIGATION BAR (NEW V10, mobile only) ── */
+        /* ── BOTTOM NAVIGATION BAR (mobile only) ── */
         #bottom-nav {
-            display: none; /* shown only on mobile via media query */
+            display: none;
             position: fixed;
             bottom: 0; left: 0; right: 0;
             height: var(--bottom-nav-h);
@@ -708,27 +710,28 @@
         .bnav-item {
             flex: 1;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            gap: 4px;
+            gap: 3px;
             cursor: pointer;
             color: var(--text-muted);
-            font-size: 0.6rem; font-weight: 600;
+            font-size: 0.55rem; font-weight: 600;
             letter-spacing: 0.5px;
             transition: all 0.15s;
             border: none; background: transparent;
             text-transform: uppercase;
         }
-        .bnav-item .bnav-icon { font-size: 1.2rem; }
+        .bnav-item .bnav-icon { font-size: 1.15rem; }
         .bnav-item.active { color: var(--purple-lt); }
         .bnav-item:hover  { color: var(--text-primary); }
-        /* Post button — special */
         .bnav-post {
             background: var(--purple);
             color: #fff !important;
             border-radius: 14px;
-            margin: 8px 10px;
-            flex: 1.2;
+            margin: 8px 6px;
+            flex: 1.1;
         }
         .bnav-post:hover { background: var(--purple-lt); }
+        .bnav-wallet { }
+        .bnav-wallet.active { color: var(--teal); }
     </style>
 </head>
 <body>
@@ -772,7 +775,6 @@
                 <div class="nav-item" id="nav-profile" onclick="switchPage('profile', this)"><span class="nav-icon">◉</span> My Profile</div>
                 <div class="nav-item" id="nav-info" onclick="switchPage('info', this)"><span class="nav-icon">◎</span> Tokenomics</div>
             </div>
-
             <div class="sidebar-vault">
                 <div class="vault-label">Active Stars</div>
                 <div class="vault-stars" id="user-stars">0 ★</div>
@@ -781,14 +783,13 @@
                 <div class="vault-rate" id="live-price-display">$0.3391 / APTM</div>
                 <button class="btn btn-purple btn-sm" style="margin-top:12px; width:100%; font-size:0.72rem;" onclick="convertAPTM()">DEPOSIT $APTM</button>
             </div>
-
             <div style="padding: 10px 0 4px; border-top: 1px solid var(--border); margin-top: 12px;">
                 <div class="vault-label" style="padding:0 2px; margin-bottom:4px;">Total Anchors</div>
                 <div style="font-family:var(--font-mono); font-size:0.9rem; font-weight:700; color:var(--text-white);" id="total-anchors-display">0</div>
             </div>
         </div>
 
-        <!-- FEED COLUMN -->
+        <!-- FEED COLUMN — stretches via 1fr in grid -->
         <div id="feed-col">
 
             <!-- HOME PAGE -->
@@ -796,7 +797,7 @@
                 <div class="feed-heading">Signal Feed</div>
 
                 <!-- Compose -->
-                <div class="card" style="border-color: rgba(124,92,191,0.25);">
+                <div class="card" id="composer-card" style="border-color: rgba(124,92,191,0.25);">
                     <div class="composer-row">
                         <img id="pb-avatar" class="av" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub">
                         <div>
@@ -812,22 +813,18 @@
                         <div class="mtab"        id="tab-file" onclick="setMediaTab('file')">☁ Firebase Upload</div>
                     </div>
 
-                    <!-- URL input panel -->
                     <div id="url-input-wrap">
                         <input type="text" id="post-media" class="field" placeholder="Image URL (3.0★) · Video URL (10.0★)" oninput="updatePreview(this.value)">
-                        <div id="media-preview-container">
-                            <img id="preview-img" src="">
-                        </div>
+                        <div id="media-preview-container"><img id="preview-img" src=""></div>
                     </div>
 
-                    <!-- Firebase file upload panel -->
                     <div id="file-input-wrap" style="display:none;">
                         <div class="upload-zone">
                             <input type="file" id="media-file-input" accept="image/*,video/*" onchange="handleFileSelect(this)">
                             <div class="upload-zone-text">
                                 <strong>↑ Click or drop to upload</strong>
                                 Stored on <span style="color:#ffb300;">Firebase Storage</span>.<br>
-                                <span style="font-size:0.68rem; color:var(--text-muted);">No MetaMask required for upload.</span>
+                                <span style="font-size:0.68rem; color:var(--text-muted);">No MetaMask required.</span>
                             </div>
                         </div>
                         <div id="file-preview-wrap" style="display:none; margin-top:10px;">
@@ -837,19 +834,15 @@
                         </div>
                     </div>
 
-                    <!-- UPLOAD PROGRESS BAR (NEW V10) -->
                     <div id="upload-progress-wrap">
                         <div class="progress-label">
-                            <span id="progress-label-text">Uploading to Firebase…</span>
+                            <span id="progress-label-text">Uploading…</span>
                             <span id="progress-pct">0%</span>
                         </div>
-                        <div class="progress-track">
-                            <div class="progress-bar" id="progress-bar"></div>
-                        </div>
+                        <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
                         <div class="progress-status" id="progress-status">Preparing…</div>
                     </div>
 
-                    <div id="irys-status"></div>
                     <div class="fee-display" id="post-fee-display"></div>
                     <button class="btn btn-purple" onclick="handleBroadcast()">◈ Broadcast Signal</button>
                 </div>
@@ -894,22 +887,14 @@
                     <div id="ledger-list"><div class="ledger-empty">Connect wallet to view history.</div></div>
                 </div>
 
-                <!--
-                    ══════════════════════════════════════════════════════
-                    ADMIN REVENUE PANEL (V10)
-                    Visible ONLY when connected wallet === CONFIG.ADMIN_ADDRESS
-                    Shows: Total Platform Revenue + Withdraw button → adminWithdraw()
-                    ══════════════════════════════════════════════════════
-                -->
+                <!-- ADMIN PANEL — visible only to admin wallet -->
                 <div class="card" id="admin-revenue-panel" style="border-color:rgba(240,180,41,0.2);">
                     <div style="font-family:var(--font-mono); font-size:0.58rem; color:var(--gold); letter-spacing:2px; text-transform:uppercase; font-weight:700; margin-bottom:4px;">🔐 Platform Revenue — Admin</div>
-                    <div style="font-size:0.62rem; color:var(--text-muted); margin-bottom:12px;">Cumulative fees: 100% from posts + 20% from interactions</div>
+                    <div style="font-size:0.62rem; color:var(--text-muted); margin-bottom:12px;">100% of post fees + 20% of all interactions</div>
                     <div style="font-size:0.68rem; color:var(--text-secondary); margin-bottom:2px;">Total Platform Revenue</div>
                     <div style="font-family:var(--font-mono); font-size:2rem; font-weight:700; color:var(--teal);" id="admin-revenue-display">0 ★</div>
                     <div style="font-size:0.62rem; color:var(--text-muted); margin-top:4px;" id="admin-revenue-count">0 fee events</div>
-                    <button id="admin-withdraw-btn" onclick="adminWithdraw()">
-                        ⬇ Withdraw to Admin Wallet
-                    </button>
+                    <button id="admin-withdraw-btn" onclick="adminWithdraw()">⬇ Withdraw to Admin Wallet</button>
                 </div>
             </div>
 
@@ -952,7 +937,6 @@
 
         <!-- RIGHT PANEL -->
         <div id="right-panel">
-
             <div class="rp-card">
                 <div class="rp-heading">Star Balance</div>
                 <div style="font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--gold); margin-bottom:2px;" id="rp-stars">0 ★</div>
@@ -960,7 +944,6 @@
                 <div class="sparkline"><div class="sparkline-line"></div></div>
                 <div style="font-size:0.62rem; color:var(--text-muted);">Earnings this session</div>
             </div>
-
             <div class="rp-card">
                 <div class="rp-heading">Platform Stats</div>
                 <div class="stat-row">
@@ -984,44 +967,133 @@
                     <div class="stat-val" id="rp-anchors">0</div>
                 </div>
             </div>
-
             <div class="rp-card">
                 <div class="rp-heading">Storage</div>
                 <div style="font-size:0.72rem; color:var(--text-secondary); line-height:1.6; margin-bottom:10px;">
-                    Media is stored on <span style="color:#ffb300; font-weight:600;">Firebase Storage</span> (Blaze Plan). No MetaMask required for uploads — just post and go.
+                    Media stored on <span style="color:#ffb300; font-weight:600;">Firebase Storage</span> (Blaze Plan). No MetaMask required for uploads.
                 </div>
                 <div style="display:flex; align-items:center; gap:6px; margin-top:8px;">
                     <span class="a-dot" style="background:#ffb300;"></span>
                     <span style="font-family:var(--font-mono); font-size:0.6rem; color:#ffb300;">FIREBASE STORAGE ACTIVE</span>
                 </div>
             </div>
-
         </div><!-- /right-panel -->
 
     </div><!-- /body-layout -->
 </div><!-- /app-shell -->
 
-<!-- ── BOTTOM NAVIGATION BAR (Mobile, NEW V10) ── -->
+<!-- ════════════════════════════════════════════════════════════════════
+     BOTTOM NAVIGATION BAR (mobile only — V10 + V11 Wallet tab)
+════════════════════════════════════════════════════════════════════ -->
 <div id="bottom-nav">
     <button class="bnav-item active" id="bnav-home" onclick="switchPage('home', null); setBnav('home')">
         <span class="bnav-icon">⊞</span>
         Home
     </button>
     <button class="bnav-item bnav-post" onclick="scrollToCompose()">
-        <span class="bnav-icon">+</span>
+        <span class="bnav-icon">＋</span>
         Post
     </button>
     <button class="bnav-item" id="bnav-studio" onclick="switchPage('earnings', null); setBnav('studio')">
         <span class="bnav-icon">◆</span>
         Studio
     </button>
+    <!-- V11 NEW: Wallet icon → opens drawer -->
+    <button class="bnav-item bnav-wallet" id="bnav-wallet" onclick="openWalletDrawer()">
+        <span class="bnav-icon">◎</span>
+        Wallet
+    </button>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     MOBILE WALLET DRAWER (V11 NEW)
+     Full-screen slide-up overlay with:
+       • Star balance (big bold)
+       • Live APTM price
+       • Buy Stars section (deposit)
+       • Creator Studio section (earned stars + settle)
+       • Admin dashboard (conditional — admin wallet only)
+════════════════════════════════════════════════════════════════════ -->
+<div id="wallet-drawer">
+    <div id="wallet-drawer-backdrop" onclick="closeWalletDrawer()"></div>
+    <div id="wallet-drawer-panel">
+
+        <!-- Sticky back button -->
+        <button id="drawer-back-btn" onclick="closeWalletDrawer()">
+            <span>←</span> Back to Feed
+        </button>
+
+        <div id="wallet-drawer-content">
+
+            <!-- STAR BALANCE + PRICE -->
+            <div class="rp-card">
+                <div class="drawer-section-label">Your Star Balance</div>
+                <div class="drawer-stars-display" id="drawer-stars">0 ★</div>
+                <div class="drawer-price-display" id="drawer-price">APTM @ $0.3391</div>
+                <div style="margin-top:8px; font-size:0.72rem; color:var(--text-muted);">
+                    APTM Vault: <span style="color:var(--teal); font-family:var(--font-mono); font-weight:600;" id="drawer-aptm-val">0.0000 $APTM</span>
+                </div>
+            </div>
+
+            <!-- BUY STARS (DEPOSIT) -->
+            <div class="rp-card">
+                <div class="drawer-section-label" style="margin-bottom:10px;">Buy Stars</div>
+                <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:10px; line-height:1.5;">
+                    Deposit $APTM to receive Stars. MetaMask will open for the on-chain transaction.
+                </div>
+                <div style="display:flex; gap:8px; align-items:flex-end;">
+                    <div style="flex:1;">
+                        <div style="font-size:0.62rem; color:var(--text-muted); margin-bottom:4px;">APTM Amount</div>
+                        <input type="number" id="drawer-deposit-input" class="field" style="margin-top:0;" placeholder="5.0" min="0.1" step="0.1">
+                    </div>
+                    <button class="btn btn-teal btn-sm" style="flex-shrink:0; margin-bottom:0; height:40px;" onclick="drawerDeposit()">Convert →</button>
+                </div>
+                <div style="font-size:0.65rem; color:var(--text-muted); margin-top:8px; font-family:var(--font-mono);">
+                    Est. Stars: <span id="drawer-deposit-est" style="color:var(--gold);">—</span>
+                </div>
+                <input id="drawer-deposit-hidden" type="number" style="display:none;" value="5">
+            </div>
+
+            <!-- CREATOR STUDIO -->
+            <div class="rp-card">
+                <div class="drawer-section-label" style="margin-bottom:10px;">Creator Studio</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+                    <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px;">
+                        <div style="font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700;">Earned Stars</div>
+                        <div style="font-family:var(--font-mono); font-size:1.4rem; font-weight:700; color:var(--gold); margin-top:4px;" id="drawer-earned-stars">0 ★</div>
+                    </div>
+                    <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px;">
+                        <div style="font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700;">APTM Vault</div>
+                        <div style="font-family:var(--font-mono); font-size:0.85rem; font-weight:700; color:var(--teal); margin-top:4px;" id="drawer-vault-aptm">0.0000</div>
+                    </div>
+                </div>
+                <button class="btn btn-teal" style="margin-top:0;" onclick="settleToWallet(); closeWalletDrawer();">Settle to Wallet →</button>
+            </div>
+
+            <!-- ADMIN DASHBOARD (conditional) -->
+            <div class="rp-card" id="drawer-admin-section" style="border-color:rgba(240,180,41,0.25);">
+                <div class="drawer-admin-header">🔐 Admin Dashboard</div>
+                <div style="font-size:0.68rem; color:var(--text-secondary); margin-bottom:6px;">Total Platform Revenue</div>
+                <div class="drawer-revenue-num" id="drawer-admin-revenue">0 ★</div>
+                <div style="font-size:0.62rem; color:var(--text-muted); margin-bottom:14px;" id="drawer-admin-count">0 fee events</div>
+                <button class="btn btn-gold btn-sm" style="width:100%; margin-top:0;" onclick="adminWithdraw(); closeWalletDrawer();">⬇ Admin Withdraw</button>
+            </div>
+
+            <!-- Connect prompt if no wallet -->
+            <div id="drawer-connect-prompt" style="text-align:center; padding:20px 0;">
+                <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:14px;">Connect your wallet to access your balance, buy stars, and settle earnings.</div>
+                <button class="btn btn-purple" style="width:auto; padding:10px 24px;" onclick="connectWallet()">Connect Wallet</button>
+            </div>
+
+        </div>
+    </div>
 </div>
 
 <div id="toast"></div>
 
 <script>
     // ═══════════════════════════════════════════════════════════════════
-    // ⚙️  GLOBAL CONFIG  (V10)
+    // ⚙️  GLOBAL CONFIG  (V11)
     // ═══════════════════════════════════════════════════════════════════
     const CONFIG = {
         ADMIN_ADDRESS:    "0xe348fedea1850a0c2d4ac0fed3f903774de1e16a",
@@ -1042,17 +1114,17 @@
     // ═══════════════════════════════════════════════════════════════════
     // GLOBAL STATE
     // ═══════════════════════════════════════════════════════════════════
-    let currentAptmBalance = "0.0000";
-    let starBalance = "0";
-    let creatorEarnings = 0;
-    let currentAptmPriceUsd = 0.3391;
-    let totalAnchors = 0;
+    let currentAptmBalance    = "0.0000";
+    let starBalance           = "0";
+    let creatorEarnings       = 0;
+    let currentAptmPriceUsd   = 0.3391;
+    let totalAnchors          = 0;
     let provider, signer, hubContract;
-    let userAddress = "";
-    let userHandle = localStorage.getItem('hub_userName') || "Anonymous_Creator";
-    let userAvatar  = localStorage.getItem('hub_userPic')  || "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
+    let userAddress  = "";
+    let userHandle   = localStorage.getItem('hub_userName') || "Anonymous_Creator";
+    let userAvatar   = localStorage.getItem('hub_userPic')  || "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
     let visibleCount = 10;
-    const pageSize = 10;
+    const pageSize   = 10;
 
     const abi = [
         "function depositAPTM() public payable",
@@ -1067,9 +1139,58 @@
         "function PLATFORM_ADMIN() view returns (address)"
     ];
 
-    // Media tab state
     let mediaTabMode = 'url';
     let selectedFile = null;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PRICE HEARTBEAT  (V12 FIX)
+    //
+    // getLiveAptmPrice() runs for ALL visitors — no wallet, no RPC,
+    // no blockchain provider needed. Simple fetch to CoinGecko for
+    // the 'apertum' coin. Falls back to 0.3391 on any error.
+    // ═══════════════════════════════════════════════════════════════════
+    async function getLiveAptmPrice() {
+        try {
+            const res  = await fetch(
+                "https://api.coingecko.com/api/v3/simple/price?ids=apertum&vs_currencies=usd",
+                { headers: { "Accept": "application/json" } }
+            );
+            if (!res.ok) throw new Error("CoinGecko HTTP " + res.status);
+            const data  = await res.json();
+            const price = data?.apertum?.usd;
+            if (price && price > 0) {
+                console.log(`[Heartbeat] APTM Price: $${price.toFixed(4)} (CoinGecko)`);
+                return price;
+            }
+            throw new Error("No price in response");
+        } catch (err) {
+            console.warn(`[Heartbeat] CoinGecko fetch failed (${err.message}). Using fallback $0.3391`);
+            return 0.3391;
+        }
+    }
+
+    // ─── Price update helper — updates all price displays ───
+    function applyPriceUpdate(price) {
+        currentAptmPriceUsd = price;
+        const fmt = `$${parseFloat(price).toFixed(4)}`;
+        const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        s('live-price-display', fmt + ' / APTM');
+        s('rp-rate', fmt);
+        s('drawer-price', `APTM @ ${fmt}`);
+        // Refresh deposit estimate in drawer if input has a value
+        const inp = document.getElementById('drawer-deposit-input');
+        if (inp && inp.value) updateDepositEstimate(parseFloat(inp.value));
+    }
+
+    // ─── UNCONDITIONAL heartbeat — fires immediately on load, then every 30s ───
+    async function runPriceHeartbeat() {
+        const price = await getLiveAptmPrice();
+        applyPriceUpdate(price);
+        // Also refresh syncData if wallet connected
+        if (provider && hubContract) {
+            try { await syncData(); } catch (_) {}
+        }
+    }
 
     // ═══════════════════════════════════════════════════════════════════
     // MOBILE BOTTOM NAV
@@ -1081,10 +1202,63 @@
     }
 
     function scrollToCompose() {
-        const compose = document.querySelector('#page-home .card');
-        if (compose) compose.scrollIntoView({ behavior: 'smooth' });
         switchPage('home', null);
         setBnav('home');
+        setTimeout(() => {
+            const c = document.getElementById('composer-card');
+            if (c) c.scrollIntoView({ behavior: 'smooth' });
+        }, 50);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // WALLET DRAWER (V11 NEW)
+    // ═══════════════════════════════════════════════════════════════════
+    function openWalletDrawer() {
+        setBnav('wallet');
+        const drawer = document.getElementById('wallet-drawer');
+        drawer.classList.add('open');
+        document.body.style.overflow = 'hidden';
+        updateDrawerUI();
+    }
+
+    function closeWalletDrawer() {
+        const drawer = document.getElementById('wallet-drawer');
+        drawer.classList.remove('open');
+        document.body.style.overflow = '';
+        setBnav('home');
+    }
+
+    function updateDrawerUI() {
+        const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        const fmt  = parseFloat(currentAptmPriceUsd).toFixed(4);
+        s('drawer-stars',         (starBalance || "0") + " ★");
+        s('drawer-price',         `APTM @ $${fmt}`);
+        s('drawer-aptm-val',      (currentAptmBalance || "0.0000") + " $APTM");
+        s('drawer-earned-stars',  creatorEarnings.toFixed(1) + " ★");
+        s('drawer-vault-aptm',    parseFloat(currentAptmBalance || 0).toFixed(4));
+
+        // Show/hide connect prompt
+        const prompt = document.getElementById('drawer-connect-prompt');
+        if (prompt) prompt.style.display = userAddress ? 'none' : 'block';
+
+        // Admin section
+        const adminSec = document.getElementById('drawer-admin-section');
+        if (adminSec) {
+            adminSec.style.display = (userAddress && userAddress.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase()) ? 'block' : 'none';
+        }
+    }
+
+    function updateDepositEstimate(aptmAmt) {
+        const stars = Math.floor(aptmAmt * currentAptmPriceUsd / CONFIG.STAR_USD);
+        const el = document.getElementById('drawer-deposit-est');
+        if (el) el.textContent = isNaN(stars) ? '—' : stars + ' ★';
+    }
+
+    async function drawerDeposit() {
+        const inp = document.getElementById('drawer-deposit-input');
+        const amt = inp ? inp.value.trim() : "";
+        if (!amt || isNaN(parseFloat(amt))) return showToast("Enter a valid APTM amount.");
+        await _doDeposit(amt);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1136,24 +1310,19 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // FIREBASE STORAGE UPLOAD WITH REAL-TIME PROGRESS BAR (NEW V10)
-    //
-    // Rules: Posts, Comments, Hypes = Firebase only, NO MetaMask popup
-    // MetaMask ONLY for: Deposit, Withdraw, Register
+    // FIREBASE STORAGE UPLOAD WITH REAL-TIME PROGRESS BAR
     // ═══════════════════════════════════════════════════════════════════
     function uploadToFirebaseStorage(file) {
         return new Promise((resolve, reject) => {
             if (!window.storage || !window.fsStorage) {
-                return reject(new Error("Firebase Storage not ready yet. Try again in a moment."));
+                return reject(new Error("Firebase Storage not ready. Try again in a moment."));
             }
-
-            const timestamp  = Date.now();
-            const safeName   = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const timestamp   = Date.now();
+            const safeName    = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
             const storagePath = `media/${timestamp}_${safeName}`;
             const storageRef  = window.fsStorage.ref(window.storage, storagePath);
             const uploadTask  = window.fsStorage.uploadBytesResumable(storageRef, file);
 
-            // Show progress UI
             const progressWrap   = document.getElementById('upload-progress-wrap');
             const progressBar    = document.getElementById('progress-bar');
             const progressPct    = document.getElementById('progress-pct');
@@ -1164,78 +1333,43 @@
             progressBar.style.width    = '0%';
             progressPct.textContent    = '0%';
             progressLabel.textContent  = `Uploading ${file.name}…`;
-            progressStatus.textContent = 'Starting upload…';
+            progressStatus.textContent = 'Starting…';
 
             uploadTask.on('state_changed',
                 (snapshot) => {
-                    // PROGRESS EVENT — 0–100%
-                    const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-                    progressBar.style.width   = pct + '%';
-                    progressPct.textContent   = pct + '%';
-
-                    const kb = (snapshot.bytesTransferred / 1024).toFixed(1);
+                    const pct   = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+                    progressBar.style.width  = pct + '%';
+                    progressPct.textContent  = pct + '%';
+                    const kb    = (snapshot.bytesTransferred / 1024).toFixed(1);
                     const total = (snapshot.totalBytes / 1024).toFixed(1);
-
-                    switch (snapshot.state) {
-                        case 'paused':
-                            progressStatus.textContent = 'Upload paused.';
-                            break;
-                        case 'running':
-                            progressStatus.textContent = `${kb} KB / ${total} KB transferred`;
-                            break;
+                    if (snapshot.state === 'running') {
+                        progressStatus.textContent = `${kb} KB / ${total} KB transferred`;
+                    } else if (snapshot.state === 'paused') {
+                        progressStatus.textContent = 'Upload paused.';
                     }
                 },
-                (error) => {
-                    // UPLOAD FAILED
-                    progressWrap.style.display = 'none';
-                    reject(error);
-                },
+                (error) => { progressWrap.style.display = 'none'; reject(error); },
                 async () => {
-                    // UPLOAD COMPLETE — get download URL
                     progressBar.style.width   = '100%';
                     progressPct.textContent   = '100%';
                     progressStatus.textContent = 'Processing…';
-
                     try {
                         const downloadURL = await window.fsStorage.getDownloadURL(uploadTask.snapshot.ref);
                         progressStatus.textContent = '✓ Upload complete!';
                         progressLabel.textContent  = 'Stored on Firebase';
                         setTimeout(() => { progressWrap.style.display = 'none'; }, 2500);
                         resolve(downloadURL);
-                    } catch (e) {
-                        progressWrap.style.display = 'none';
-                        reject(e);
-                    }
+                    } catch (e) { progressWrap.style.display = 'none'; reject(e); }
                 }
             );
         });
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // PRICE ENGINE
-    // ═══════════════════════════════════════════════════════════════════
-    async function getLiveAptmPrice() {
-        const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
-        try {
-            if (!provider) return 0.3391;
-            const poolContract = new ethers.Contract(
-                poolAddress,
-                ["function getReserves() external view returns (uint112, uint112, uint32)"],
-                provider
-            );
-            const reserves   = await poolContract.getReserves();
-            const humanAptm  = parseFloat(ethers.utils.formatUnits(reserves[0], 18));
-            const humanUsdt  = parseFloat(ethers.utils.formatUnits(reserves[1], 18));
-            const price      = humanUsdt / humanAptm;
-            return price > 0 ? price : 0.3391;
-        } catch (e) { return 0.3391; }
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
-    // WALLET (MetaMask only for: Deposit, Withdraw, Register)
+    // WALLET — MetaMask only for Deposit, Withdraw, Admin Withdraw
     // ═══════════════════════════════════════════════════════════════════
     async function connectWallet() {
-        if (!window.ethereum) return alert("MetaMask not found");
+        if (!window.ethereum) return alert("MetaMask not found. Please install it.");
         try {
             provider    = new ethers.providers.Web3Provider(window.ethereum);
             const accts = await provider.send("eth_requestAccounts", []);
@@ -1269,7 +1403,6 @@
             ]);
             const humanBalance  = ethers.utils.formatEther(balRaw);
             currentAptmBalance  = humanBalance;
-            currentAptmPriceUsd = await getLiveAptmPrice();
             const usdValue      = parseFloat(humanBalance) * parseFloat(currentAptmPriceUsd);
             starBalance         = Math.floor(usdValue / CONFIG.STAR_USD).toString();
             totalAnchors        = anchors.toNumber();
@@ -1290,6 +1423,7 @@
     function updateUI() {
         try {
             const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            const fmt = `$${parseFloat(currentAptmPriceUsd).toFixed(4)}`;
             s('user-stars',              (starBalance || "0") + " ★");
             s('sidebar-stars-badge',     (starBalance || "0") + " ★");
             s('rp-stars',                (starBalance || "0") + " ★");
@@ -1297,21 +1431,24 @@
             s('earnings-aptm-value',     (currentAptmBalance || "0.0000") + " $APTM");
             s('rp-aptm',                 parseFloat(currentAptmBalance || 0).toFixed(4));
             s('creator-revenue-display', creatorEarnings.toFixed(1) + " ★");
-            s('live-price-display',      `$${parseFloat(currentAptmPriceUsd).toFixed(4)} / APTM`);
-            s('rp-rate',                 `$${parseFloat(currentAptmPriceUsd).toFixed(4)}`);
+            s('live-price-display',      fmt + ' / APTM');
+            s('rp-rate',                 fmt);
             s('total-anchors-display',   totalAnchors);
             s('rp-anchors',              totalAnchors);
 
-            const pbAv = document.getElementById('pb-avatar');   if (pbAv) pbAv.src = userAvatar;
-            const nvAv = document.getElementById('nav-avatar');   if (nvAv) nvAv.src = userAvatar;
-            const pbH  = document.getElementById('pb-handle');    if (pbH)  pbH.textContent  = userHandle;
-            const nvH  = document.getElementById('nav-handle');   if (nvH)  nvH.textContent  = userHandle;
+            const pbAv = document.getElementById('pb-avatar'); if (pbAv) pbAv.src = userAvatar;
+            const nvAv = document.getElementById('nav-avatar'); if (nvAv) nvAv.src = userAvatar;
+            const pbH  = document.getElementById('pb-handle');  if (pbH)  pbH.textContent = userHandle;
+            const nvH  = document.getElementById('nav-handle');  if (nvH)  nvH.textContent = userHandle;
+
+            // Sync drawer if open
+            updateDrawerUI();
         } catch (e) { console.error("UI Update Error:", e); }
     }
 
     function saveProfile() {
-        const nameVal = document.getElementById('handle-input').value;
-        const picVal  = document.getElementById('avatar-input').value;
+        const nameVal = document.getElementById('handle-input').value.trim();
+        const picVal  = document.getElementById('avatar-input').value.trim();
         if (nameVal && picVal) {
             localStorage.setItem('hub_userName', nameVal);
             localStorage.setItem('hub_userPic',  picVal);
@@ -1345,6 +1482,7 @@
             creatorEarnings = snap.exists() ? (snap.data().stars || 0) : 0;
             const el = document.getElementById('creator-revenue-display');
             if (el) el.textContent = creatorEarnings.toFixed(1) + " ★";
+            updateDrawerUI();
         });
     }
 
@@ -1358,16 +1496,14 @@
         }).catch(e => console.warn("logTransaction:", e));
     }
 
-    // Admin revenue: logs to `admin_revenue` global document (Firestore)
+    // 100% of post fees + 20% of interactions → admin_revenue
     function logAdminRevenue(sourceAddress, actionType, amount) {
         if (!window.db) return;
-        // Append to collection for itemized view
         window.fs.addDoc(window.fs.collection(window.db, "platform_revenue"), {
             sourceAddress: (sourceAddress || "unknown").toLowerCase(),
             actionType, amount, timestamp: Date.now()
         }).catch(e => console.warn("logAdminRevenue:", e));
 
-        // Also increment the global admin_revenue document for easy total reads
         const globalRef = window.fs.doc(window.db, "admin_revenue", "global");
         window.fs.runTransaction(window.db, async (txn) => {
             const snap = await txn.get(globalRef);
@@ -1390,15 +1526,15 @@
             if (docs.length === 0) { el.innerHTML = `<div class="ledger-empty">No activity yet.</div>`; return; }
             el.innerHTML = "";
             docs.slice(0, 10).forEach(tx => {
-                const isEarn   = tx.type === "earn" || tx.type === "deposit";
-                const prefix   = isEarn ? "+" : "−";
-                const amtStr   = prefix + parseFloat(tx.amount).toFixed(1) + " ★";
-                const amtCls   = isEarn ? "earn" : (tx.type === "settle" ? "neutral" : "spend");
-                const badge    = { earn:"Earned", spend:"Spent", deposit:"Deposit", settle:"Settle" }[tx.type] || tx.type;
-                const date     = new Date(tx.timestamp).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
-                const row      = document.createElement('div');
-                row.className  = 'ledger-row';
-                row.innerHTML  = `
+                const isEarn  = tx.type === "earn" || tx.type === "deposit";
+                const prefix  = isEarn ? "+" : "−";
+                const amtStr  = prefix + parseFloat(tx.amount).toFixed(1) + " ★";
+                const amtCls  = isEarn ? "earn" : (tx.type === "settle" ? "neutral" : "spend");
+                const badge   = { earn:"Earned", spend:"Spent", deposit:"Deposit", settle:"Settle" }[tx.type] || tx.type;
+                const date    = new Date(tx.timestamp).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
+                const row     = document.createElement('div');
+                row.className = 'ledger-row';
+                row.innerHTML = `
                     <div class="ledger-desc">${tx.description}<small>${date}</small></div>
                     <div style="width:58px;text-align:center;flex-shrink:0;"><span class="ledger-badge ${tx.type}">${badge}</span></div>
                     <div class="ledger-amount ${amtCls}">${amtStr}</div>`;
@@ -1421,34 +1557,35 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // ADMIN REVENUE PANEL (V10)
-    // Shows Total Platform Revenue + Withdraw button
-    // Only visible to CONFIG.ADMIN_ADDRESS
+    // ADMIN REVENUE — subscribes and updates both desktop + drawer
     // ═══════════════════════════════════════════════════════════════════
     function subscribeAdminRevenue(walletAddr) {
         if (!walletAddr || !window.db) return;
         if (walletAddr.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) return;
 
+        // Show admin panels
         const panel = document.getElementById('admin-revenue-panel');
         if (panel) panel.style.display = 'block';
+        const drawerAdmin = document.getElementById('drawer-admin-section');
+        if (drawerAdmin) drawerAdmin.style.display = 'block';
 
-        // Subscribe to itemized revenue collection for counts + breakdown
         const q = window.fs.query(
             window.fs.collection(window.db, "platform_revenue"),
             window.fs.orderBy("timestamp", "desc")
         );
         const render = (snap) => {
             let total = 0; snap.forEach(d => { total += (d.data().amount || 0); });
-            const dEl = document.getElementById('admin-revenue-display'); if (dEl) dEl.textContent = total.toFixed(2) + " ★";
-            const cEl = document.getElementById('admin-revenue-count');   if (cEl) cEl.textContent = snap.size + " fee events";
+            const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            s('admin-revenue-display', total.toFixed(2) + " ★");
+            s('admin-revenue-count',   snap.size + " fee events");
+            s('drawer-admin-revenue',  total.toFixed(2) + " ★");
+            s('drawer-admin-count',    snap.size + " fee events");
         };
         window.fs.onSnapshot(q, render, () => {
             window.fs.onSnapshot(window.fs.collection(window.db, "platform_revenue"), render);
         });
     }
 
-    // Admin Withdraw — calls smart contract adminWithdraw()
-    // This IS a MetaMask-required action (withdrawal)
     async function adminWithdraw() {
         if (!hubContract) return alert("Connect Wallet First");
         if (!userAddress || userAddress.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) {
@@ -1468,21 +1605,29 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // WALLET ACTIONS (MetaMask gated: Deposit, User Withdraw)
+    // WALLET ACTIONS — MetaMask gated
     // ═══════════════════════════════════════════════════════════════════
-    async function convertAPTM() {
-        currentAptmPriceUsd = await getLiveAptmPrice();
-        const amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(4)}`, "5");
-        if (amt && hubContract) {
-            try {
-                showToast(`Depositing ${amt} $APTM…`);
-                const tx = await hubContract.depositAPTM({ value: ethers.utils.parseEther(amt), gasLimit: 150000 });
-                await tx.wait();
-                const starsReceived = Math.floor(parseFloat(amt) * currentAptmPriceUsd / CONFIG.STAR_USD);
-                logTransaction(userAddress, "deposit", starsReceived, `Deposited ${parseFloat(amt).toFixed(2)} $APTM → ${starsReceived} Stars`);
-                setTimeout(() => { syncData(); }, 2000);
-            } catch (e) { console.error(e); alert("Transaction failed."); }
+    async function _doDeposit(amt) {
+        if (!hubContract) {
+            await connectWallet();
+            if (!hubContract) return;
         }
+        try {
+            showToast(`Depositing ${amt} $APTM…`);
+            const tx = await hubContract.depositAPTM({ value: ethers.utils.parseEther(String(parseFloat(amt))), gasLimit: 150000 });
+            await tx.wait();
+            const starsReceived = Math.floor(parseFloat(amt) * currentAptmPriceUsd / CONFIG.STAR_USD);
+            logTransaction(userAddress, "deposit", starsReceived, `Deposited ${parseFloat(amt).toFixed(2)} $APTM → ${starsReceived} Stars`);
+            showToast("Deposit Successful ✓");
+            setTimeout(() => { syncData(); }, 2000);
+        } catch (e) { console.error(e); alert("Transaction failed: " + (e.reason || e.message).slice(0,100)); }
+    }
+
+    async function convertAPTM() {
+        const price = await getLiveAptmPrice();
+        applyPriceUpdate(price);
+        const amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(4)}`, "5");
+        if (amt) await _doDeposit(amt);
     }
 
     async function settleToWallet() {
@@ -1555,21 +1700,20 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // BROADCAST (V10)
+    // BROADCAST — ZERO MetaMask popups for posting
     //
-    // ZERO POPUPS for posting:
-    //   - Text: pure Firestore write, star deducted from Firebase balance
-    //   - Photo/Video (file): Firebase Storage upload → Firestore write
-    //   - Photo/Video (url): Firestore write
-    // Admin revenue logged to `admin_revenue` collection (100% of post fee)
-    // MetaMask is NOT called here.
+    // Revenue rules:
+    //   Text post:   1.2 ★ → 100% admin_revenue
+    //   Photo post:  3.0 ★ → 100% admin_revenue
+    //   Video post: 10.0 ★ → 100% admin_revenue
+    //   Hype/Comment: 80% creator, 20% admin_revenue
     // ═══════════════════════════════════════════════════════════════════
     async function handleBroadcast() {
         const txt = document.getElementById('post-text').value.trim();
         if (!txt) return showToast("Write something first!");
         if (!userAddress) return showToast("Connect your wallet first!");
 
-        // Check Firebase star balance (internal ledger)
+        // Read Firebase star balance
         let currentFbStars = 0;
         if (window.db) {
             try {
@@ -1579,12 +1723,11 @@
             } catch (e) { console.warn("Balance check failed:", e); }
         }
 
-        let mediaUrl  = "";
-        let feeAmount = CONFIG.FEES.TEXT;
-        let postType  = 1; // 1=text, 2=photo, 3=video
+        let mediaUrl   = "";
+        let feeAmount  = CONFIG.FEES.TEXT;
+        let postType   = 1;
         let isFirebase = false;
 
-        // Determine post type and fee
         if (mediaTabMode === 'file' && selectedFile) {
             const isVid = selectedFile.type.startsWith('video/');
             feeAmount   = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
@@ -1599,12 +1742,11 @@
             }
         }
 
-        // Check sufficient stars (Firebase internal balance)
         if (currentFbStars < feeAmount) {
             return alert(`Insufficient Stars!\nRequired: ${feeAmount}★\nYour balance: ${currentFbStars.toFixed(1)}★\n\nDeposit APTM to get more Stars.`);
         }
 
-        // Step 1: Firebase Storage upload if file selected (NO MetaMask)
+        // Firebase Storage upload (NO MetaMask)
         if (isFirebase && selectedFile) {
             showToast("Uploading to Firebase Storage…");
             try {
@@ -1616,7 +1758,7 @@
             }
         }
 
-        // Step 2: Deduct stars from Firebase (internal ledger) — NO MetaMask
+        // Deduct stars (NO MetaMask)
         try {
             await adjustFirebaseBalance(userAddress, -feeAmount);
         } catch (e) {
@@ -1624,15 +1766,15 @@
             return alert("Failed to deduct stars. Please try again.");
         }
 
-        // Step 3: Log 100% of post fee as admin revenue
-        logAdminRevenue(userAddress, postType === 1 ? "text_post" : postType === 2 ? "photo_post" : "video_post", feeAmount);
+        // 100% of post fee → admin_revenue
+        const postTypeLabel = postType === 1 ? "text_post" : postType === 2 ? "photo_post" : "video_post";
+        logAdminRevenue(userAddress, postTypeLabel, feeAmount);
         logTransaction(userAddress, "spend", feeAmount, `Paid ${feeAmount}★ for ${postType === 1 ? 'Text' : postType === 2 ? 'Photo' : 'Video'} Broadcast`);
 
-        // Step 4: Write post to Firestore — NO MetaMask
+        // Write post to Firestore (NO MetaMask)
         try {
             const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
             const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
-
             const postData = {
                 text:       txt,
                 media:      mediaUrl,
@@ -1645,7 +1787,6 @@
                 type:       postType,
                 feePaid:    feeAmount
             };
-
             await window.fs.addDoc(window.fs.collection(window.db, "posts"), postData);
 
             // Reset composer
@@ -1657,10 +1798,8 @@
             const progWrap = document.getElementById('upload-progress-wrap');
             if (progWrap) progWrap.style.display = 'none';
 
-            // Update local star balance optimistically
             starBalance = Math.max(0, parseFloat(starBalance) - feeAmount).toString();
             updateUI();
-
             showToast("Signal Live! ◈");
         } catch (e) {
             console.error("Firebase write failed:", e);
@@ -1669,14 +1808,14 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // BOOST (still on-chain — MetaMask required)
+    // BOOST (on-chain — MetaMask required)
     // ═══════════════════════════════════════════════════════════════════
     async function boostPost(postId) {
         if (!hubContract) return alert("Connect Wallet First");
         try {
-            const userAddr  = await signer.getAddress();
+            const userAddr      = await signer.getAddress();
             const internalStars = await hubContract.aptmBalances(userAddr);
-            const boostFee  = ethers.utils.parseEther(CONFIG.FEES.BOOST.toString());
+            const boostFee      = ethers.utils.parseEther(CONFIG.FEES.BOOST.toString());
             let tx;
             showToast("Preparing 10★ Boost…");
             if (internalStars.gte(boostFee)) {
@@ -1698,14 +1837,13 @@
     async function hypeElement(recipientAddress, displayId) {
         if (!userAddress) return showToast("Connect wallet first!");
 
-        // Check Firebase star balance
         let currentFbStars = 0;
         if (window.db) {
             try {
                 const userRef  = window.fs.doc(window.db, "user_balances", userAddress.toLowerCase());
                 const snap     = await window.fs.getDoc(userRef);
                 currentFbStars = snap.exists() ? (snap.data().stars || 0) : 0;
-            } catch (e) { /* use cached */ currentFbStars = parseInt(starBalance) || 0; }
+            } catch (_) { currentFbStars = parseInt(starBalance) || 0; }
         }
         if (currentFbStars < 1) return showToast("Not enough Stars! Deposit APTM.");
 
@@ -1713,7 +1851,6 @@
             const isComment = displayId.startsWith('hc-');
             const entityId  = displayId.replace(isComment ? 'hc-' : 'hp-', '');
 
-            // Update hype count in Firestore (no MetaMask)
             if (isComment) {
                 await window.fs.updateDoc(window.fs.doc(window.db, "comments", entityId), { hypes: window.fs.increment(1) });
             } else {
@@ -1734,7 +1871,6 @@
             logAdminRevenue(userAddress, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
             logTransaction(userAddress, "spend", 1, isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype");
 
-            // Update local display
             starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
             const counterEl = document.getElementById(displayId);
@@ -1744,7 +1880,7 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // COMMENTS — Firebase only, NO MetaMask
+    // COMMENTS — Firebase only, NO MetaMask (80/20 split)
     // ═══════════════════════════════════════════════════════════════════
     function toggleTray(id) {
         const t = document.getElementById(`tray-${id}`);
@@ -1755,19 +1891,18 @@
     async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
         if (!userAddress) return showToast("Connect wallet first!");
 
-        // Check Firebase star balance
         let currentFbStars = 0;
         if (window.db) {
             try {
                 const userRef  = window.fs.doc(window.db, "user_balances", userAddress.toLowerCase());
                 const snap     = await window.fs.getDoc(userRef);
                 currentFbStars = snap.exists() ? (snap.data().stars || 0) : 0;
-            } catch (e) { currentFbStars = parseInt(starBalance) || 0; }
+            } catch (_) { currentFbStars = parseInt(starBalance) || 0; }
         }
         if (currentFbStars < 1) return showToast("Not enough Stars! Deposit APTM.");
 
-        const inputId    = isReply ? `reply-in-${parentId}` : `input-${postId}`;
-        const input      = document.getElementById(inputId);
+        const inputId     = isReply ? `reply-in-${parentId}` : `input-${postId}`;
+        const input       = document.getElementById(inputId);
         const commentText = input ? input.value.trim() : "";
         if (!commentText) return;
 
@@ -1781,7 +1916,6 @@
                 isReply, timestamp: Date.now(), hypes: 0
             };
 
-            // Write to Firestore — no MetaMask
             await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
 
             // 80% to creator
@@ -1861,7 +1995,7 @@
         };
 
         _commentListeners[postId] = window.fs.onSnapshot(q, renderComments, (err) => {
-            console.error("Comment listener, trying fallback:", err.message);
+            console.error("Comment listener fallback:", err.message);
             const fq = window.fs.query(
                 window.fs.collection(window.db, "comments"),
                 window.fs.where("postId", "==", String(postId))
@@ -1920,19 +2054,17 @@
                 const displayPic  = (isMe && localPic)  ? localPic  : (post.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${post.authorAddr || 'anon'}`);
                 const displayName = (isMe && localName) ? localName : (post.author || "Anonymous");
 
-                let mediaHtml  = '';
-                const ytId     = getYoutubeId(post.media || "");
-
-                // Badge: Firebase or plain
+                let mediaHtml = '';
+                const ytId    = getYoutubeId(post.media || "");
                 const storageBadge = post.firebase
-                    ? `<div style="margin-bottom:8px;"><span class="firebase-tag"><span class="a-dot" style="background:#ffb300;"></span>FIREBASE STORAGE</span></div>`
+                    ? `<div style="margin-bottom:8px;"><span class="firebase-tag"><span class="a-dot" style="background:#ffb300; animation:blink 2s infinite;"></span>FIREBASE STORAGE</span></div>`
                     : '';
 
                 if (ytId) {
                     mediaHtml = `${storageBadge}<div class="post-media"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
                 } else if (post.media) {
-                    if (post.type === 3 && !ytId) {
-                        mediaHtml = `${storageBadge}<div class="post-media"><video src="${post.media}" controls style="width:100%;max-height:320px;"></video></div>`;
+                    if (post.type === 3) {
+                        mediaHtml = `${storageBadge}<div class="post-media"><video src="${post.media}" controls style="width:100%;max-height:360px;"></video></div>`;
                     } else {
                         mediaHtml = `${storageBadge}<div class="post-media"><img src="${post.media}" loading="lazy"></div>`;
                     }
@@ -1974,28 +2106,42 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP
+    // DEPOSIT ESTIMATE LIVE UPDATE (drawer)
+    // ═══════════════════════════════════════════════════════════════════
+    document.addEventListener('DOMContentLoaded', () => {
+        const inp = document.getElementById('drawer-deposit-input');
+        if (inp) {
+            inp.addEventListener('input', () => {
+                const v = parseFloat(inp.value);
+                if (!isNaN(v)) updateDepositEstimate(v);
+            });
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // STARTUP (V11)
     // ═══════════════════════════════════════════════════════════════════
     window.addEventListener('load', async () => {
         try {
             updateUI();
-            currentAptmPriceUsd = await getLiveAptmPrice();
+            updateDrawerUI();
+
+            // Auto-connect if wallet was previously connected
             if (window.ethereum && window.ethereum.selectedAddress) {
                 await connectWallet();
             }
+
+            // Start global feed
             setTimeout(() => { loadGlobalFeed(); }, 1500);
         } catch (e) { console.error("Startup failed:", e); }
     });
 
-    // Heartbeat — 30s sync
-    setInterval(async () => {
-        if (provider && hubContract) {
-            try {
-                currentAptmPriceUsd = await getLiveAptmPrice();
-                await syncData();
-            } catch (e) { console.error("Heartbeat failed:", e); }
-        }
-    }, 30000);
+    // ═══════════════════════════════════════════════════════════════════
+    // UNCONDITIONAL PRICE HEARTBEAT — fires for ALL visitors, every 30s
+    // Simple CoinGecko fetch for 'apertum'. No wallet, no RPC needed.
+    // ═══════════════════════════════════════════════════════════════════
+    runPriceHeartbeat();                          // immediate on script load
+    setInterval(runPriceHeartbeat, 30_000);       // every 30 seconds unconditionally
 
 </script>
 </body>
