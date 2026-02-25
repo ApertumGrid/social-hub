@@ -462,12 +462,16 @@
             await tx.wait();
             showToast("Anchored! Syncing to Cloud...");
 
+            // ✅ Always read identity fresh from localStorage so posts never save as Anonymous
+            const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
+            const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
+
             const postData = {
                 text: txt,
                 media: media,
-                author: userHandle,
+                author: postAuthorName,
                 authorAddr: userAddr,
-                avatar: userAvatar,
+                avatar: postAuthorPic,
                 timestamp: Date.now(),
                 hypes: 0,
                 type: type,
@@ -488,31 +492,25 @@
     }
 
     async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
-        if (!hubContract) return alert("Connect Wallet First");
-        
+        // ✅ No MetaMask needed — local star check only
+        if (parseInt(starBalance) < 1) {
+            return alert("Not enough Stars! Please deposit APTM to continue.");
+        }
+
         const inputId = isReply ? `reply-in-${parentId}` : `input-${postId}`;
         const input = document.getElementById(inputId);
         const commentText = input.value;
         if(!commentText) return;
 
         try {
-            const userAddr = await signer.getAddress();
-            const internalStars = await hubContract.aptmBalances(userAddr);
-            const fee = ethers.utils.parseEther("1"); 
-            
-            showToast("Authenticating Comment...");
-            let tx;
-
-            if (internalStars.gte(fee)) {
-                tx = await hubContract.interact(recipientAddress, fee, { gasLimit: 250000 });
-            } else {
-                tx = await hubContract.interact(recipientAddress, fee, { value: fee, gasLimit: 250000 });
-            }
+            // ✅ Always read identity fresh from localStorage
+            const authorName = localStorage.getItem('hub_userName') || userHandle;
+            const authorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
 
             const commentData = {
                 text: commentText,
-                author: userHandle,
-                authorAddr: userAddr,
+                author: authorName,
+                authorAddr: userAddress || "unknown",
                 postId: postId,
                 parentId: parentId || null,
                 isReply: isReply,
@@ -520,12 +518,15 @@
                 hypes: 0
             };
 
+            // ✅ Save to Firebase — no blockchain tx, no MetaMask popup
             await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
-            await tx.wait();
+
+            // ✅ Deduct 1 star locally so UI reflects cost immediately
+            starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
+            updateUI();
 
             input.value = "";
-            showToast("Comment Live!");
-            setTimeout(() => { syncData(); }, 1000);
+            showToast("Comment Live! (-1★)");
         } catch (e) { 
             console.error("Comment Error:", e);
             showToast("Failed to post. Check connection."); 
@@ -578,28 +579,27 @@
     }
 
     async function hypeElement(recipientAddress, displayId) {
-        if (!hubContract) return alert("Connect Wallet First");
+        // ✅ No MetaMask needed — local star check only
+        if (parseInt(starBalance) < 1) {
+            return alert("Not enough Stars! Please deposit APTM to continue.");
+        }
+
         try {
-            const userAddr = await signer.getAddress();
-            const internalStars = await hubContract.aptmBalances(userAddr);
-            const fee = ethers.utils.parseEther((STAR_FIXED_USD / currentAptmPriceUsd).toFixed(18));
-            
-            showToast("Processing Hype...");
-            let tx;
-            if (internalStars.gte(fee)) {
-                tx = await hubContract.interact(recipientAddress, fee, { gasLimit: 400000 });
-            } else {
-                tx = await hubContract.interact(recipientAddress, fee, { value: fee, gasLimit: 400000 });
-            }
-            await tx.wait();
-            
             const postId = displayId.replace('hp-', '');
+
+            // ✅ Update hype count in Firebase — no blockchain tx, no MetaMask popup
             const postRef = window.fs.doc(window.db, "posts", postId);
             await window.fs.updateDoc(postRef, { hypes: window.fs.increment(1) });
-            
-            showToast("Hype Recorded! ✨");
-            setTimeout(() => { syncData(); }, 2000);
-        } catch (e) { console.error(e); }
+
+            // ✅ Deduct 1 star locally so UI reflects cost immediately
+            starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
+            updateUI();
+
+            showToast("Hype Recorded! ✨ (-1★)");
+        } catch (e) { 
+            console.error("Hype Error:", e);
+            showToast("Hype failed. Check connection.");
+        }
     }
 
     function toggleTray(id) {
