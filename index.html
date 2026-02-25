@@ -154,6 +154,16 @@
         .ledger-amount.neutral { color: #888; }
         .ledger-empty { font-size: 0.75rem; color: #444; padding: 12px 0; text-align: center; }
         .balance-note { font-size: 0.6rem; color: #555; font-weight: 600; margin-top: 3px; letter-spacing: 0.02em; }
+
+        /* Ledger type badge */
+        .ledger-badge {
+            font-size: 0.55rem; font-weight: 900; padding: 2px 7px; border-radius: 4px;
+            text-transform: uppercase; letter-spacing: 0.05em; width: 80px; text-align: center; display: inline-block;
+        }
+        .ledger-badge.earn    { background: rgba(74,222,128,0.15); color: #4ade80; }
+        .ledger-badge.spend   { background: rgba(248,113,113,0.15); color: #f87171; }
+        .ledger-badge.deposit { background: rgba(0,242,255,0.15);  color: var(--accent-cyan); }
+        .ledger-badge.settle  { background: rgba(188,0,255,0.15);  color: var(--accent-purple); }
     </style>
 </head>
 <body>
@@ -165,10 +175,12 @@
     <div class="nav-item" onclick="switchPage('profile', this)">👤 My Profile</div>
     <div class="nav-item" onclick="switchPage('info', this)">ℹ️ Tokenomics</div>
     <div style="margin-top: auto;">
-        <div style="font-size: 0.6rem; color: #444; font-weight: 800; margin-bottom: 5px;">HUB BALANCE</div>
+        <div style="font-size: 0.6rem; color: #444; font-weight: 800; margin-bottom: 2px;">ACTIVE STARS (INTERNAL LEDGER)</div>
         <div style="font-size: 1.4rem; font-weight: 900; color: var(--gold);" id="user-stars">0 ★</div>
+        <div style="font-size: 0.55rem; color: #444; font-weight: 800; margin-top: 10px; margin-bottom: 2px;">APTM VAULT (ON-CHAIN)</div>
         <div class="aptm-indicator" id="sidebar-aptm-value">0.00 $APTM</div>
         <div class="price-ticker" id="live-price-display">RATE: $0.34 / APTM</div>
+        <div style="font-size: 0.55rem; color: #555; margin: 6px 0 10px; line-height: 1.5;">Stars power instant interactions. Settle them to move value to your Vault.</div>
         <button class="action-btn" onclick="convertAPTM()" id="deposit-btn">DEPOSIT $APTM</button>
         
         <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border);">
@@ -213,25 +225,48 @@
         <div id="page-earnings" class="page">
             <h1 style="font-weight:900;">Creator Studio</h1>
             <div class="glass-panel">
-                <div style="font-size: 0.7rem; color: #888; letter-spacing: 1px;">CREATOR EARNINGS (STAR ECONOMY)</div>
+                <div style="font-size: 0.7rem; color: #888; letter-spacing: 1px;">ACTIVE STARS (INTERNAL LEDGER)</div>
                 <div style="font-size: 2.5rem; font-weight: 900; color: var(--gold);" id="creator-revenue-display">0 ★</div>
-                <div class="balance-note">⚡ Active Credits — updates on every interaction</div>
+                <div class="balance-note">⚡ Updates instantly on every interaction</div>
                 <div style="font-size: 0.7rem; color: #555; margin-top: 6px; margin-bottom: 20px;">Stars earned from Hypes & Comments on your content</div>
 
                 <div style="border-top: 1px solid #222; padding-top: 20px; margin-top: 5px;">
-                    <div style="font-size: 0.7rem; color: #888; letter-spacing: 1px;">BLOCKCHAIN BALANCE ($APTM)</div>
+                    <div style="font-size: 0.7rem; color: #888; letter-spacing: 1px;">APTM VAULT (ON-CHAIN)</div>
                     <div class="aptm-indicator" id="earnings-aptm-value" style="font-size: 1.2rem; margin-top: 6px; margin-bottom: 4px;">0.00 $APTM</div>
-                    <div class="balance-note">🔒 Blockchain Vault — updates on Deposit / Withdrawal only</div>
+                    <div class="balance-note">🔒 Updates only on Deposit or Withdrawal</div>
+                </div>
+
+                <div style="margin-top: 16px; padding: 12px 14px; background: rgba(0,242,255,0.04); border: 1px solid rgba(0,242,255,0.12); border-radius: 10px;">
+                    <div style="font-size: 0.7rem; color: #888; line-height: 1.6;">
+                        💡 <b style="color: var(--accent-cyan);">How it works:</b> Stars are used for instant social interactions and are tracked on our internal ledger. To move your earnings to your crypto wallet, click <b>Settle to Wallet</b> — this converts your Stars to $APTM on-chain.
+                    </div>
                 </div>
 
                 <button class="action-btn" style="width:auto; padding:15px 30px; margin-top:20px;" onclick="settleToWallet()">SETTLE TO WALLET</button>
             </div>
 
             <div class="glass-panel">
-                <div style="font-size: 0.7rem; color: var(--gold); letter-spacing: 2px; font-weight: 900; margin-bottom: 16px;">📋 RECENT ACTIVITY</div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+                    <div style="font-size: 0.7rem; color: var(--gold); letter-spacing: 2px; font-weight: 900;">📋 RECENT ACTIVITY</div>
+                    <div style="font-size: 0.6rem; color: #555;">Last 10 transactions</div>
+                </div>
+                <!-- Column headers -->
+                <div style="display:flex; justify-content:space-between; padding-bottom:8px; border-bottom: 1px solid #222; margin-bottom:4px;">
+                    <span style="font-size:0.6rem; color:#555; font-weight:800; flex:1;">DESCRIPTION</span>
+                    <span style="font-size:0.6rem; color:#555; font-weight:800; width:80px; text-align:center;">TYPE</span>
+                    <span style="font-size:0.6rem; color:#555; font-weight:800; width:70px; text-align:right;">AMOUNT</span>
+                </div>
                 <div id="ledger-list">
                     <div class="ledger-empty">Connect wallet to view your transaction history.</div>
                 </div>
+            </div>
+
+            <!-- Admin-only Revenue Panel — hidden by default, shown only if wallet matches CONFIG.ADMIN_ADDRESS -->
+            <div class="glass-panel" id="admin-revenue-panel" style="display:none; border: 1px solid rgba(255,204,0,0.3);">
+                <div style="font-size: 0.7rem; color: var(--gold); letter-spacing: 2px; font-weight: 900; margin-bottom: 4px;">🔐 PLATFORM REVENUE (ADMIN ONLY)</div>
+                <div style="font-size: 0.6rem; color: #555; margin-bottom: 16px;">Cumulative 20% platform fee from all interactions</div>
+                <div style="font-size: 2.2rem; font-weight: 900; color: var(--accent-cyan);" id="admin-revenue-display">0 ★</div>
+                <div style="font-size: 0.65rem; color: #555; margin-top: 4px;" id="admin-revenue-count">0 fee events recorded</div>
             </div>
         </div>
 
@@ -265,7 +300,28 @@
 <div id="toast">SUCCESS</div>
 
 <script>
+    // ═══════════════════════════════════════════════════
+    // ⚙️  GLOBAL CONFIG — single source of truth for all engine parameters
+    //     Update these values before each deployment.
+    // ═══════════════════════════════════════════════════
+    const CONFIG = {
+        ADMIN_ADDRESS:    "0xe348feDea1850a0c2d4aC0fed3f903774dE1e16A",
+        CONTRACT_ADDRESS: "0x42E0A97844ac6623207F2a363aa318E83268910F",   // ← update before deploy
+        STARS_PER_5_APTM: 169,                        // Stars minted per 5 APTM deposit
+        STAR_USD:         0.01,                        // 1 Star = $0.01 USD (fixed peg)
+        PLATFORM_CUT:     0.2,                         // Platform keeps 20% of each interaction
+        CREATOR_CUT:      0.8,                         // Creator receives 80% of each interaction
+        FEES: {
+            TEXT:  1.2,   // Stars to broadcast a text post
+            PHOTO: 3,     // Stars to broadcast an image post
+            VIDEO: 10,    // Stars to broadcast a video post
+            BOOST: 10,    // Stars to boost a post to the top
+        }
+    };
+
+    // ═══════════════════════════════════════════════════
     // GLOBAL STATE
+    // ═══════════════════════════════════════════════════
     let currentAptmBalance = "0.0000";
     let starBalance = "0";
     let creatorEarnings = 0;   // ★ Firebase star economy earnings (separate from blockchain)
@@ -274,14 +330,11 @@
     let provider, signer, hubContract;
     let userAddress = "";
 
-    // ✅ FIX 1: Load identity from localStorage on startup so it's always available
     let userHandle = localStorage.getItem('hub_userName') || "Anonymous_Creator";
     let userAvatar = localStorage.getItem('hub_userPic') || "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
 
     let visibleCount = 10;
     const pageSize = 10;
-    const STAR_FIXED_USD = 0.01;
-    const contractAddress = "0x42E0A97844ac6623207F2a363aa318E83268910F";
     const abi = [
         "function depositAPTM() public payable",
         "function postContent(string memory _ipfsHash, uint256 _type, uint256 _oneStarWei) public",
@@ -321,7 +374,7 @@
                 const accounts = await provider.send("eth_requestAccounts", []);
                 userAddress = accounts[0]; 
                 signer = provider.getSigner();
-                hubContract = new ethers.Contract(contractAddress, abi, signer);
+                hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
                 
                 const statusEl = document.getElementById('wallet-status');
                 if(statusEl) statusEl.innerText = userAddress.slice(0,6)+"..."+userAddress.slice(-4);
@@ -330,6 +383,7 @@
                 updateUI(); 
                 subscribeToEarnings(userAddress);  // ★ Live-subscribe to Firebase earnings
                 subscribeLedger(userAddress);       // 📋 Live-subscribe to transaction ledger
+                subscribeAdminRevenue(userAddress); // 🔐 Admin-only: platform revenue panel
                 
                 if (typeof loadGlobalFeed === "function") loadGlobalFeed(); 
 
@@ -355,8 +409,22 @@
             currentAptmBalance = humanBalance;
             currentAptmPriceUsd = await getLiveAptmPrice();
             const usdValue = parseFloat(humanBalance) * parseFloat(currentAptmPriceUsd);
-            starBalance = Math.floor(usdValue / 0.01).toString();
+            starBalance = Math.floor(usdValue / CONFIG.STAR_USD).toString();
             totalAnchors = anchors.toNumber();
+
+            // ── Auto-setup: ensure user_balances document exists ──────────────
+            if (window.db) {
+                const userRef = window.fs.doc(window.db, "user_balances", addr.toLowerCase());
+                const snap = await window.fs.getDoc(userRef);
+                if (!snap.exists()) {
+                    await window.fs.setDoc(userRef, { stars: 0, lastSync: Date.now(), address: addr.toLowerCase() });
+                    console.log("Auto-created user_balances doc for", addr);
+                } else {
+                    // Touch lastSync so we know they are active
+                    await window.fs.updateDoc(userRef, { lastSync: Date.now() });
+                }
+            }
+
             updateUI();
         } catch (e) { 
             console.error("Master Sync Failed:", e); 
@@ -458,20 +526,33 @@
     }
 
     // ═══════════════════════════════════════════════════
-    // TRANSACTION LEDGER — Firebase `transactions` collection
+    // TRANSACTION LEDGER — Firebase `user_transactions` collection
     // ═══════════════════════════════════════════════════
 
-    // Write one transaction record. Fire-and-forget (non-blocking).
+    // Write one transaction record to `user_transactions`. Fire-and-forget (non-blocking).
     function logTransaction(address, type, amount, description) {
         if (!address || !window.db) return;
         const addr = address.toLowerCase();
-        window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
-            address: addr,
-            type:    type,         // "earn" | "spend" | "deposit" | "settle"
-            amount:  amount,       // positive number
+        window.fs.addDoc(window.fs.collection(window.db, "user_transactions"), {
+            address:     addr,
+            type:        type,        // "earn" | "spend" | "deposit" | "settle"
+            amount:      amount,      // always a positive number
             description: description,
-            timestamp: Date.now()
+            timestamp:   Date.now()
         }).catch(e => console.warn("logTransaction failed:", e));
+    }
+
+    // Record every 0.2★ platform fee to `platform_revenue`.
+    // This data is only rendered in the UI for CONFIG.ADMIN_ADDRESS — but all users
+    // contribute to it so the admin gets a complete picture.
+    function logPlatformRevenue(sourceAddress, actionType, amount) {
+        if (!window.db) return;
+        window.fs.addDoc(window.fs.collection(window.db, "platform_revenue"), {
+            sourceAddress: (sourceAddress || "unknown").toLowerCase(),
+            actionType:    actionType,   // "hype_post" | "hype_comment" | "comment" | "reply"
+            amount:        amount,       // always CONFIG.PLATFORM_CUT (0.2)
+            timestamp:     Date.now()
+        }).catch(e => console.warn("logPlatformRevenue failed:", e));
     }
 
     // Subscribe to the last 10 transactions for this user — renders them live.
@@ -479,29 +560,27 @@
         if (!walletAddr || !window.db) return;
         const addr = walletAddr.toLowerCase();
         const q = window.fs.query(
-            window.fs.collection(window.db, "transactions"),
+            window.fs.collection(window.db, "user_transactions"),
             window.fs.where("address", "==", addr),
             window.fs.orderBy("timestamp", "desc")
         );
 
-        window.fs.onSnapshot(q, (snapshot) => {
+        const renderLedger = (docs) => {
             const el = document.getElementById('ledger-list');
             if (!el) return;
 
-            if (snapshot.empty) {
+            if (docs.length === 0) {
                 el.innerHTML = `<div class="ledger-empty">No activity yet — start interacting!</div>`;
                 return;
             }
 
             el.innerHTML = "";
-            let count = 0;
-            snapshot.forEach((docRef) => {
-                if (count >= 10) return; // cap at last 10
-                count++;
-                const tx = docRef.data();
+            docs.slice(0, 10).forEach(tx => {
                 const isEarn = tx.type === "earn" || tx.type === "deposit";
-                const amountStr = (isEarn ? "+" : "−") + parseFloat(tx.amount).toFixed(1) + " ★";
-                const cls = isEarn ? "earn" : (tx.type === "settle" ? "neutral" : "spend");
+                const prefix = isEarn ? "+" : "−";
+                const amountStr = prefix + parseFloat(tx.amount).toFixed(1) + " ★";
+                const amountClass = isEarn ? "earn" : (tx.type === "settle" ? "neutral" : "spend");
+                const badgeLabel = { earn: "Earned", spend: "Spent", deposit: "Deposit", settle: "Settle" }[tx.type] || tx.type;
                 const date = new Date(tx.timestamp).toLocaleString([], {
                     month: "short", day: "numeric",
                     hour: "2-digit", minute: "2-digit"
@@ -514,40 +593,66 @@
                         ${tx.description}
                         <small>${date}</small>
                     </div>
-                    <div class="ledger-amount ${cls}">${amountStr}</div>
+                    <div style="width:80px; text-align:center; flex-shrink:0;">
+                        <span class="ledger-badge ${tx.type}">${badgeLabel}</span>
+                    </div>
+                    <div class="ledger-amount ${amountClass}" style="width:70px; text-align:right;">${amountStr}</div>
                 `;
                 el.appendChild(row);
             });
+        };
+
+        window.fs.onSnapshot(q, (snapshot) => {
+            const docs = [];
+            snapshot.forEach(d => docs.push(d.data()));
+            renderLedger(docs);
         }, (err) => {
             // Fallback if composite index not yet built — sort client-side
-            console.warn("Ledger listener error, trying fallback:", err.message);
+            console.warn("Ledger listener falling back (index building?):", err.message);
             const fallQ = window.fs.query(
-                window.fs.collection(window.db, "transactions"),
+                window.fs.collection(window.db, "user_transactions"),
                 window.fs.where("address", "==", addr)
             );
             window.fs.onSnapshot(fallQ, (snap) => {
-                const el = document.getElementById('ledger-list');
-                if (!el) return;
                 const docs = [];
                 snap.forEach(d => docs.push(d.data()));
                 docs.sort((a, b) => b.timestamp - a.timestamp);
-                el.innerHTML = "";
-                docs.slice(0, 10).forEach(tx => {
-                    const isEarn = tx.type === "earn" || tx.type === "deposit";
-                    const amountStr = (isEarn ? "+" : "−") + parseFloat(tx.amount).toFixed(1) + " ★";
-                    const cls = isEarn ? "earn" : (tx.type === "settle" ? "neutral" : "spend");
-                    const date = new Date(tx.timestamp).toLocaleString([], {
-                        month: "short", day: "numeric",
-                        hour: "2-digit", minute: "2-digit"
-                    });
-                    const row = document.createElement('div');
-                    row.className = 'ledger-row';
-                    row.innerHTML = `
-                        <div class="ledger-desc">${tx.description}<small>${date}</small></div>
-                        <div class="ledger-amount ${cls}">${amountStr}</div>
-                    `;
-                    el.appendChild(row);
-                });
+                renderLedger(docs);
+            });
+        });
+    }
+
+    // Subscribe to platform_revenue — only renders UI for the CONFIG.ADMIN_ADDRESS.
+    function subscribeAdminRevenue(walletAddr) {
+        if (!walletAddr || !window.db) return;
+        if (walletAddr.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) return; // security gate
+
+        const panel = document.getElementById('admin-revenue-panel');
+        if (panel) panel.style.display = 'block';
+
+        const q = window.fs.query(
+            window.fs.collection(window.db, "platform_revenue"),
+            window.fs.orderBy("timestamp", "desc")
+        );
+
+        window.fs.onSnapshot(q, (snapshot) => {
+            let total = 0;
+            snapshot.forEach(d => { total += (d.data().amount || 0); });
+            const dispEl = document.getElementById('admin-revenue-display');
+            const countEl = document.getElementById('admin-revenue-count');
+            if (dispEl) dispEl.innerText = total.toFixed(1) + " ★";
+            if (countEl) countEl.innerText = snapshot.size + " fee events recorded";
+        }, (err) => {
+            console.warn("Admin revenue listener fallback:", err.message);
+            // Simple fallback without orderBy
+            const fallQ = window.fs.collection(window.db, "platform_revenue");
+            window.fs.onSnapshot(fallQ, (snap) => {
+                let total = 0;
+                snap.forEach(d => { total += (d.data().amount || 0); });
+                const dispEl = document.getElementById('admin-revenue-display');
+                const countEl = document.getElementById('admin-revenue-count');
+                if (dispEl) dispEl.innerText = total.toFixed(1) + " ★";
+                if (countEl) countEl.innerText = snap.size + " fee events recorded";
             });
         });
     }
@@ -564,7 +669,7 @@
                 });
                 await tx.wait();
                 // 📋 Log deposit transaction
-                const starsReceived = Math.floor(parseFloat(amt) * currentAptmPriceUsd / 0.01);
+                const starsReceived = Math.floor(parseFloat(amt) * currentAptmPriceUsd / CONFIG.STAR_USD);
                 logTransaction(userAddress, "deposit", starsReceived, `Deposited ${parseFloat(amt).toFixed(2)} $APTM → ${starsReceived} Stars`);
                 setTimeout(() => { syncData(); }, 2000);
             } catch (e) {
@@ -623,20 +728,21 @@
         const media = document.getElementById('post-media').value;
         if(!txt || !hubContract) return alert("Write something or connect wallet!");
 
-        let feeAmount = "1.2";
+        // ── Determine fee from CONFIG ──────────────────────────────────────────
+        let feeAmount = CONFIG.FEES.TEXT;
         let type = 1;
 
         if (media) {
             if (media.includes('mp4') || getYoutubeId(media)) {
-                feeAmount = "10"; 
+                feeAmount = CONFIG.FEES.VIDEO;
                 type = 3;
             } else {
-                feeAmount = "3"; 
+                feeAmount = CONFIG.FEES.PHOTO;
                 type = 2;
             }
         }
 
-        const feeWei = ethers.utils.parseEther(feeAmount);
+        const feeWei = ethers.utils.parseEther(feeAmount.toString());
 
         try {
             const userAddr = await signer.getAddress();
@@ -720,19 +826,20 @@
             // 1. Save comment to Firebase
             await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
 
-            // 2. 80/20 Split: credit post author 0.8★ in Firebase
+            // 2. 80/20 Split: credit post author using CONFIG.CREATOR_CUT (0.8★) via atomic transaction
             if (recipientAddress && recipientAddress !== "unknown") {
-                await adjustFirebaseBalance(recipientAddress, 0.8);
+                await adjustFirebaseBalance(recipientAddress, CONFIG.CREATOR_CUT);
                 // 📋 Log earn for recipient
-                logTransaction(recipientAddress, "earn", 0.8, "Earned 0.8 Stars — someone commented on your content");
+                logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, "Earned 0.8 Stars — someone commented on your content");
             }
 
             // 3. Deduct 1★ from sender's local spending balance
             starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
 
-            // 📋 Log spend for sender
+            // 📋 Log spend for sender + platform revenue (0.2★)
             logTransaction(userAddress, "spend", 1, isReply ? "Spent 1 Star on a Reply" : "Spent 1 Star on a Comment");
+            logPlatformRevenue(userAddress, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
 
             // 4. Clear input and keep tray open (do NOT toggle it closed)
             if (input) input.value = "";
@@ -773,7 +880,7 @@
         try {
             const userAddr = await signer.getAddress();
             const internalStars = await hubContract.aptmBalances(userAddr);
-            const boostFee = ethers.utils.parseEther("10"); 
+            const boostFee = ethers.utils.parseEther(CONFIG.FEES.BOOST.toString());
             
             let tx;
             showToast("Preparing 10-Star Boost...");
@@ -816,21 +923,22 @@
                 await window.fs.updateDoc(postRef, { hypes: window.fs.increment(1) });
             }
 
-            // 80/20 Split: credit recipient 0.8★ in Firebase
+            // 80/20 Split: credit recipient CONFIG.CREATOR_CUT (0.8★) via atomic transaction
             if (recipientAddress && recipientAddress !== "unknown") {
-                await adjustFirebaseBalance(recipientAddress, 0.8);
+                await adjustFirebaseBalance(recipientAddress, CONFIG.CREATOR_CUT);
                 // 📋 Log earn for recipient
                 const earnDesc = isComment ? "Earned 0.8 Stars — someone hyped your comment" : "Earned 0.8 Stars — someone hyped your post";
-                logTransaction(recipientAddress, "earn", 0.8, earnDesc);
+                logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, earnDesc);
             }
 
             // Deduct 1★ from sender's local spending balance
             starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
 
-            // 📋 Log spend for sender
+            // 📋 Log spend for sender + platform revenue (0.2★)
             const spendDesc = isComment ? "Spent 1 Star on a Comment Hype" : "Spent 1 Star on a Post Hype";
             logTransaction(userAddress, "spend", 1, spendDesc);
+            logPlatformRevenue(userAddress, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
 
             // Update the hype counter in the UI immediately
             const counterEl = document.getElementById(displayId);
