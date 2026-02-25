@@ -271,20 +271,27 @@ async function connectWallet() {
             provider = new ethers.providers.Web3Provider(window.ethereum);
             const accounts = await provider.send("eth_requestAccounts", []);
             
-            // --- ADD THIS LINE RIGHT HERE ---
+            // --- THIS SAVES YOUR WALLET GLOBALLY ---
             userAddress = accounts[0]; 
-            // --------------------------------
             
             signer = provider.getSigner();
             hubContract = new ethers.Contract(contractAddress, abi, signer);
             
-            document.getElementById('wallet-status').innerText = userAddress.slice(0,6)+"..."+userAddress.slice(-4);
+            // Updates the display at the top of your page
+            const statusEl = document.getElementById('wallet-status');
+            if(statusEl) {
+                statusEl.innerText = userAddress.slice(0,6)+"..."+userAddress.slice(-4);
+            }
             
+            // 1. Fetch the data from blockchain
             await syncData(); 
+            // 2. Explicitly force the UI to paint those numbers
             updateUI(); 
             
-            // 2. NOW RE-LOAD THE FEED SO IT RECOGNIZES YOU
-            loadGlobalFeed(); 
+            // 3. Refresh the feed so it finally sees 'userAddress' and shows your picture
+            if (typeof loadGlobalFeed === "function") {
+                loadGlobalFeed(); 
+            }
 
             showToast("Connected & Synced");
         } catch (err) { 
