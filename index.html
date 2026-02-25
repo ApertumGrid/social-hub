@@ -113,6 +113,31 @@
 
         #load-more-btn { display: none; margin: 20px auto; width: 200px; background: transparent; border: 1px solid #333; color: #666; font-size: 0.7rem; }
         .hidden-post { display: none !important; }
+
+        /* Comment interaction row */
+        .comment-actions { display: flex; gap: 14px; margin-top: 8px; }
+        .comment-btn { 
+            font-size: 0.7rem; font-weight: 800; color: #555; cursor: pointer; 
+            padding: 3px 8px; border-radius: 6px; background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06); transition: 0.15s;
+            display: flex; align-items: center; gap: 4px;
+        }
+        .comment-btn:hover { color: var(--accent-cyan); border-color: var(--accent-cyan); }
+        .comment-btn.reply-btn:hover { color: var(--accent-purple); border-color: var(--accent-purple); }
+
+        /* Inline reply input that slides open under a comment */
+        .reply-input-area { 
+            display: none; margin-top: 10px; 
+            background: rgba(0,0,0,0.25); border-radius: 10px; 
+            padding: 10px; border: 1px solid #2a2a2a;
+        }
+        .reply-input-row { display: flex; gap: 8px; margin-top: 0; }
+        .reply-input-row input { margin-top: 0; flex: 1; }
+        .reply-send-btn { 
+            background: var(--accent-purple); border: none; color: white;
+            padding: 8px 14px; border-radius: 8px; font-weight: 900; font-size: 0.75rem;
+            cursor: pointer; white-space: nowrap; flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
@@ -639,26 +664,38 @@
     }
 
     async function hypeElement(recipientAddress, displayId) {
-        // ★ STAR ECONOMY: Sender loses 1★, Creator gets 0.8★, Platform keeps 0.2★
+        // ★ STAR ECONOMY: Sender -1★ | Creator +0.8★ | Platform +0.2★ (gasless)
         if (parseInt(starBalance) < 1) {
             return alert("Not enough Stars! Please deposit APTM to continue.");
         }
 
         try {
-            const postId = displayId.replace('hp-', '');
+            // displayId is either "hp-{postId}" for posts or "hc-{commentId}" for comments
+            const isComment = displayId.startsWith('hc-');
+            const entityId  = displayId.replace(isComment ? 'hc-' : 'hp-', '');
 
-            // 1. Update hype count in Firebase (visible counter on post)
-            const postRef = window.fs.doc(window.db, "posts", postId);
-            await window.fs.updateDoc(postRef, { hypes: window.fs.increment(1) });
+            if (isComment) {
+                // Hype on a comment — increment the hypes field on the comment doc
+                const commentRef = window.fs.doc(window.db, "comments", entityId);
+                await window.fs.updateDoc(commentRef, { hypes: window.fs.increment(1) });
+            } else {
+                // Hype on a post — increment the hypes field on the post doc
+                const postRef = window.fs.doc(window.db, "posts", entityId);
+                await window.fs.updateDoc(postRef, { hypes: window.fs.increment(1) });
+            }
 
-            // 2. 80/20 Split: credit creator 0.8★ in Firebase
+            // 80/20 Split: credit recipient 0.8★ in Firebase
             if (recipientAddress && recipientAddress !== "unknown") {
                 await adjustFirebaseBalance(recipientAddress, 0.8);
             }
 
-            // 3. Deduct 1★ from sender's local spending balance (blockchain-derived)
+            // Deduct 1★ from sender's local spending balance
             starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
+
+            // Update the hype counter in the UI immediately
+            const counterEl = document.getElementById(displayId);
+            if (counterEl) counterEl.innerText = (parseInt(counterEl.innerText || "0") + 1);
 
             showToast("Hype Recorded! ✨ Creator +0.8★");
         } catch (e) { 
@@ -675,10 +712,7 @@
         t.style.display = isOpen ? 'none' : 'block';
     }
 
-    function toggleReply(id) {
-        const b = document.getElementById(`reply-box-${id}`);
-        if(b) b.style.display = b.style.display === 'block' ? 'none' : 'block';
-    }
+    
 
     async function loadGlobalFeed() {
         const feedContainer = document.getElementById('feed-items');
@@ -726,7 +760,7 @@
                     <p>${post.text}</p>
                     <div class="feed-actions">
                         <div class="feed-btn" onclick="hypeElement('${post.authorAddr}', 'hp-${postId}')">❤️ Hype <span id="hp-${postId}">${post.hypes || 0}</span></div>
-                        <div class="feed-btn" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comments</div>
+                        <div class="feed-btn" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comments <span id="cc-${postId}" style="color:var(--accent-cyan)"></span></div>
                         <div class="feed-btn" style="color:#FFD700" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
                     </div>
                     <div class="comment-area" id="tray-${postId}">
@@ -758,40 +792,110 @@
             window.fs.orderBy("timestamp", "asc")
         );
 
-        // Store the unsubscribe function so we can deduplicate
-        _commentListeners[postId] = window.fs.onSnapshot(q, (snapshot) => {
+        const renderComments = (snapshot) => {
             list.innerHTML = "";
-            if (snapshot.empty) {
+
+            // Separate top-level comments from replies
+            const topLevel = [];
+            const repliesMap = {}; // parentId → [reply, ...]
+            snapshot.forEach((docRef) => {
+                const data = { ...docRef.data(), _id: docRef.id };
+                if (data.parentId) {
+                    if (!repliesMap[data.parentId]) repliesMap[data.parentId] = [];
+                    repliesMap[data.parentId].push(data);
+                } else {
+                    topLevel.push(data);
+                }
+            });
+
+            // Update the comment counter on the feed button
+            const totalCount = snapshot.size;
+            const counterEl = document.getElementById(`cc-${postId}`);
+            if (counterEl) counterEl.innerText = totalCount > 0 ? `(${totalCount})` : '';
+
+            if (topLevel.length === 0 && Object.keys(repliesMap).length === 0) {
                 list.innerHTML = `<div style="font-size:0.75rem; color:#555; padding:8px;">No comments yet. Be first!</div>`;
                 return;
             }
-            snapshot.forEach((docRef) => {
-                const comment = docRef.data();
+
+            // Render a single comment row (used for both top-level and replies)
+            const renderRow = (comment, isNested = false) => {
+                const cId = comment._id;
+                const authorAddr = comment.authorAddr || "unknown";
+                const hypeCount = comment.hypes || 0;
+
                 const row = document.createElement('div');
                 row.className = 'comment-row';
-                row.innerHTML = `<div style="font-size: 0.85rem;"><b style="color:#FFD700;">${comment.author || "Anonymous"}</b>: ${comment.text}</div>`;
-                list.appendChild(row);
+                if (isNested) {
+                    row.style.marginLeft = '18px';
+                    row.style.borderLeft = '2px solid #333';
+                    row.style.paddingLeft = '12px';
+                    row.style.background = 'rgba(255,255,255,0.02)';
+                }
+
+                row.innerHTML = `
+                    <div style="font-size:0.85rem;">
+                        <b style="color:#FFD700;">${comment.author || "Anonymous"}</b>: ${comment.text}
+                    </div>
+                    <div class="comment-actions">
+                        <span class="comment-btn" onclick="hypeElement('${authorAddr}', 'hc-${cId}')">
+                            ❤️ <span id="hc-${cId}">${hypeCount}</span>
+                        </span>
+                        ${!isNested ? `<span class="comment-btn reply-btn" onclick="toggleReplyInput('${cId}')">↩️ Reply</span>` : ''}
+                    </div>
+                    ${!isNested ? `
+                    <div class="reply-input-area" id="reply-area-${cId}">
+                        <div class="reply-input-row">
+                            <input type="text" class="input-field" id="reply-in-${cId}" placeholder="Reply... (1★)">
+                            <button class="reply-send-btn" onclick="addComment('${authorAddr}', '${postId}', true, '${cId}')">SEND</button>
+                        </div>
+                    </div>` : ''}
+                `;
+                return row;
+            };
+
+            // Render top-level comments and their replies beneath each
+            topLevel.forEach(comment => {
+                list.appendChild(renderRow(comment, false));
+
+                const replies = repliesMap[comment._id] || [];
+                replies.forEach(reply => {
+                    list.appendChild(renderRow(reply, true));
+                });
             });
-        }, (err) => {
-            console.error("Comment listener error for", postId, err);
-            // If the composite index isn't built yet, fall back to timestamp-only query
+        };
+
+        // Store the unsubscribe function — primary listener with orderBy
+        _commentListeners[postId] = window.fs.onSnapshot(q, renderComments, (err) => {
+            console.error("Comment listener error for", postId, "— falling back:", err.message);
+            // Fallback: no orderBy (avoids composite index requirement)
             const fallbackQ = window.fs.query(
                 window.fs.collection(window.db, "comments"),
                 window.fs.where("postId", "==", String(postId))
             );
             _commentListeners[postId] = window.fs.onSnapshot(fallbackQ, (snapshot) => {
-                list.innerHTML = "";
-                const sorted = [];
-                snapshot.forEach(d => sorted.push(d.data()));
-                sorted.sort((a, b) => a.timestamp - b.timestamp);
-                sorted.forEach(comment => {
-                    const row = document.createElement('div');
-                    row.className = 'comment-row';
-                    row.innerHTML = `<div style="font-size: 0.85rem;"><b style="color:#FFD700;">${comment.author || "Anonymous"}</b>: ${comment.text}</div>`;
-                    list.appendChild(row);
-                });
+                // Sort client-side instead
+                const sorted = { forEach: (fn) => {
+                    const docs = [];
+                    snapshot.forEach(d => docs.push({ ...d, data: () => d.data(), id: d.id }));
+                    docs.sort((a, b) => (a.data().timestamp || 0) - (b.data().timestamp || 0));
+                    docs.forEach(fn);
+                }, size: snapshot.size };
+                renderComments(sorted);
             });
         });
+    }
+
+    function toggleReplyInput(commentId) {
+        const area = document.getElementById(`reply-area-${commentId}`);
+        if (!area) return;
+        const isOpen = area.style.display === 'block';
+        area.style.display = isOpen ? 'none' : 'block';
+        if (!isOpen) {
+            // Focus the input when opened
+            const inp = document.getElementById(`reply-in-${commentId}`);
+            if (inp) setTimeout(() => inp.focus(), 50);
+        }
     }
 
     // STARTUP
