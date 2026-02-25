@@ -4,9 +4,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCIALHUB — SIGNAL PROTOCOL</title>
+    <title>SOCIALHUB — Signal Protocol</title>
+
+    <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
-    <script src="https://unpkg.com/@irys/sdk"></script>
+
+    <!-- 2. Irys WebIrys browser SDK (Fix #1) -->
+    <script src="https://gateway.irys.xyz/sdk/v0.2.8"></script>
+
+    <!-- 3. Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -23,876 +29,793 @@
         const db = getFirestore(app);
         window.db = db;
         window.fs = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc };
-        console.log("Firebase Linked ✓");
     </script>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-deep:    #030712;
-            --bg-navy:    #0f172a;
-            --bg-slate:   #1e293b;
-            --cyan:       #22d3ee;
-            --cyan-dim:   rgba(34,211,238,0.12);
-            --cyan-glow:  rgba(34,211,238,0.25);
-            --purple:     #a78bfa;
-            --purple-dim: rgba(167,139,250,0.12);
-            --gold:       #fbbf24;
-            --green:      #4ade80;
-            --red:        #f87171;
-            --glass-bg:   rgba(15,23,42,0.65);
-            --glass-bg2:  rgba(30,41,59,0.55);
-            --border:     rgba(255,255,255,0.07);
-            --border-lit: rgba(34,211,238,0.2);
-            --text:       #e2e8f0;
-            --muted:      #64748b;
-            --mono:       'Space Mono', monospace;
+            --bg-outer:    #0d1117;
+            --bg-app:      #161b27;
+            --bg-panel:    #1c2333;
+            --bg-card:     #222a3a;
+            --bg-card2:    #1e2638;
+            --bg-input:    #151c2c;
+            --bg-hover:    #263046;
+            --border:      rgba(255,255,255,0.07);
+            --border-md:   rgba(255,255,255,0.11);
+            --purple:      #7c5cbf;
+            --purple-lt:   #9b7de0;
+            --purple-dim:  rgba(124,92,191,0.18);
+            --purple-glow: rgba(124,92,191,0.08);
+            --teal:        #2dd4bf;
+            --teal-dim:    rgba(45,212,191,0.12);
+            --gold:        #f0b429;
+            --green:       #3ecf8e;
+            --red:         #f87171;
+            --text-primary:   #e8ecf4;
+            --text-secondary: #8892a4;
+            --text-muted:     #4e5a6e;
+            --text-white:     #ffffff;
+            --glow-warm: rgba(160,60,40,0.18);
+            --glow-teal: rgba(30,80,100,0.22);
+            --radius-sm:  8px;
+            --radius-md:  12px;
+            --radius-lg:  16px;
+            --radius-xl:  20px;
+            --font-body: 'Sora', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
         }
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        html { height: 100%; }
+        html, body { height: 100%; }
 
         body {
-            font-family: 'DM Sans', sans-serif;
-            background: var(--bg-deep);
-            color: var(--text);
-            height: 100vh;
+            font-family: var(--font-body);
+            background: var(--bg-outer);
+            color: var(--text-primary);
             display: flex;
-            overflow: hidden;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
             position: relative;
+            overflow: hidden;
         }
 
-        /* ── Animated mesh background ── */
         body::before {
             content: '';
             position: fixed; inset: 0; z-index: 0; pointer-events: none;
             background:
-                radial-gradient(ellipse 80% 60% at 10% 0%,   rgba(34,211,238,0.06) 0%, transparent 60%),
-                radial-gradient(ellipse 60% 50% at 90% 100%, rgba(167,139,250,0.08) 0%, transparent 60%),
-                radial-gradient(ellipse 50% 40% at 50% 50%,  rgba(15,23,42,0.9) 0%, transparent 100%);
+                radial-gradient(ellipse 55% 45% at 0% 0%,   var(--glow-warm) 0%, transparent 65%),
+                radial-gradient(ellipse 45% 55% at 100% 100%, var(--glow-teal) 0%, transparent 65%),
+                radial-gradient(ellipse 30% 30% at 50% 50%,  rgba(20,28,50,0.6) 0%, transparent 100%);
         }
 
-        /* ── Noise texture overlay ── */
         body::after {
             content: '';
-            position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.025;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            opacity: 0.18;
+            background-image: radial-gradient(circle, rgba(100,120,180,0.4) 1px, transparent 1px);
+            background-size: 28px 28px;
         }
 
-        /* ══════════════════════════════════════
-           SIDEBAR
-        ══════════════════════════════════════ */
-        #sidebar {
-            position: relative; z-index: 10;
-            width: 270px; flex-shrink: 0;
-            background: var(--glass-bg);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
-            border-right: 1px solid var(--border);
-            display: flex; flex-direction: column;
-            padding: 32px 20px;
-            gap: 0;
-        }
-
-        .logo-wrap { margin-bottom: 36px; padding: 0 8px; }
-        .logo-mark {
-            font-family: var(--mono);
-            font-size: 0.65rem;
-            font-weight: 700;
-            color: var(--cyan);
-            letter-spacing: 4px;
-            text-transform: uppercase;
-            opacity: 0.7;
-            margin-bottom: 4px;
-        }
-        .logo-text {
-            font-family: var(--mono);
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #fff;
-            letter-spacing: -1px;
-            line-height: 1;
-        }
-        .logo-text span { color: var(--cyan); }
-
-        /* Nav */
-        .nav-group { flex-grow: 1; display: flex; flex-direction: column; gap: 4px; }
-        .nav-item {
-            display: flex; align-items: center; gap: 12px;
-            padding: 11px 14px; border-radius: 12px;
-            cursor: pointer; color: var(--muted);
-            font-weight: 500; font-size: 0.88rem;
-            transition: all 0.2s ease;
-            position: relative; overflow: hidden;
-            border: 1px solid transparent;
-        }
-        .nav-item:hover { color: var(--text); background: rgba(255,255,255,0.04); }
-        .nav-item.active {
-            color: var(--cyan);
-            background: var(--cyan-dim);
-            border-color: var(--border-lit);
-        }
-        .nav-item.active::before {
-            content: '';
-            position: absolute; left: 0; top: 20%; bottom: 20%;
-            width: 2px; background: var(--cyan);
-            border-radius: 2px;
-        }
-        .nav-icon { font-size: 1rem; width: 20px; text-align: center; flex-shrink: 0; }
-
-        /* Sidebar bottom panel */
-        .sidebar-foot {
-            margin-top: auto;
-            padding: 20px;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid var(--border);
-            border-radius: 18px;
-        }
-        .foot-label {
-            font-family: var(--mono);
-            font-size: 0.55rem;
-            color: var(--muted);
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-        .foot-stars {
-            font-family: var(--mono);
-            font-size: 1.6rem;
-            font-weight: 700;
-            color: var(--gold);
-            line-height: 1;
-            margin-bottom: 2px;
-        }
-        .foot-aptm {
-            font-size: 0.75rem;
-            color: var(--cyan);
-            font-weight: 600;
-            margin-bottom: 2px;
-        }
-        .foot-rate {
-            font-family: var(--mono);
-            font-size: 0.55rem;
-            color: var(--muted);
-            margin-bottom: 16px;
-        }
-        .foot-note {
-            font-size: 0.65rem;
-            color: var(--muted);
-            line-height: 1.5;
-            margin-bottom: 14px;
-        }
-        .foot-anchors { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-
-        /* ══════════════════════════════════════
-           MAIN VIEWPORT
-        ══════════════════════════════════════ */
-        #viewport {
+        /* ── APP SHELL ── */
+        #app-shell {
             position: relative; z-index: 5;
-            flex-grow: 1;
-            display: flex; flex-direction: column;
+            width: min(1120px, 97vw);
+            height: min(820px, 96vh);
+            background: var(--bg-app);
+            border-radius: 24px;
+            border: 1px solid var(--border-md);
+            display: flex;
+            flex-direction: column;
             overflow: hidden;
+            box-shadow: 0 40px 100px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
         }
 
-        /* Top bar */
-        .topbar {
-            height: 64px; flex-shrink: 0;
-            padding: 0 40px;
-            display: flex; align-items: center; justify-content: flex-end; gap: 12px;
-            background: rgba(3,7,18,0.6);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+        /* ── TOP NAV ── */
+        #topnav {
+            height: 60px; flex-shrink: 0;
+            display: flex; align-items: center;
+            padding: 0 24px;
             border-bottom: 1px solid var(--border);
+            background: var(--bg-panel);
+            gap: 16px;
         }
-
-        #wallet-status {
-            font-family: var(--mono);
-            font-size: 0.7rem;
-            font-weight: 700;
-            color: var(--cyan);
-            background: var(--cyan-dim);
-            border: 1px solid var(--border-lit);
-            padding: 8px 18px;
+        .brand {
+            display: flex; align-items: center; gap: 10px;
+            font-size: 1.1rem; font-weight: 700;
+            color: var(--text-white); letter-spacing: -0.3px;
+        }
+        .brand-icon {
+            width: 30px; height: 30px; border-radius: 8px;
+            background: var(--purple-dim);
+            border: 1px solid rgba(124,92,191,0.4);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.9rem;
+        }
+        .topnav-mid { flex-grow: 1; }
+        .topnav-right { display: flex; align-items: center; gap: 12px; }
+        .user-pill {
+            display: flex; align-items: center; gap: 10px;
+            padding: 6px 14px 6px 6px;
             border-radius: 50px;
-            cursor: pointer;
-            letter-spacing: 1px;
-            transition: all 0.2s;
-        }
-        #wallet-status:hover { background: var(--cyan-glow); }
-
-        /* Scrollable content */
-        #scroll-area {
-            flex-grow: 1;
-            overflow-y: auto;
-            scroll-behavior: smooth;
-            padding: 32px 40px 60px;
-        }
-        #scroll-area::-webkit-scrollbar { width: 4px; }
-        #scroll-area::-webkit-scrollbar-track { background: transparent; }
-        #scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
-
-        #main-content { max-width: 680px; margin: 0 auto; }
-
-        /* ══════════════════════════════════════
-           GLASS PANELS
-        ══════════════════════════════════════ */
-        .glass {
-            background: var(--glass-bg);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 22px;
-            padding: 24px;
-            margin-bottom: 20px;
-            position: relative;
+        }
+        .user-pill img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+        .user-pill-name { font-size: 0.78rem; font-weight: 600; color: var(--text-primary); line-height: 1.2; }
+        .user-pill-sub  { font-size: 0.65rem; color: var(--text-secondary); }
+        #wallet-btn {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 16px;
+            border-radius: 50px;
+            background: transparent;
+            border: 1px solid var(--border-md);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 0.78rem; font-weight: 600;
+            cursor: pointer;
+            transition: all 0.18s;
+            white-space: nowrap;
+        }
+        #wallet-btn:hover { border-color: var(--purple-lt); color: var(--purple-lt); background: var(--purple-glow); }
+        .wallet-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); flex-shrink: 0; }
+
+        /* ── BODY LAYOUT ── */
+        #body-layout {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 200px 1fr 240px;
             overflow: hidden;
-            transition: border-color 0.2s;
-        }
-        .glass:hover { border-color: rgba(255,255,255,0.1); }
-        .glass.cyan-border { border-color: var(--border-lit); }
-        .glass.gold-border { border-color: rgba(251,191,36,0.25); }
-        .glass.purple-border { border-color: rgba(167,139,250,0.2); }
-
-        /* Shimmer stripe on panels */
-        .glass::before {
-            content: '';
-            position: absolute; top: 0; left: 0; right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
         }
 
-        /* ── Page headings ── */
-        .page-heading {
-            font-family: var(--mono);
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: #fff;
-            letter-spacing: -0.5px;
-            margin-bottom: 24px;
+        /* ── LEFT SIDEBAR ── */
+        #sidebar {
+            border-right: 1px solid var(--border);
+            background: var(--bg-panel);
+            display: flex; flex-direction: column;
+            padding: 16px 10px;
+            overflow-y: auto;
         }
-        .page-heading span { color: var(--cyan); }
+        .nav-item {
+            display: flex; align-items: center; gap: 11px;
+            padding: 10px 12px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 0.82rem; font-weight: 500;
+            transition: all 0.15s;
+            border: 1px solid transparent;
+            margin-bottom: 2px;
+        }
+        .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .nav-item.active { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border); }
+        .nav-icon { font-size: 0.95rem; width: 18px; text-align: center; flex-shrink: 0; opacity: 0.85; }
+        .nav-badge {
+            margin-left: auto;
+            font-family: var(--font-mono);
+            font-size: 0.58rem; font-weight: 600;
+            color: var(--purple-lt);
+            background: var(--purple-dim);
+            border-radius: 50px; padding: 2px 7px;
+            white-space: nowrap;
+        }
+        .sidebar-section { margin-top: 16px; margin-bottom: 6px; }
+        .sidebar-section-label {
+            font-size: 0.6rem; font-weight: 700;
+            color: var(--text-muted);
+            letter-spacing: 1.5px; text-transform: uppercase;
+            padding: 0 12px; margin-bottom: 6px;
+        }
+        .sidebar-vault {
+            padding: 14px;
+            background: var(--bg-card2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            margin-top: 12px;
+        }
+        .vault-label { font-size: 0.58rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; margin-bottom: 3px; }
+        .vault-stars { font-family: var(--font-mono); font-size: 1.3rem; font-weight: 700; color: var(--gold); margin-bottom: 8px; }
+        .vault-aptm  { font-size: 0.72rem; color: var(--teal); font-weight: 600; margin-bottom: 2px; }
+        .vault-rate  { font-family: var(--font-mono); font-size: 0.58rem; color: var(--text-muted); }
 
-        /* ══════════════════════════════════════
-           COMPOSE BOX
-        ══════════════════════════════════════ */
-        .composer-header {
-            display: flex; align-items: center; gap: 12px;
-            margin-bottom: 16px;
-        }
-        .avatar {
-            width: 42px; height: 42px; border-radius: 50%;
-            border: 2px solid var(--border-lit);
-            object-fit: cover; flex-shrink: 0;
-        }
-        .composer-name {
-            font-weight: 600; font-size: 0.9rem; color: #fff;
-        }
-
-        /* Irys upload area */
-        .upload-zone {
-            border: 1.5px dashed rgba(34,211,238,0.25);
-            border-radius: 14px;
+        /* ── FEED COLUMN ── */
+        #feed-col {
+            overflow-y: auto;
             padding: 20px;
+            display: flex; flex-direction: column; gap: 14px;
+        }
+        #feed-col::-webkit-scrollbar { width: 3px; }
+        #feed-col::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 3px; }
+        .feed-heading { font-size: 1rem; font-weight: 700; color: var(--text-white); margin-bottom: 4px; }
+
+        /* ── CARDS ── */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 18px;
+            transition: border-color 0.15s;
+        }
+        .card:hover { border-color: var(--border-md); }
+
+        .composer-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .av { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border-md); object-fit: cover; flex-shrink: 0; }
+        .composer-name { font-size: 0.85rem; font-weight: 600; color: var(--text-white); }
+        .composer-sub  { font-size: 0.65rem; color: var(--text-secondary); }
+
+        .field {
+            width: 100%;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 0.85rem;
+            padding: 10px 14px;
+            outline: none;
+            resize: none;
+            transition: border-color 0.15s;
+            margin-top: 8px;
+        }
+        .field:focus { border-color: rgba(124,92,191,0.4); }
+        .field::placeholder { color: var(--text-muted); }
+
+        /* Media tabs */
+        .media-tabs { display: flex; gap: 6px; margin-top: 10px; }
+        .mtab {
+            flex: 1; padding: 7px; border-radius: var(--radius-sm);
+            font-size: 0.72rem; font-weight: 600; cursor: pointer;
+            border: 1px solid var(--border); color: var(--text-secondary);
+            background: transparent; text-align: center;
+            transition: all 0.13s;
+        }
+        .mtab.active { color: var(--purple-lt); border-color: rgba(124,92,191,0.35); background: var(--purple-dim); }
+
+        .upload-zone {
+            border: 1.5px dashed rgba(124,92,191,0.3);
+            border-radius: var(--radius-md);
+            padding: 18px 12px;
             text-align: center;
             cursor: pointer;
             margin-top: 10px;
-            transition: all 0.2s;
-            background: rgba(34,211,238,0.02);
             position: relative;
+            transition: all 0.18s;
+            background: rgba(124,92,191,0.04);
         }
-        .upload-zone:hover { border-color: var(--cyan); background: var(--cyan-dim); }
-        .upload-zone input[type=file] {
-            position: absolute; inset: 0; width: 100%; height: 100%;
-            opacity: 0; cursor: pointer;
-        }
-        .upload-zone-label {
-            font-size: 0.8rem; color: var(--muted); pointer-events: none;
-        }
-        .upload-zone-label strong { color: var(--cyan); display: block; font-size: 0.85rem; margin-bottom: 2px; }
-
-        .media-tab-row {
-            display: flex; gap: 8px; margin-top: 12px;
-        }
-        .media-tab {
-            flex: 1; padding: 8px; border-radius: 10px; text-align: center;
-            font-size: 0.75rem; font-weight: 600; cursor: pointer;
-            border: 1px solid var(--border); color: var(--muted);
-            transition: all 0.15s; background: transparent;
-        }
-        .media-tab.active { color: var(--cyan); border-color: var(--border-lit); background: var(--cyan-dim); }
+        .upload-zone:hover { border-color: var(--purple-lt); background: var(--purple-dim); }
+        .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+        .upload-zone-text { font-size: 0.78rem; color: var(--text-secondary); pointer-events: none; }
+        .upload-zone-text strong { display: block; color: var(--purple-lt); font-size: 0.82rem; margin-bottom: 3px; }
 
         #irys-status {
-            font-size: 0.72rem; padding: 8px 12px; border-radius: 8px;
-            background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.15);
-            color: var(--purple); margin-top: 10px; display: none;
+            font-size: 0.7rem; margin-top: 8px; padding: 7px 12px;
+            border-radius: var(--radius-sm);
+            background: var(--purple-dim); border: 1px solid rgba(124,92,191,0.2);
+            color: var(--purple-lt); display: none;
         }
 
-        /* ══════════════════════════════════════
-           INPUTS & BUTTONS
-        ══════════════════════════════════════ */
-        .field {
-            width: 100%; padding: 11px 14px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            color: var(--text);
-            font-family: 'DM Sans', sans-serif;
-            font-size: 0.9rem;
-            outline: none;
-            margin-top: 10px;
-            resize: none;
-            transition: border-color 0.2s;
+        .fee-display {
+            font-family: var(--font-mono);
+            font-size: 0.62rem; color: var(--text-muted);
+            text-align: right; margin-top: 6px;
         }
-        .field:focus { border-color: rgba(34,211,238,0.3); }
-        .field::placeholder { color: var(--muted); }
 
+        /* Buttons */
         .btn {
-            padding: 11px 22px;
-            border-radius: 12px;
+            padding: 9px 20px;
+            border-radius: var(--radius-md);
             border: none;
-            font-family: 'DM Sans', sans-serif;
-            font-weight: 700;
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: all 0.18s;
-            letter-spacing: 0.3px;
+            font-family: var(--font-body);
+            font-weight: 600; font-size: 0.82rem;
+            cursor: pointer; transition: all 0.16s;
         }
-        .btn-primary {
-            background: var(--cyan);
-            color: #030712;
-            width: 100%; margin-top: 12px;
-        }
-        .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 6px 24px rgba(34,211,238,0.2); }
-        .btn-gold {
-            background: var(--gold);
-            color: #030712;
-            width: 100%; margin-top: 12px;
-        }
-        .btn-gold:hover { filter: brightness(1.05); transform: translateY(-1px); }
-        .btn-outline {
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--muted);
-        }
-        .btn-outline:hover { border-color: var(--purple); color: var(--purple); }
         .btn-purple {
             background: var(--purple);
-            color: #030712;
-            padding: 8px 16px;
-            font-size: 0.78rem;
-            border-radius: 9px;
+            color: #fff;
+            width: 100%; margin-top: 12px;
         }
-        .btn-sm {
-            padding: 7px 14px;
-            font-size: 0.78rem;
-            border-radius: 9px;
+        .btn-purple:hover { background: var(--purple-lt); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(124,92,191,0.3); }
+        .btn-outline {
+            background: transparent; border: 1px solid var(--border-md);
+            color: var(--text-secondary); width: 100%; margin-top: 10px;
         }
+        .btn-outline:hover { border-color: var(--purple-lt); color: var(--purple-lt); }
+        .btn-sm { padding: 6px 13px; font-size: 0.75rem; border-radius: var(--radius-sm); }
+        .btn-teal { background: var(--teal); color: #0d1117; font-weight: 700; }
+        .btn-teal:hover { filter: brightness(1.08); }
 
-        /* ══════════════════════════════════════
-           FEED POSTS
-        ══════════════════════════════════════ */
-        .post-card {
-            animation: fadeSlide 0.3s ease both;
+        /* Post cards */
+        .post-card { animation: fadeUp 0.25s ease both; }
+        @keyframes fadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+        .post-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .post-meta { flex-grow: 1; }
+        .post-author { font-size: 0.85rem; font-weight: 600; color: var(--text-white); }
+        .post-addr   { font-family: var(--font-mono); font-size: 0.6rem; color: var(--text-muted); margin-top: 1px; }
+        .post-more   { color: var(--text-muted); cursor: pointer; font-size: 1rem; padding: 4px 8px; border-radius: 6px; }
+        .post-more:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .boosted-badge {
+            font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700;
+            background: rgba(240,180,41,0.1); border: 1px solid rgba(240,180,41,0.3);
+            color: var(--gold); padding: 2px 9px; border-radius: 50px;
         }
-        @keyframes fadeSlide {
-            from { opacity: 0; transform: translateY(10px); }
-            to   { opacity: 1; transform: translateY(0); }
-        }
-
-        .post-header {
-            display: flex; align-items: center; gap: 12px;
-            margin-bottom: 14px;
-        }
-        .post-author { font-weight: 600; color: #fff; font-size: 0.9rem; }
-        .post-boosted-badge {
-            font-family: var(--mono);
-            font-size: 0.55rem; font-weight: 700;
-            color: var(--gold); background: rgba(251,191,36,0.1);
-            border: 1px solid rgba(251,191,36,0.25);
-            padding: 2px 8px; border-radius: 20px;
-            letter-spacing: 1px; text-transform: uppercase;
-            margin-left: auto;
-        }
-
-        .post-text {
-            font-size: 0.93rem; line-height: 1.6; color: var(--text);
-            margin-bottom: 14px;
-        }
-
+        .post-body  { font-size: 0.88rem; line-height: 1.6; color: var(--text-primary); margin-bottom: 12px; }
         .post-media {
-            width: 100%; border-radius: 16px; overflow: hidden;
-            background: #000; margin-bottom: 14px;
+            width: 100%; border-radius: var(--radius-md); overflow: hidden;
+            margin-bottom: 12px; background: #000;
+            max-height: 320px;
+            display: flex; justify-content: center;
             border: 1px solid var(--border);
-            max-height: 380px;
-            display: flex; justify-content: center; align-items: center;
         }
-        .post-media img { width: 100%; max-height: 380px; object-fit: cover; display: block; }
-        .post-media iframe { width: 100%; height: 280px; border: none; }
+        .post-media img  { width: 100%; max-height: 320px; object-fit: cover; display: block; }
+        .post-media iframe { width: 100%; height: 260px; border: none; }
 
-        /* Arweave badge on media */
-        .arweave-badge {
+        .arweave-tag {
             display: inline-flex; align-items: center; gap: 5px;
-            font-family: var(--mono); font-size: 0.55rem;
-            color: var(--cyan); background: var(--cyan-dim);
-            border: 1px solid var(--border-lit);
-            border-radius: 6px; padding: 2px 8px;
+            font-family: var(--font-mono); font-size: 0.58rem;
+            background: var(--purple-dim); border: 1px solid rgba(124,92,191,0.25);
+            color: var(--purple-lt); padding: 2px 8px; border-radius: 4px;
             margin-bottom: 8px;
-            letter-spacing: 0.5px;
         }
-        .arweave-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--cyan); animation: pulse 2s infinite; }
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        .a-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--purple-lt); animation: blink 2s infinite; }
+        @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.2;} }
 
-        /* Post actions */
         .post-actions {
-            display: flex; align-items: center; gap: 6px;
-            padding-top: 14px;
+            display: flex; align-items: center; gap: 4px;
+            padding-top: 12px;
             border-top: 1px solid var(--border);
         }
-        .action-pill {
+        .pact {
             display: flex; align-items: center; gap: 6px;
-            padding: 7px 14px; border-radius: 50px;
-            font-size: 0.78rem; font-weight: 600;
-            cursor: pointer; color: var(--muted);
-            background: rgba(255,255,255,0.03);
-            border: 1px solid var(--border);
-            transition: all 0.15s;
+            padding: 6px 12px; border-radius: 50px;
+            font-size: 0.76rem; font-weight: 500;
+            cursor: pointer; color: var(--text-secondary);
+            background: transparent; border: 1px solid transparent;
+            transition: all 0.13s;
         }
-        .action-pill:hover { color: var(--cyan); border-color: var(--border-lit); background: var(--cyan-dim); }
-        .action-pill.boost:hover { color: var(--gold); border-color: rgba(251,191,36,0.3); background: rgba(251,191,36,0.08); }
-        .action-count { font-family: var(--mono); font-size: 0.72rem; }
+        .pact:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border); }
+        .pact.boost:hover { color: var(--gold); border-color: rgba(240,180,41,0.3); background: rgba(240,180,41,0.06); }
+        .pact-num { font-family: var(--font-mono); font-size: 0.7rem; }
 
-        /* ══════════════════════════════════════
-           COMMENT TRAY
-        ══════════════════════════════════════ */
-        .comment-tray {
-            display: none;
-            margin-top: 16px;
-            padding-top: 16px;
-            border-top: 1px dashed rgba(255,255,255,0.06);
-        }
-        .comment-list { max-height: 360px; overflow-y: auto; margin-bottom: 12px; }
-        .comment-list::-webkit-scrollbar { width: 3px; }
-        .comment-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 3px; }
-
-        .comment-row {
-            font-size: 0.85rem; color: #cbd5e1;
-            padding: 12px 14px; border-radius: 12px;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid var(--border);
-            margin-bottom: 8px;
+        /* Comment tray */
+        .comment-tray { display: none; padding-top: 14px; border-top: 1px dashed rgba(255,255,255,0.05); margin-top: 12px; }
+        .comment-list { max-height: 320px; overflow-y: auto; margin-bottom: 10px; }
+        .cmt-row {
+            padding: 10px 12px; border-radius: var(--radius-md);
+            background: var(--bg-input); border: 1px solid var(--border);
+            margin-bottom: 7px; font-size: 0.82rem; color: var(--text-primary);
             line-height: 1.5;
         }
-        .comment-row.nested {
-            margin-left: 20px;
-            border-left: 2px solid rgba(167,139,250,0.2);
-            border-radius: 0 12px 12px 0;
-            background: rgba(167,139,250,0.03);
+        .cmt-row.nested {
+            margin-left: 18px;
+            border-left: 2px solid rgba(124,92,191,0.25);
+            border-radius: 0 var(--radius-md) var(--radius-md) 0;
+            background: rgba(124,92,191,0.04);
         }
-        .comment-author { color: var(--gold); font-weight: 700; }
-        .comment-meta { font-size: 0.7rem; color: var(--muted); margin-top: 8px; display: flex; gap: 10px; align-items: center; }
-        .c-btn {
-            font-size: 0.7rem; font-weight: 700; cursor: pointer;
-            padding: 3px 10px; border-radius: 6px;
-            border: 1px solid var(--border);
-            color: var(--muted); background: transparent;
-            transition: all 0.12s;
+        .cmt-author { color: var(--gold); font-weight: 700; }
+        .cmt-meta { display: flex; gap: 8px; margin-top: 8px; }
+        .cbtn {
+            font-size: 0.68rem; font-weight: 600; cursor: pointer;
+            padding: 3px 9px; border-radius: 5px;
+            border: 1px solid var(--border); color: var(--text-muted);
+            background: transparent; transition: all 0.12s;
         }
-        .c-btn:hover { color: var(--cyan); border-color: var(--border-lit); }
-        .c-btn.reply:hover { color: var(--purple); border-color: rgba(167,139,250,0.3); }
-
-        .reply-input-area { display: none; margin-top: 10px; }
-        .reply-row { display: flex; gap: 8px; margin-top: 0; }
+        .cbtn:hover { color: var(--teal); border-color: rgba(45,212,191,0.3); }
+        .cbtn.reply:hover { color: var(--purple-lt); border-color: rgba(124,92,191,0.3); }
+        .reply-area { display: none; margin-top: 8px; }
+        .reply-row  { display: flex; gap: 7px; }
         .reply-row .field { margin-top: 0; flex: 1; }
+        .cmt-input-row { display: flex; gap: 8px; }
+        .cmt-input-row .field { margin-top: 0; flex: 1; }
 
-        .comment-input-row { display: flex; gap: 8px; }
-        .comment-input-row .field { margin-top: 0; flex: 1; }
-
-        /* ══════════════════════════════════════
-           DASHBOARD / CREATOR STUDIO
-        ══════════════════════════════════════ */
-        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
-        .stat-card {
-            background: rgba(255,255,255,0.02);
+        /* Right panel */
+        #right-panel {
+            border-left: 1px solid var(--border);
+            background: var(--bg-panel);
+            overflow-y: auto;
+            padding: 16px 14px;
+            display: flex; flex-direction: column; gap: 14px;
+        }
+        #right-panel::-webkit-scrollbar { width: 3px; }
+        #right-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 3px; }
+        .rp-heading {
+            display: flex; align-items: center; justify-content: space-between;
+            font-size: 0.85rem; font-weight: 700; color: var(--text-white);
+            margin-bottom: 10px;
+        }
+        .rp-card {
+            background: var(--bg-card2);
             border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 18px;
+            border-radius: var(--radius-lg);
+            padding: 14px;
         }
-        .stat-label { font-family: var(--mono); font-size: 0.55rem; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px; }
-        .stat-value { font-family: var(--mono); font-size: 1.4rem; font-weight: 700; color: #fff; }
-        .stat-value.gold { color: var(--gold); }
-        .stat-value.cyan { color: var(--cyan); }
-        .stat-sub { font-size: 0.65rem; color: var(--muted); margin-top: 3px; }
-
-        .info-box {
-            padding: 14px 16px;
-            background: var(--cyan-dim);
-            border: 1px solid var(--border-lit);
-            border-radius: 12px;
-            font-size: 0.8rem; color: #94a3b8;
-            line-height: 1.6;
-            margin-bottom: 16px;
+        .stat-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 9px 0; border-bottom: 1px solid var(--border);
         }
-        .info-box strong { color: var(--cyan); }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-label { font-size: 0.75rem; color: var(--text-secondary); }
+        .stat-label span { display: block; font-size: 0.62rem; color: var(--text-muted); margin-top: 1px; }
+        .stat-val { font-family: var(--font-mono); font-size: 0.8rem; font-weight: 700; color: var(--text-white); }
+        .stat-val.gold   { color: var(--gold); }
+        .stat-val.teal   { color: var(--teal); }
+        .stat-val.purple { color: var(--purple-lt); }
+        .stat-val.green  { color: var(--green); }
 
         /* Ledger */
-        .ledger-header {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 14px;
-        }
-        .ledger-cols {
-            display: flex; justify-content: space-between;
-            padding-bottom: 8px; border-bottom: 1px solid var(--border);
-            margin-bottom: 6px;
-        }
-        .col-label { font-family: var(--mono); font-size: 0.55rem; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
-
         .ledger-row {
             display: flex; justify-content: space-between; align-items: center;
-            padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.03); gap: 10px;
+            padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.03); gap: 8px;
         }
         .ledger-row:last-child { border-bottom: none; }
-        .ledger-desc { font-size: 0.8rem; color: #94a3b8; flex: 1; line-height: 1.4; }
-        .ledger-desc small { display: block; font-size: 0.62rem; color: var(--muted); margin-top: 2px; }
+        .ledger-desc { font-size: 0.75rem; color: var(--text-secondary); flex: 1; line-height: 1.4; }
+        .ledger-desc small { display: block; font-size: 0.6rem; color: var(--text-muted); margin-top: 1px; }
         .ledger-badge {
-            font-family: var(--mono); font-size: 0.55rem; font-weight: 700;
-            padding: 3px 8px; border-radius: 5px; text-transform: uppercase; letter-spacing: 0.05em;
-            width: 72px; text-align: center; display: inline-block; flex-shrink: 0;
+            font-family: var(--font-mono); font-size: 0.52rem; font-weight: 700;
+            padding: 2px 7px; border-radius: 4px; text-transform: uppercase;
+            width: 58px; text-align: center; flex-shrink: 0;
         }
-        .ledger-badge.earn    { background: rgba(74,222,128,0.12); color: var(--green); }
+        .ledger-badge.earn    { background: rgba(62,207,142,0.12); color: var(--green); }
         .ledger-badge.spend   { background: rgba(248,113,113,0.12); color: var(--red); }
-        .ledger-badge.deposit { background: var(--cyan-dim); color: var(--cyan); }
-        .ledger-badge.settle  { background: var(--purple-dim); color: var(--purple); }
-        .ledger-amount { font-family: var(--mono); font-size: 0.82rem; font-weight: 700; width: 68px; text-align: right; flex-shrink: 0; }
+        .ledger-badge.deposit { background: var(--teal-dim); color: var(--teal); }
+        .ledger-badge.settle  { background: var(--purple-dim); color: var(--purple-lt); }
+        .ledger-amount { font-family: var(--font-mono); font-size: 0.76rem; font-weight: 700; width: 58px; text-align: right; flex-shrink: 0; }
         .ledger-amount.earn    { color: var(--green); }
         .ledger-amount.spend   { color: var(--red); }
-        .ledger-amount.neutral { color: var(--muted); }
-        .ledger-empty { font-size: 0.75rem; color: var(--muted); padding: 20px 0; text-align: center; }
+        .ledger-amount.neutral { color: var(--text-muted); }
+        .ledger-empty { font-size: 0.72rem; color: var(--text-muted); padding: 14px 0; text-align: center; }
 
-        /* Admin revenue panel */
+        /* Admin panel — hidden by default, shown for admin wallet only */
         #admin-revenue-panel { display: none; }
 
-        /* ══════════════════════════════════════
-           TOKENOMICS
-        ══════════════════════════════════════ */
+        /* Tokenomics */
         .tok-section {
-            font-family: var(--mono);
-            font-size: 0.58rem; color: var(--gold);
-            letter-spacing: 3px; text-transform: uppercase;
-            margin: 22px 0 10px;
+            font-family: var(--font-mono); font-size: 0.56rem;
+            color: var(--gold); letter-spacing: 2.5px;
+            text-transform: uppercase; margin: 18px 0 8px; font-weight: 700;
         }
         .tok-row {
             display: flex; justify-content: space-between; align-items: center;
-            padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
-            font-size: 0.88rem;
+            padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 0.84rem;
         }
         .tok-row:last-of-type { border-bottom: none; }
-        .tok-label { color: #94a3b8; }
-        .tok-value { font-family: var(--mono); font-weight: 700; color: var(--cyan); }
-        .tok-note { font-size: 0.75rem; color: var(--muted); line-height: 1.6; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+        .tok-label { color: var(--text-secondary); }
+        .tok-value { font-family: var(--font-mono); font-weight: 700; color: var(--purple-lt); font-size: 0.8rem; }
 
-        /* ══════════════════════════════════════
-           PAGE / ROUTING
-        ══════════════════════════════════════ */
+        /* Page system */
         .page { display: none; }
-        .page.active { display: block; }
+        .page.active { display: contents; }
+        #page-home { display: contents; }
 
-        /* ══════════════════════════════════════
-           TOAST
-        ══════════════════════════════════════ */
+        /* Misc */
+        .hidden-post { display: none !important; }
+        #load-more-btn { display: none; background: transparent; border: 1px solid var(--border); color: var(--text-muted); font-size: 0.75rem; width: 100%; margin-top: 4px; }
+        #load-more-btn:hover { border-color: var(--purple-lt); color: var(--purple-lt); }
+        #media-preview-container { display: none; margin-top: 10px; border-radius: var(--radius-md); overflow: hidden; background: #000; border: 1px solid var(--border); }
+        #preview-img { max-width: 100%; max-height: 200px; display: block; margin: 0 auto; }
+
+        /* Toast */
         #toast {
-            position: fixed; bottom: 24px; right: 24px; z-index: 9999;
-            background: rgba(15,23,42,0.95);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border-lit);
-            color: var(--cyan);
-            font-family: var(--mono);
-            font-size: 0.78rem; font-weight: 700;
-            padding: 12px 22px; border-radius: 12px;
+            position: fixed; bottom: 22px; right: 22px; z-index: 9999;
+            background: var(--bg-card);
+            border: 1px solid rgba(124,92,191,0.35);
+            color: var(--purple-lt);
+            font-family: var(--font-mono); font-size: 0.75rem; font-weight: 600;
+            padding: 10px 20px; border-radius: var(--radius-md);
             opacity: 0; pointer-events: none;
-            transition: opacity 0.3s, transform 0.3s;
-            transform: translateY(10px);
-            letter-spacing: 0.5px;
+            transition: opacity 0.25s, transform 0.25s;
+            transform: translateY(8px); letter-spacing: 0.4px;
         }
         #toast.show { opacity: 1; transform: translateY(0); }
 
-        /* ══════════════════════════════════════
-           MISC
-        ══════════════════════════════════════ */
-        .hidden-post { display: none !important; }
-        #load-more-btn { display: none; width: 100%; background: transparent; border: 1px solid var(--border); color: var(--muted); font-size: 0.78rem; letter-spacing: 1px; margin-top: 8px; }
-        #load-more-btn:hover { border-color: var(--border-lit); color: var(--cyan); }
+        .page-heading { font-size: 1.1rem; font-weight: 700; color: var(--text-white); margin-bottom: 14px; }
+        .page-heading span { color: var(--purple-lt); }
 
-        .hash-anchor {
-            font-family: var(--mono); font-size: 0.58rem;
-            color: rgba(100,116,139,0.5); display: block; margin-top: 10px; letter-spacing: 1px;
+        .info-box {
+            padding: 12px 14px; background: var(--purple-dim);
+            border: 1px solid rgba(124,92,191,0.2);
+            border-radius: var(--radius-md);
+            font-size: 0.78rem; color: var(--text-secondary);
+            line-height: 1.6; margin-bottom: 14px;
         }
-        .aptm-indicator { font-family: var(--mono); font-size: 0.65rem; color: var(--cyan); font-weight: 700; text-transform: uppercase; }
-        .price-ticker  { font-family: var(--mono); font-size: 0.55rem; color: var(--muted); margin-top: 4px; }
-        .balance-note  { font-size: 0.6rem; color: var(--muted); margin-top: 2px; }
+        .info-box strong { color: var(--purple-lt); }
+        .balance-note { font-size: 0.62rem; color: var(--text-muted); margin-top: 2px; }
 
-        /* Divider */
-        .divider { height: 1px; background: var(--border); margin: 16px 0; }
-
-        /* Media preview */
-        #media-preview-container {
-            display: none; margin-top: 12px;
-            border: 1px dashed var(--border-lit);
-            border-radius: 14px; overflow: hidden;
-            background: #000; text-align: center;
+        /* Sparkline */
+        .sparkline {
+            height: 50px; border-radius: var(--radius-sm);
+            background: var(--bg-input);
+            margin: 10px 0 4px;
+            position: relative; overflow: hidden;
         }
-        #media-preview-container .prev-label {
-            font-family: var(--mono); font-size: 0.58rem; color: var(--cyan);
-            padding: 8px 0 2px; letter-spacing: 1px;
+        .sparkline::after {
+            content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--purple-lt), var(--teal), transparent);
+            opacity: 0.4;
         }
-        #preview-img { max-width: 100%; max-height: 220px; display: block; margin: 0 auto; padding-bottom: 8px; }
-
-        /* Scrollbar for comment area */
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 4px; }
-
-        /* Loading shimmer */
-        .shimmer {
-            background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.04) 75%);
-            background-size: 200% 100%;
-            animation: shimmer 1.5s infinite;
-            border-radius: 8px;
+        .sparkline-line {
+            position: absolute; bottom: 10px; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, var(--purple-lt), var(--teal));
+            clip-path: polygon(0 60%, 15% 30%, 30% 55%, 45% 20%, 60% 40%, 75% 15%, 90% 35%, 100% 25%, 100% 100%, 0 100%);
         }
-        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
     </style>
 </head>
 <body>
 
-<!-- ══════════════════════════════════════════
-     SIDEBAR
-══════════════════════════════════════════ -->
-<div id="sidebar">
-    <div class="logo-wrap">
-        <div class="logo-mark">Signal Protocol</div>
-        <div class="logo-text">SOCIAL<span>HUB</span></div>
-    </div>
+<div id="app-shell">
 
-    <div class="nav-group">
-        <div class="nav-item active" onclick="switchPage('home', this)">
-            <span class="nav-icon">◈</span> Global Feed
+    <!-- TOP NAV -->
+    <div id="topnav">
+        <div class="brand">
+            <div class="brand-icon">◈</div>
+            SOCIALHUB
         </div>
-        <div class="nav-item" onclick="switchPage('earnings', this)">
-            <span class="nav-icon">◆</span> Creator Studio
-        </div>
-        <div class="nav-item" onclick="switchPage('profile', this)">
-            <span class="nav-icon">◉</span> My Identity
-        </div>
-        <div class="nav-item" onclick="switchPage('info', this)">
-            <span class="nav-icon">◎</span> Tokenomics
-        </div>
-    </div>
-
-    <div class="sidebar-foot">
-        <div class="foot-label">Active Stars · Ledger</div>
-        <div class="foot-stars" id="user-stars">0 ★</div>
-        <div class="divider"></div>
-        <div class="foot-label">APTM Vault · On-Chain</div>
-        <div class="foot-aptm" id="sidebar-aptm-value">0.0000 $APTM</div>
-        <div class="foot-rate" id="live-price-display">RATE: $0.3391 / APTM</div>
-        <div class="foot-note">Stars power instant interactions. Settle them to move value to your Vault.</div>
-        <button class="btn btn-gold" onclick="convertAPTM()" style="font-size:0.8rem; padding:9px 16px;">DEPOSIT $APTM</button>
-        <div class="foot-anchors">
-            <div class="foot-label">Total Ledger Anchors</div>
-            <div style="font-family:var(--mono); font-size:1rem; font-weight:700; color:#fff;" id="total-anchors-display">0</div>
-        </div>
-    </div>
-</div>
-
-<!-- ══════════════════════════════════════════
-     MAIN VIEWPORT
-══════════════════════════════════════════ -->
-<div id="viewport">
-    <div class="topbar">
-        <div id="wallet-status" onclick="connectWallet()">⬡ CONNECT WALLET</div>
-    </div>
-
-    <div id="scroll-area">
-    <div id="main-content">
-
-        <!-- ── HOME / FEED ── -->
-        <div id="page-home" class="page active">
-            <!-- Compose box -->
-            <div class="glass cyan-border" style="margin-bottom:24px;">
-                <div class="composer-header">
-                    <img id="pb-avatar" class="avatar" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub">
-                    <div>
-                        <div class="composer-name" id="pb-handle">Anonymous_Creator</div>
-                        <div style="font-size:0.7rem; color:var(--muted);">Broadcasting to the network</div>
-                    </div>
+        <div class="topnav-mid"></div>
+        <div class="topnav-right">
+            <div class="user-pill">
+                <img id="nav-avatar" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub">
+                <div>
+                    <div class="user-pill-name" id="nav-handle">Anonymous</div>
+                    <div class="user-pill-sub">Creator</div>
                 </div>
+            </div>
+            <button id="wallet-btn" onclick="connectWallet()">
+                <span class="wallet-dot"></span>
+                <span id="wallet-status">Connect Wallet</span>
+            </button>
+        </div>
+    </div>
 
-                <textarea id="post-text" class="field" style="min-height:72px; line-height:1.6;" placeholder="What's your signal?"></textarea>
+    <!-- BODY LAYOUT -->
+    <div id="body-layout">
 
-                <!-- Media type tabs -->
-                <div class="media-tab-row">
-                    <div class="media-tab active" id="tab-url" onclick="setMediaTab('url')">🔗 URL  <span style="font-size:0.65rem; opacity:0.6;">(free upload)</span></div>
-                    <div class="media-tab" id="tab-file" onclick="setMediaTab('file')">📁 File Upload <span style="font-size:0.65rem; opacity:0.6;">(Irys / Arweave)</span></div>
+        <!-- LEFT SIDEBAR -->
+        <div id="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-section-label">Navigation</div>
+                <div class="nav-item active" onclick="switchPage('home', this)"><span class="nav-icon">⊞</span> Home Feed</div>
+                <div class="nav-item" onclick="switchPage('earnings', this)">
+                    <span class="nav-icon">◆</span> Creator Studio
+                    <span class="nav-badge" id="sidebar-stars-badge">0 ★</span>
                 </div>
+                <div class="nav-item" onclick="switchPage('profile', this)"><span class="nav-icon">◉</span> My Profile</div>
+                <div class="nav-item" onclick="switchPage('info', this)"><span class="nav-icon">◎</span> Tokenomics</div>
+            </div>
 
-                <!-- URL input -->
-                <div id="url-input-wrap">
-                    <input type="text" id="post-media" class="field" placeholder="Image URL (3.0★ + Irys) | Video URL (10.0★ + Irys)" oninput="updatePreview(this.value)">
-                    <div id="media-preview-container">
-                        <div class="prev-label">PREVIEW</div>
-                        <img id="preview-img" src="">
-                    </div>
-                </div>
+            <div class="sidebar-vault">
+                <div class="vault-label">Active Stars</div>
+                <div class="vault-stars" id="user-stars">0 ★</div>
+                <div class="vault-label" style="margin-top:8px;">APTM Vault</div>
+                <div class="vault-aptm" id="sidebar-aptm-value">0.0000 $APTM</div>
+                <div class="vault-rate" id="live-price-display">$0.3391 / APTM</div>
+                <button class="btn btn-purple btn-sm" style="margin-top:12px; width:100%; font-size:0.72rem;" onclick="convertAPTM()">DEPOSIT $APTM</button>
+            </div>
 
-                <!-- File upload (Irys) -->
-                <div id="file-input-wrap" style="display:none;">
-                    <div class="upload-zone" id="upload-zone">
-                        <input type="file" id="media-file-input" accept="image/*,video/*" onchange="handleFileSelect(this)">
-                        <div class="upload-zone-label">
-                            <strong>↑ Drop or click to upload</strong>
-                            Images &amp; Videos stored permanently on Arweave via Irys.<br>
-                            <span style="font-size:0.68rem; color:var(--purple);">A tiny storage fee is paid via MetaMask.</span>
+            <div style="padding: 10px 0 4px; border-top: 1px solid var(--border); margin-top: 12px;">
+                <div class="vault-label" style="padding:0 2px; margin-bottom:4px;">Total Anchors</div>
+                <div style="font-family:var(--font-mono); font-size:0.9rem; font-weight:700; color:var(--text-white);" id="total-anchors-display">0</div>
+            </div>
+        </div>
+
+        <!-- FEED COLUMN -->
+        <div id="feed-col">
+
+            <!-- HOME PAGE -->
+            <div id="page-home" style="display:contents;">
+                <div class="feed-heading">Signal Feed</div>
+
+                <!-- Compose -->
+                <div class="card" style="border-color: rgba(124,92,191,0.25);">
+                    <div class="composer-row">
+                        <img id="pb-avatar" class="av" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub">
+                        <div>
+                            <div class="composer-name" id="pb-handle">Anonymous_Creator</div>
+                            <div class="composer-sub">Broadcasting to the network</div>
                         </div>
                     </div>
-                    <div id="file-preview-wrap" style="display:none; margin-top:10px;">
-                        <img id="file-preview-img" style="max-width:100%; max-height:200px; border-radius:12px; display:none;">
-                        <video id="file-preview-vid" controls style="max-width:100%; border-radius:12px; display:none;"></video>
-                        <div id="file-info" style="font-size:0.72rem; color:var(--muted); margin-top:6px;"></div>
+
+                    <textarea id="post-text" class="field" style="min-height:64px;" placeholder="What's your signal?"></textarea>
+
+                    <div class="media-tabs">
+                        <div class="mtab active" id="tab-url"  onclick="setMediaTab('url')">🔗 URL</div>
+                        <div class="mtab"        id="tab-file" onclick="setMediaTab('file')">📁 File → Arweave</div>
                     </div>
-                </div>
 
-                <div id="irys-status"></div>
-                <div id="post-fee-display" style="font-family:var(--mono); font-size:0.68rem; color:var(--muted); margin-top:10px; text-align:right;"></div>
-
-                <button class="btn btn-primary" onclick="handleBroadcast()">◈ BROADCAST SIGNAL</button>
-            </div>
-
-            <div id="feed-items"></div>
-            <button id="load-more-btn" class="btn" onclick="showNextPage()">LOAD MORE SIGNALS</button>
-        </div>
-
-        <!-- ── CREATOR STUDIO ── -->
-        <div id="page-earnings" class="page">
-            <div class="page-heading">Creator <span>Studio</span></div>
-
-            <div class="glass">
-                <div class="stat-grid">
-                    <div class="stat-card">
-                        <div class="stat-label">Active Stars · Ledger</div>
-                        <div class="stat-value gold" id="creator-revenue-display">0 ★</div>
-                        <div class="stat-sub balance-note">⚡ Live from interactions</div>
+                    <!-- URL input panel -->
+                    <div id="url-input-wrap">
+                        <input type="text" id="post-media" class="field" placeholder="Image URL (3.0★) · Video URL (10.0★)" oninput="updatePreview(this.value)">
+                        <div id="media-preview-container">
+                            <img id="preview-img" src="">
+                        </div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-label">APTM Vault · On-Chain</div>
-                        <div class="stat-value cyan aptm-indicator" id="earnings-aptm-value" style="font-size:1rem;">0.0000 $APTM</div>
-                        <div class="stat-sub balance-note">🔒 On-chain balance</div>
+
+                    <!-- File upload panel (Irys) -->
+                    <div id="file-input-wrap" style="display:none;">
+                        <div class="upload-zone">
+                            <input type="file" id="media-file-input" accept="image/*,video/*" onchange="handleFileSelect(this)">
+                            <div class="upload-zone-text">
+                                <strong>↑ Click or drop to upload</strong>
+                                Stored permanently via Irys on Arweave.<br>
+                                <span style="color:var(--purple-lt); font-size:0.68rem;">Tiny fee paid via MetaMask (MATIC).</span>
+                            </div>
+                        </div>
+                        <div id="file-preview-wrap" style="display:none; margin-top:10px;">
+                            <img   id="file-preview-img" style="max-width:100%; border-radius:10px; display:none;">
+                            <video id="file-preview-vid" controls style="max-width:100%; border-radius:10px; display:none;"></video>
+                            <div id="file-info" style="font-size:0.7rem; color:var(--text-muted); margin-top:5px;"></div>
+                        </div>
                     </div>
+
+                    <div id="irys-status"></div>
+                    <div class="fee-display" id="post-fee-display"></div>
+                    <button class="btn btn-purple" onclick="handleBroadcast()">◈ Broadcast Signal</button>
                 </div>
 
-                <div class="info-box">
-                    <strong>How it works:</strong> Stars are used for instant social interactions and are tracked on the internal ledger. Click <strong>Settle to Wallet</strong> to convert your Stars to $APTM on-chain and withdraw.
-                </div>
-
-                <button class="btn btn-primary" style="width:auto; padding:13px 28px;" onclick="settleToWallet()">SETTLE TO WALLET →</button>
+                <div id="feed-items"></div>
+                <button id="load-more-btn" class="btn" onclick="showNextPage()">Load More Signals</button>
             </div>
 
-            <!-- Ledger -->
-            <div class="glass">
-                <div class="ledger-header">
-                    <div style="font-family:var(--mono); font-size:0.65rem; color:var(--gold); letter-spacing:2px; text-transform:uppercase; font-weight:700;">📋 Recent Activity</div>
-                    <div style="font-size:0.62rem; color:var(--muted);">Last 10 transactions</div>
+            <!-- CREATOR STUDIO PAGE -->
+            <div id="page-earnings" class="page">
+                <div class="page-heading">Creator <span>Studio</span></div>
+
+                <div class="card">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+                        <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px;">
+                            <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">Active Stars</div>
+                            <div style="font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--gold);" id="creator-revenue-display">0 ★</div>
+                            <div class="balance-note">⚡ Live ledger</div>
+                        </div>
+                        <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px;">
+                            <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">APTM Vault</div>
+                            <div style="font-family:var(--font-mono); font-size:0.95rem; font-weight:700; color:var(--teal); margin-top:6px;" id="earnings-aptm-value">0.0000 $APTM</div>
+                            <div class="balance-note">🔒 On-chain</div>
+                        </div>
+                    </div>
+                    <div class="info-box">
+                        <strong>How it works:</strong> Stars power instant interactions on the internal ledger. Click <strong>Settle to Wallet</strong> to convert to $APTM on-chain.
+                    </div>
+                    <button class="btn btn-teal" style="width:auto; padding:10px 24px;" onclick="settleToWallet()">Settle to Wallet →</button>
                 </div>
-                <div class="ledger-cols">
-                    <span class="col-label" style="flex:1;">Description</span>
-                    <span class="col-label" style="width:72px; text-align:center;">Type</span>
-                    <span class="col-label" style="width:68px; text-align:right;">Amount</span>
+
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <div style="font-size:0.8rem; font-weight:700; color:var(--text-white);">Recent Activity</div>
+                        <div style="font-size:0.62rem; color:var(--text-muted);">Last 10 transactions</div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; padding-bottom:7px; border-bottom:1px solid var(--border); margin-bottom:4px;">
+                        <span style="font-family:var(--font-mono); font-size:0.55rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; flex:1;">Description</span>
+                        <span style="font-family:var(--font-mono); font-size:0.55rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; width:58px; text-align:center;">Type</span>
+                        <span style="font-family:var(--font-mono); font-size:0.55rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; width:58px; text-align:right;">Amount</span>
+                    </div>
+                    <div id="ledger-list"><div class="ledger-empty">Connect wallet to view history.</div></div>
                 </div>
-                <div id="ledger-list">
-                    <div class="ledger-empty">Connect wallet to view transaction history.</div>
+
+                <!-- Admin Revenue Panel — only shown to CONFIG.ADMIN_ADDRESS -->
+                <div class="card" id="admin-revenue-panel" style="border-color:rgba(240,180,41,0.2);">
+                    <div style="font-family:var(--font-mono); font-size:0.58rem; color:var(--gold); letter-spacing:2px; text-transform:uppercase; font-weight:700; margin-bottom:4px;">🔐 Platform Revenue — Admin</div>
+                    <div style="font-size:0.62rem; color:var(--text-muted); margin-bottom:12px;">Cumulative 20% platform fee from all interactions</div>
+                    <div style="font-family:var(--font-mono); font-size:1.8rem; font-weight:700; color:var(--teal);" id="admin-revenue-display">0 ★</div>
+                    <div style="font-size:0.62rem; color:var(--text-muted); margin-top:4px;" id="admin-revenue-count">0 fee events</div>
+                </div>
+            </div>
+
+            <!-- PROFILE PAGE -->
+            <div id="page-profile" class="page">
+                <div class="page-heading">My <span>Identity</span></div>
+                <div class="card">
+                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:14px;">Set your display name and avatar URL. Saved locally, shown on all broadcasts.</div>
+                    <input type="text" id="handle-input" class="field" placeholder="@Username" style="margin-top:0;">
+                    <input type="text" id="avatar-input" class="field" placeholder="Avatar Image URL">
+                    <button class="btn btn-purple" onclick="saveProfile()">Sync Identity</button>
+                </div>
+            </div>
+
+            <!-- TOKENOMICS PAGE -->
+            <div id="page-info" class="page">
+                <div class="page-heading">Token<span>omics</span></div>
+                <div class="card">
+                    <div class="tok-section">Broadcast Costs</div>
+                    <div class="tok-row"><span class="tok-label">Text Signal</span><span class="tok-value">1.2 ★</span></div>
+                    <div class="tok-row"><span class="tok-label">Image Signal</span><span class="tok-value">3.0 ★ + Irys fee</span></div>
+                    <div class="tok-row"><span class="tok-label">Video Signal</span><span class="tok-value">10.0 ★ + Irys fee</span></div>
+                    <div class="tok-row"><span class="tok-label">Boost to Top</span><span class="tok-value">10.0 ★</span></div>
+                    <div class="tok-section">Interaction Costs</div>
+                    <div class="tok-row"><span class="tok-label">Hype a Signal</span><span class="tok-value">1.0 ★</span></div>
+                    <div class="tok-row"><span class="tok-label">Comment / Reply</span><span class="tok-value">1.0 ★</span></div>
+                    <div class="tok-section">Creator Rewards (80%)</div>
+                    <div class="tok-row"><span class="tok-label">Receive Hype on Post</span><span class="tok-value">+0.8 ★</span></div>
+                    <div class="tok-row"><span class="tok-label">Receive Comment on Post</span><span class="tok-value">+0.8 ★</span></div>
+                    <div class="tok-row"><span class="tok-label">Receive Hype on Comment</span><span class="tok-value">+0.8 ★</span></div>
+                    <div class="tok-row"><span class="tok-label">Receive Reply</span><span class="tok-value">+0.8 ★</span></div>
+                    <div class="tok-section">Decentralized Storage</div>
+                    <div class="tok-row"><span class="tok-label">Provider</span><span class="tok-value" style="color:var(--teal);">Irys / Arweave</span></div>
+                    <div class="tok-row"><span class="tok-label">Developer API Key</span><span class="tok-value" style="color:var(--green);">None Required</span></div>
+                    <div class="tok-row"><span class="tok-label">Fee Payer</span><span class="tok-value" style="color:var(--text-white);">User via MetaMask (MATIC)</span></div>
                 </div>
             </div>
 
-            <!-- Admin Revenue Panel -->
-            <div class="glass gold-border" id="admin-revenue-panel">
-                <div style="font-family:var(--mono); font-size:0.6rem; color:var(--gold); letter-spacing:2px; text-transform:uppercase; font-weight:700; margin-bottom:4px;">🔐 Platform Revenue — Admin Only</div>
-                <div style="font-size:0.62rem; color:var(--muted); margin-bottom:16px;">Cumulative 20% platform fee from all interactions</div>
-                <div style="font-family:var(--mono); font-size:2rem; font-weight:700; color:var(--cyan);" id="admin-revenue-display">0 ★</div>
-                <div style="font-size:0.62rem; color:var(--muted); margin-top:4px;" id="admin-revenue-count">0 fee events recorded</div>
+        </div><!-- /feed-col -->
+
+        <!-- RIGHT PANEL -->
+        <div id="right-panel">
+
+            <div class="rp-card">
+                <div class="rp-heading">Star Balance</div>
+                <div style="font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--gold); margin-bottom:2px;" id="rp-stars">0 ★</div>
+                <div style="font-size:0.7rem; color:var(--text-muted);">Spending power</div>
+                <div class="sparkline"><div class="sparkline-line"></div></div>
+                <div style="font-size:0.62rem; color:var(--text-muted);">Earnings this session</div>
             </div>
-        </div>
 
-        <!-- ── PROFILE ── -->
-        <div id="page-profile" class="page">
-            <div class="page-heading">My <span>Identity</span></div>
-            <div class="glass">
-                <div style="font-size:0.8rem; color:var(--muted); margin-bottom:16px;">Set your display name and avatar. Stored locally — shown on all your broadcasts.</div>
-                <input type="text" id="handle-input" class="field" placeholder="@Username" style="margin-top:0;">
-                <input type="text" id="avatar-input" class="field" placeholder="Avatar Image URL">
-                <button class="btn btn-primary" onclick="saveProfile()">SYNC IDENTITY</button>
-            </div>
-        </div>
-
-        <!-- ── TOKENOMICS ── -->
-        <div id="page-info" class="page">
-            <div class="page-heading">Token<span>omics</span></div>
-            <div class="glass">
-                <div class="tok-section">Broadcast Costs</div>
-                <div class="tok-row"><span class="tok-label">Text Signal</span><span class="tok-value">1.2 ★</span></div>
-                <div class="tok-row"><span class="tok-label">Image Signal</span><span class="tok-value">3.0 ★ + Irys fee</span></div>
-                <div class="tok-row"><span class="tok-label">Video Signal</span><span class="tok-value">10.0 ★ + Irys fee</span></div>
-                <div class="tok-row"><span class="tok-label">Boost Signal to Top</span><span class="tok-value">10.0 ★</span></div>
-
-                <div class="tok-section">Interaction Costs</div>
-                <div class="tok-row"><span class="tok-label">Hype a Signal</span><span class="tok-value">1.0 ★</span></div>
-                <div class="tok-row"><span class="tok-label">Post a Comment / Reply</span><span class="tok-value">1.0 ★</span></div>
-
-                <div class="tok-section">Creator Rewards (80% Payout)</div>
-                <div class="tok-row"><span class="tok-label">Receive Hype on your Post</span><span class="tok-value">+0.8 ★</span></div>
-                <div class="tok-row"><span class="tok-label">Receive Comment on your Post</span><span class="tok-value">+0.8 ★</span></div>
-                <div class="tok-row"><span class="tok-label">Receive Hype on your Comment</span><span class="tok-value">+0.8 ★</span></div>
-                <div class="tok-row"><span class="tok-label">Receive Reply to your Comment</span><span class="tok-value">+0.8 ★</span></div>
-
-                <div class="tok-section">Decentralized Storage</div>
-                <div class="tok-row"><span class="tok-label">Storage Provider</span><span class="tok-value" style="color:var(--purple);">Irys / Arweave</span></div>
-                <div class="tok-row"><span class="tok-label">Developer API Key</span><span class="tok-value" style="color:var(--green);">None Required</span></div>
-                <div class="tok-row"><span class="tok-label">Storage Fee Payer</span><span class="tok-value" style="color:#fff;">User via MetaMask</span></div>
-                <div class="tok-row"><span class="tok-label">Data Permanence</span><span class="tok-value" style="color:var(--green);">Permanent</span></div>
-
-                <div class="tok-note">
-                    <b style="color:#94a3b8;">Protocol Note:</b> The 1.2★ base broadcast fee and the 20% interaction tax (0.2★ per action) fuel platform infrastructure. Image and Video uploads are stored permanently on Arweave via Irys — the tiny storage fee is paid directly by the user via MetaMask, requiring zero backend keys or subscriptions for the developer.
+            <div class="rp-card">
+                <div class="rp-heading">Platform Stats</div>
+                <div class="stat-row">
+                    <div class="stat-label">Creator Earnings<span>80% payout rate</span></div>
+                    <div class="stat-val green">0.8 ★</div>
+                </div>
+                <div class="stat-row">
+                    <div class="stat-label">Platform Fee<span>Per interaction</span></div>
+                    <div class="stat-val purple">0.2 ★</div>
+                </div>
+                <div class="stat-row">
+                    <div class="stat-label">APTM Vault<span>On-chain balance</span></div>
+                    <div class="stat-val teal" id="rp-aptm">0.0000</div>
+                </div>
+                <div class="stat-row">
+                    <div class="stat-label">Live APTM Rate<span>USD peg</span></div>
+                    <div class="stat-val gold" id="rp-rate">$0.3391</div>
+                </div>
+                <div class="stat-row" style="border:none;">
+                    <div class="stat-label">Total Anchors<span>All time</span></div>
+                    <div class="stat-val" id="rp-anchors">0</div>
                 </div>
             </div>
-        </div>
 
-    </div><!-- /main-content -->
-    </div><!-- /scroll-area -->
-</div><!-- /viewport -->
+            <div class="rp-card">
+                <div class="rp-heading">Storage</div>
+                <div style="font-size:0.72rem; color:var(--text-secondary); line-height:1.6; margin-bottom:10px;">
+                    Media is stored permanently on <span style="color:var(--teal); font-weight:600;">Arweave</span> via <span style="color:var(--purple-lt); font-weight:600;">Irys</span> using <strong style="color:var(--text-white);">MATIC</strong> token. No dev API key needed — users pay their own tiny fee via MetaMask.
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; margin-top:8px;">
+                    <span class="a-dot" style="background:var(--teal);"></span>
+                    <span style="font-family:var(--font-mono); font-size:0.6rem; color:var(--teal);">PERMANENT STORAGE ACTIVE</span>
+                </div>
+            </div>
 
-<div id="toast">SUCCESS</div>
+        </div><!-- /right-panel -->
 
-<!-- ══════════════════════════════════════════
-     ENGINE SCRIPT
-══════════════════════════════════════════ -->
+    </div><!-- /body-layout -->
+</div><!-- /app-shell -->
+
+<div id="toast"></div>
+
 <script>
-    // ═══════════════════════════════════════════════════
-    // ⚙️  GLOBAL CONFIG — single source of truth
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
+    // ⚙️  GLOBAL CONFIG
+    //     Fix #2: Both addresses hardcoded lowercase to prevent checksum
+    //     Fix #3: Fees confirmed TEXT=1.2, PHOTO=3.0, VIDEO=10.0
+    // ═══════════════════════════════════════════════════════════════════
     const CONFIG = {
-        ADMIN_ADDRESS:    "0xe348feDea1850a0c2d4aC0fed3f903774dE1e16A",
-        CONTRACT_ADDRESS: "0x42E0A97844ac6623207F2a363aa318E83268910F",
+        ADMIN_ADDRESS:    "0xe348fedea1850a0c2d4ac0fed3f903774de1e16a",
+        CONTRACT_ADDRESS: "0x42e0a97844ac6623207f2a363aa318e83268910f",
         STARS_PER_5_APTM: 169,
         STAR_USD:         0.01,
         PLATFORM_CUT:     0.2,
         CREATOR_CUT:      0.8,
         FEES: {
-            TEXT:  1.2,
-            PHOTO: 3.0,
-            VIDEO: 10.0,
+            TEXT:  1.2,   // ★ Fix #3
+            PHOTO: 3.0,   // ★ Fix #3
+            VIDEO: 10.0,  // ★ Fix #3
             BOOST: 10,
         }
     };
 
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     // GLOBAL STATE
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     let currentAptmBalance = "0.0000";
     let starBalance = "0";
     let creatorEarnings = 0;
@@ -900,12 +823,11 @@
     let totalAnchors = 0;
     let provider, signer, hubContract;
     let userAddress = "";
-
     let userHandle = localStorage.getItem('hub_userName') || "Anonymous_Creator";
-    let userAvatar = localStorage.getItem('hub_userPic') || "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
-
+    let userAvatar  = localStorage.getItem('hub_userPic')  || "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
     let visibleCount = 10;
     const pageSize = 10;
+
     const abi = [
         "function depositAPTM() public payable",
         "function postContent(string memory _ipfsHash, uint256 _type, uint256 _oneStarWei) public",
@@ -919,11 +841,13 @@
         "function PLATFORM_ADMIN() view returns (address)"
     ];
 
-    // ── Media tab state ──
-    let mediaTabMode = 'url';   // 'url' | 'file'
-    let selectedFile = null;    // File object for Irys upload
-    let uploadedArweaveUrl = ""; // final URL after Irys upload
+    // Media tab state
+    let mediaTabMode = 'url';
+    let selectedFile = null;
 
+    // ═══════════════════════════════════════════════════════════════════
+    // MEDIA TABS
+    // ═══════════════════════════════════════════════════════════════════
     function setMediaTab(mode) {
         mediaTabMode = mode;
         document.getElementById('tab-url').classList.toggle('active', mode === 'url');
@@ -936,15 +860,14 @@
     function updatePostFeeDisplay() {
         const el = document.getElementById('post-fee-display');
         if (!el) return;
-        const txt  = document.getElementById('post-text')?.value || '';
-        const url  = document.getElementById('post-media')?.value || '';
-        let cost = CONFIG.FEES.TEXT.toFixed(1) + '★';
+        const url = document.getElementById('post-media')?.value || '';
+        let cost = CONFIG.FEES.TEXT.toFixed(1) + ' ★';
         if (mediaTabMode === 'file' && selectedFile) {
             const isVid = selectedFile.type.startsWith('video/');
-            cost = (isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO).toFixed(1) + '★  +  Irys storage fee (MetaMask)';
+            cost = (isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO).toFixed(1) + ' ★  +  Irys fee (MATIC via MetaMask)';
         } else if (url) {
             const isVid = url.includes('mp4') || getYoutubeId(url);
-            cost = (isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO).toFixed(1) + '★';
+            cost = (isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO).toFixed(1) + ' ★';
         }
         el.textContent = 'Est. cost: ' + cost;
     }
@@ -952,204 +875,156 @@
     function handleFileSelect(input) {
         selectedFile = input.files[0];
         if (!selectedFile) return;
-        uploadedArweaveUrl = "";
-
         const wrap = document.getElementById('file-preview-wrap');
         const img  = document.getElementById('file-preview-img');
         const vid  = document.getElementById('file-preview-vid');
         const info = document.getElementById('file-info');
         wrap.style.display = 'block';
-        img.style.display = 'none';
-        vid.style.display = 'none';
-
-        const url = URL.createObjectURL(selectedFile);
+        img.style.display  = 'none';
+        vid.style.display  = 'none';
+        const objUrl = URL.createObjectURL(selectedFile);
         if (selectedFile.type.startsWith('image/')) {
-            img.src = url; img.style.display = 'block';
+            img.src = objUrl; img.style.display = 'block';
         } else {
-            vid.src = url; vid.style.display = 'block';
+            vid.src = objUrl; vid.style.display = 'block';
         }
         const kb = (selectedFile.size / 1024).toFixed(1);
-        info.innerHTML = `<span style="color:var(--purple);">⬡ ${selectedFile.name}</span>  ·  ${kb} KB  ·  Will upload to Arweave via Irys`;
+        info.innerHTML = `<span style="color:var(--purple-lt);">◈ ${selectedFile.name}</span> · ${kb} KB · Will upload to Arweave via Irys (MATIC)`;
         updatePostFeeDisplay();
     }
 
-    // ═══════════════════════════════════════════════════
-    // IRYS / ARWEAVE UPLOAD  (no API key required)
-    // User pays the tiny fee directly via MetaMask
-    // ═══════════════════════════════════════════════════
-
+    // ═══════════════════════════════════════════════════════════════════
+    // FIX #1 — IRYS UPLOAD  (WebIrys, node1.irys.xyz, token: matic)
+    //
+    // The SDK is loaded via the <script> tag in <head>.
+    // WebIrys is available at window.WebIrys after that script executes.
+    // The user's MetaMask is used to sign the fund + upload transactions.
+    // The Arweave URL is returned and stored BEFORE Firebase write.
+    // ═══════════════════════════════════════════════════════════════════
     async function uploadToIrys(file) {
-        if (!provider) throw new Error("No wallet connected");
+        if (!window.ethereum) throw new Error("MetaMask not found");
 
-        const irysStatus = document.getElementById('irys-status');
-        const show = (msg, color = 'var(--purple)') => {
-            irysStatus.style.display = 'block';
-            irysStatus.style.color = color;
-            irysStatus.textContent = '⬡ Irys: ' + msg;
+        const statusEl = document.getElementById('irys-status');
+        const show = (msg, color) => {
+            statusEl.style.display = 'block';
+            statusEl.style.color   = color || 'var(--purple-lt)';
+            statusEl.textContent   = '◈ Irys: ' + msg;
         };
 
-        try {
-            show('Estimating storage fee…');
+        show('Initialising Irys WebIrys…');
 
-            // Load Irys SDK from unpkg
-            await loadScript('https://unpkg.com/@irys/sdk@latest/build/browser/index.js');
+        // Build the WebIrys instance using the injected MetaMask provider
+        // token: "matic" — user pays storage fee in MATIC (Polygon)
+        const webIrys = new WebIrys({
+            url:    "https://node1.irys.xyz",
+            token:  "matic",
+            wallet: { rpcUrl: "https://polygon-rpc.com", name: "ethersv5", provider: new ethers.providers.Web3Provider(window.ethereum) }
+        });
 
-            const web3Provider = new ethers.providers.Web3Provider(window.ethereum);
-            const ethSigner = web3Provider.getSigner();
+        await webIrys.ready();
+        show('Connected to Irys node1. Estimating fee…');
 
-            // Irys uses "ethereum" provider key. Node URL = public Irys node
-            const irys = new window.Irys({
-                url: "https://node2.irys.xyz",
-                token: "ethereum",
-                wallet: { provider: web3Provider, name: "ethersv5" }
-            });
+        // Get the cost in atomic MATIC for this file size
+        const price = await webIrys.getPrice(file.size);
+        const humanPrice = webIrys.utils.fromAtomic(price);
+        show(`Storage fee: ${parseFloat(humanPrice).toFixed(6)} MATIC — opening MetaMask…`, 'var(--teal)');
 
-            // Estimate cost
-            const cost = await irys.getPrice(file.size);
-            show(`Storage cost: ${irys.utils.fromAtomic(cost).toFixed(8)} ETH — confirm in MetaMask…`);
-
-            // Fund if needed (user signs MetaMask tx)
-            const balance = await irys.getLoadedBalance();
-            if (balance.lt(cost)) {
-                show('Funding Irys node (MetaMask)…', 'var(--cyan)');
-                await irys.fund(cost.multipliedBy(1.2).integerValue());
-                show('Funded! Uploading file…');
-            } else {
-                show('Balance sufficient. Uploading…');
-            }
-
-            // Upload
-            const arrayBuffer = await file.arrayBuffer();
-            const receipt = await irys.uploadData(Buffer.from(arrayBuffer), {
-                tags: [{ name: "Content-Type", value: file.type }]
-            });
-
-            const arweaveUrl = `https://gateway.irys.xyz/${receipt.id}`;
-            show(`✓ Stored on Arweave: ${receipt.id.slice(0, 12)}…`, 'var(--green)');
-            return arweaveUrl;
-
-        } catch (e) {
-            // Fallback: try direct Arweave bundler (no SDK)
-            console.warn("Irys SDK failed, trying bundlr fallback:", e.message);
-            show('SDK unavailable — trying bundler fallback…');
-
-            try {
-                return await uploadViaFetch(file, show);
-            } catch (e2) {
-                show('Upload failed: ' + e2.message, 'var(--red)');
-                throw e2;
-            }
+        // Check loaded balance; fund if needed — this triggers MetaMask
+        const balance = await webIrys.getLoadedBalance();
+        if (balance.lt(price)) {
+            show('Funding Irys node (MetaMask will open)…', 'var(--teal)');
+            // Fund with 1.2x to cover any minor variance
+            await webIrys.fund(price.multipliedBy(1.2).integerValue());
+            show('Funded! Uploading file to Arweave…');
+        } else {
+            show('Balance sufficient. Uploading file to Arweave…');
         }
-    }
 
-    // Fallback: upload via Irys REST API (user funds via MetaMask send)
-    async function uploadViaFetch(file, show) {
-        show('Requesting upload price from Irys…');
-        const priceRes = await fetch(`https://node2.irys.xyz/price/ethereum/${file.size}`);
-        const priceAtomic = await priceRes.text();
-        const priceWei = ethers.BigNumber.from(priceAtomic.trim());
-
-        show(`Fee: ${ethers.utils.formatEther(priceWei)} ETH — confirm in MetaMask…`);
-
-        // Send ETH directly to Irys node as fund tx
-        const tx = await signer.sendTransaction({
-            to: "0x635D0e5f2Fd7c8f0EA2e09a74d8DA9e84FbFD49C", // Irys node2 ethereum account
-            value: priceWei,
-        });
-        await tx.wait();
-        show('Funded! Uploading…');
-
-        // Upload the file data
+        // Read the file as a Buffer and upload with its MIME type as a tag
         const arrayBuffer = await file.arrayBuffer();
-        const response = await fetch("https://node2.irys.xyz/tx/ethereum", {
-            method: "POST",
-            headers: { "Content-Type": file.type },
-            body: arrayBuffer
+        const dataBuffer  = Buffer.from(arrayBuffer);
+
+        const receipt = await webIrys.uploadData(dataBuffer, {
+            tags: [
+                { name: "Content-Type",   value: file.type },
+                { name: "App-Name",       value: "SocialHub-Signal-Protocol" },
+                { name: "App-Version",    value: "9.0" }
+            ]
         });
 
-        if (!response.ok) throw new Error("Upload response: " + response.status);
-        const data = await response.json();
-        const arweaveUrl = `https://gateway.irys.xyz/${data.id}`;
-        show(`✓ Stored: ${data.id.slice(0, 12)}…`, 'var(--green)');
+        const arweaveUrl = `https://gateway.irys.xyz/${receipt.id}`;
+        show(`✓ Permanent! TX: ${receipt.id.slice(0, 14)}…  →  gateway.irys.xyz`, 'var(--green)');
+        console.log("Irys receipt:", receipt);
         return arweaveUrl;
     }
 
-    async function loadScript(src) {
-        return new Promise((res, rej) => {
-            if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
-            const s = document.createElement('script');
-            s.src = src; s.onload = res; s.onerror = rej;
-            document.head.appendChild(s);
-        });
-    }
-
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     // PRICE ENGINE
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     async function getLiveAptmPrice() {
         const poolAddress = "0x38AcBfA5108D3c76d6cEa4D380182E832A289b57";
         try {
             if (!provider) return 0.3391;
-            const poolContract = new ethers.Contract(poolAddress, [
-                "function getReserves() external view returns (uint112, uint112, uint32)"
-            ], provider);
-            const reserves = await poolContract.getReserves();
-            const humanAptm = parseFloat(ethers.utils.formatUnits(reserves[0], 18));
-            const humanUsdt = parseFloat(ethers.utils.formatUnits(reserves[1], 18));
-            const price = humanUsdt / humanAptm;
+            const poolContract = new ethers.Contract(
+                poolAddress,
+                ["function getReserves() external view returns (uint112, uint112, uint32)"],
+                provider
+            );
+            const reserves   = await poolContract.getReserves();
+            const humanAptm  = parseFloat(ethers.utils.formatUnits(reserves[0], 18));
+            const humanUsdt  = parseFloat(ethers.utils.formatUnits(reserves[1], 18));
+            const price      = humanUsdt / humanAptm;
             return price > 0 ? price : 0.3391;
         } catch (e) { return 0.3391; }
     }
 
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     // WALLET
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     async function connectWallet() {
-        if (window.ethereum) {
-            try {
-                provider = new ethers.providers.Web3Provider(window.ethereum);
-                const accounts = await provider.send("eth_requestAccounts", []);
-                userAddress = accounts[0];
-                signer = provider.getSigner();
-                hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
+        if (!window.ethereum) return alert("MetaMask not found");
+        try {
+            provider    = new ethers.providers.Web3Provider(window.ethereum);
+            const accts = await provider.send("eth_requestAccounts", []);
+            userAddress = accts[0];
+            signer      = provider.getSigner();
+            // Fix #2: CONTRACT_ADDRESS already lowercase, ethers accepts it fine
+            hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
 
-                const statusEl = document.getElementById('wallet-status');
-                if (statusEl) statusEl.textContent = '⬡ ' + userAddress.slice(0,6) + '…' + userAddress.slice(-4);
+            const statusEl = document.getElementById('wallet-status');
+            if (statusEl) statusEl.textContent = userAddress.slice(0, 6) + '…' + userAddress.slice(-4);
 
-                await syncData();
-                updateUI();
-                subscribeToEarnings(userAddress);
-                subscribeLedger(userAddress);
-                subscribeAdminRevenue(userAddress);
-                if (typeof loadGlobalFeed === "function") loadGlobalFeed();
-                showToast("Connected & Synced ✓");
-            } catch (err) {
-                console.error(err);
-                showToast("Connection Failed");
-            }
-        } else {
-            alert("MetaMask not found");
+            await syncData();
+            updateUI();
+            subscribeToEarnings(userAddress);
+            subscribeLedger(userAddress);
+            subscribeAdminRevenue(userAddress);
+            if (typeof loadGlobalFeed === "function") loadGlobalFeed();
+            showToast("Connected & Synced ✓");
+        } catch (err) {
+            console.error(err);
+            showToast("Connection Failed");
         }
     }
 
     async function syncData() {
         if (!hubContract || !signer) return;
         try {
-            const addr = await signer.getAddress();
+            const addr              = await signer.getAddress();
             const [balRaw, anchors] = await Promise.all([
                 hubContract.aptmBalances(addr),
                 hubContract.totalAnchors()
             ]);
-            const humanBalance = ethers.utils.formatEther(balRaw);
-            currentAptmBalance = humanBalance;
+            const humanBalance  = ethers.utils.formatEther(balRaw);
+            currentAptmBalance  = humanBalance;
             currentAptmPriceUsd = await getLiveAptmPrice();
-            const usdValue = parseFloat(humanBalance) * parseFloat(currentAptmPriceUsd);
-            starBalance = Math.floor(usdValue / CONFIG.STAR_USD).toString();
-            totalAnchors = anchors.toNumber();
+            const usdValue      = parseFloat(humanBalance) * parseFloat(currentAptmPriceUsd);
+            starBalance         = Math.floor(usdValue / CONFIG.STAR_USD).toString();
+            totalAnchors        = anchors.toNumber();
 
             if (window.db) {
                 const userRef = window.fs.doc(window.db, "user_balances", addr.toLowerCase());
-                const snap = await window.fs.getDoc(userRef);
+                const snap    = await window.fs.getDoc(userRef);
                 if (!snap.exists()) {
                     await window.fs.setDoc(userRef, { stars: 0, lastSync: Date.now(), address: addr.toLowerCase() });
                 } else {
@@ -1162,29 +1037,23 @@
 
     function updateUI() {
         try {
-            const sDisp = document.getElementById('user-stars');
-            if (sDisp) sDisp.textContent = (starBalance || "0") + " ★";
+            const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            s('user-stars',              (starBalance || "0") + " ★");
+            s('sidebar-stars-badge',     (starBalance || "0") + " ★");
+            s('rp-stars',                (starBalance || "0") + " ★");
+            s('sidebar-aptm-value',      (currentAptmBalance || "0.0000") + " $APTM");
+            s('earnings-aptm-value',     (currentAptmBalance || "0.0000") + " $APTM");
+            s('rp-aptm',                 parseFloat(currentAptmBalance || 0).toFixed(4));
+            s('creator-revenue-display', creatorEarnings.toFixed(1) + " ★");
+            s('live-price-display',      `$${parseFloat(currentAptmPriceUsd).toFixed(4)} / APTM`);
+            s('rp-rate',                 `$${parseFloat(currentAptmPriceUsd).toFixed(4)}`);
+            s('total-anchors-display',   totalAnchors);
+            s('rp-anchors',              totalAnchors);
 
-            const aDisp = document.getElementById('sidebar-aptm-value');
-            if (aDisp) aDisp.textContent = (currentAptmBalance || "0.0000") + " $APTM";
-
-            const cStars = document.getElementById('creator-revenue-display');
-            if (cStars) cStars.textContent = creatorEarnings.toFixed(1) + " ★";
-
-            const cAptm = document.getElementById('earnings-aptm-value');
-            if (cAptm) cAptm.textContent = (currentAptmBalance || "0.0000") + " $APTM";
-
-            const pDisp = document.getElementById('live-price-display');
-            if (pDisp) pDisp.textContent = `RATE: $${parseFloat(currentAptmPriceUsd).toFixed(4)} / APTM`;
-
-            const totDisp = document.getElementById('total-anchors-display');
-            if (totDisp) totDisp.textContent = totalAnchors;
-
-            const pbAvatar = document.getElementById('pb-avatar');
-            if (pbAvatar) pbAvatar.src = userAvatar;
-
-            const pbHandle = document.getElementById('pb-handle');
-            if (pbHandle) pbHandle.textContent = userHandle;
+            const pbAv = document.getElementById('pb-avatar');   if (pbAv) pbAv.src = userAvatar;
+            const nvAv = document.getElementById('nav-avatar');   if (nvAv) nvAv.src = userAvatar;
+            const pbH  = document.getElementById('pb-handle');    if (pbH)  pbH.textContent  = userHandle;
+            const nvH  = document.getElementById('nav-handle');   if (nvH)  nvH.textContent  = userHandle;
         } catch (e) { console.error("UI Update Error:", e); }
     }
 
@@ -1193,53 +1062,48 @@
         const picVal  = document.getElementById('avatar-input').value;
         if (nameVal && picVal) {
             localStorage.setItem('hub_userName', nameVal);
-            localStorage.setItem('hub_userPic', picVal);
+            localStorage.setItem('hub_userPic',  picVal);
             userHandle = nameVal; userAvatar = picVal;
-            updateUI(); showToast("Identity Saved ✓");
-            loadGlobalFeed();
+            updateUI(); showToast("Identity Saved ✓"); loadGlobalFeed();
         } else {
             alert("Please enter both a name and an image URL");
         }
     }
 
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     // STAR ECONOMY — Firebase balance helpers
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     async function adjustFirebaseBalance(walletAddr, amount) {
         if (!walletAddr || walletAddr === "unknown" || !window.db) return;
         const addr = walletAddr.toLowerCase();
-        const ref = window.fs.doc(window.db, "user_balances", addr);
+        const ref  = window.fs.doc(window.db, "user_balances", addr);
         try {
             await window.fs.runTransaction(window.db, async (txn) => {
-                const snap = await txn.get(ref);
+                const snap    = await txn.get(ref);
                 const current = snap.exists() ? (snap.data().stars || 0) : 0;
-                const next = Math.max(0, current + amount);
-                txn.set(ref, { stars: next, lastUpdated: Date.now() }, { merge: true });
+                txn.set(ref, { stars: Math.max(0, current + amount), lastUpdated: Date.now() }, { merge: true });
             });
         } catch (e) { console.error("Balance adjustment failed:", e); }
     }
 
     function subscribeToEarnings(walletAddr) {
         if (!walletAddr || !window.db) return;
-        const addr = walletAddr.toLowerCase();
-        const ref = window.fs.doc(window.db, "user_balances", addr);
+        const ref = window.fs.doc(window.db, "user_balances", walletAddr.toLowerCase());
         window.fs.onSnapshot(ref, (snap) => {
-            if (snap.exists()) { creatorEarnings = snap.data().stars || 0; }
-            else { creatorEarnings = 0; }
-            const cStars = document.getElementById('creator-revenue-display');
-            if (cStars) cStars.textContent = creatorEarnings.toFixed(1) + " ★";
+            creatorEarnings = snap.exists() ? (snap.data().stars || 0) : 0;
+            const el = document.getElementById('creator-revenue-display');
+            if (el) el.textContent = creatorEarnings.toFixed(1) + " ★";
         });
     }
 
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     // TRANSACTION LEDGER
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     function logTransaction(address, type, amount, description) {
         if (!address || !window.db) return;
-        const addr = address.toLowerCase();
         window.fs.addDoc(window.fs.collection(window.db, "user_transactions"), {
-            address, type, amount, description, timestamp: Date.now()
-        }).catch(e => console.warn("logTransaction failed:", e));
+            address: address.toLowerCase(), type, amount, description, timestamp: Date.now()
+        }).catch(e => console.warn("logTransaction:", e));
     }
 
     function logPlatformRevenue(sourceAddress, actionType, amount) {
@@ -1247,82 +1111,81 @@
         window.fs.addDoc(window.fs.collection(window.db, "platform_revenue"), {
             sourceAddress: (sourceAddress || "unknown").toLowerCase(),
             actionType, amount, timestamp: Date.now()
-        }).catch(e => console.warn("logPlatformRevenue failed:", e));
+        }).catch(e => console.warn("logPlatformRevenue:", e));
     }
 
     function subscribeLedger(walletAddr) {
         if (!walletAddr || !window.db) return;
         const addr = walletAddr.toLowerCase();
-        const q = window.fs.query(
+        const q    = window.fs.query(
             window.fs.collection(window.db, "user_transactions"),
             window.fs.where("address", "==", addr),
             window.fs.orderBy("timestamp", "desc")
         );
-        const renderLedger = (docs) => {
+        const render = (docs) => {
             const el = document.getElementById('ledger-list');
             if (!el) return;
-            if (docs.length === 0) {
-                el.innerHTML = `<div class="ledger-empty">No activity yet — start interacting!</div>`;
-                return;
-            }
+            if (docs.length === 0) { el.innerHTML = `<div class="ledger-empty">No activity yet.</div>`; return; }
             el.innerHTML = "";
             docs.slice(0, 10).forEach(tx => {
-                const isEarn = tx.type === "earn" || tx.type === "deposit";
-                const prefix = isEarn ? "+" : "−";
-                const amountStr = prefix + parseFloat(tx.amount).toFixed(1) + " ★";
-                const amountClass = isEarn ? "earn" : (tx.type === "settle" ? "neutral" : "spend");
-                const badgeLabel = { earn: "Earned", spend: "Spent", deposit: "Deposit", settle: "Settle" }[tx.type] || tx.type;
-                const date = new Date(tx.timestamp).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-                const row = document.createElement('div');
-                row.className = 'ledger-row';
-                row.innerHTML = `
+                const isEarn   = tx.type === "earn" || tx.type === "deposit";
+                const prefix   = isEarn ? "+" : "−";
+                const amtStr   = prefix + parseFloat(tx.amount).toFixed(1) + " ★";
+                const amtCls   = isEarn ? "earn" : (tx.type === "settle" ? "neutral" : "spend");
+                const badge    = { earn:"Earned", spend:"Spent", deposit:"Deposit", settle:"Settle" }[tx.type] || tx.type;
+                const date     = new Date(tx.timestamp).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
+                const row      = document.createElement('div');
+                row.className  = 'ledger-row';
+                row.innerHTML  = `
                     <div class="ledger-desc">${tx.description}<small>${date}</small></div>
-                    <div style="width:72px; text-align:center; flex-shrink:0;"><span class="ledger-badge ${tx.type}">${badgeLabel}</span></div>
-                    <div class="ledger-amount ${amountClass}">${amountStr}</div>`;
+                    <div style="width:58px;text-align:center;flex-shrink:0;"><span class="ledger-badge ${tx.type}">${badge}</span></div>
+                    <div class="ledger-amount ${amtCls}">${amtStr}</div>`;
                 el.appendChild(row);
             });
         };
-        window.fs.onSnapshot(q, (snapshot) => {
-            const docs = []; snapshot.forEach(d => docs.push(d.data())); renderLedger(docs);
+        window.fs.onSnapshot(q, (snap) => {
+            const docs = []; snap.forEach(d => docs.push(d.data())); render(docs);
         }, (err) => {
             console.warn("Ledger fallback:", err.message);
-            const fallQ = window.fs.query(window.fs.collection(window.db, "user_transactions"), window.fs.where("address", "==", addr));
-            window.fs.onSnapshot(fallQ, (snap) => {
-                const docs = []; snap.forEach(d => docs.push(d.data())); docs.sort((a,b)=>b.timestamp-a.timestamp); renderLedger(docs);
+            const fq = window.fs.query(
+                window.fs.collection(window.db, "user_transactions"),
+                window.fs.where("address", "==", addr)
+            );
+            window.fs.onSnapshot(fq, (snap) => {
+                const docs = []; snap.forEach(d => docs.push(d.data()));
+                docs.sort((a, b) => b.timestamp - a.timestamp); render(docs);
             });
         });
     }
 
     function subscribeAdminRevenue(walletAddr) {
         if (!walletAddr || !window.db) return;
+        // Security gate — only show panel + data if wallet matches ADMIN_ADDRESS
         if (walletAddr.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) return;
+
         const panel = document.getElementById('admin-revenue-panel');
         if (panel) panel.style.display = 'block';
-        const q = window.fs.query(window.fs.collection(window.db, "platform_revenue"), window.fs.orderBy("timestamp", "desc"));
-        window.fs.onSnapshot(q, (snapshot) => {
-            let total = 0; snapshot.forEach(d => { total += (d.data().amount || 0); });
-            const dispEl = document.getElementById('admin-revenue-display');
-            const countEl = document.getElementById('admin-revenue-count');
-            if (dispEl) dispEl.textContent = total.toFixed(1) + " ★";
-            if (countEl) countEl.textContent = snapshot.size + " fee events recorded";
-        }, (err) => {
-            const fallQ = window.fs.collection(window.db, "platform_revenue");
-            window.fs.onSnapshot(fallQ, (snap) => {
-                let total = 0; snap.forEach(d => { total += (d.data().amount || 0); });
-                const dispEl = document.getElementById('admin-revenue-display');
-                const countEl = document.getElementById('admin-revenue-count');
-                if (dispEl) dispEl.textContent = total.toFixed(1) + " ★";
-                if (countEl) countEl.textContent = snap.size + " fee events recorded";
-            });
+
+        const q = window.fs.query(
+            window.fs.collection(window.db, "platform_revenue"),
+            window.fs.orderBy("timestamp", "desc")
+        );
+        const render = (snap) => {
+            let total = 0; snap.forEach(d => { total += (d.data().amount || 0); });
+            const dEl = document.getElementById('admin-revenue-display'); if (dEl) dEl.textContent = total.toFixed(1) + " ★";
+            const cEl = document.getElementById('admin-revenue-count');   if (cEl) cEl.textContent = snap.size + " fee events";
+        };
+        window.fs.onSnapshot(q, render, () => {
+            window.fs.onSnapshot(window.fs.collection(window.db, "platform_revenue"), render);
         });
     }
 
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     // WALLET ACTIONS
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     async function convertAPTM() {
         currentAptmPriceUsd = await getLiveAptmPrice();
-        let amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(4)}`, "5");
+        const amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(4)}`, "5");
         if (amt && hubContract) {
             try {
                 showToast(`Depositing ${amt} $APTM…`);
@@ -1338,10 +1201,10 @@
     async function settleToWallet() {
         if (!hubContract) return alert("Connect Wallet First");
         try {
-            const addr = await signer.getAddress();
-            const rawBalance = await hubContract.aptmBalances(addr);
+            const addr        = await signer.getAddress();
+            const rawBalance  = await hubContract.aptmBalances(addr);
             const humanAmount = ethers.utils.formatEther(rawBalance);
-            let amt = prompt(`Withdraw\nBalance: ${humanAmount} APTM`, humanAmount);
+            const amt         = prompt(`Withdraw\nBalance: ${humanAmount} APTM`, humanAmount);
             if (amt && hubContract) {
                 showToast("Opening MetaMask…");
                 const withdrawWei = ethers.utils.parseUnits(parseFloat(amt).toFixed(18), 18);
@@ -1354,145 +1217,165 @@
         } catch (e) { console.error(e); alert("Failed: " + (e.reason || e.message).slice(0, 100)); }
     }
 
-    // ═══════════════════════════════════════════════════
-    // FEED
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
+    // FEED HELPERS
+    // ═══════════════════════════════════════════════════════════════════
     function refreshFeedVisibility() {
-        const posts = document.querySelectorAll('#feed-items > .glass');
-        posts.forEach((post, index) => {
-            if (index < visibleCount) post.classList.remove('hidden-post');
+        const posts = document.querySelectorAll('#feed-items > .card');
+        posts.forEach((post, i) => {
+            if (i < visibleCount) post.classList.remove('hidden-post');
             else post.classList.add('hidden-post');
         });
-        const loadMore = document.getElementById('load-more-btn');
-        if (loadMore) loadMore.style.display = (posts.length > visibleCount) ? 'block' : 'none';
+        const btn = document.getElementById('load-more-btn');
+        if (btn) btn.style.display = (posts.length > visibleCount) ? 'block' : 'none';
     }
 
     function showNextPage() { visibleCount += pageSize; refreshFeedVisibility(); }
 
     function updatePreview(url) {
         const container = document.getElementById('media-preview-container');
-        const img = document.getElementById('preview-img');
-        if (url && url.startsWith('http')) {
-            img.src = url; container.style.display = 'block';
-        } else {
-            container.style.display = 'none';
-        }
+        const img       = document.getElementById('preview-img');
+        if (url && url.startsWith('http')) { img.src = url; container.style.display = 'block'; }
+        else { container.style.display = 'none'; }
         updatePostFeeDisplay();
     }
 
     function showToast(m) {
         const t = document.getElementById('toast');
-        if (t) {
-            t.textContent = m;
-            t.classList.add('show');
-            setTimeout(() => t.classList.remove('show'), 2500);
-        }
+        if (t) { t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2800); }
     }
 
     function switchPage(p, el) {
-        document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
-        document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
-        document.getElementById('page-' + p).classList.add('active');
-        el.classList.add('active');
+        document.getElementById('page-home').style.display = 'none';
+        ['earnings', 'profile', 'info'].forEach(id => {
+            const pg = document.getElementById('page-' + id);
+            if (pg) pg.classList.remove('active');
+        });
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        if (el) el.classList.add('active');
+        if (p === 'home') {
+            document.getElementById('page-home').style.display = 'contents';
+        } else {
+            const pg = document.getElementById('page-' + p);
+            if (pg) pg.classList.add('active');
+        }
     }
 
     function getYoutubeId(url) {
         const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-        const match = url.match(regExp);
+        const match  = url.match(regExp);
         return (match && match[2].length === 11) ? match[2] : null;
     }
 
-    // ═══════════════════════════════════════════════════
-    // BROADCAST (with Irys integration for media)
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
+    // FIX #4 — BROADCAST
+    // Irys upload fully awaited BEFORE Firebase write.
+    // mediaUrl is guaranteed to hold the Arweave URL (or empty) when
+    // the post document is created.
+    // ═══════════════════════════════════════════════════════════════════
     async function handleBroadcast() {
-        const txt = document.getElementById('post-text').value;
-        if (!txt || !hubContract) return alert("Write something or connect wallet!");
+        const txt = document.getElementById('post-text').value.trim();
+        if (!txt)         return alert("Write something first!");
+        if (!hubContract) return alert("Connect your wallet first!");
 
-        let mediaUrl = "";
+        let mediaUrl  = "";
         let feeAmount = CONFIG.FEES.TEXT;
-        let type = 1;
+        let type      = 1;
+        let isArweave = false;
 
+        // ── Step 1: Irys upload (if file mode) ──
         if (mediaTabMode === 'file' && selectedFile) {
-            // File upload path — upload to Irys first
             const isVid = selectedFile.type.startsWith('video/');
-            feeAmount = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
-            type = isVid ? 3 : 2;
-            showToast("Uploading to Arweave via Irys…");
+            feeAmount   = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
+            type        = isVid ? 3 : 2;
+
+            showToast("Step 1/3: Uploading to Arweave via Irys…");
             try {
-                mediaUrl = await uploadToIrys(selectedFile);
-                showToast("✓ Stored on Arweave!");
+                mediaUrl  = await uploadToIrys(selectedFile);   // ← fully awaited
+                isArweave = true;
+                showToast("Step 1/3: ✓ Stored on Arweave!");
             } catch (e) {
-                return alert("Irys upload failed: " + e.message);
+                console.error("Irys upload failed:", e);
+                return alert("Irys upload failed: " + e.message + "\n\nCheck MetaMask and ensure you're on Polygon network.");
             }
         } else {
             // URL path
-            const url = document.getElementById('post-media').value;
+            const url = document.getElementById('post-media').value.trim();
             if (url) {
-                if (url.includes('mp4') || getYoutubeId(url)) {
-                    feeAmount = CONFIG.FEES.VIDEO; type = 3;
-                } else {
-                    feeAmount = CONFIG.FEES.PHOTO; type = 2;
-                }
+                if (url.includes('mp4') || getYoutubeId(url)) { feeAmount = CONFIG.FEES.VIDEO; type = 3; }
+                else { feeAmount = CONFIG.FEES.PHOTO; type = 2; }
                 mediaUrl = url;
             }
         }
 
+        // ── Step 2: On-chain contract call (stars deduction) ──
         const feeWei = ethers.utils.parseEther(feeAmount.toString());
-
+        let onChainTx;
         try {
-            const userAddr = await signer.getAddress();
+            const userAddr      = await signer.getAddress();
             const internalStars = await hubContract.aptmBalances(userAddr);
-            showToast(`Broadcasting ${feeAmount}★ Signal…`);
 
-            let tx;
+            showToast(`Step 2/3: Paying ${feeAmount}★ on-chain…`);
+
             if (internalStars.gte(feeWei)) {
-                tx = await hubContract.postContent("", type, feeWei, { gasLimit: 500000 });
+                onChainTx = await hubContract.postContent("", type, feeWei, { gasLimit: 500000 });
             } else {
-                tx = await hubContract.postContent("", type, feeWei, { value: feeWei, gasLimit: 500000 });
+                onChainTx = await hubContract.postContent("", type, feeWei, { value: feeWei, gasLimit: 500000 });
             }
-            await tx.wait();
-            showToast("Anchored! Syncing…");
+            await onChainTx.wait();
+        } catch (e) {
+            console.error("On-chain tx failed:", e);
+            return alert("On-chain transaction failed. Check your APTM / Stars balance.\n\n" + (e.reason || e.message).slice(0, 120));
+        }
 
+        // ── Step 3: Write post to Firebase (mediaUrl guaranteed) ──
+        try {
+            const userAddr       = await signer.getAddress();
             const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
             const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
 
             const postData = {
-                text: txt,
-                media: mediaUrl,
-                arweave: mediaTabMode === 'file',   // flag to show Arweave badge
-                author: postAuthorName,
+                text:      txt,
+                media:     mediaUrl,      // ← Arweave URL or external URL, captured before this write
+                arweave:   isArweave,
+                author:    postAuthorName,
                 authorAddr: userAddr,
-                avatar: postAuthorPic,
+                avatar:    postAuthorPic,
                 timestamp: Date.now(),
-                hypes: 0,
-                type, feePaid: feeAmount
+                hypes:     0,
+                type,
+                feePaid:   feeAmount
             };
 
+            showToast("Step 3/3: Writing to Firebase…");
             await window.fs.addDoc(window.fs.collection(window.db, "posts"), postData);
 
-            document.getElementById('post-text').value = "";
+            // Clean up composer
+            document.getElementById('post-text').value  = "";
             document.getElementById('post-media').value = "";
             document.getElementById('irys-status').style.display = 'none';
-            selectedFile = null; uploadedArweaveUrl = "";
-            showToast("Signal Live! 🚀");
+            selectedFile = null;
+            const fPrev = document.getElementById('file-preview-wrap');
+            if (fPrev) fPrev.style.display = 'none';
+
+            showToast("Signal Live! ◈");
             logTransaction(userAddr, "spend", parseFloat(feeAmount), `Paid ${feeAmount}★ for Content Broadcast`);
             setTimeout(() => { syncData(); }, 2000);
         } catch (e) {
-            console.error(e);
-            alert("Broadcast failed. Check your APTM or Stars balance.");
+            console.error("Firebase write failed:", e);
+            alert("Post anchored on-chain but Firebase write failed: " + e.message);
         }
     }
 
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     // BOOST
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     async function boostPost(postId) {
         if (!hubContract) return alert("Connect Wallet First");
         try {
-            const userAddr = await signer.getAddress();
+            const userAddr      = await signer.getAddress();
             const internalStars = await hubContract.aptmBalances(userAddr);
-            const boostFee = ethers.utils.parseEther(CONFIG.FEES.BOOST.toString());
+            const boostFee      = ethers.utils.parseEther(CONFIG.FEES.BOOST.toString());
             let tx;
             showToast("Preparing 10★ Boost…");
             if (internalStars.gte(boostFee)) {
@@ -1503,45 +1386,48 @@
             await tx.wait();
             const postRef = window.fs.doc(window.db, "posts", postId);
             await window.fs.updateDoc(postRef, { timestamp: Date.now(), isBoosted: true });
-            showToast("🚀 SIGNAL BOOSTED!");
+            showToast("Signal Boosted! 🚀");
             setTimeout(() => { syncData(); }, 2000);
         } catch (e) { console.error(e); alert("Boost failed."); }
     }
 
-    // ═══════════════════════════════════════════════════
-    // HYPE
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
+    // HYPE  (80/20 split preserved)
+    // ═══════════════════════════════════════════════════════════════════
     async function hypeElement(recipientAddress, displayId) {
         if (parseInt(starBalance) < 1) return alert("Not enough Stars! Deposit APTM to continue.");
         try {
             const isComment = displayId.startsWith('hc-');
             const entityId  = displayId.replace(isComment ? 'hc-' : 'hp-', '');
+
             if (isComment) {
-                const commentRef = window.fs.doc(window.db, "comments", entityId);
-                await window.fs.updateDoc(commentRef, { hypes: window.fs.increment(1) });
+                await window.fs.updateDoc(window.fs.doc(window.db, "comments", entityId), { hypes: window.fs.increment(1) });
             } else {
-                const postRef = window.fs.doc(window.db, "posts", entityId);
-                await window.fs.updateDoc(postRef, { hypes: window.fs.increment(1) });
+                await window.fs.updateDoc(window.fs.doc(window.db, "posts", entityId),    { hypes: window.fs.increment(1) });
             }
+
             if (recipientAddress && recipientAddress !== "unknown") {
                 await adjustFirebaseBalance(recipientAddress, CONFIG.CREATOR_CUT);
-                const earnDesc = isComment ? "Earned 0.8★ — someone hyped your comment" : "Earned 0.8★ — someone hyped your post";
-                logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, earnDesc);
+                logTransaction(
+                    recipientAddress, "earn", CONFIG.CREATOR_CUT,
+                    isComment ? "Earned 0.8★ — someone hyped your comment" : "Earned 0.8★ — someone hyped your post"
+                );
             }
+
             starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
-            const spendDesc = isComment ? "Spent 1★ on a Comment Hype" : "Spent 1★ on a Post Hype";
-            logTransaction(userAddress, "spend", 1, spendDesc);
+            logTransaction(userAddress, "spend", 1, isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype");
             logPlatformRevenue(userAddress, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
+
             const counterEl = document.getElementById(displayId);
             if (counterEl) counterEl.textContent = (parseInt(counterEl.textContent || "0") + 1);
-            showToast("Hype Recorded! ✨ Creator +0.8★");
-        } catch (e) { console.error("Hype Error:", e); showToast("Hype failed."); }
+            showToast("Hyped! Creator +0.8★");
+        } catch (e) { console.error(e); showToast("Hype failed."); }
     }
 
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     // COMMENTS
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     function toggleTray(id) {
         const t = document.getElementById(`tray-${id}`);
         if (!t) return;
@@ -1549,9 +1435,9 @@
     }
 
     async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
-        if (parseInt(starBalance) < 1) return alert("Not enough Stars! Deposit APTM to continue.");
-        const inputId = isReply ? `reply-in-${parentId}` : `input-${postId}`;
-        const input = document.getElementById(inputId);
+        if (parseInt(starBalance) < 1) return alert("Not enough Stars!");
+        const inputId    = isReply ? `reply-in-${parentId}` : `input-${postId}`;
+        const input      = document.getElementById(inputId);
         const commentText = input ? input.value.trim() : "";
         if (!commentText) return;
         try {
@@ -1564,27 +1450,29 @@
                 isReply, timestamp: Date.now(), hypes: 0
             };
             await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
+
             if (recipientAddress && recipientAddress !== "unknown") {
                 await adjustFirebaseBalance(recipientAddress, CONFIG.CREATOR_CUT);
                 logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, "Earned 0.8★ — someone commented on your content");
             }
+
             starBalance = Math.max(0, parseInt(starBalance) - 1).toString();
             updateUI();
             logTransaction(userAddress, "spend", 1, isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment");
             logPlatformRevenue(userAddress, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
+
             if (input) input.value = "";
             const tray = document.getElementById(`tray-${postId}`);
             if (tray) tray.style.display = 'block';
             showToast("Comment Live! Creator +0.8★");
-        } catch (e) { console.error("Comment Error:", e); showToast("Failed."); }
+        } catch (e) { console.error(e); showToast("Failed."); }
     }
 
     const _commentListeners = {};
 
     async function loadComments(postId) {
         const list = document.getElementById(`list-${postId}`);
-        if (!list || !window.db) return;
-        if (_commentListeners[postId]) return;
+        if (!list || !window.db || _commentListeners[postId]) return;
 
         const q = window.fs.query(
             window.fs.collection(window.db, "comments"),
@@ -1594,63 +1482,61 @@
 
         const renderComments = (snapshot) => {
             list.innerHTML = "";
-            const topLevel = []; const repliesMap = {};
-            snapshot.forEach((docRef) => {
+            const topLevel = [], repliesMap = {};
+            snapshot.forEach(docRef => {
                 const data = { ...docRef.data(), _id: docRef.id };
                 if (data.parentId) {
                     if (!repliesMap[data.parentId]) repliesMap[data.parentId] = [];
                     repliesMap[data.parentId].push(data);
                 } else { topLevel.push(data); }
             });
-            const totalCount = snapshot.size;
             const counterEl = document.getElementById(`cc-${postId}`);
-            if (counterEl) counterEl.textContent = totalCount > 0 ? `(${totalCount})` : '';
-            if (topLevel.length === 0 && Object.keys(repliesMap).length === 0) {
-                list.innerHTML = `<div style="font-size:0.75rem; color:var(--muted); padding:8px;">No comments yet. Be first!</div>`;
+            if (counterEl) counterEl.textContent = snapshot.size > 0 ? ` (${snapshot.size})` : '';
+            if (topLevel.length === 0) {
+                list.innerHTML = `<div style="font-size:0.72rem;color:var(--text-muted);padding:8px;">No comments yet. Be first!</div>`;
                 return;
             }
-            const renderRow = (comment, isNested = false) => {
-                const cId = comment._id;
+            const renderRow = (comment, isNested) => {
+                const cId        = comment._id;
                 const authorAddr = comment.authorAddr || "unknown";
-                const hypeCount  = comment.hypes || 0;
-                const row = document.createElement('div');
-                row.className = 'comment-row' + (isNested ? ' nested' : '');
-                row.innerHTML = `
-                    <div><span class="comment-author">${comment.author || "Anonymous"}</span>: ${comment.text}</div>
-                    <div class="comment-meta">
-                        <span class="c-btn" onclick="hypeElement('${authorAddr}', 'hc-${cId}')">❤️ <span id="hc-${cId}">${hypeCount}</span></span>
-                        ${!isNested ? `<span class="c-btn reply" onclick="toggleReplyInput('${cId}')">↩ Reply</span>` : ''}
+                const row        = document.createElement('div');
+                row.className    = 'cmt-row' + (isNested ? ' nested' : '');
+                row.innerHTML    = `
+                    <span class="cmt-author">${comment.author || "Anonymous"}</span>: ${comment.text}
+                    <div class="cmt-meta">
+                        <span class="cbtn" onclick="hypeElement('${authorAddr}','hc-${cId}')">❤ <span id="hc-${cId}">${comment.hypes || 0}</span></span>
+                        ${!isNested ? `<span class="cbtn reply" onclick="toggleReplyInput('${cId}')">↩ Reply</span>` : ''}
                     </div>
                     ${!isNested ? `
-                    <div class="reply-input-area" id="reply-area-${cId}">
+                    <div class="reply-area" id="reply-area-${cId}">
                         <div class="reply-row">
-                            <input type="text" class="field" id="reply-in-${cId}" placeholder="Reply… (1★)" style="font-size:0.82rem;">
-                            <button class="btn btn-purple btn-sm" onclick="addComment('${authorAddr}', '${postId}', true, '${cId}')">SEND</button>
+                            <input type="text" class="field" id="reply-in-${cId}" placeholder="Reply… (1★)" style="font-size:0.8rem;">
+                            <button class="btn btn-purple btn-sm" onclick="addComment('${authorAddr}','${postId}',true,'${cId}')">Send</button>
                         </div>
-                    </div>` : ''}
-                `;
+                    </div>` : ''}`;
                 return row;
             };
-            topLevel.forEach(comment => {
-                list.appendChild(renderRow(comment, false));
-                (repliesMap[comment._id] || []).forEach(reply => list.appendChild(renderRow(reply, true)));
+            topLevel.forEach(c => {
+                list.appendChild(renderRow(c, false));
+                (repliesMap[c._id] || []).forEach(r => list.appendChild(renderRow(r, true)));
             });
         };
 
         _commentListeners[postId] = window.fs.onSnapshot(q, renderComments, (err) => {
-            console.error("Comment listener error:", err.message);
-            const fallbackQ = window.fs.query(
+            console.error("Comment listener, trying fallback:", err.message);
+            const fq = window.fs.query(
                 window.fs.collection(window.db, "comments"),
                 window.fs.where("postId", "==", String(postId))
             );
-            _commentListeners[postId] = window.fs.onSnapshot(fallbackQ, (snapshot) => {
+            _commentListeners[postId] = window.fs.onSnapshot(fq, (snap) => {
                 const sorted = {
                     forEach: (fn) => {
                         const docs = [];
-                        snapshot.forEach(d => docs.push({ ...d, data: () => d.data(), id: d.id }));
+                        snap.forEach(d => docs.push({ ...d, data: () => d.data(), id: d.id }));
                         docs.sort((a, b) => (a.data().timestamp || 0) - (b.data().timestamp || 0));
                         docs.forEach(fn);
-                    }, size: snapshot.size
+                    },
+                    size: snap.size
                 };
                 renderComments(sorted);
             });
@@ -1668,14 +1554,17 @@
         }
     }
 
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     // GLOBAL FEED
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     async function loadGlobalFeed() {
         const feedContainer = document.getElementById('feed-items');
         if (!feedContainer || !window.db) return;
 
-        const q = window.fs.query(window.fs.collection(window.db, "posts"), window.fs.orderBy("timestamp", "desc"));
+        const q = window.fs.query(
+            window.fs.collection(window.db, "posts"),
+            window.fs.orderBy("timestamp", "desc")
+        );
 
         window.fs.onSnapshot(q, (snapshot) => {
             feedContainer.innerHTML = "";
@@ -1683,53 +1572,54 @@
                 if (typeof _commentListeners[k] === 'function') _commentListeners[k]();
                 delete _commentListeners[k];
             });
+
             snapshot.forEach((docRef) => {
-                const post = docRef.data();
-                const postId = docRef.id;
-                const isMe = (post.authorAddr && userAddress && post.authorAddr.toLowerCase() === userAddress.toLowerCase());
+                const post      = docRef.data();
+                const postId    = docRef.id;
+                const isMe      = (post.authorAddr && userAddress && post.authorAddr.toLowerCase() === userAddress.toLowerCase());
                 const localName = localStorage.getItem('hub_userName');
                 const localPic  = localStorage.getItem('hub_userPic');
-                const displayPic  = (isMe && localPic)  ? localPic  : (post.avatar || "https://api.dicebear.com/7.x/identicon/svg?seed=" + (post.authorAddr || 'anon'));
+                const displayPic  = (isMe && localPic)  ? localPic  : (post.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${post.authorAddr || 'anon'}`);
                 const displayName = (isMe && localName) ? localName : (post.author || "Anonymous");
 
-                let mediaHtml = '';
-                const ytId = getYoutubeId(post.media || "");
-                const arweaveBadge = post.arweave
-                    ? `<div style="margin-bottom:8px;"><span class="arweave-badge"><span class="arweave-dot"></span>PERMANENT · ARWEAVE</span></div>`
+                let mediaHtml  = '';
+                const ytId     = getYoutubeId(post.media || "");
+                const arwBadge = post.arweave
+                    ? `<div style="margin-bottom:8px;"><span class="arweave-tag"><span class="a-dot"></span>PERMANENT · ARWEAVE</span></div>`
                     : '';
 
                 if (ytId) {
-                    mediaHtml = `${arweaveBadge}<div class="post-media"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
+                    mediaHtml = `${arwBadge}<div class="post-media"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
                 } else if (post.media) {
-                    mediaHtml = `${arweaveBadge}<div class="post-media"><img src="${post.media}" loading="lazy"></div>`;
+                    mediaHtml = `${arwBadge}<div class="post-media"><img src="${post.media}" loading="lazy"></div>`;
                 }
 
                 const item = document.createElement('div');
-                item.className = 'glass post-card';
+                item.className = 'card post-card';
                 item.setAttribute('data-id', postId);
-                if (post.isBoosted) { item.classList.add('gold-border'); }
+                if (post.isBoosted) item.style.borderColor = 'rgba(240,180,41,0.3)';
 
                 item.innerHTML = `
                     <div class="post-header">
-                        <img src="${displayPic}" class="avatar">
-                        <div>
-                            <div class="post-author">${displayName}</div>
-                            <div style="font-size:0.65rem; color:var(--muted); font-family:var(--mono);">${post.authorAddr ? post.authorAddr.slice(0,6)+'…'+post.authorAddr.slice(-4) : 'anon'}</div>
+                        <img src="${displayPic}" class="av">
+                        <div class="post-meta">
+                            <div class="post-author">${displayName} ${post.isBoosted ? '<span class="boosted-badge">🚀 BOOSTED</span>' : ''}</div>
+                            <div class="post-addr">${post.authorAddr ? post.authorAddr.slice(0,6)+'…'+post.authorAddr.slice(-4) : 'anon'}</div>
                         </div>
-                        ${post.isBoosted ? '<span class="post-boosted-badge">🚀 BOOSTED</span>' : ''}
+                        <span class="post-more">···</span>
                     </div>
                     ${mediaHtml}
-                    <p class="post-text">${post.text}</p>
+                    <div class="post-body">${post.text}</div>
                     <div class="post-actions">
-                        <div class="action-pill" onclick="hypeElement('${post.authorAddr}', 'hp-${postId}')">❤️ <span class="action-count" id="hp-${postId}">${post.hypes || 0}</span></div>
-                        <div class="action-pill" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 <span class="action-count">Comments</span> <span id="cc-${postId}" style="color:var(--cyan); font-size:0.7rem;"></span></div>
-                        <div class="action-pill boost" style="margin-left:auto;" onclick="boostPost('${postId}')">🚀 <span class="action-count">Boost 10★</span></div>
+                        <div class="pact" onclick="hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span> Like</div>
+                        <div class="pact" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comment<span class="pact-num" id="cc-${postId}" style="color:var(--teal);"></span></div>
+                        <div class="pact boost" style="margin-left:auto;" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
                     </div>
                     <div class="comment-tray" id="tray-${postId}">
                         <div class="comment-list" id="list-${postId}"></div>
-                        <div class="comment-input-row">
-                            <input type="text" class="field" style="font-size:0.82rem;" placeholder="Add a comment (1★)…" id="input-${postId}">
-                            <button class="btn btn-purple btn-sm" onclick="addComment('${post.authorAddr}', '${postId}')">SEND</button>
+                        <div class="cmt-input-row">
+                            <input type="text" class="field" style="font-size:0.8rem;" placeholder="Add a comment (1★)…" id="input-${postId}">
+                            <button class="btn btn-purple btn-sm" onclick="addComment('${post.authorAddr}','${postId}')">Send</button>
                         </div>
                     </div>`;
                 feedContainer.appendChild(item);
@@ -1738,20 +1628,21 @@
         });
     }
 
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     // STARTUP
-    // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
     window.addEventListener('load', async () => {
         try {
             updateUI();
-            const p = await getLiveAptmPrice();
-            currentAptmPriceUsd = p;
-            if (window.ethereum && window.ethereum.selectedAddress) { await connectWallet(); }
+            currentAptmPriceUsd = await getLiveAptmPrice();
+            if (window.ethereum && window.ethereum.selectedAddress) {
+                await connectWallet();
+            }
             setTimeout(() => { loadGlobalFeed(); }, 1500);
-        } catch (e) { console.error("Startup failed", e); }
+        } catch (e) { console.error("Startup failed:", e); }
     });
 
-    // HEARTBEAT
+    // Heartbeat — 30s sync
     setInterval(async () => {
         if (provider && hubContract) {
             try {
@@ -1760,6 +1651,7 @@
             } catch (e) { console.error("Heartbeat failed:", e); }
         }
     }, 30000);
+
 </script>
 </body>
 </html>
