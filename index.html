@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCIALHUB — Signal Protocol v19</title>
+    <title>SOCIALHUB — Signal Protocol v20</title>
 
     <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
@@ -12,7 +12,7 @@
     <!-- 2. Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
         const firebaseConfig = {
@@ -29,7 +29,7 @@
         const storage = getStorage(app);
         window.db  = db;
         window.storage = storage;
-        window.fs  = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc };
+        window.fs  = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp };
         window.fsStorage = { ref, uploadBytesResumable, getDownloadURL };
     </script>
 
@@ -1204,7 +1204,7 @@
 
 <script>
     // ═══════════════════════════════════════════════════════════════════
-    // ⚙️  GLOBAL CONFIG  (V17)
+    // ⚙️  GLOBAL CONFIG  (V20)
     // ═══════════════════════════════════════════════════════════════════
     const CONFIG = {
         // ── Core vault contract — ALL balance checks use this address ──
@@ -2173,12 +2173,20 @@
     //   Video post: 10.0 ★ → 100% admin_revenue
     //   Hype/Comment: 80% creator, 20% admin_revenue
     // ═══════════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
+    // BROADCAST — Firebase only, NO MetaMask
+    //
+    // V20 TIERED CREATION FEES (100% → platform_revenue, 0% creator rebate):
+    //   Text post:   1.2 ★  → 100% admin
+    //   Photo post:  3.0 ★  → 100% admin
+    //   Video post: 10.0 ★  → 100% admin
+    // ═══════════════════════════════════════════════════════════════════
     async function handleBroadcast() {
         const txt = document.getElementById('post-text').value.trim();
         if (!txt) return showToast("Write something first!");
         if (!userAddress) return showToast("Connect your wallet first!");
 
-        // V13 FIX: Read BOTH star pools from Firebase and sum them
+        // Read BOTH star pools from Firebase and sum them
         let livePurchased = 0;
         let liveEarned    = 0;
         if (window.db) {
@@ -2194,28 +2202,34 @@
         const totalAvailable = livePurchased + liveEarned;
 
         let mediaUrl   = "";
-        let feeAmount  = CONFIG.FEES.TEXT;
+        let feeAmount  = CONFIG.FEES.TEXT;   // 1.2 ★ — text post default
         let postType   = 1;
         let isFirebase = false;
+        let postTypeLabel = "Text";
 
         if (mediaTabMode === 'file' && selectedFile) {
-            const isVid = selectedFile.type.startsWith('video/');
-            feeAmount   = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
-            postType    = isVid ? 3 : 2;
-            isFirebase  = true;
+            const isVid    = selectedFile.type.startsWith('video/');
+            feeAmount      = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
+            postType       = isVid ? 3 : 2;
+            postTypeLabel  = isVid ? "Video" : "Photo";
+            isFirebase     = true;
         } else {
             const url = document.getElementById('post-media').value.trim();
             if (url) {
-                if (url.includes('mp4') || getYoutubeId(url)) { feeAmount = CONFIG.FEES.VIDEO; postType = 3; }
-                else { feeAmount = CONFIG.FEES.PHOTO; postType = 2; }
+                if (url.includes('mp4') || getYoutubeId(url)) {
+                    feeAmount = CONFIG.FEES.VIDEO; postType = 3; postTypeLabel = "Video";
+                } else {
+                    feeAmount = CONFIG.FEES.PHOTO; postType = 2; postTypeLabel = "Photo";
+                }
                 mediaUrl = url;
             }
         }
 
-        // V13 FIX: Check against COMBINED balance (purchased + earned)
+        // Check combined balance
         if (totalAvailable < feeAmount) {
             return alert(
                 `Insufficient Stars!\n` +
+                `Post Type:       ${postTypeLabel}\n` +
                 `Required:        ${feeAmount.toFixed(1)}★\n` +
                 `Purchased Stars: ${livePurchased.toFixed(1)}★\n` +
                 `Earned Stars:    ${liveEarned.toFixed(1)}★\n` +
@@ -2236,7 +2250,7 @@
             }
         }
 
-        // V13 FIX: Deduct using waterfall (purchased first, then earned remainder)
+        // Deduct stars using waterfall (purchased first, then earned)
         try {
             await deductSpendableStars(userAddress, feeAmount);
         } catch (e) {
@@ -2244,12 +2258,13 @@
             return alert("Failed to deduct stars. Please try again.");
         }
 
-        // 100% of post fee → admin_revenue
-        const postTypeLabel = postType === 1 ? "text_post" : postType === 2 ? "photo_post" : "video_post";
-        logAdminRevenue(userAddress, postTypeLabel, feeAmount);
-        logTransaction(userAddress, "spend", feeAmount, `Paid ${feeAmount}★ for ${postType === 1 ? 'Text' : postType === 2 ? 'Photo' : 'Video'} Broadcast`);
+        // V20: 100% of post fee → platform_revenue. No creator rebate on own posts.
+        const firestoreLabel = postType === 1 ? "text_post" : postType === 2 ? "photo_post" : "video_post";
+        logAdminRevenue(userAddress, firestoreLabel, feeAmount);
+        logTransaction(userAddress, "spend", feeAmount,
+            `${postTypeLabel} Broadcast — ${feeAmount.toFixed(1)}★ creation fee (100% platform)`);
 
-        // Write post to Firestore (NO MetaMask)
+        // Write post to Firestore
         try {
             const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
             const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
@@ -2263,7 +2278,8 @@
                 timestamp:  Date.now(),
                 hypes:      0,
                 type:       postType,
-                feePaid:    feeAmount
+                feePaid:    feeAmount,
+                isBoosted:  false
             };
             await window.fs.addDoc(window.fs.collection(window.db, "posts"), postData);
 
@@ -2285,27 +2301,68 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // BOOST (on-chain — MetaMask required)
+    // BOOST — V20: Pure Firebase Stars, NO MetaMask
+    //
+    // Cost:   10.0 ★ → 100% platform_revenue
+    // Action: Updates the post's timestamp to serverTimestamp() so it
+    //         jumps to the top of the orderBy('timestamp','desc') feed
+    //         for every connected user in real-time.
+    //         Sets isBoosted = true so the gold BOOSTED badge appears.
+    // Ledger: Logs a clear "Boost — 10★ (100% platform)" entry to the
+    //         user's private ledger.
     // ═══════════════════════════════════════════════════════════════════
     async function boostPost(postId) {
-        if (!hubContract) return alert("Connect Wallet First");
+        if (!userAddress) return showToast("Connect your wallet first!");
+
+        const boostCost = CONFIG.FEES.BOOST; // 10 ★
+
+        // Read live balance from Firebase
+        let livePurchased = 0, liveEarned = 0;
+        if (window.db) {
+            try {
+                const snap = await window.fs.getDoc(
+                    window.fs.doc(window.db, "user_balances", userAddress.toLowerCase())
+                );
+                if (snap.exists()) {
+                    livePurchased = snap.data().stars        || 0;
+                    liveEarned    = snap.data().creatorStars  || 0;
+                }
+            } catch (_) { livePurchased = purchasedStars; liveEarned = creatorEarnings; }
+        }
+
+        if ((livePurchased + liveEarned) < boostCost) {
+            return showToast(`Need ${boostCost}★ to Boost. Current: ${(livePurchased + liveEarned).toFixed(1)}★`);
+        }
+
         try {
-            const userAddr      = await signer.getAddress();
-            const internalStars = await hubContract.aptmBalances(userAddr);
-            const boostFee      = ethers.utils.parseEther(CONFIG.FEES.BOOST.toString());
-            let tx;
-            showToast("Preparing 10★ Boost…");
-            if (internalStars.gte(boostFee)) {
-                tx = await hubContract.boostPost(boostFee, { gasLimit: 400000 });
-            } else {
-                tx = await hubContract.boostPost(boostFee, { value: boostFee, gasLimit: 400000 });
-            }
-            await tx.wait();
+            showToast("Boosting post…");
+
+            // Deduct 10★ (purchased first via waterfall)
+            await deductSpendableStars(userAddress, boostCost);
+
+            // 100% of boost fee → platform_revenue
+            logAdminRevenue(userAddress, "boost_post", boostCost);
+
+            // Log to private ledger with clear description
+            logTransaction(userAddress, "spend", boostCost,
+                `Post Boosted — ${boostCost}★ fee (100% platform) · Post ID: ${postId.slice(0, 8)}…`);
+
+            // Update post: serverTimestamp() pushes it to top of desc-ordered feed
             const postRef = window.fs.doc(window.db, "posts", postId);
-            await window.fs.updateDoc(postRef, { timestamp: Date.now(), isBoosted: true });
-            showToast("Signal Boosted! 🚀");
-            setTimeout(() => { syncData(); }, 2000);
-        } catch (e) { console.error(e); alert("Boost failed."); }
+            await window.fs.updateDoc(postRef, {
+                timestamp: window.fs.serverTimestamp(),
+                isBoosted: true,
+                boostedAt: Date.now(),
+                boostedBy: userAddress.toLowerCase()
+            });
+
+            updateUI();
+            updateDrawerUI();
+            showToast("🚀 Post Boosted! Jumped to top of feed.");
+        } catch (e) {
+            console.error("Boost failed:", e);
+            showToast("Boost failed. Try again.");
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -2954,7 +3011,7 @@
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP (V18)
+    // STARTUP (V20)
     // ═══════════════════════════════════════════════════════════════════
     window.addEventListener('load', async () => {
         try {
@@ -2977,7 +3034,7 @@
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP (V18) — UNCONDITIONAL PRICE HEARTBEAT via Apertum RPC
+    // STARTUP (V20) — UNCONDITIONAL PRICE HEARTBEAT via Apertum RPC
     // No external APIs. Fires for ALL visitors on load, then every 30s.
     // ═══════════════════════════════════════════════════════════════════
     runPriceHeartbeat();                          // immediate on script load
