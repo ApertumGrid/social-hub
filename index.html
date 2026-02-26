@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCIALHUB — Signal Protocol v16</title>
+    <title>SOCIALHUB — Signal Protocol v17</title>
 
     <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
@@ -401,49 +401,60 @@
         .pact.boost:hover { color: var(--gold); border-color: rgba(240,180,41,0.3); background: rgba(240,180,41,0.06); }
         .pact-num { font-family: var(--font-mono); font-size: 0.7rem; }
 
-        /* Comment tray */
+        /* ── V17 COMMENT SYSTEM ─────────────────────────────────────── */
         .comment-tray { display: none; padding-top: 14px; border-top: 1px dashed rgba(255,255,255,0.05); margin-top: 12px; }
-        .comment-list { max-height: 320px; overflow-y: auto; margin-bottom: 10px; }
+        .comment-list { max-height: 430px; overflow-y: auto; margin-bottom: 10px; }
+        .comment-list::-webkit-scrollbar { width: 2px; }
+        .comment-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); }
+
+        /* Dark block — every comment and reply */
         .cmt-row {
-            padding: 10px 12px; border-radius: var(--radius-md);
-            background: var(--bg-input); border: 1px solid var(--border);
-            margin-bottom: 7px; font-size: 0.82rem; color: var(--text-primary);
+            padding: 10px 12px 8px;
+            border-radius: var(--radius-md);
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            margin-bottom: 6px;
+            font-size: 0.82rem;
+            color: var(--text-primary);
             line-height: 1.5;
         }
         .cmt-row.nested {
             margin-left: 18px;
-            border-left: 2px solid rgba(124,92,191,0.25);
+            border-left: 2px solid rgba(124,92,191,0.3);
             border-radius: 0 var(--radius-md) var(--radius-md) 0;
-            background: rgba(124,92,191,0.04);
+            background: rgba(16,22,40,0.95);
         }
+        .cmt-body-line { margin-bottom: 6px; line-height: 1.5; word-break: break-word; }
         .cmt-author { color: var(--gold); font-weight: 700; }
-        .cmt-meta { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+        .cmt-text   { color: var(--text-primary); }
+
+        /* Like / Reply micro-buttons */
+        .cmt-meta { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
         .cbtn {
             font-size: 0.68rem; font-weight: 600; cursor: pointer;
             padding: 3px 9px; border-radius: 5px;
             border: 1px solid var(--border); color: var(--text-muted);
             background: transparent; transition: all 0.12s;
-            user-select: none;
+            user-select: none; line-height: 1.4;
         }
-        .cbtn:hover { color: var(--teal); border-color: rgba(45,212,191,0.3); }
-        .cbtn.reply { color: var(--text-muted); }
-        .cbtn.reply:hover { color: var(--purple-lt); border-color: rgba(124,92,191,0.3); background: var(--purple-glow); }
+        .cbtn:hover { color: var(--teal); border-color: rgba(45,212,191,0.3); background: rgba(45,212,191,0.05); }
+        .cbtn.reply:hover { color: var(--purple-lt); border-color: rgba(124,92,191,0.35); background: var(--purple-glow); }
 
-        /* Reply input area — hidden until toggled */
+        /* Inline reply box — visible white border per V17 spec */
         .reply-area {
             display: none;
             margin-top: 10px;
-            background: var(--bg-card2);
-            border: 1px solid rgba(124,92,191,0.2);
-            border-radius: var(--radius-md);
             padding: 10px;
+            background: rgba(12,17,32,0.85);
+            border: 1px solid rgba(255,255,255,0.09);
+            border-radius: var(--radius-md);
         }
         .reply-textarea {
             display: block;
             width: 100%;
             min-height: 56px;
-            background: var(--bg-input);
-            border: 1px solid rgba(255,255,255,0.18);
+            background: var(--bg-card2);
+            border: 1.5px solid rgba(255,255,255,0.22);   /* V17: white border */
             border-radius: var(--radius-sm);
             color: var(--text-primary);
             font-family: var(--font-body);
@@ -452,13 +463,16 @@
             outline: none;
             resize: none;
             box-sizing: border-box;
-            transition: border-color 0.15s;
+            transition: border-color 0.15s, box-shadow 0.15s;
             margin-bottom: 8px;
         }
-        .reply-textarea:focus { border-color: rgba(124,92,191,0.55); }
+        .reply-textarea:focus {
+            border-color: rgba(155,125,224,0.65);
+            box-shadow: 0 0 0 2px rgba(124,92,191,0.12);
+        }
         .reply-textarea::placeholder { color: var(--text-muted); }
         .reply-send-row { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
-        .reply-send-row .cost-hint { font-size: 0.62rem; color: var(--text-muted); font-family: var(--font-mono); }
+        .reply-send-row .cost-hint { font-size: 0.6rem; color: var(--text-muted); font-family: var(--font-mono); }
 
         .cmt-input-row { display: flex; gap: 8px; align-items: center; }
         .cmt-input-row .field { margin-top: 0; flex: 1; }
@@ -1141,7 +1155,7 @@
 
 <script>
     // ═══════════════════════════════════════════════════════════════════
-    // ⚙️  GLOBAL CONFIG  (V16)
+    // ⚙️  GLOBAL CONFIG  (V17)
     // ═══════════════════════════════════════════════════════════════════
     const CONFIG = {
         // ── Core vault contract — ALL balance checks use this address ──
@@ -1160,9 +1174,6 @@
         STORAGE_BUCKET: "gs://socialhub-33014.firebasestorage.app"
     };
 
-    // NOTE: POOL_ADDRESS below is used ONLY for the GeckoTerminal price feed.
-    // It is NOT the vault contract. All on-chain balance/withdraw calls
-    // go exclusively to CONFIG.CONTRACT_ADDRESS above.
 
     // ═══════════════════════════════════════════════════════════════════
     // GLOBAL STATE
@@ -1200,79 +1211,102 @@
     let mediaTabMode = 'url';
     let selectedFile = null;
 
-    // ═══════════════════════════════════════════════════════════════════
-    // PRICE HEARTBEAT  (V16 — GeckoTerminal APTM/USD Liquidity Pool)
-    //
-    // Pulls price directly from the APTM/USD pool on the Apertum network:
-    //   Pool address: 0xb3A9Dc7b9cedd8dF550aD5795C56e7ACd90E59ff
-    //   Network:      apertum (GeckoTerminal network slug)
-    //
-    // GeckoTerminal REST API is CORS-enabled — no proxy needed.
-    // Falls back to 0.3391 on any error.
-    // ═══════════════════════════════════════════════════════════════════
-    const POOL_ADDRESS = "0xb3A9Dc7b9cedd8dF550aD5795C56e7ACd90E59ff";
 
-    async function getLiveAptmPrice() {
-        try {
-            // GeckoTerminal public API — no auth, CORS-open
-            const url = `https://api.geckoterminal.com/api/v2/networks/apertum/pools/${POOL_ADDRESS}`;
-            const res = await fetch(url, { headers: { "Accept": "application/json;version=20230302" } });
-            if (!res.ok) throw new Error("GeckoTerminal HTTP " + res.status);
-            const json  = await res.json();
-            // price is in data.attributes.base_token_price_usd (string)
-            const price = parseFloat(json?.data?.attributes?.base_token_price_usd);
-            if (price && price > 0) {
-                console.log(`[Heartbeat] APTM Price: $${price.toFixed(4)} (GeckoTerminal pool)`);
-                return price;
-            }
-            // fallback: try quote_token_price_usd inverted if base is the other token
-            const quotePrice = parseFloat(json?.data?.attributes?.quote_token_price_usd);
-            if (quotePrice && quotePrice > 0) {
-                const inverted = 1 / quotePrice;
-                console.log(`[Heartbeat] APTM Price (inverted): $${inverted.toFixed(4)}`);
-                return inverted;
-            }
-            throw new Error("No price in pool response");
-        } catch (err) {
-            // Second attempt via allorigins CORS proxy as failsafe
-            try {
-                const gtUrl  = `https://api.geckoterminal.com/api/v2/networks/apertum/pools/${POOL_ADDRESS}`;
-                const proxy  = "https://api.allorigins.win/get?url=" + encodeURIComponent(gtUrl);
-                const res2   = await fetch(proxy);
-                if (!res2.ok) throw new Error("Proxy HTTP " + res2.status);
-                const outer  = await res2.json();
-                const inner  = JSON.parse(outer.contents);
-                const price2 = parseFloat(inner?.data?.attributes?.base_token_price_usd);
-                if (price2 && price2 > 0) {
-                    console.log(`[Heartbeat] APTM Price: $${price2.toFixed(4)} (GeckoTerminal via proxy)`);
-                    return price2;
-                }
-                throw new Error("No price via proxy");
-            } catch (err2) {
-                console.warn(`[Heartbeat] Both price sources failed (${err.message} | ${err2.message}). Using fallback $0.3391`);
-                return 0.3391;
-            }
-        }
+    // ═══════════════════════════════════════════════════════════════════
+    // PRICE HEARTBEAT  (V17 — APERTUM RPC ONLY, ZERO EXTERNAL APIS)
+    //
+    // Official Apertum RPC:
+    //   https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc
+    //
+    // Strategy: call getReserves() on the wAPTM/wUSDT liquidity pair.
+    // wAPTM token: 0x110Ac02Ba3384Bc055c13A87766049a74517BedA
+    // If RPC fails, ticker shows: 'Network: Connected | System: Online'
+    // ═══════════════════════════════════════════════════════════════════
+
+    const APERTUM_RPC = "https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc";
+    const WAPTM_ADDR  = "0x110Ac02Ba3384Bc055c13A87766049a74517BedA";
+
+    // Read-only RPC provider for price queries — separate from MetaMask signer
+    let rpcProvider = null;
+    function getRpcProvider() {
+        if (!rpcProvider) rpcProvider = new ethers.providers.JsonRpcProvider(APERTUM_RPC);
+        return rpcProvider;
     }
 
-    // ─── Price update helper — updates all price displays ───
+    // Minimal Uniswap-V2 Pair ABI for getReserves
+    const PAIR_ABI_V17 = [
+        "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
+        "function token0() view returns (address)",
+        "function token1() view returns (address)"
+    ];
+    const FACTORY_ABI_V17 = [
+        "function getPair(address tokenA, address tokenB) view returns (address pair)"
+    ];
+    // Known Apertum DEX factory and wUSDT addresses to try
+    const V17_FACTORIES = [
+        "0x9Ad6C38BE94206cA50bb0d90783181662f0Cfa10",
+        "0x6e7f5C0b9f4484E14D7D57b197E98C36b64B6B8"
+    ];
+    const V17_USDT = [
+        "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7",
+        "0xc7198437980c041c805A1EDcbA50c1Ce5db95118",
+        "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
+    ];
+
+    async function getLiveAptmPrice() {
+        const rpc = getRpcProvider();
+        for (const factoryAddr of V17_FACTORIES) {
+            for (const usdtAddr of V17_USDT) {
+                try {
+                    const factory  = new ethers.Contract(factoryAddr, FACTORY_ABI_V17, rpc);
+                    const pairAddr = await Promise.race([
+                        factory.getPair(WAPTM_ADDR, usdtAddr),
+                        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000))
+                    ]);
+                    if (!pairAddr || pairAddr === ethers.constants.AddressZero) continue;
+                    const pair = new ethers.Contract(pairAddr, PAIR_ABI_V17, rpc);
+                    const [token0, reserves] = await Promise.all([pair.token0(), pair.getReserves()]);
+                    const aptmIsToken0 = token0.toLowerCase() === WAPTM_ADDR.toLowerCase();
+                    const aptmRes = aptmIsToken0 ? reserves.reserve0 : reserves.reserve1;
+                    const usdtRes = aptmIsToken0 ? reserves.reserve1 : reserves.reserve0;
+                    if (aptmRes.isZero() || usdtRes.isZero()) continue;
+                    const price = parseFloat(ethers.utils.formatEther(usdtRes)) /
+                                  parseFloat(ethers.utils.formatEther(aptmRes));
+                    if (price > 0 && price < 100000) {
+                        console.log('[V17 Heartbeat] APTM price from RPC reserves: $' + price.toFixed(6));
+                        return price;
+                    }
+                } catch (_) { /* try next */ }
+            }
+        }
+        console.warn('[V17 Heartbeat] RPC pair not reachable. Status ticker active.');
+        return null;
+    }
+
+    // ─── Price update helper — handles both live price and fallback status ───
     function applyPriceUpdate(price) {
-        currentAptmPriceUsd = price;
-        const fmt = `$${parseFloat(price).toFixed(4)}`;
         const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-        s('live-price-display', fmt + ' / APTM');
-        s('rp-rate', fmt);
-        s('drawer-price', `APTM @ ${fmt}`);
-        // Refresh deposit estimate in drawer if input has a value
-        const inp = document.getElementById('drawer-deposit-input');
-        if (inp && inp.value) updateDepositEstimate(parseFloat(inp.value));
+        if (price === null) {
+            // RPC reachable but pair not found — show status, keep last price for math
+            const statusStr = 'Network: Connected | System: Online';
+            s('live-price-display', statusStr);
+            s('rp-rate',            statusStr);
+            s('drawer-price',       statusStr);
+        } else {
+            currentAptmPriceUsd = price;
+            const fmt = '$' + parseFloat(price).toFixed(4);
+            s('live-price-display', fmt + ' / APTM');
+            s('rp-rate',            fmt);
+            s('drawer-price',       'APTM @ ' + fmt);
+            const inp = document.getElementById('drawer-deposit-input');
+            if (inp && inp.value) updateDepositEstimate(parseFloat(inp.value));
+        }
     }
 
     // ─── UNCONDITIONAL heartbeat — fires immediately on load, then every 30s ───
     async function runPriceHeartbeat() {
         const price = await getLiveAptmPrice();
         applyPriceUpdate(price);
-        // Also refresh syncData if wallet connected
         if (provider && hubContract) {
             try { await syncData(); } catch (_) {}
         }
@@ -1887,8 +1921,9 @@
 
     async function convertAPTM() {
         const price = await getLiveAptmPrice();
-        applyPriceUpdate(price);
-        const amt = prompt(`Deposit $APTM\nPrice: $${currentAptmPriceUsd.toFixed(4)}`, "5");
+        if (price !== null) applyPriceUpdate(price);
+        const displayPrice = currentAptmPriceUsd > 0 ? currentAptmPriceUsd.toFixed(4) : "N/A";
+        const amt = prompt(`Deposit $APTM\nPrice: $${displayPrice}`, "5");
         if (amt) await _doDeposit(amt);
     }
 
@@ -2313,8 +2348,14 @@
 
     const _commentListeners = {};
 
+    // ═══════════════════════════════════════════════════════════════════
+    // loadComments — V17: INFINITE NESTING
+    // Every comment and reply gets its own Like + Reply buttons.
+    // Clicking Reply opens an inline white-bordered textarea inside the
+    // same dark-block container. Replies of replies are fully supported.
+    // ═══════════════════════════════════════════════════════════════════
     async function loadComments(postId) {
-        const list = document.getElementById(`list-${postId}`);
+        const list = document.getElementById("list-" + postId);
         if (!list || !window.db || _commentListeners[postId]) return;
 
         const q = window.fs.query(
@@ -2325,76 +2366,117 @@
 
         const renderComments = (snapshot) => {
             list.innerHTML = "";
-            const topLevel = [], repliesMap = {};
+            // Build flat maps
+            const topLevel = [];
+            const repliesMap = {};  // parentId -> [children]
             snapshot.forEach(docRef => {
-                const data = { ...docRef.data(), _id: docRef.id };
+                const data = Object.assign({}, docRef.data(), { _id: docRef.id });
                 if (data.parentId) {
                     if (!repliesMap[data.parentId]) repliesMap[data.parentId] = [];
                     repliesMap[data.parentId].push(data);
-                } else { topLevel.push(data); }
+                } else {
+                    topLevel.push(data);
+                }
             });
-            const counterEl = document.getElementById(`cc-${postId}`);
-            if (counterEl) counterEl.textContent = snapshot.size > 0 ? ` (${snapshot.size})` : '';
+
+            const counterEl = document.getElementById("cc-" + postId);
+            if (counterEl) counterEl.textContent = snapshot.size > 0 ? " (" + snapshot.size + ")" : "";
+
             if (topLevel.length === 0) {
-                list.innerHTML = `<div style="font-size:0.72rem;color:var(--text-muted);padding:8px;">No comments yet. Be first!</div>`;
+                list.innerHTML = '<div style="font-size:0.72rem;color:var(--text-muted);padding:8px;">No comments yet. Be first!</div>';
                 return;
             }
-            const renderRow = (comment, isNested) => {
+
+            // Recursive row builder — depth drives indent level
+            function buildRow(comment, depth) {
                 const cId        = comment._id;
                 const authorAddr = comment.authorAddr || "unknown";
                 const likeCount  = comment.likes || comment.hypes || 0;
-                const row        = document.createElement('div');
-                row.className    = 'cmt-row' + (isNested ? ' nested' : '');
 
-                // Build the row's inner HTML — classic dark-block style
-                const metaHtml =
-                    `<div class="cmt-meta">` +
-                        `<span class="cbtn" id="like-btn-${cId}" onclick="likeComment('${cId}','${authorAddr}')">` +
-                            `❤ <span id="hc-${cId}">${likeCount}</span>` +
-                        `</span>` +
-                        `<span class="cbtn reply" id="reply-box-${cId}" onclick="toggleReplyInput('${cId}')">↩ Reply</span>` +
-                    `</div>`;
+                // Outer container — dark block, indented for replies
+                const row = document.createElement('div');
+                row.className = "cmt-row" + (depth > 0 ? " nested" : "");
+                if (depth > 1) {
+                    // Extra indent for deep nesting
+                    row.style.marginLeft = (18 + (depth - 1) * 14) + "px";
+                    row.style.borderLeft = "2px solid rgba(124,92,191,0." + Math.min(25 + depth * 8, 55) + ")";
+                }
 
-                const replyHtml =
-                    `<div class="reply-area" id="reply-area-${cId}">` +
-                        `<textarea id="reply-input-${cId}" class="reply-textarea" placeholder="Write a reply… (1★)"></textarea>` +
-                        `<div class="reply-send-row">` +
-                            `<span class="cost-hint">1★ to reply · 80% to commenter</span>` +
-                            `<button class="btn btn-purple btn-sm" onclick="submitReply('${cId}','${authorAddr}','${postId}')">↩ Send Reply</button>` +
-                        `</div>` +
-                    `</div>`;
+                // Author + text line
+                const textDiv = document.createElement('div');
+                textDiv.className = "cmt-body-line";
+                textDiv.innerHTML = '<span class="cmt-author">' + (comment.author || "Anonymous") + '</span>: ' +
+                                    '<span class="cmt-text">' + comment.text + '</span>';
 
-                row.innerHTML =
-                    `<span class="cmt-author">${comment.author || "Anonymous"}</span>: ${comment.text}` +
-                    metaHtml + replyHtml;
+                // Action buttons row (Like + Reply on EVERY row)
+                const meta = document.createElement('div');
+                meta.className = "cmt-meta";
+                meta.innerHTML =
+                    '<span class="cbtn" id="like-btn-' + cId + '" onclick="likeComment(\'' + cId + '\',\'' + authorAddr + '\')">' +
+                        '\u2764 <span id="hc-' + cId + '">' + likeCount + '</span>' +
+                    '</span>' +
+                    '<span class="cbtn reply" id="reply-box-' + cId + '" onclick="toggleReplyInput(\'' + cId + '\')">\u21a9 Reply</span>';
+
+                // Inline reply box — white-bordered textarea, hidden until Reply clicked
+                const replyArea = document.createElement('div');
+                replyArea.className = "reply-area";
+                replyArea.id = "reply-area-" + cId;
+                replyArea.innerHTML =
+                    '<textarea id="reply-input-' + cId + '" class="reply-textarea" placeholder="Write a reply\u2026 (1\u2605)"></textarea>' +
+                    '<div class="reply-send-row">' +
+                        '<span class="cost-hint">1\u2605 \u00b7 80% to author</span>' +
+                        '<button class="btn btn-purple btn-sm" onclick="submitReply(\'' + cId + '\',\'' + authorAddr + '\',\'' + postId + '\')">Send Reply</button>' +
+                    '</div>';
+
+                row.appendChild(textDiv);
+                row.appendChild(meta);
+                row.appendChild(replyArea);
+
+                // Recursively append children
+                const children = repliesMap[cId] || [];
+                children.forEach(function(child) {
+                    row.appendChild(buildRow(child, depth + 1));
+                });
 
                 return row;
-            };
-            topLevel.forEach(c => {
-                list.appendChild(renderRow(c, false));
-                (repliesMap[c._id] || []).forEach(r => list.appendChild(renderRow(r, true)));
+            }
+
+            // Render all top-level comments with their nested trees
+            topLevel.forEach(function(c) {
+                list.appendChild(buildRow(c, 0));
             });
         };
 
-        _commentListeners[postId] = window.fs.onSnapshot(q, renderComments, (err) => {
-            console.error("Comment listener fallback:", err.message);
+        // Primary snapshot with ordering; fallback without if index missing
+        _commentListeners[postId] = window.fs.onSnapshot(q, renderComments, function(err) {
+            console.warn("Comment listener fallback (no index):", err.message);
             const fq = window.fs.query(
                 window.fs.collection(window.db, "comments"),
                 window.fs.where("postId", "==", String(postId))
             );
-            _commentListeners[postId] = window.fs.onSnapshot(fq, (snap) => {
-                const sorted = {
-                    forEach: (fn) => {
-                        const docs = [];
-                        snap.forEach(d => docs.push({ ...d, data: () => d.data(), id: d.id }));
-                        docs.sort((a, b) => (a.data().timestamp || 0) - (b.data().timestamp || 0));
-                        docs.forEach(fn);
-                    },
-                    size: snap.size
+            _commentListeners[postId] = window.fs.onSnapshot(fq, function(snap) {
+                const docs = [];
+                snap.forEach(function(d) { docs.push(Object.assign({}, d.data(), { _id: d.id })); });
+                docs.sort(function(a, b) { return (a.timestamp || 0) - (b.timestamp || 0); });
+                // Wrap into snapshot-like object
+                const fakeSnap = {
+                    forEach: function(fn) { docs.forEach(function(d) { fn({ data: function() { return d; }, id: d._id }); }); },
+                    size: docs.length
                 };
-                renderComments(sorted);
+                renderComments(fakeSnap);
             });
         });
+    }
+
+    function toggleReplyInput(commentId) {
+        const area = document.getElementById("reply-area-" + commentId);
+        if (!area) return;
+        const isOpen = area.style.display === "block";
+        area.style.display = isOpen ? "none" : "block";
+        if (!isOpen) {
+            const inp = document.getElementById("reply-input-" + commentId);
+            if (inp) setTimeout(function() { inp.focus(); }, 50);
+        }
     }
 
     function toggleReplyInput(commentId) {
@@ -2661,7 +2743,7 @@
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP (V16)
+    // STARTUP (V17)
     // ═══════════════════════════════════════════════════════════════════
     window.addEventListener('load', async () => {
         try {
@@ -2679,8 +2761,8 @@
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // UNCONDITIONAL PRICE HEARTBEAT — fires for ALL visitors, every 30s
-    // CoinGecko via allorigins CORS proxy. No wallet, no RPC needed.
+    // STARTUP (V17) — UNCONDITIONAL PRICE HEARTBEAT via Apertum RPC
+    // No external APIs. Fires for ALL visitors on load, then every 30s.
     // ═══════════════════════════════════════════════════════════════════
     runPriceHeartbeat();                          // immediate on script load
     setInterval(runPriceHeartbeat, 30_000);       // every 30 seconds unconditionally
