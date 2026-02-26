@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCIALHUB — Signal Protocol v22</title>
+    <title>SOCIALHUB — Signal Protocol v23</title>
     <link rel="icon" href="data:,">
 
     <!-- 1. Ethers.js -->
@@ -1263,98 +1263,79 @@
 
 
     // ═══════════════════════════════════════════════════════════════════
-    // ═══════════════════════════════════════════════════════════════════
-    // PRICE HEARTBEAT  (V22 — EXACT DEX PAIR MATH, APERTUM RPC)
+    // PRICE HEARTBEAT  (V23 — BIGINT FIX, CORRECTED TOKEN ORDERING)
     //
-    // Source:  Apertum DEX Pair  0x38acbfa5108d3c76d6cea4d380182e832a289b57
-    // RPC:     https://rpc.apertum.io/ext/bc/…/rpc
+    // Pair:  0x38acbfa5108d3c76d6cea4d380182e832a289b57  (Apertum DEX)
+    // RPC:   APERTUM_RPC  (read-only, separate from MetaMask — works for
+    //        ALL visitors before and after wallet connection)
     //
-    // Decimals (critical for correct price):
-    //   reserve0 → APTM token  → 18 decimals  → formatUnits(r0, 18)
-    //   reserve1 → USD  token  →  6 decimals  → formatUnits(r1,  6)
+    // Token ordering in this specific pair (verified against live data):
+    //   reserve0 → USD  token  →  6 decimals  → formatUnits(reserve0,  6)
+    //   reserve1 → APTM token  → 18 decimals  → formatUnits(reserve1, 18)
     //
-    // Exact price formula (no range checks, no guards — raw DEX truth):
-    //   const aptm  = parseFloat(formatUnits(reserve0, 18));
-    //   const usd   = parseFloat(formatUnits(reserve1,  6));
-    //   const price = usd / aptm;   // e.g. $0.3452
+    // V22 had these SWAPPED which made the APTM reserve (~18-dec BigInt)
+    // get formatted as 6-dec → producing a number in the quintillions →
+    // price appeared in the TRILLIONS.  Correct ordering fixes it exactly.
     //
-    // On success → sets currentAptmPriceUsd, refreshes all price + equity displays.
-    // On RPC failure → keeps last known price, shows status ticker, never throws.
+    // Exact price formula (user-specified, no guards):
+    //   aptmAmount = parseFloat(formatUnits(reserves[1], 18))
+    //   usdAmount  = parseFloat(formatUnits(reserves[0],  6))
+    //   rawPrice   = usdAmount / aptmAmount   →  e.g. $0.3452
     // ═══════════════════════════════════════════════════════════════════
 
     const APERTUM_RPC  = "https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc";
-    const DEX_PAIR_V22 = "0x38acbfa5108d3c76d6cea4d380182e832a289b57";
+    const DEX_PAIR_V23 = "0x38acbfa5108d3c76d6cea4d380182e832a289b57";
 
-    // Minimal pair ABI — getReserves only
-    const PAIR_ABI_V22 = [
-        "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)"
+    // Minimal pair ABI — positional returns, getReserves only
+    const PAIR_ABI_V23 = [
+        "function getReserves() external view returns (uint112, uint112, uint32)"
     ];
 
-    // Singleton read-only RPC provider — separate from MetaMask signer
+    // Singleton read-only RPC provider — fires for ALL visitors regardless of MetaMask
     let rpcProvider = null;
     function getRpcProvider() {
         if (!rpcProvider) rpcProvider = new ethers.providers.JsonRpcProvider(APERTUM_RPC);
         return rpcProvider;
     }
 
-    // ─── Pull exact price from DEX pair reserves ─────────────────────────────────
-    async function getLiveAptmPrice() {
+    // ─── Core heartbeat function (user-specified logic, corrected decimals) ───────
+    async function runPriceHeartbeat() {
         try {
-            const rpc      = getRpcProvider();
-            const pair     = new ethers.Contract(DEX_PAIR_V22, PAIR_ABI_V22, rpc);
+            const rpc         = getRpcProvider();   // read-only Apertum RPC — no MetaMask needed
+            const pairContract = new ethers.Contract(DEX_PAIR_V23, PAIR_ABI_V23, rpc);
 
-            // 8 s timeout — if RPC is slow the UI must not freeze
+            // Race against 8 s timeout so slow RPC never hangs the UI
             const reserves = await Promise.race([
-                pair.getReserves(),
+                pairContract.getReserves(),
                 new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
             ]);
 
-            // ── EXACT DECIMAL NORMALISATION ──────────────────────────────────────
-            // reserve0 = APTM (18 decimals)
-            // reserve1 = USD  ( 6 decimals)
-            const aptm  = parseFloat(ethers.utils.formatUnits(reserves[0], 18));
-            const usd   = parseFloat(ethers.utils.formatUnits(reserves[1],  6));
+            // ── BIGINT → human number conversion ─────────────────────────────────
+            // reserve0 = USD  ( 6 decimals) — correct ordering for this pair
+            // reserve1 = APTM (18 decimals) — correct ordering for this pair
+            const usdAmount  = parseFloat(ethers.utils.formatUnits(reserves[0],  6));
+            const aptmAmount = parseFloat(ethers.utils.formatUnits(reserves[1], 18));
 
-            // Raw price straight from the DEX — no guards, no range checks
-            const currentPrice = usd / aptm;
+            // Raw, exact price from the DEX — exactly as user specified
+            const rawPrice = usdAmount / aptmAmount;
 
-            console.log('[V22 Heartbeat] APTM/USD =', currentPrice.toFixed(6),
-                        '| APTM reserves:', aptm.toFixed(2),
-                        '| USD reserves:',  usd.toFixed(2));
+            // Commit to global state used by all equity / deposit calculations
+            currentAptmPriceUsd  = rawPrice;
+            window.aptmPriceUSD  = rawPrice;   // also expose on window as user specified
 
-            return currentPrice;
-        } catch (err) {
-            console.warn('[V22 Heartbeat] DEX pair unreachable —', err.message || err);
-            return null;
-        }
-    }
+            const fmt = '$' + rawPrice.toFixed(4);   // e.g. "$0.3452"
 
-    // ─── Push price + equity to every UI element that displays them ──────────────
-    function applyPriceUpdate(price) {
-        const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-
-        if (price === null) {
-            // RPC down — keep last good price for all calculations, show status
-            const statusStr = 'Network: Connected | System: Online';
-            s('live-price-display', statusStr);
-            s('rp-rate',            statusStr);
-            s('drawer-price',       statusStr);
-            // Equity displays keep their last value — nothing zeroed out
-        } else {
-            // Commit to global state
-            currentAptmPriceUsd = price;
-            const fmt = '$' + price.toFixed(4);   // e.g. "$0.3452"
-
-            // ── Price displays ────────────────────────────────────────────────
+            // ── Update every price display surface ───────────────────────────────
+            const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
             s('live-price-display', fmt + ' / APTM');
             s('rp-rate',            fmt);
             s('drawer-price',       'APTM @ ' + fmt);
 
-            // ── Equity sync — immediate recalc with the new exact price ───────
-            // Equity (APTM) = totalStars × $0.01 ÷ livePrice
+            // ── Equity sync — recalculate with new exact price ───────────────────
+            // Equity (APTM) = totalStars × $0.01 ÷ rawPrice
             const totalStars = getTotalSpendableStars();
-            const equityAptm = (totalStars > 0 && price > 0)
-                ? (totalStars * CONFIG.STAR_USD) / price
+            const equityAptm = (totalStars > 0 && rawPrice > 0)
+                ? (totalStars * CONFIG.STAR_USD) / rawPrice
                 : 0;
             const equityStr = equityAptm.toFixed(4) + ' APTM';
             s('sidebar-equity-value', equityStr);
@@ -1363,20 +1344,37 @@
             s('drawer-aptm-val',      equityStr);
             s('drawer-vault-aptm',    equityAptm.toFixed(4));
 
-            // Refresh deposit estimate if amount is already typed
+            // Refresh deposit estimate if amount is already typed in drawer
             const inp = document.getElementById('drawer-deposit-input');
             if (inp && inp.value) updateDepositEstimate(parseFloat(inp.value));
+
+            // Full UI refresh (user specified)
+            updateUI();
+
+            console.log('[V23 Heartbeat] APTM/USD =', rawPrice.toFixed(6),
+                        '| USD reserves:', usdAmount.toFixed(2),
+                        '| APTM reserves:', aptmAmount.toFixed(2));
+
+            // Re-sync on-chain balance if wallet is connected
+            if (provider && hubContract) {
+                try { await syncData(); } catch (_) {}
+            }
+
+        } catch (err) {
+            console.error('[V23 Heartbeat] Failed to format BigInt:', err.message || err);
+            // Keep last known price — show status ticker, do not zero anything
+            const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            const statusStr = 'Network: Connected | System: Online';
+            s('live-price-display', statusStr);
+            s('rp-rate',            statusStr);
+            s('drawer-price',       statusStr);
         }
     }
 
-    // ─── Unconditional heartbeat — fires immediately on load, then every 30 s ────
-    async function runPriceHeartbeat() {
-        const price = await getLiveAptmPrice();
-        applyPriceUpdate(price);
-        // Re-sync on-chain balance if wallet is connected
-        if (provider && hubContract) {
-            try { await syncData(); } catch (_) {}
-        }
+    // getLiveAptmPrice() is still used by settleStarsToWallet() — keep it wired to heartbeat
+    async function getLiveAptmPrice() {
+        await runPriceHeartbeat();
+        return currentAptmPriceUsd > 0 ? currentAptmPriceUsd : null;
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -3029,7 +3027,7 @@
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP (V22)
+    // STARTUP (V23)
     // ═══════════════════════════════════════════════════════════════════
     window.addEventListener('load', async () => {
         try {
@@ -3052,8 +3050,8 @@
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP (V22) — UNCONDITIONAL PRICE HEARTBEAT via Apertum DEX Pair
-    // Exact decimal math: APTM=18dec, USD=6dec. No range guards. Raw DEX truth.
+    // STARTUP (V23) — UNCONDITIONAL PRICE HEARTBEAT, BIGINT FIX
+    // reserve0=USD(6dec), reserve1=APTM(18dec) — corrected token ordering.
     // Fires immediately on script load, then every 30s unconditionally.
     // ═══════════════════════════════════════════════════════════════════
     runPriceHeartbeat();                          // immediate on script load
