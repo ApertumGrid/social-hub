@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCIALHUB — Signal Protocol v20</title>
+    <title>SOCIALHUB — Signal Protocol v21</title>
 
     <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
@@ -1262,100 +1262,118 @@
 
 
     // ═══════════════════════════════════════════════════════════════════
-    // PRICE HEARTBEAT  (V17 — APERTUM RPC ONLY, ZERO EXTERNAL APIS)
+    // ═══════════════════════════════════════════════════════════════════
+    // PRICE HEARTBEAT  (V21 — DIRECT DEX PAIR, APERTUM RPC)
     //
-    // Official Apertum RPC:
-    //   https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc
+    // Source: Official Apertum DEX Pair contract
+    //   Pair address: 0x38acbfa5108d3c76d6cea4d380182e832a289b57
+    //   RPC endpoint: https://rpc.apertum.io/ext/bc/…/rpc
     //
-    // Strategy: call getReserves() on the wAPTM/wUSDT liquidity pair.
-    // wAPTM token: 0x110Ac02Ba3384Bc055c13A87766049a74517BedA
-    // If RPC fails, ticker shows: 'Network: Connected | System: Online'
+    // Method: Call getReserves() directly on the known pair contract.
+    //   reserve0 = USD token reserves
+    //   reserve1 = APTM token reserves
+    //   Price (USD per APTM) = reserve0 / reserve1
+    //
+    // On success → updates currentAptmPriceUsd, price displays, equity.
+    // On failure → keeps last known price, shows status ticker, no throw.
     // ═══════════════════════════════════════════════════════════════════
 
-    const APERTUM_RPC = "https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc";
-    const WAPTM_ADDR  = "0x110Ac02Ba3384Bc055c13A87766049a74517BedA";
+    const APERTUM_RPC  = "https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc";
+    const DEX_PAIR_V21 = "0x38acbfa5108d3c76d6cea4d380182e832a289b57";
 
-    // Read-only RPC provider for price queries — separate from MetaMask signer
+    // Minimal pair ABI — only getReserves needed
+    const PAIR_ABI_V21 = [
+        "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)"
+    ];
+
+    // Singleton read-only RPC provider (re-used across calls to avoid re-instantiation)
     let rpcProvider = null;
     function getRpcProvider() {
         if (!rpcProvider) rpcProvider = new ethers.providers.JsonRpcProvider(APERTUM_RPC);
         return rpcProvider;
     }
 
-    // Minimal Uniswap-V2 Pair ABI for getReserves
-    const PAIR_ABI_V17 = [
-        "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
-        "function token0() view returns (address)",
-        "function token1() view returns (address)"
-    ];
-    const FACTORY_ABI_V17 = [
-        "function getPair(address tokenA, address tokenB) view returns (address pair)"
-    ];
-    // Known Apertum DEX factory and wUSDT addresses to try
-    const V17_FACTORIES = [
-        "0x9Ad6C38BE94206cA50bb0d90783181662f0Cfa10",
-        "0x6e7f5C0b9f4484E14D7D57b197E98C36b64B6B8"
-    ];
-    const V17_USDT = [
-        "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7",
-        "0xc7198437980c041c805A1EDcbA50c1Ce5db95118",
-        "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
-    ];
-
+    // ─── Query the DEX pair directly and return price (USD/APTM) or null ────────
     async function getLiveAptmPrice() {
-        const rpc = getRpcProvider();
-        for (const factoryAddr of V17_FACTORIES) {
-            for (const usdtAddr of V17_USDT) {
-                try {
-                    const factory  = new ethers.Contract(factoryAddr, FACTORY_ABI_V17, rpc);
-                    const pairAddr = await Promise.race([
-                        factory.getPair(WAPTM_ADDR, usdtAddr),
-                        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000))
-                    ]);
-                    if (!pairAddr || pairAddr === ethers.constants.AddressZero) continue;
-                    const pair = new ethers.Contract(pairAddr, PAIR_ABI_V17, rpc);
-                    const [token0, reserves] = await Promise.all([pair.token0(), pair.getReserves()]);
-                    const aptmIsToken0 = token0.toLowerCase() === WAPTM_ADDR.toLowerCase();
-                    const aptmRes = aptmIsToken0 ? reserves.reserve0 : reserves.reserve1;
-                    const usdtRes = aptmIsToken0 ? reserves.reserve1 : reserves.reserve0;
-                    if (aptmRes.isZero() || usdtRes.isZero()) continue;
-                    const price = parseFloat(ethers.utils.formatEther(usdtRes)) /
-                                  parseFloat(ethers.utils.formatEther(aptmRes));
-                    if (price > 0 && price < 100000) {
-                        console.log('[V17 Heartbeat] APTM price from RPC reserves: $' + price.toFixed(6));
-                        return price;
-                    }
-                } catch (_) { /* try next */ }
+        try {
+            const rpc  = getRpcProvider();
+            const pair = new ethers.Contract(DEX_PAIR_V21, PAIR_ABI_V21, rpc);
+
+            // Race against an 8 second timeout so slow RPC never hangs the UI
+            const reserves = await Promise.race([
+                pair.getReserves(),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
+            ]);
+
+            const r0 = parseFloat(ethers.utils.formatEther(reserves.reserve0)); // USD reserves
+            const r1 = parseFloat(ethers.utils.formatEther(reserves.reserve1)); // APTM reserves
+
+            if (!r0 || !r1 || r1 === 0) {
+                console.warn('[V21 Heartbeat] Pair reserves zero or unavailable.');
+                return null;
             }
+
+            // Price = USD reserves ÷ APTM reserves
+            const price = r0 / r1;
+
+            if (price > 0 && price < 1_000_000) {
+                console.log('[V21 Heartbeat] APTM/USD from DEX pair: $' + price.toFixed(6));
+                return price;
+            }
+
+            console.warn('[V21 Heartbeat] Price out of sanity range:', price);
+            return null;
+        } catch (err) {
+            console.warn('[V21 Heartbeat] DEX pair unreachable —', err.message || err);
+            return null;
         }
-        console.warn('[V17 Heartbeat] RPC pair not reachable. Status ticker active.');
-        return null;
     }
 
-    // ─── Price update helper — handles both live price and fallback status ───
+    // ─── Apply price update to all UI surfaces + equity calculation ─────────────
     function applyPriceUpdate(price) {
         const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-        if (price === null) {
-            // RPC reachable but pair not found — show status, keep last price for math
+
+        if (price === null || price <= 0) {
+            // DEX unreachable — keep last known price for math, show status ticker
             const statusStr = 'Network: Connected | System: Online';
             s('live-price-display', statusStr);
             s('rp-rate',            statusStr);
             s('drawer-price',       statusStr);
+            // Equity stays based on last good price — do not zero it out
         } else {
+            // Commit new price to global state
             currentAptmPriceUsd = price;
             const fmt = '$' + parseFloat(price).toFixed(4);
+
+            // ── Price displays ──
             s('live-price-display', fmt + ' / APTM');
             s('rp-rate',            fmt);
             s('drawer-price',       'APTM @ ' + fmt);
+
+            // ── V21: Equity sync — recalculate immediately with new price ──────
+            // Equity = (purchasedStars + creatorStars) × $0.01 ÷ livePrice
+            const totalStars = getTotalSpendableStars();
+            const equityAptm = totalStars > 0
+                ? (totalStars * CONFIG.STAR_USD) / price
+                : 0;
+            const equityStr = equityAptm.toFixed(4) + ' APTM';
+            s('sidebar-equity-value', equityStr);
+            s('earnings-aptm-value',  equityStr);
+            s('rp-aptm',              equityAptm.toFixed(4));
+            s('drawer-aptm-val',      equityStr);
+            s('drawer-vault-aptm',    equityAptm.toFixed(4));
+
+            // Refresh deposit estimate if user has a value typed
             const inp = document.getElementById('drawer-deposit-input');
             if (inp && inp.value) updateDepositEstimate(parseFloat(inp.value));
         }
     }
 
-    // ─── UNCONDITIONAL heartbeat — fires immediately on load, then every 30s ───
+    // ─── UNCONDITIONAL heartbeat — fires immediately on load, then every 30s ────
     async function runPriceHeartbeat() {
         const price = await getLiveAptmPrice();
         applyPriceUpdate(price);
+        // If wallet is connected, re-sync on-chain balance too
         if (provider && hubContract) {
             try { await syncData(); } catch (_) {}
         }
@@ -3011,7 +3029,7 @@
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP (V20)
+    // STARTUP (V21)
     // ═══════════════════════════════════════════════════════════════════
     window.addEventListener('load', async () => {
         try {
@@ -3034,8 +3052,9 @@
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP (V20) — UNCONDITIONAL PRICE HEARTBEAT via Apertum RPC
-    // No external APIs. Fires for ALL visitors on load, then every 30s.
+    // STARTUP (V21) — UNCONDITIONAL PRICE HEARTBEAT via Apertum DEX Pair
+    // Direct getReserves() call on pair 0x38ac…b57. No factory lookups.
+    // Fires immediately on script load, then every 30s unconditionally.
     // ═══════════════════════════════════════════════════════════════════
     runPriceHeartbeat();                          // immediate on script load
     setInterval(runPriceHeartbeat, 30_000);       // every 30 seconds unconditionally
