@@ -737,101 +737,185 @@
            MOBILE — 768px structural
         ══════════════════════════════════════════════════════════════ */
         @media (max-width: 768px) {
+            /* ── Core layout ── */
             #sidebar, #right-panel { display: none !important; }
-            #body-layout { grid-template-columns: 1fr; }
-            #feed-col { padding: 0; padding-bottom: calc(var(--bottom-nav-h) + 8px); }
+            #body-layout { grid-template-columns: 1fr; overflow: visible !important; }
             #toast { bottom: calc(var(--bottom-nav-h) + 14px); }
             #bottom-nav { display: flex; }
 
-            /* ── Make app-shell scrollable so wallet section below is reachable ── */
+            /* ── Allow body and app-shell to scroll ── */
             body { overflow-y: auto !important; }
             #app-shell {
                 height: auto !important;
                 min-height: 100vh !important;
                 overflow: visible !important;
             }
-            #body-layout { overflow: visible !important; }
-            #feed-col { overflow: visible !important; }
 
-            /* ── Shrink header so it doesn't crowd small screens ── */
+            /* ── Shrink topnav ── */
             #topnav { height: 55px !important; }
             .brand { font-size: 1rem !important; }
 
-            /* ── Force wallet drawer permanently visible, flattened into page flow ── */
+            /* ── Feed column: reserve space for sticky wallet bar (~110px) + bottom nav ── */
+            #feed-col {
+                overflow: visible !important;
+                padding: 0 !important;
+                padding-top: 114px !important;
+                padding-bottom: calc(var(--bottom-nav-h) + 8px) !important;
+            }
+
+            /* ════════════════════════════════════════════════════
+               STICKY WALLET BAR — permanently visible under topnav
+               Hides the full drawer overlay; shows a compact bar
+               with Star Balance, APTM value, and gold Withdraw btn.
+            ════════════════════════════════════════════════════ */
+
+            /* Kill the overlay backdrop */
+            #wallet-drawer-backdrop { display: none !important; }
+
+            /* The drawer wrapper: fixed strip under the topnav */
             #wallet-drawer {
                 display: block !important;
-                position: relative !important;
-                inset: auto !important;
-                z-index: auto !important;
+                position: fixed !important;
+                top: 55px !important;
+                left: 0 !important;
+                right: 0 !important;
+                bottom: auto !important;
+                z-index: 1000 !important;
                 background: none !important;
-                padding-bottom: calc(var(--bottom-nav-h) + 16px) !important;
+                pointer-events: none !important; /* pass through to panel */
             }
-            #wallet-drawer-backdrop {
-                display: none !important;
-            }
+
+            /* The panel: the actual sticky bar */
             #wallet-drawer-panel {
                 position: relative !important;
                 transform: translateY(0) !important;
                 height: auto !important;
-                transition: none !important;
                 max-height: none !important;
+                transition: none !important;
                 border-radius: 0 !important;
-                border-top: 2px solid var(--border-md) !important;
-                background: var(--bg-panel) !important;
+                border-top: none !important;
+                border-bottom: 2px solid var(--gold) !important;
+                background: #161b27 !important;
                 overflow: visible !important;
-                box-shadow: none !important;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.45) !important;
+                pointer-events: all !important;
             }
-            #drawer-back-btn {
-                display: none !important;
-            }
+
+            /* Hide the back button — no overlay to close */
+            #drawer-back-btn { display: none !important; }
+
+            /* Wallet drawer content: horizontal compact bar layout */
             #wallet-drawer-content {
+                display: flex !important;
+                flex-direction: row !important;
+                align-items: center !important;
+                gap: 10px !important;
+                padding: 10px 14px !important;
                 overflow: visible !important;
-                padding: 16px !important;
-                gap: 14px !important;
+            }
+
+            /* Hide Buy Stars, Creator Studio, Admin, Connect prompt cards — not needed in bar */
+            #wallet-drawer-content .rp-card:nth-child(2),
+            #wallet-drawer-content .rp-card:nth-child(3),
+            #wallet-drawer-content .rp-card:nth-child(4),
+            #drawer-connect-prompt { display: none !important; }
+
+            /* The star balance card: takes up left portion */
+            #wallet-drawer-content .rp-card:first-child {
+                flex: 1 !important;
+                background: transparent !important;
+                border: none !important;
+                border-radius: 0 !important;
+                padding: 0 !important;
                 display: flex !important;
                 flex-direction: column !important;
+                gap: 2px !important;
+                margin: 0 !important;
             }
 
-            /* ── Star Balance: large and centered ── */
-            #wallet-drawer-content .rp-card:first-child {
-                text-align: center !important;
-                padding: 20px 16px !important;
-                border-radius: var(--radius-lg) !important;
+            /* Star label */
+            #wallet-drawer-content .rp-card:first-child .drawer-section-label {
+                font-size: 0.52rem !important;
+                letter-spacing: 1.5px !important;
+                color: var(--text-muted) !important;
+                text-align: left !important;
+                margin-bottom: 1px !important;
             }
+
+            /* Big star number */
             .drawer-stars-display {
-                font-size: 3.5rem !important;
-                text-align: center !important;
+                font-size: 1.75rem !important;
+                font-family: var(--font-mono) !important;
+                font-weight: 700 !important;
+                color: var(--gold) !important;
+                line-height: 1 !important;
                 display: block !important;
-            }
-            .drawer-section-label {
-                text-align: center !important;
-            }
-            .drawer-price-display {
-                text-align: center !important;
+                text-align: left !important;
             }
 
-            /* ── Withdraw / Settle button: full-width gold ── */
-            #wallet-drawer-content .btn-teal {
+            /* APTM price line */
+            .drawer-price-display {
+                font-size: 0.68rem !important;
+                color: var(--teal) !important;
+                font-family: var(--font-mono) !important;
+                font-weight: 600 !important;
+                text-align: left !important;
+                margin-top: 1px !important;
+            }
+
+            /* Hide the purchased/earned sub-grid — bar is compact */
+            #wallet-drawer-content .rp-card:first-child > div:nth-child(3),
+            #wallet-drawer-content .rp-card:first-child > div:nth-child(4) {
+                display: none !important;
+            }
+
+            /* APTM value line — show it */
+            #wallet-drawer-content .rp-card:first-child > div:last-child {
                 display: block !important;
-                width: 100% !important;
-                padding: 16px 20px !important;
-                font-size: 0.95rem !important;
+                font-size: 0.62rem !important;
+                color: var(--text-muted) !important;
+            }
+
+            /* ── WITHDRAW BUTTON: full gold, right side of bar ── */
+            /* We need to inject the settle button into the bar.
+               The settle btn lives inside rp-card:nth-child(3) which is hidden.
+               Solution: use a CSS-only duplicate via the ::after pseudo technique
+               is not possible, so instead we un-hide just the button from card 3
+               and reposition it. We target the card but show ONLY its button. */
+
+            #wallet-drawer-content .rp-card:nth-child(3) {
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: center !important;
+                background: transparent !important;
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                border-radius: 0 !important;
+                flex-shrink: 0 !important;
+            }
+
+            /* Hide all children of card 3 except the settle button */
+            #wallet-drawer-content .rp-card:nth-child(3) > *:not(.btn-teal) {
+                display: none !important;
+            }
+
+            /* The gold Withdraw / Settle button */
+            #wallet-drawer-content .rp-card:nth-child(3) .btn-teal {
+                display: block !important;
+                width: auto !important;
+                min-width: 130px !important;
+                padding: 12px 16px !important;
+                font-size: 0.78rem !important;
                 font-weight: 700 !important;
-                letter-spacing: 0.3px !important;
-                border-radius: 14px !important;
-                margin-top: 12px !important;
+                letter-spacing: 0.2px !important;
+                border-radius: 10px !important;
+                margin-top: 0 !important;
                 background: var(--gold) !important;
                 color: #0d1117 !important;
                 border: none !important;
-                box-shadow: 0 4px 20px rgba(240,180,41,0.4) !important;
-            }
-
-            /* ── Drawer cards: styled as cards (not edge-to-edge) ── */
-            #wallet-drawer-content .rp-card {
-                border-radius: var(--radius-lg) !important;
-                border: 1px solid var(--border-md) !important;
-                margin: 0 !important;
-                background: var(--bg-card) !important;
+                box-shadow: 0 3px 14px rgba(240,180,41,0.45) !important;
+                white-space: nowrap !important;
             }
         }
 
@@ -875,7 +959,7 @@
             }
 
             /* ── FEED COLUMN ── */
-            #feed-col { padding: 0; padding-bottom: calc(var(--bottom-nav-h) + 8px); }
+            #feed-col { padding: 0 !important; padding-top: 114px !important; padding-bottom: calc(var(--bottom-nav-h) + 8px) !important; }
             .feed-heading { padding: 12px 14px 6px; font-size: 0.82rem; }
 
             /* ── COMPOSER ── */
