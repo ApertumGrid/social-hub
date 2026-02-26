@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCIALHUB — Signal Protocol v13</title>
+    <title>SOCIALHUB — Signal Protocol v14</title>
 
     <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
@@ -1107,7 +1107,7 @@
 
 <script>
     // ═══════════════════════════════════════════════════════════════════
-    // ⚙️  GLOBAL CONFIG  (V11)
+    // ⚙️  GLOBAL CONFIG  (V14)
     // ═══════════════════════════════════════════════════════════════════
     const CONFIG = {
         ADMIN_ADDRESS:    "0xe348fedea1850a0c2d4ac0fed3f903774de1e16a",
@@ -1199,10 +1199,7 @@
         s('live-price-display', fmt + ' / APTM');
         s('rp-rate', fmt);
         s('drawer-price', `APTM @ ${fmt}`);
-        
-        // SURGICAL ADDITION: Refresh the UI with the new price
-        updateDrawerUI();
-
+        // Refresh deposit estimate in drawer if input has a value
         const inp = document.getElementById('drawer-deposit-input');
         if (inp && inp.value) updateDepositEstimate(parseFloat(inp.value));
     }
@@ -1255,29 +1252,29 @@
 
     function updateDrawerUI() {
         const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-        const fmt = parseFloat(currentAptmPriceUsd).toFixed(4);
-        
-        // This math adds your 33 earned stars + your 9.6 bought stars
+        const fmt        = parseFloat(currentAptmPriceUsd).toFixed(4);
         const totalStars = getTotalSpendableStars();
 
-        // FIX: Update the Sidebar balance so it shows 42.6, not 9.6
-        const sidebarStars = document.getElementById('stars-balance');
-        if (sidebarStars) sidebarStars.textContent = totalStars.toFixed(1);
-
-        const sidebarAptm = document.getElementById('stars-aptm-est');
-        if (sidebarAptm) sidebarAptm.textContent = (totalStars / 33.8).toFixed(2) + " APTM";
-
-        // Update the Wallet Drawer
-        s('drawer-stars',           totalStars.toFixed(1) + " ★");
-        s('drawer-price',           `APTM @ $${fmt}`);
-        s('drawer-aptm-val',        (currentAptmBalance || "0.0000") + " $APTM");
-        s('drawer-purchased-stars', parseFloat(purchasedStars || 0).toFixed(1) + " ★");
-        s('drawer-earned-display',  parseFloat(creatorEarnings || 0).toFixed(1) + " ★");
-        s('drawer-earned-stars',    parseFloat(creatorEarnings || 0).toFixed(1) + " ★");
+        // Big balance = total spendable (purchased + earned)
+        s('drawer-stars',          totalStars.toFixed(1) + " ★");
+        s('drawer-price',          `APTM @ $${fmt}`);
+        s('drawer-aptm-val',       (currentAptmBalance || "0.0000") + " $APTM");
+        // Breakdown tiles in the balance card
+        s('drawer-purchased-stars', purchasedStars.toFixed(1) + " ★");
+        s('drawer-earned-display',  creatorEarnings.toFixed(1) + " ★");
+        // Creator studio section shows earned-only stars
+        s('drawer-earned-stars',    creatorEarnings.toFixed(1) + " ★");
         s('drawer-vault-aptm',      parseFloat(currentAptmBalance || 0).toFixed(4));
 
+        // Show/hide connect prompt
         const prompt = document.getElementById('drawer-connect-prompt');
         if (prompt) prompt.style.display = userAddress ? 'none' : 'block';
+
+        // Admin section
+        const adminSec = document.getElementById('drawer-admin-section');
+        if (adminSec) {
+            adminSec.style.display = (userAddress && userAddress.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase()) ? 'block' : 'none';
+        }
     }
 
     function updateDepositEstimate(aptmAmt) {
@@ -1428,7 +1425,7 @@
     async function syncData() {
         if (!hubContract || !signer) return;
         try {
-            const addr = await signer.getAddress();
+            const addr              = await signer.getAddress();
             const [balRaw, anchors] = await Promise.all([
                 hubContract.aptmBalances(addr),
                 hubContract.totalAnchors()
@@ -1445,16 +1442,11 @@
                 } else {
                     // Read both star pools from Firebase
                     purchasedStars  = snap.data().stars        || 0;
-                    creatorEarnings = snap.data().creatorStars || 0;
+                    creatorEarnings = snap.data().creatorStars  || 0;
                     await window.fs.updateDoc(userRef, { lastSync: Date.now() });
                 }
             }
-            
-            // --- These lines refresh your screen ---
             updateUI();
-            updateDrawerUI(); 
-            // ----------------------------------------
-
         } catch (e) { console.error("Sync Failed:", e); }
     }
 
@@ -1967,7 +1959,7 @@
     async function hypeElement(recipientAddress, displayId) {
         if (!userAddress) return showToast("Connect wallet first!");
 
-        // V13: Check combined total spendable balance
+        // V14: Check combined total spendable balance
         let livePurchased = 0, liveEarned = 0;
         if (window.db) {
             try {
@@ -1996,16 +1988,31 @@
                 await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
                 logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
                     isComment ? "Earned 0.8★ — someone hyped your comment" : "Earned 0.8★ — someone hyped your post");
+                // Audit log to transactions collection
+                await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
+                    address: recipientAddress.toLowerCase(), type: "earn",
+                    amount: CONFIG.CREATOR_CUT,
+                    description: isComment ? "Earned 0.8★ — someone hyped your comment" : "Earned 0.8★ — someone hyped your post",
+                    timestamp: Date.now()
+                });
             }
 
-            // Deduct 1★ from sender using waterfall (purchased first, then earned)
-            await deductSpendableStars(userAddress, 1);
+            // Deduct 1★ from sender using waterfall — purchasedStars first (deductStars)
+            await deductStars(1);
 
             // 20% admin revenue
             logAdminRevenue(userAddress, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
             logTransaction(userAddress, "spend", 1, isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype");
+            // Audit log to transactions collection
+            await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
+                address: userAddress.toLowerCase(), type: "spend",
+                amount: 1,
+                description: isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype",
+                timestamp: Date.now()
+            });
 
             updateUI();
+            updateDrawerUI();
             const counterEl = document.getElementById(displayId);
             if (counterEl) counterEl.textContent = (parseInt(counterEl.textContent || "0") + 1);
             showToast("Hyped! Creator +0.8★");
@@ -2024,7 +2031,7 @@
     async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
         if (!userAddress) return showToast("Connect wallet first!");
 
-        // V13: Check combined total spendable balance
+        // V14: Check combined total spendable balance
         let livePurchased = 0, liveEarned = 0;
         if (window.db) {
             try {
@@ -2050,7 +2057,7 @@
                 text: commentText, author: authorName,
                 authorAddr: userAddress || "unknown", avatar: authorPic,
                 postId: String(postId), parentId: parentId || null,
-                isReply, timestamp: Date.now(), hypes: 0
+                isReply, timestamp: Date.now(), hypes: 0, likes: 0
             };
 
             await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
@@ -2059,16 +2066,29 @@
             if (recipientAddress && recipientAddress !== "unknown") {
                 await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
                 logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, "Earned 0.8★ — someone commented on your content");
+                // Audit log to transactions collection
+                await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
+                    address: recipientAddress.toLowerCase(), type: "earn",
+                    amount: CONFIG.CREATOR_CUT, description: "Earned 0.8★ — someone commented on your content",
+                    timestamp: Date.now()
+                });
             }
 
-            // Deduct 1★ from commenter using waterfall (purchased first, then earned)
-            await deductSpendableStars(userAddress, 1);
+            // Deduct 1★ from commenter — purchasedStars first (deductStars)
+            await deductStars(1);
 
             // 20% admin revenue
             logAdminRevenue(userAddress, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
             logTransaction(userAddress, "spend", 1, isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment");
+            // Audit log to transactions collection
+            await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
+                address: userAddress.toLowerCase(), type: "spend",
+                amount: 1, description: isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment",
+                timestamp: Date.now()
+            });
 
             updateUI();
+            updateDrawerUI();
             if (input) input.value = "";
             const tray = document.getElementById(`tray-${postId}`);
             if (tray) tray.style.display = 'block';
@@ -2112,16 +2132,15 @@
                 row.innerHTML    = `
                     <span class="cmt-author">${comment.author || "Anonymous"}</span>: ${comment.text}
                     <div class="cmt-meta">
-                        <span class="cbtn" onclick="hypeElement('${authorAddr}','hc-${cId}')">❤ <span id="hc-${cId}">${comment.hypes || 0}</span></span>
-                        ${!isNested ? `<span class="cbtn reply" onclick="toggleReplyInput('${cId}')">↩ Reply</span>` : ''}
+                        <span class="cbtn" id="like-btn-${cId}" onclick="likeComment('${cId}','${authorAddr}')">❤ <span id="hc-${cId}">${comment.likes || comment.hypes || 0}</span></span>
+                        <span class="cbtn reply" id="reply-box-${cId}" onclick="toggleReplyInput('${cId}')">↩ Reply</span>
                     </div>
-                    ${!isNested ? `
-                    <div class="reply-area" id="reply-area-${cId}">
+                    <div class="reply-area" id="reply-area-${cId}" style="display:none; margin-top:8px;">
                         <div class="reply-row">
-                            <input type="text" class="field" id="reply-in-${cId}" placeholder="Reply… (1★)" style="font-size:0.8rem;">
-                            <button class="btn btn-purple btn-sm" onclick="addComment('${authorAddr}','${postId}',true,'${cId}')">Send</button>
+                            <textarea class="field" id="reply-input-${cId}" placeholder="Write a reply… (1★)" style="font-size:0.8rem; min-height:52px; resize:none;"></textarea>
+                            <button class="btn btn-purple btn-sm" style="align-self:flex-end;" onclick="submitReply('${cId}','${authorAddr}','${postId}')">Send</button>
                         </div>
-                    </div>` : ''}`;
+                    </div>`;
                 return row;
             };
             topLevel.forEach(c => {
@@ -2157,9 +2176,169 @@
         const isOpen = area.style.display === 'block';
         area.style.display = isOpen ? 'none' : 'block';
         if (!isOpen) {
-            const inp = document.getElementById(`reply-in-${commentId}`);
+            const inp = document.getElementById(`reply-input-${commentId}`);
             if (inp) setTimeout(() => inp.focus(), 50);
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // deductStars — V14 SPENDING PRIORITY
+    // Always drains purchasedStars first; overflow into creatorEarnings.
+    // Updates both `stars` and `creatorStars` in user_balances.
+    // ═══════════════════════════════════════════════════════════════════
+    async function deductStars(amount) {
+        if (!userAddress || !window.db) return;
+        await deductSpendableStars(userAddress, amount);
+        // Refresh local cache from Firebase after deduction
+        try {
+            const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", userAddress.toLowerCase()));
+            if (snap.exists()) {
+                purchasedStars  = snap.data().stars        || 0;
+                creatorEarnings = snap.data().creatorStars  || 0;
+            }
+        } catch (_) {}
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // likeComment — Firebase only, NO MetaMask (80/20 split)
+    // Costs 1★: 0.8★ → commenter's creatorStars, 0.2★ → adminBalance
+    // ═══════════════════════════════════════════════════════════════════
+    async function likeComment(commentId, commenterAddress) {
+        if (!userAddress) return showToast("Connect wallet first!");
+
+        // Check combined spendable balance
+        let livePurchased = 0, liveEarned = 0;
+        if (window.db) {
+            try {
+                const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", userAddress.toLowerCase()));
+                if (snap.exists()) { livePurchased = snap.data().stars || 0; liveEarned = snap.data().creatorStars || 0; }
+            } catch (_) { livePurchased = purchasedStars; liveEarned = creatorEarnings; }
+        }
+        if ((livePurchased + liveEarned) < 1) return showToast("Not enough Stars! Deposit APTM.");
+
+        try {
+            // Increment like count on comment doc
+            await window.fs.updateDoc(window.fs.doc(window.db, "comments", commentId), { likes: window.fs.increment(1) });
+
+            // 80% → commenter's creatorStars
+            if (commenterAddress && commenterAddress !== "unknown") {
+                await creditCreatorStars(commenterAddress, CONFIG.CREATOR_CUT);
+                // Log to transactions collection
+                await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
+                    address: commenterAddress.toLowerCase(), type: "earn",
+                    amount: CONFIG.CREATOR_CUT, description: "Earned 0.8★ — someone liked your comment",
+                    timestamp: Date.now()
+                });
+                logTransaction(commenterAddress, "earn", CONFIG.CREATOR_CUT, "Earned 0.8★ — someone liked your comment");
+            }
+
+            // Deduct 1★ from liker (purchasedStars first via deductStars)
+            await deductStars(1);
+
+            // 20% → adminBalance (platform_revenue)
+            const adminRef = window.fs.doc(window.db, "admin_revenue", "global");
+            await window.fs.runTransaction(window.db, async (txn) => {
+                const snap = await txn.get(adminRef);
+                const prev = snap.exists() ? (snap.data().total || 0) : 0;
+                txn.set(adminRef, { total: prev + CONFIG.PLATFORM_CUT, lastUpdated: Date.now() }, { merge: true });
+            });
+            await window.fs.addDoc(window.fs.collection(window.db, "platform_revenue"), {
+                sourceAddress: userAddress.toLowerCase(), actionType: "like_comment",
+                amount: CONFIG.PLATFORM_CUT, timestamp: Date.now()
+            });
+
+            // Log to transactions collection (audit)
+            await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
+                address: userAddress.toLowerCase(), type: "spend",
+                amount: 1, description: "Spent 1★ to like a comment",
+                timestamp: Date.now()
+            });
+            logTransaction(userAddress, "spend", 1, "Spent 1★ to like a comment");
+
+            // Update UI counter
+            const counterEl = document.getElementById(`hc-${commentId}`);
+            if (counterEl) counterEl.textContent = (parseInt(counterEl.textContent || "0") + 1);
+
+            updateDrawerUI();
+            showToast("Liked! Commenter +0.8★");
+        } catch (e) { console.error(e); showToast("Like failed."); }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // submitReply — Firebase only, NO MetaMask (80/20 split)
+    // Costs 1★: 0.8★ → original commenter's creatorStars, 0.2★ → adminBalance
+    // ═══════════════════════════════════════════════════════════════════
+    async function submitReply(parentCommentId, commenterAddress, postId) {
+        if (!userAddress) return showToast("Connect wallet first!");
+
+        const textarea = document.getElementById(`reply-input-${parentCommentId}`);
+        const replyText = textarea ? textarea.value.trim() : "";
+        if (!replyText) return showToast("Write something first!");
+
+        // Check combined spendable balance
+        let livePurchased = 0, liveEarned = 0;
+        if (window.db) {
+            try {
+                const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", userAddress.toLowerCase()));
+                if (snap.exists()) { livePurchased = snap.data().stars || 0; liveEarned = snap.data().creatorStars || 0; }
+            } catch (_) { livePurchased = purchasedStars; liveEarned = creatorEarnings; }
+        }
+        if ((livePurchased + liveEarned) < 1) return showToast("Not enough Stars! Deposit APTM.");
+
+        try {
+            const authorName = localStorage.getItem('hub_userName') || userHandle;
+            const authorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
+
+            // Write reply to comments collection
+            await window.fs.addDoc(window.fs.collection(window.db, "comments"), {
+                text: replyText, author: authorName,
+                authorAddr: userAddress, avatar: authorPic,
+                postId: String(postId), parentId: parentCommentId,
+                isReply: true, timestamp: Date.now(), likes: 0, hypes: 0
+            });
+
+            // 80% → original commenter's creatorStars
+            if (commenterAddress && commenterAddress !== "unknown") {
+                await creditCreatorStars(commenterAddress, CONFIG.CREATOR_CUT);
+                await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
+                    address: commenterAddress.toLowerCase(), type: "earn",
+                    amount: CONFIG.CREATOR_CUT, description: "Earned 0.8★ — someone replied to your comment",
+                    timestamp: Date.now()
+                });
+                logTransaction(commenterAddress, "earn", CONFIG.CREATOR_CUT, "Earned 0.8★ — someone replied to your comment");
+            }
+
+            // Deduct 1★ from replier (purchasedStars first via deductStars)
+            await deductStars(1);
+
+            // 20% → adminBalance
+            const adminRef = window.fs.doc(window.db, "admin_revenue", "global");
+            await window.fs.runTransaction(window.db, async (txn) => {
+                const snap = await txn.get(adminRef);
+                const prev = snap.exists() ? (snap.data().total || 0) : 0;
+                txn.set(adminRef, { total: prev + CONFIG.PLATFORM_CUT, lastUpdated: Date.now() }, { merge: true });
+            });
+            await window.fs.addDoc(window.fs.collection(window.db, "platform_revenue"), {
+                sourceAddress: userAddress.toLowerCase(), actionType: "reply_comment",
+                amount: CONFIG.PLATFORM_CUT, timestamp: Date.now()
+            });
+
+            // Log to transactions collection (audit)
+            await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
+                address: userAddress.toLowerCase(), type: "spend",
+                amount: 1, description: "Spent 1★ on a reply",
+                timestamp: Date.now()
+            });
+            logTransaction(userAddress, "spend", 1, "Spent 1★ on a Reply");
+
+            // Reset textarea and close reply area
+            if (textarea) textarea.value = "";
+            const replyArea = document.getElementById(`reply-area-${parentCommentId}`);
+            if (replyArea) replyArea.style.display = 'none';
+
+            updateDrawerUI();
+            showToast("Reply sent! Commenter +0.8★");
+        } catch (e) { console.error(e); showToast("Reply failed."); }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -2255,7 +2434,7 @@
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP (V13)
+    // STARTUP (V14)
     // ═══════════════════════════════════════════════════════════════════
     window.addEventListener('load', async () => {
         try {
