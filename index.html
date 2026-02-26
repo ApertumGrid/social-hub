@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCIALHUB — Signal Protocol v17</title>
+    <title>SOCIALHUB — Signal Protocol v18</title>
 
     <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
@@ -576,6 +576,53 @@
         .sparkline::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--purple-lt), var(--teal), transparent); opacity: 0.4; }
         .sparkline-line { position: absolute; bottom: 10px; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, var(--purple-lt), var(--teal)); clip-path: polygon(0 60%, 15% 30%, 30% 55%, 45% 20%, 60% 40%, 75% 15%, 90% 35%, 100% 25%, 100% 100%, 0 100%); }
 
+        /* ── V18: Low-Liquidity Vault Warning ── */
+        #vault-liquidity-warning {
+            display: none;
+            margin-top: 10px;
+            padding: 10px 14px;
+            background: rgba(248,113,113,0.08);
+            border: 1px solid rgba(248,113,113,0.35);
+            border-radius: var(--radius-md);
+            font-size: 0.78rem;
+            color: var(--red);
+            font-family: var(--font-mono);
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+        .btn-purple:disabled,
+        .btn-teal:disabled {
+            opacity: 0.38;
+            cursor: not-allowed;
+            pointer-events: none;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        /* ── V18: Persistent Comment Input (always visible) ── */
+        .cmt-persistent-box {
+            width: 100%;
+            min-height: 56px;
+            background: var(--bg-input);
+            border: 1px solid rgba(255,255,255,1);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 0.8rem;
+            padding: 9px 12px;
+            outline: none;
+            resize: none;
+            box-sizing: border-box;
+            transition: border-color 0.15s, box-shadow 0.15s;
+            margin-bottom: 8px;
+            display: block;
+        }
+        .cmt-persistent-box:focus {
+            border-color: rgba(155,125,224,0.75);
+            box-shadow: 0 0 0 2px rgba(124,92,191,0.15);
+        }
+        .cmt-persistent-box::placeholder { color: var(--text-muted); }
+
         /* Toast */
         #toast {
             position: fixed; bottom: 22px; right: 22px; z-index: 9999;
@@ -893,7 +940,8 @@
                     </div>
 
                     <div class="fee-display" id="post-fee-display"></div>
-                    <button class="btn btn-purple" onclick="handleBroadcast()">◈ Broadcast Signal</button>
+                    <div id="vault-liquidity-warning">⚠ Low Liquidity — Vault holds 0 APTM. Broadcast & Post disabled until funded.</div>
+                    <button class="btn btn-purple" id="broadcast-btn" onclick="handleBroadcast()">◈ Broadcast Signal</button>
                 </div>
 
                 <div id="feed-items"></div>
@@ -923,7 +971,7 @@
                     <div class="info-box">
                         <strong>How it works:</strong> Stars power instant interactions on the internal ledger. Click <strong>Settle to Wallet</strong> to convert to $APTM on-chain.
                     </div>
-                    <button class="btn btn-teal" style="width:auto; padding:10px 24px;" onclick="settleToWallet()">Settle to Wallet →</button>
+                    <button class="btn btn-teal" style="width:auto; padding:10px 24px;" onclick="settleStarsToWallet()">Settle Earned ★ to Wallet →</button>
                 </div>
 
                 <div class="card">
@@ -1129,7 +1177,7 @@
                         <div style="font-family:var(--font-mono); font-size:0.85rem; font-weight:700; color:var(--teal); margin-top:4px;" id="drawer-vault-aptm">0.0000</div>
                     </div>
                 </div>
-                <button class="btn btn-teal" style="margin-top:0;" onclick="settleToWallet(); closeWalletDrawer();">Settle to Wallet →</button>
+                <button class="btn btn-teal" style="margin-top:0;" onclick="settleStarsToWallet(); closeWalletDrawer();">Settle Earned ★ to Wallet →</button>
             </div>
 
             <!-- ADMIN DASHBOARD (conditional) -->
@@ -2349,10 +2397,14 @@
     const _commentListeners = {};
 
     // ═══════════════════════════════════════════════════════════════════
-    // loadComments — V17: INFINITE NESTING
-    // Every comment and reply gets its own Like + Reply buttons.
-    // Clicking Reply opens an inline white-bordered textarea inside the
-    // same dark-block container. Replies of replies are fully supported.
+    // loadComments — V18: PERSISTENT INPUT BOX + INFINITE NESTING
+    //
+    // Key V18 changes:
+    //   1. Comment input textarea is ALWAYS visible (not just when opened)
+    //   2. The textarea has 1px solid white border, dark background
+    //   3. Reply areas open directly below the comment they reply to
+    //   4. Every comment/reply has its own Like and Reply buttons
+    //   5. Hype on comments: 80% → comment author, 20% → admin (via likeComment)
     // ═══════════════════════════════════════════════════════════════════
     async function loadComments(postId) {
         const list = document.getElementById("list-" + postId);
@@ -2366,9 +2418,8 @@
 
         const renderComments = (snapshot) => {
             list.innerHTML = "";
-            // Build flat maps
             const topLevel = [];
-            const repliesMap = {};  // parentId -> [children]
+            const repliesMap = {};
             snapshot.forEach(docRef => {
                 const data = Object.assign({}, docRef.data(), { _id: docRef.id });
                 if (data.parentId) {
@@ -2383,68 +2434,61 @@
             if (counterEl) counterEl.textContent = snapshot.size > 0 ? " (" + snapshot.size + ")" : "";
 
             if (topLevel.length === 0) {
-                list.innerHTML = '<div style="font-size:0.72rem;color:var(--text-muted);padding:8px;">No comments yet. Be first!</div>';
-                return;
-            }
+                list.innerHTML = '<div style="font-size:0.72rem;color:var(--text-muted);padding:8px 0 6px;">No comments yet — be the first!</div>';
+            } else {
+                // Recursive row builder
+                function buildRow(comment, depth) {
+                    const cId        = comment._id;
+                    const authorAddr = comment.authorAddr || "unknown";
+                    const likeCount  = comment.likes || comment.hypes || 0;
 
-            // Recursive row builder — depth drives indent level
-            function buildRow(comment, depth) {
-                const cId        = comment._id;
-                const authorAddr = comment.authorAddr || "unknown";
-                const likeCount  = comment.likes || comment.hypes || 0;
+                    const row = document.createElement('div');
+                    row.className = "cmt-row" + (depth > 0 ? " nested" : "");
+                    if (depth > 1) {
+                        row.style.marginLeft = (18 + (depth - 1) * 14) + "px";
+                        row.style.borderLeft = "2px solid rgba(124,92,191," + Math.min(0.25 + depth * 0.08, 0.55) + ")";
+                    }
 
-                // Outer container — dark block, indented for replies
-                const row = document.createElement('div');
-                row.className = "cmt-row" + (depth > 0 ? " nested" : "");
-                if (depth > 1) {
-                    // Extra indent for deep nesting
-                    row.style.marginLeft = (18 + (depth - 1) * 14) + "px";
-                    row.style.borderLeft = "2px solid rgba(124,92,191,0." + Math.min(25 + depth * 8, 55) + ")";
+                    const textDiv = document.createElement('div');
+                    textDiv.className = "cmt-body-line";
+                    textDiv.innerHTML = '<span class="cmt-author">' + (comment.author || "Anonymous") + '</span>: ' +
+                                        '<span class="cmt-text">' + (comment.text || "") + '</span>';
+
+                    const meta = document.createElement('div');
+                    meta.className = "cmt-meta";
+                    meta.innerHTML =
+                        '<span class="cbtn" onclick="likeComment(\'' + cId + '\',\'' + authorAddr + '\')">' +
+                            '❤ <span id="hc-' + cId + '">' + likeCount + '</span>' +
+                        '</span>' +
+                        '<span class="cbtn reply" onclick="toggleReplyInput(\'' + cId + '\')">↩ Reply</span>';
+
+                    // Inline reply box — white-bordered, hidden until Reply clicked
+                    const replyArea = document.createElement('div');
+                    replyArea.className = "reply-area";
+                    replyArea.id = "reply-area-" + cId;
+                    replyArea.innerHTML =
+                        '<textarea id="reply-input-' + cId + '" class="reply-textarea" placeholder="Write a reply… (1★)"></textarea>' +
+                        '<div class="reply-send-row">' +
+                            '<span class="cost-hint">1★ · 80% to author</span>' +
+                            '<button class="btn btn-purple btn-sm" onclick="submitReply(\'' + cId + '\',\'' + authorAddr + '\',\'' + postId + '\')">Send Reply</button>' +
+                        '</div>';
+
+                    row.appendChild(textDiv);
+                    row.appendChild(meta);
+                    row.appendChild(replyArea);
+
+                    const children = repliesMap[cId] || [];
+                    children.forEach(function(child) {
+                        row.appendChild(buildRow(child, depth + 1));
+                    });
+
+                    return row;
                 }
 
-                // Author + text line
-                const textDiv = document.createElement('div');
-                textDiv.className = "cmt-body-line";
-                textDiv.innerHTML = '<span class="cmt-author">' + (comment.author || "Anonymous") + '</span>: ' +
-                                    '<span class="cmt-text">' + comment.text + '</span>';
-
-                // Action buttons row (Like + Reply on EVERY row)
-                const meta = document.createElement('div');
-                meta.className = "cmt-meta";
-                meta.innerHTML =
-                    '<span class="cbtn" id="like-btn-' + cId + '" onclick="likeComment(\'' + cId + '\',\'' + authorAddr + '\')">' +
-                        '\u2764 <span id="hc-' + cId + '">' + likeCount + '</span>' +
-                    '</span>' +
-                    '<span class="cbtn reply" id="reply-box-' + cId + '" onclick="toggleReplyInput(\'' + cId + '\')">\u21a9 Reply</span>';
-
-                // Inline reply box — white-bordered textarea, hidden until Reply clicked
-                const replyArea = document.createElement('div');
-                replyArea.className = "reply-area";
-                replyArea.id = "reply-area-" + cId;
-                replyArea.innerHTML =
-                    '<textarea id="reply-input-' + cId + '" class="reply-textarea" placeholder="Write a reply\u2026 (1\u2605)"></textarea>' +
-                    '<div class="reply-send-row">' +
-                        '<span class="cost-hint">1\u2605 \u00b7 80% to author</span>' +
-                        '<button class="btn btn-purple btn-sm" onclick="submitReply(\'' + cId + '\',\'' + authorAddr + '\',\'' + postId + '\')">Send Reply</button>' +
-                    '</div>';
-
-                row.appendChild(textDiv);
-                row.appendChild(meta);
-                row.appendChild(replyArea);
-
-                // Recursively append children
-                const children = repliesMap[cId] || [];
-                children.forEach(function(child) {
-                    row.appendChild(buildRow(child, depth + 1));
+                topLevel.forEach(function(c) {
+                    list.appendChild(buildRow(c, 0));
                 });
-
-                return row;
             }
-
-            // Render all top-level comments with their nested trees
-            topLevel.forEach(function(c) {
-                list.appendChild(buildRow(c, 0));
-            });
         };
 
         // Primary snapshot with ordering; fallback without if index missing
@@ -2458,7 +2502,6 @@
                 const docs = [];
                 snap.forEach(function(d) { docs.push(Object.assign({}, d.data(), { _id: d.id })); });
                 docs.sort(function(a, b) { return (a.timestamp || 0) - (b.timestamp || 0); });
-                // Wrap into snapshot-like object
                 const fakeSnap = {
                     forEach: function(fn) { docs.forEach(function(d) { fn({ data: function() { return d; }, id: d._id }); }); },
                     size: docs.length
@@ -2468,16 +2511,7 @@
         });
     }
 
-    function toggleReplyInput(commentId) {
-        const area = document.getElementById("reply-area-" + commentId);
-        if (!area) return;
-        const isOpen = area.style.display === "block";
-        area.style.display = isOpen ? "none" : "block";
-        if (!isOpen) {
-            const inp = document.getElementById("reply-input-" + commentId);
-            if (inp) setTimeout(function() { inp.focus(); }, 50);
-        }
-    }
+
 
     function toggleReplyInput(commentId) {
         const area = document.getElementById(`reply-area-${commentId}`);
@@ -2651,8 +2685,165 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // GLOBAL FEED
+    // V18 — verifyVaultHealth()
+    // Checks the actual on-chain APTM balance of the Vault address via
+    // the Apertum RPC. If zero, disables Broadcast + Post buttons and
+    // shows the 'Low Liquidity' warning banner.
     // ═══════════════════════════════════════════════════════════════════
+    async function verifyVaultHealth() {
+        const VAULT_ADDRESS = CONFIG.CONTRACT_ADDRESS; // 0x42E0A97844ac6623207F2a363aa318E83268910F
+        const broadcastBtn  = document.getElementById('broadcast-btn');
+        const warningEl     = document.getElementById('vault-liquidity-warning');
+        const settleBtn     = document.querySelector('button[onclick*="settleStarsToWallet"]') ||
+                              document.querySelector('button[onclick*="settleToWallet"]');
+
+        try {
+            const rpc = getRpcProvider();
+            // eth_getBalance returns the native coin (APTM) held in the vault
+            const balRaw  = await Promise.race([
+                rpc.getBalance(VAULT_ADDRESS),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
+            ]);
+            const balAptm = parseFloat(ethers.utils.formatEther(balRaw));
+
+            const isEmpty = balAptm <= 0;
+            if (broadcastBtn) broadcastBtn.disabled = isEmpty;
+            if (warningEl)    warningEl.style.display = isEmpty ? 'block' : 'none';
+
+            // Also update the sidebar vault display
+            const vaultAptmEl = document.getElementById('sidebar-aptm-value');
+            if (vaultAptmEl) vaultAptmEl.textContent = balAptm.toFixed(4) + ' $APTM';
+
+            console.log(`[V18 VaultHealth] Vault balance: ${balAptm.toFixed(6)} APTM. Locked: ${isEmpty}`);
+            return balAptm;
+        } catch (e) {
+            console.warn('[V18 VaultHealth] RPC check failed — leaving buttons enabled:', e.message);
+            if (broadcastBtn) broadcastBtn.disabled = false;
+            if (warningEl)    warningEl.style.display = 'none';
+            return null;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // V18 — settleStarsToWallet()
+    // Converts ONLY the user's creatorStars (earned) from Firebase into
+    // APTM at the live RPC price and triggers a MetaMask transfer from
+    // the Vault to the user's wallet. On mine, subtracts those stars
+    // from Firebase creatorStars so balance accurately reflects withdrawal.
+    // ═══════════════════════════════════════════════════════════════════
+    async function settleStarsToWallet() {
+        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
+        try {
+            const addr = await signer.getAddress();
+
+            // Read ONLY creatorStars (earned) from Firebase — this is what gets settled
+            let liveCreatorStars = 0;
+            if (window.db) {
+                try {
+                    const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr.toLowerCase()));
+                    if (snap.exists()) {
+                        liveCreatorStars = snap.data().creatorStars || 0;
+                    }
+                } catch (_) { liveCreatorStars = creatorEarnings; }
+            }
+
+            if (liveCreatorStars <= 0) {
+                return alert(
+                    "No earned stars to settle.\n\n" +
+                    "Only stars earned from hypes and comments can be settled.\n" +
+                    "Purchased stars are non-refundable spending power."
+                );
+            }
+
+            // Get live price for conversion
+            const livePrice = await getLiveAptmPrice();
+            const priceToUse = (livePrice && livePrice > 0) ? livePrice : currentAptmPriceUsd;
+
+            // Convert creatorStars → APTM: starsValue(USD) / pricePerAPTM
+            const starsValueUsd = liveCreatorStars * CONFIG.STAR_USD;
+            const aptmToReceive = starsValueUsd / priceToUse;
+
+            // Verify vault has enough liquidity
+            const vaultBalAptm = await verifyVaultHealth();
+            const contractBal  = (vaultBalAptm !== null) ? vaultBalAptm :
+                parseFloat(ethers.utils.formatEther(await provider.getBalance(CONFIG.CONTRACT_ADDRESS)));
+
+            if (contractBal <= 0) {
+                return alert(
+                    "Vault is empty.\n\n" +
+                    "The platform vault holds 0 APTM. Settlement is not possible until the vault is funded.\n" +
+                    "Contact admin: " + CONFIG.ADMIN_ADDRESS
+                );
+            }
+
+            // Cap withdrawal to available vault balance
+            const withdrawAptm = Math.min(aptmToReceive, contractBal);
+
+            if (withdrawAptm <= 0.000001) {
+                return alert(
+                    "Settlement amount too small.\n\n" +
+                    `Earned Stars: ${liveCreatorStars.toFixed(1)} ★\n` +
+                    `Value: $${starsValueUsd.toFixed(4)} USD\n` +
+                    `APTM @ $${priceToUse.toFixed(4)}\n` +
+                    `= ${aptmToReceive.toFixed(6)} APTM`
+                );
+            }
+
+            const confirmed = confirm(
+                `Settle Earned Stars to Wallet\n\n` +
+                `Earned Stars:       ${liveCreatorStars.toFixed(1)} ★\n` +
+                `Stars USD Value:    $${starsValueUsd.toFixed(4)}\n` +
+                `Live APTM Price:    $${priceToUse.toFixed(4)}\n` +
+                `Will Receive:       ${withdrawAptm.toFixed(6)} APTM\n` +
+                `Vault Balance:      ${contractBal.toFixed(4)} APTM\n\n` +
+                `Your earned stars will be zeroed in Firebase after the tx mines.\n` +
+                `Proceed?`
+            );
+            if (!confirmed) return;
+
+            showToast("Opening MetaMask for settlement…");
+
+            // Execute on-chain userWithdraw — pulls from vault to user
+            const withdrawWei = ethers.utils.parseEther(withdrawAptm.toFixed(18));
+            const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
+            showToast("Transaction submitted — waiting for confirmation…");
+            await tx.wait();
+
+            // ── CRITICAL: Subtract ONLY the settled creatorStars from Firebase ──
+            if (window.db) {
+                await window.fs.runTransaction(window.db, async (txn) => {
+                    const ref  = window.fs.doc(window.db, "user_balances", addr.toLowerCase());
+                    const snap = await txn.get(ref);
+                    const currentEarned = snap.exists() ? (snap.data().creatorStars || 0) : 0;
+                    const newEarned = Math.max(0, currentEarned - liveCreatorStars);
+                    txn.set(ref, { creatorStars: newEarned, lastUpdated: Date.now() }, { merge: true });
+                });
+                creatorEarnings = Math.max(0, creatorEarnings - liveCreatorStars);
+            }
+
+            // Log the settlement
+            logTransaction(addr, "settle", liveCreatorStars,
+                `Settled ${liveCreatorStars.toFixed(1)}★ earned → ${withdrawAptm.toFixed(4)} $APTM to wallet`);
+
+            await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
+                address: addr.toLowerCase(), type: "settle",
+                amount: liveCreatorStars,
+                description: `Settled ${liveCreatorStars.toFixed(1)}★ earned → ${withdrawAptm.toFixed(4)} $APTM`,
+                timestamp: Date.now()
+            });
+
+            showToast(`✓ Settled! ${withdrawAptm.toFixed(4)} APTM → wallet`);
+            updateUI();
+            updateDrawerUI();
+            await syncData();
+            verifyVaultHealth(); // refresh vault state after withdrawal
+        } catch (e) {
+            console.error(e);
+            alert("Settlement failed: " + (e.reason || e.message || String(e)).slice(0, 200));
+        }
+    }
+
+
     async function loadGlobalFeed() {
         const feedContainer = document.getElementById('feed-items');
         if (!feedContainer || !window.db) return;
@@ -2717,9 +2908,12 @@
                     </div>
                     <div class="comment-tray" id="tray-${postId}">
                         <div class="comment-list" id="list-${postId}"></div>
-                        <div class="cmt-input-row">
-                            <input type="text" class="field" style="font-size:0.8rem;" placeholder="Add a comment (1★)…" id="input-${postId}">
-                            <button class="btn btn-purple btn-sm" onclick="addComment('${post.authorAddr}','${postId}')">Send</button>
+                        <div class="cmt-input-row" style="flex-direction:column; gap:6px;">
+                            <textarea class="cmt-persistent-box" placeholder="Add a comment (1★)…" id="input-${postId}" rows="2"></textarea>
+                            <div style="display:flex; justify-content:flex-end; gap:8px; align-items:center;">
+                                <span style="font-size:0.6rem; color:var(--text-muted); font-family:var(--font-mono);">1★ · 80% to creator</span>
+                                <button class="btn btn-purple btn-sm" onclick="addComment('${post.authorAddr}','${postId}')">Send</button>
+                            </div>
                         </div>
                         <button class="close-comments-btn" onclick="toggleTray('${postId}')">↑ Close Comments</button>
                     </div>`;
@@ -2743,7 +2937,7 @@
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP (V17)
+    // STARTUP (V18)
     // ═══════════════════════════════════════════════════════════════════
     window.addEventListener('load', async () => {
         try {
@@ -2757,11 +2951,15 @@
 
             // Start global feed
             setTimeout(() => { loadGlobalFeed(); }, 1500);
+
+            // V18: Vault health check — disables Broadcast/Post if vault is empty
+            setTimeout(() => { verifyVaultHealth(); }, 2000);
+            setInterval(() => { verifyVaultHealth(); }, 60_000); // re-check every minute
         } catch (e) { console.error("Startup failed:", e); }
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP (V17) — UNCONDITIONAL PRICE HEARTBEAT via Apertum RPC
+    // STARTUP (V18) — UNCONDITIONAL PRICE HEARTBEAT via Apertum RPC
     // No external APIs. Fires for ALL visitors on load, then every 30s.
     // ═══════════════════════════════════════════════════════════════════
     runPriceHeartbeat();                          // immediate on script load
