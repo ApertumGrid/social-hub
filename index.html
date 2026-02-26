@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCIALHUB — Signal Protocol v18</title>
+    <title>SOCIALHUB — Signal Protocol v19</title>
 
     <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
@@ -870,12 +870,13 @@
             <div class="sidebar-vault">
                 <div class="vault-label">Total Spendable ★</div>
                 <div class="vault-stars" id="user-stars">0 ★</div>
-                <div style="font-size:0.58rem; color:var(--text-muted); margin-bottom:8px; line-height:1.6;">
+                <div style="font-size:0.58rem; color:var(--text-muted); margin-bottom:10px; line-height:1.6;">
                     Purchased: <span style="color:var(--gold); font-family:var(--font-mono);" id="sidebar-purchased-stars">0</span> ★ &nbsp;|&nbsp;
                     Earned: <span style="color:var(--green); font-family:var(--font-mono);" id="sidebar-earned-stars">0</span> ★
                 </div>
-                <div class="vault-label" style="margin-top:4px;">APTM Vault</div>
-                <div class="vault-aptm" id="sidebar-aptm-value">0.0000 $APTM</div>
+                <div class="vault-label">My APTM Value</div>
+                <div class="vault-aptm" id="sidebar-equity-value">0.0000 APTM</div>
+                <div class="vault-label" style="margin-top:8px;">Live APTM Price</div>
                 <div class="vault-rate" id="live-price-display">$0.3391 / APTM</div>
                 <button class="btn btn-purple btn-sm" style="margin-top:12px; width:100%; font-size:0.72rem;" onclick="convertAPTM()">DEPOSIT $APTM</button>
             </div>
@@ -963,9 +964,9 @@
                             </div>
                         </div>
                         <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px;">
-                            <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">APTM Vault</div>
-                            <div style="font-family:var(--font-mono); font-size:0.95rem; font-weight:700; color:var(--teal); margin-top:6px;" id="earnings-aptm-value">0.0000 $APTM</div>
-                            <div class="balance-note">🔒 On-chain</div>
+                            <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">My APTM Value</div>
+                            <div style="font-family:var(--font-mono); font-size:0.95rem; font-weight:700; color:var(--teal); margin-top:6px;" id="earnings-aptm-value">0.0000 APTM</div>
+                            <div class="balance-note">≈ stars × live price</div>
                         </div>
                     </div>
                     <div class="info-box">
@@ -1055,7 +1056,7 @@
                     <div class="stat-val purple">0.2 ★</div>
                 </div>
                 <div class="stat-row">
-                    <div class="stat-label">APTM Vault<span>On-chain balance</span></div>
+                    <div class="stat-label">My APTM Value<span>Stars at live price</span></div>
                     <div class="stat-val teal" id="rp-aptm">0.0000</div>
                 </div>
                 <div class="stat-row">
@@ -1141,7 +1142,7 @@
                     </div>
                 </div>
                 <div style="margin-top:8px; font-size:0.72rem; color:var(--text-muted);">
-                    APTM Vault: <span style="color:var(--teal); font-family:var(--font-mono); font-weight:600;" id="drawer-aptm-val">0.0000 $APTM</span>
+                    My APTM Value: <span style="color:var(--teal); font-family:var(--font-mono); font-weight:600;" id="drawer-aptm-val">0.0000 APTM</span>
                 </div>
             </div>
 
@@ -1173,7 +1174,7 @@
                         <div style="font-family:var(--font-mono); font-size:1.4rem; font-weight:700; color:var(--gold); margin-top:4px;" id="drawer-earned-stars">0 ★</div>
                     </div>
                     <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px;">
-                        <div style="font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700;">APTM Vault</div>
+                        <div style="font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700;">My APTM Value</div>
                         <div style="font-family:var(--font-mono); font-size:0.85rem; font-weight:700; color:var(--teal); margin-top:4px;" id="drawer-vault-aptm">0.0000</div>
                     </div>
                 </div>
@@ -1401,16 +1402,26 @@
         const fmt        = parseFloat(currentAptmPriceUsd).toFixed(4);
         const totalStars = getTotalSpendableStars();
 
-        // Big balance = total spendable (purchased + earned)
-        s('drawer-stars',          totalStars.toFixed(1) + " ★");
-        s('drawer-price',          `APTM @ $${fmt}`);
-        s('drawer-aptm-val',       (currentAptmBalance || "0.0000") + " $APTM");
-        // Breakdown tiles in the balance card
+        // V19: Personal equity — what the user's stars are worth in APTM
+        const equityAptm = (currentAptmPriceUsd > 0)
+            ? (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd
+            : 0;
+        const equityStr  = equityAptm.toFixed(4) + " APTM";
+
+        // Big balance + price
+        s('drawer-stars',           totalStars.toFixed(1) + " ★");
+        s('drawer-price',           `APTM @ $${fmt}`);
+
+        // "My APTM Value" line in the balance card (replaces vault total)
+        s('drawer-aptm-val',        equityStr);
+
+        // Breakdown tiles
         s('drawer-purchased-stars', purchasedStars.toFixed(1) + " ★");
         s('drawer-earned-display',  creatorEarnings.toFixed(1) + " ★");
-        // Creator studio section shows earned-only stars
+
+        // Creator Studio section — earned stars + My APTM Value
         s('drawer-earned-stars',    creatorEarnings.toFixed(1) + " ★");
-        s('drawer-vault-aptm',      parseFloat(currentAptmBalance || 0).toFixed(4));
+        s('drawer-vault-aptm',      equityAptm.toFixed(4));  // "My APTM Value" tile
 
         // Show/hide connect prompt
         const prompt = document.getElementById('drawer-connect-prompt');
@@ -1603,32 +1614,43 @@
             const totalStars  = getTotalSpendableStars();
             const totalStr    = totalStars.toFixed(1) + " ★";
 
-            // Sidebar vault — shows TOTAL spendable (purchased + earned)
+            // ── V19: Personal equity = (stars + creatorStars) × $0.01 ÷ livePrice ──
+            // This shows what the user's star balance is worth in APTM at the live rate.
+            // Never exposes the master vault total.
+            const equityAptm = (currentAptmPriceUsd > 0)
+                ? (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd
+                : 0;
+            const equityStr  = equityAptm.toFixed(4) + " APTM";
+
+            // Sidebar — Total Spendable ★, My APTM Value, Live Price
             s('user-stars',              totalStr);
             s('sidebar-purchased-stars', purchasedStars.toFixed(1));
             s('sidebar-earned-stars',    creatorEarnings.toFixed(1));
-            // Studio nav badge — total spendable
-            s('sidebar-stars-badge',     totalStars.toFixed(1) + " ★");
-            // Right panel — total spendable
-            s('rp-stars',                totalStr);
-            s('sidebar-aptm-value',      (currentAptmBalance || "0.0000") + " $APTM");
-            s('earnings-aptm-value',     (currentAptmBalance || "0.0000") + " $APTM");
-            s('rp-aptm',                 parseFloat(currentAptmBalance || 0).toFixed(4));
-            // Creator Studio "Active Stars" tile → total spendable (purchased + earned)
-            s('creator-revenue-display', totalStr);
-            s('studio-purchased-stars',  purchasedStars.toFixed(1));
-            s('studio-earned-stars',     creatorEarnings.toFixed(1));
+            s('sidebar-equity-value',    equityStr);
             s('live-price-display',      fmt + ' / APTM');
+
+            // Studio nav badge
+            s('sidebar-stars-badge',     totalStars.toFixed(1) + " ★");
+
+            // Right panel
+            s('rp-stars',                totalStr);
+            s('rp-aptm',                 equityAptm.toFixed(4));   // "My APTM Value"
             s('rp-rate',                 fmt);
             s('total-anchors-display',   totalAnchors);
             s('rp-anchors',              totalAnchors);
+
+            // Creator Studio page
+            s('creator-revenue-display', totalStr);
+            s('studio-purchased-stars',  purchasedStars.toFixed(1));
+            s('studio-earned-stars',     creatorEarnings.toFixed(1));
+            s('earnings-aptm-value',     equityStr);  // "My APTM Value" tile
 
             const pbAv = document.getElementById('pb-avatar'); if (pbAv) pbAv.src = userAvatar;
             const nvAv = document.getElementById('nav-avatar'); if (nvAv) nvAv.src = userAvatar;
             const pbH  = document.getElementById('pb-handle');  if (pbH)  pbH.textContent = userHandle;
             const nvH  = document.getElementById('nav-handle');  if (nvH)  nvH.textContent = userHandle;
 
-            // Sync drawer if open
+            // Sync drawer
             updateDrawerUI();
         } catch (e) { console.error("UI Update Error:", e); }
     }
@@ -2710,11 +2732,7 @@
             if (broadcastBtn) broadcastBtn.disabled = isEmpty;
             if (warningEl)    warningEl.style.display = isEmpty ? 'block' : 'none';
 
-            // Also update the sidebar vault display
-            const vaultAptmEl = document.getElementById('sidebar-aptm-value');
-            if (vaultAptmEl) vaultAptmEl.textContent = balAptm.toFixed(4) + ' $APTM';
-
-            console.log(`[V18 VaultHealth] Vault balance: ${balAptm.toFixed(6)} APTM. Locked: ${isEmpty}`);
+            console.log(`[V19 VaultHealth] Vault balance: ${balAptm.toFixed(6)} APTM. Locked: ${isEmpty}`);
             return balAptm;
         } catch (e) {
             console.warn('[V18 VaultHealth] RPC check failed — leaving buttons enabled:', e.message);
@@ -2811,8 +2829,7 @@
                 `Total Stars:        ${totalStars.toFixed(2)} ★\n` +
                 `Total USD Value:    $${totalValueUsd.toFixed(4)}\n` +
                 `Live APTM Price:    $${priceToUse.toFixed(4)}\n` +
-                `Will Receive:       ${withdrawAptm.toFixed(6)} APTM\n` +
-                `Vault Balance:      ${contractBal.toFixed(4)} APTM\n\n` +
+                `Will Receive:       ${withdrawAptm.toFixed(6)} APTM\n\n` +
                 `Both star balances will be set to 0 after the transaction mines.\n` +
                 `Proceed?`
             );
