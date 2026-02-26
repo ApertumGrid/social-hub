@@ -1790,46 +1790,81 @@
         }).catch(e => console.warn("logAdminRevenue global:", e));
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // TRANSACTION LEDGER — V19 PRIVATE
+    //
+    // Only ever fetches documents matching the currently connected wallet.
+    // Collection:  user_transactions
+    // Filter:      where("address", "==", userAddress.toLowerCase())
+    // Order:       timestamp desc
+    // If no wallet is connected the ledger shows a connect prompt and
+    // never opens a Firestore listener at all.
+    // ═══════════════════════════════════════════════════════════════════
+    let _ledgerUnsub = null; // holds the active onSnapshot unsubscribe fn
+
+    function renderLedger(docs) {
+        const el = document.getElementById('ledger-list');
+        if (!el) return;
+        if (!userAddress) {
+            el.innerHTML = `<div class="ledger-empty">Please connect your wallet to view your history.</div>`;
+            return;
+        }
+        if (!docs || docs.length === 0) {
+            el.innerHTML = `<div class="ledger-empty">No activity yet. Start posting or interacting!</div>`;
+            return;
+        }
+        el.innerHTML = "";
+        docs.slice(0, 10).forEach(tx => {
+            const isEarn = tx.type === "earn" || tx.type === "deposit";
+            const prefix = isEarn ? "+" : "−";
+            const amtStr = prefix + parseFloat(tx.amount).toFixed(1) + " ★";
+            const amtCls = isEarn ? "earn" : (tx.type === "settle" ? "neutral" : "spend");
+            const badge  = { earn:"Earned", spend:"Spent", deposit:"Deposit", settle:"Settle" }[tx.type] || tx.type;
+            const date   = new Date(tx.timestamp).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
+            const row    = document.createElement('div');
+            row.className = 'ledger-row';
+            row.innerHTML = `
+                <div class="ledger-desc">${tx.description}<small>${date}</small></div>
+                <div style="width:58px;text-align:center;flex-shrink:0;"><span class="ledger-badge ${tx.type}">${badge}</span></div>
+                <div class="ledger-amount ${amtCls}">${amtStr}</div>`;
+            el.appendChild(row);
+        });
+    }
+
     function subscribeLedger(walletAddr) {
-        if (!walletAddr || !window.db) return;
+        // Tear down any existing listener before creating a new one
+        if (_ledgerUnsub) { try { _ledgerUnsub(); } catch (_) {} _ledgerUnsub = null; }
+
+        if (!walletAddr || !window.db) {
+            renderLedger(null); // show connect prompt
+            return;
+        }
+
         const addr = walletAddr.toLowerCase();
-        const q    = window.fs.query(
+
+        // Primary query: address-filtered + ordered by timestamp desc
+        const q = window.fs.query(
             window.fs.collection(window.db, "user_transactions"),
             window.fs.where("address", "==", addr),
             window.fs.orderBy("timestamp", "desc")
         );
-        const render = (docs) => {
-            const el = document.getElementById('ledger-list');
-            if (!el) return;
-            if (docs.length === 0) { el.innerHTML = `<div class="ledger-empty">No activity yet.</div>`; return; }
-            el.innerHTML = "";
-            docs.slice(0, 10).forEach(tx => {
-                const isEarn  = tx.type === "earn" || tx.type === "deposit";
-                const prefix  = isEarn ? "+" : "−";
-                const amtStr  = prefix + parseFloat(tx.amount).toFixed(1) + " ★";
-                const amtCls  = isEarn ? "earn" : (tx.type === "settle" ? "neutral" : "spend");
-                const badge   = { earn:"Earned", spend:"Spent", deposit:"Deposit", settle:"Settle" }[tx.type] || tx.type;
-                const date    = new Date(tx.timestamp).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
-                const row     = document.createElement('div');
-                row.className = 'ledger-row';
-                row.innerHTML = `
-                    <div class="ledger-desc">${tx.description}<small>${date}</small></div>
-                    <div style="width:58px;text-align:center;flex-shrink:0;"><span class="ledger-badge ${tx.type}">${badge}</span></div>
-                    <div class="ledger-amount ${amtCls}">${amtStr}</div>`;
-                el.appendChild(row);
-            });
-        };
-        window.fs.onSnapshot(q, (snap) => {
-            const docs = []; snap.forEach(d => docs.push(d.data())); render(docs);
+
+        _ledgerUnsub = window.fs.onSnapshot(q, (snap) => {
+            const docs = [];
+            snap.forEach(d => docs.push(d.data()));
+            renderLedger(docs);
         }, (err) => {
-            console.warn("Ledger fallback:", err.message);
+            // Fallback: missing composite index — filter by address, sort client-side
+            console.warn("Ledger index missing, falling back to client-side sort:", err.message);
             const fq = window.fs.query(
                 window.fs.collection(window.db, "user_transactions"),
                 window.fs.where("address", "==", addr)
             );
-            window.fs.onSnapshot(fq, (snap) => {
-                const docs = []; snap.forEach(d => docs.push(d.data()));
-                docs.sort((a, b) => b.timestamp - a.timestamp); render(docs);
+            _ledgerUnsub = window.fs.onSnapshot(fq, (snap) => {
+                const docs = [];
+                snap.forEach(d => docs.push(d.data()));
+                docs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                renderLedger(docs);
             });
         });
     }
@@ -2308,13 +2343,6 @@
                 await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
                 logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
                     isComment ? "Earned 0.8★ — someone hyped your comment" : "Earned 0.8★ — someone hyped your post");
-                // Audit log to transactions collection
-                await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
-                    address: recipientAddress.toLowerCase(), type: "earn",
-                    amount: CONFIG.CREATOR_CUT,
-                    description: isComment ? "Earned 0.8★ — someone hyped your comment" : "Earned 0.8★ — someone hyped your post",
-                    timestamp: Date.now()
-                });
             }
 
             // Deduct 1★ from sender using waterfall — purchasedStars first (deductStars)
@@ -2323,13 +2351,6 @@
             // 20% admin revenue
             logAdminRevenue(userAddress, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
             logTransaction(userAddress, "spend", 1, isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype");
-            // Audit log to transactions collection
-            await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
-                address: userAddress.toLowerCase(), type: "spend",
-                amount: 1,
-                description: isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype",
-                timestamp: Date.now()
-            });
 
             updateUI();
             updateDrawerUI();
@@ -2386,12 +2407,6 @@
             if (recipientAddress && recipientAddress !== "unknown") {
                 await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
                 logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, "Earned 0.8★ — someone commented on your content");
-                // Audit log to transactions collection
-                await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
-                    address: recipientAddress.toLowerCase(), type: "earn",
-                    amount: CONFIG.CREATOR_CUT, description: "Earned 0.8★ — someone commented on your content",
-                    timestamp: Date.now()
-                });
             }
 
             // Deduct 1★ from commenter — purchasedStars first (deductStars)
@@ -2400,12 +2415,6 @@
             // 20% admin revenue
             logAdminRevenue(userAddress, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
             logTransaction(userAddress, "spend", 1, isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment");
-            // Audit log to transactions collection
-            await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
-                address: userAddress.toLowerCase(), type: "spend",
-                amount: 1, description: isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment",
-                timestamp: Date.now()
-            });
 
             updateUI();
             updateDrawerUI();
@@ -2588,12 +2597,6 @@
             // 80% → commenter's creatorStars
             if (commenterAddress && commenterAddress !== "unknown") {
                 await creditCreatorStars(commenterAddress, CONFIG.CREATOR_CUT);
-                // Log to transactions collection
-                await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
-                    address: commenterAddress.toLowerCase(), type: "earn",
-                    amount: CONFIG.CREATOR_CUT, description: "Earned 0.8★ — someone liked your comment",
-                    timestamp: Date.now()
-                });
                 logTransaction(commenterAddress, "earn", CONFIG.CREATOR_CUT, "Earned 0.8★ — someone liked your comment");
             }
 
@@ -2612,12 +2615,6 @@
                 amount: CONFIG.PLATFORM_CUT, timestamp: Date.now()
             });
 
-            // Log to transactions collection (audit)
-            await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
-                address: userAddress.toLowerCase(), type: "spend",
-                amount: 1, description: "Spent 1★ to like a comment",
-                timestamp: Date.now()
-            });
             logTransaction(userAddress, "spend", 1, "Spent 1★ to like a comment");
 
             // Update UI counter
@@ -2665,11 +2662,6 @@
             // 80% → original commenter's creatorStars
             if (commenterAddress && commenterAddress !== "unknown") {
                 await creditCreatorStars(commenterAddress, CONFIG.CREATOR_CUT);
-                await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
-                    address: commenterAddress.toLowerCase(), type: "earn",
-                    amount: CONFIG.CREATOR_CUT, description: "Earned 0.8★ — someone replied to your comment",
-                    timestamp: Date.now()
-                });
                 logTransaction(commenterAddress, "earn", CONFIG.CREATOR_CUT, "Earned 0.8★ — someone replied to your comment");
             }
 
@@ -2688,12 +2680,6 @@
                 amount: CONFIG.PLATFORM_CUT, timestamp: Date.now()
             });
 
-            // Log to transactions collection (audit)
-            await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
-                address: userAddress.toLowerCase(), type: "spend",
-                amount: 1, description: "Spent 1★ on a reply",
-                timestamp: Date.now()
-            });
             logTransaction(userAddress, "spend", 1, "Spent 1★ on a Reply");
 
             // Reset textarea and close reply area
@@ -2862,13 +2848,6 @@
             logTransaction(addr, "settle", totalStars,
                 `Settled ${totalStars.toFixed(2)}★ total (${livePurchased.toFixed(2)} purchased + ${liveCreatorStars.toFixed(2)} earned) → ${withdrawAptm.toFixed(4)} $APTM`
             );
-            await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
-                address:     addr.toLowerCase(),
-                type:        "settle",
-                amount:      totalStars,
-                description: `Settled ${totalStars.toFixed(2)}★ → ${withdrawAptm.toFixed(4)} $APTM to wallet`,
-                timestamp:   Date.now()
-            });
 
             showToast(`✓ Settled! ${withdrawAptm.toFixed(4)} APTM → wallet`);
             updateUI();
@@ -2981,6 +2960,7 @@
         try {
             updateUI();
             updateDrawerUI();
+            renderLedger(null); // V19: show connect-wallet prompt immediately
 
             // Auto-connect if wallet was previously connected
             if (window.ethereum && window.ethereum.selectedAddress) {
