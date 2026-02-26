@@ -969,9 +969,9 @@
                         </div>
                     </div>
                     <div class="info-box">
-                        <strong>How it works:</strong> Stars power instant interactions on the internal ledger. Click <strong>Settle to Wallet</strong> to convert to $APTM on-chain.
+                        <strong>How it works:</strong> Stars power instant interactions on the internal ledger. Click <strong>Settle Total Balance to Wallet</strong> to convert your <strong>entire</strong> balance — both purchased and earned stars — into $APTM at the live price. Both balances are wiped to zero after the transaction mines.
                     </div>
-                    <button class="btn btn-teal" style="width:auto; padding:10px 24px;" onclick="settleStarsToWallet()">Settle Earned ★ to Wallet →</button>
+                    <button class="btn btn-teal" style="width:auto; padding:10px 24px;" onclick="settleStarsToWallet()">Settle Total Balance to Wallet →</button>
                 </div>
 
                 <div class="card">
@@ -1177,7 +1177,7 @@
                         <div style="font-family:var(--font-mono); font-size:0.85rem; font-weight:700; color:var(--teal); margin-top:4px;" id="drawer-vault-aptm">0.0000</div>
                     </div>
                 </div>
-                <button class="btn btn-teal" style="margin-top:0;" onclick="settleStarsToWallet(); closeWalletDrawer();">Settle Earned ★ to Wallet →</button>
+                <button class="btn btn-teal" style="margin-top:0;" onclick="settleStarsToWallet(); closeWalletDrawer();">Settle Total Balance to Wallet →</button>
             </div>
 
             <!-- ADMIN DASHBOARD (conditional) -->
@@ -2725,48 +2725,61 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // V18 — settleStarsToWallet()
-    // Converts ONLY the user's creatorStars (earned) from Firebase into
-    // APTM at the live RPC price and triggers a MetaMask transfer from
-    // the Vault to the user's wallet. On mine, subtracts those stars
-    // from Firebase creatorStars so balance accurately reflects withdrawal.
+    // ═══════════════════════════════════════════════════════════════════
+    // V18.1 — settleStarsToWallet()
+    // Settles the user's TOTAL balance (purchased stars + earned creator
+    // stars) to APTM. Calculates payout from the combined sum, triggers
+    // a MetaMask userWithdraw from the Vault, then atomically sets BOTH
+    // `stars` and `creatorStars` to 0 in Firebase after the tx mines.
     // ═══════════════════════════════════════════════════════════════════
     async function settleStarsToWallet() {
         if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
         try {
             const addr = await signer.getAddress();
 
-            // Read ONLY creatorStars (earned) from Firebase — this is what gets settled
+            // ── Step 1: Read BOTH star pools live from Firebase ──────────────────
+            let livePurchased    = 0;
             let liveCreatorStars = 0;
             if (window.db) {
                 try {
-                    const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr.toLowerCase()));
+                    const snap = await window.fs.getDoc(
+                        window.fs.doc(window.db, "user_balances", addr.toLowerCase())
+                    );
                     if (snap.exists()) {
+                        livePurchased    = snap.data().stars        || 0;
                         liveCreatorStars = snap.data().creatorStars || 0;
                     }
-                } catch (_) { liveCreatorStars = creatorEarnings; }
+                } catch (_) {
+                    livePurchased    = purchasedStars;
+                    liveCreatorStars = creatorEarnings;
+                }
             }
 
-            if (liveCreatorStars <= 0) {
+            // ── Step 2: Combine into a single total ──────────────────────────────
+            const totalStars = livePurchased + liveCreatorStars;
+
+            if (totalStars <= 0) {
                 return alert(
-                    "No earned stars to settle.\n\n" +
-                    "Only stars earned from hypes and comments can be settled.\n" +
-                    "Purchased stars are non-refundable spending power."
+                    "Nothing to settle.\n\n" +
+                    "Your total balance (purchased + earned) is 0 ★.\n" +
+                    "Deposit APTM or earn stars through interactions first."
                 );
             }
 
-            // Get live price for conversion
-            const livePrice = await getLiveAptmPrice();
+            // ── Step 3: Fetch live APTM price for accurate conversion ────────────
+            const livePrice  = await getLiveAptmPrice();
             const priceToUse = (livePrice && livePrice > 0) ? livePrice : currentAptmPriceUsd;
 
-            // Convert creatorStars → APTM: starsValue(USD) / pricePerAPTM
-            const starsValueUsd = liveCreatorStars * CONFIG.STAR_USD;
-            const aptmToReceive = starsValueUsd / priceToUse;
+            // totalStars × $0.01 per star ÷ price per APTM = APTM to receive
+            const totalValueUsd = totalStars * CONFIG.STAR_USD;
+            const aptmToReceive = totalValueUsd / priceToUse;
 
-            // Verify vault has enough liquidity
+            // ── Step 4: Check vault liquidity ────────────────────────────────────
             const vaultBalAptm = await verifyVaultHealth();
             const contractBal  = (vaultBalAptm !== null) ? vaultBalAptm :
-                parseFloat(ethers.utils.formatEther(await provider.getBalance(CONFIG.CONTRACT_ADDRESS)));
+                parseFloat(ethers.utils.formatEther(
+                    await provider.getBalance(CONFIG.CONTRACT_ADDRESS)
+                ));
 
             if (contractBal <= 0) {
                 return alert(
@@ -2776,67 +2789,75 @@
                 );
             }
 
-            // Cap withdrawal to available vault balance
+            // Cap to what the vault actually holds
             const withdrawAptm = Math.min(aptmToReceive, contractBal);
 
             if (withdrawAptm <= 0.000001) {
                 return alert(
-                    "Settlement amount too small.\n\n" +
-                    `Earned Stars: ${liveCreatorStars.toFixed(1)} ★\n` +
-                    `Value: $${starsValueUsd.toFixed(4)} USD\n` +
+                    "Settlement amount too small to process.\n\n" +
+                    `Total Stars:     ${totalStars.toFixed(2)} ★\n` +
+                    `USD Value:       $${totalValueUsd.toFixed(4)}\n` +
                     `APTM @ $${priceToUse.toFixed(4)}\n` +
-                    `= ${aptmToReceive.toFixed(6)} APTM`
+                    `= ${aptmToReceive.toFixed(8)} APTM`
                 );
             }
 
+            // ── Step 5: Confirm with the user ────────────────────────────────────
             const confirmed = confirm(
-                `Settle Earned Stars to Wallet\n\n` +
-                `Earned Stars:       ${liveCreatorStars.toFixed(1)} ★\n` +
-                `Stars USD Value:    $${starsValueUsd.toFixed(4)}\n` +
+                `Settle Total Balance to Wallet\n\n` +
+                `Purchased Stars:    ${livePurchased.toFixed(2)} ★\n` +
+                `Earned Stars:       ${liveCreatorStars.toFixed(2)} ★\n` +
+                `─────────────────────────────\n` +
+                `Total Stars:        ${totalStars.toFixed(2)} ★\n` +
+                `Total USD Value:    $${totalValueUsd.toFixed(4)}\n` +
                 `Live APTM Price:    $${priceToUse.toFixed(4)}\n` +
                 `Will Receive:       ${withdrawAptm.toFixed(6)} APTM\n` +
                 `Vault Balance:      ${contractBal.toFixed(4)} APTM\n\n` +
-                `Your earned stars will be zeroed in Firebase after the tx mines.\n` +
+                `Both star balances will be set to 0 after the transaction mines.\n` +
                 `Proceed?`
             );
             if (!confirmed) return;
 
             showToast("Opening MetaMask for settlement…");
 
-            // Execute on-chain userWithdraw — pulls from vault to user
+            // ── Step 6: Execute on-chain userWithdraw ────────────────────────────
             const withdrawWei = ethers.utils.parseEther(withdrawAptm.toFixed(18));
             const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
             showToast("Transaction submitted — waiting for confirmation…");
             await tx.wait();
 
-            // ── CRITICAL: Subtract ONLY the settled creatorStars from Firebase ──
+            // ── Step 7: ONE-CLICK WIPE — set BOTH pools to 0 in Firebase ─────────
             if (window.db) {
                 await window.fs.runTransaction(window.db, async (txn) => {
-                    const ref  = window.fs.doc(window.db, "user_balances", addr.toLowerCase());
-                    const snap = await txn.get(ref);
-                    const currentEarned = snap.exists() ? (snap.data().creatorStars || 0) : 0;
-                    const newEarned = Math.max(0, currentEarned - liveCreatorStars);
-                    txn.set(ref, { creatorStars: newEarned, lastUpdated: Date.now() }, { merge: true });
+                    const ref = window.fs.doc(window.db, "user_balances", addr.toLowerCase());
+                    txn.set(ref, {
+                        stars:        0,
+                        creatorStars: 0,
+                        lastUpdated:  Date.now()
+                    }, { merge: true });
                 });
-                creatorEarnings = Math.max(0, creatorEarnings - liveCreatorStars);
+                // Sync local cache immediately
+                purchasedStars  = 0;
+                creatorEarnings = 0;
             }
 
-            // Log the settlement
-            logTransaction(addr, "settle", liveCreatorStars,
-                `Settled ${liveCreatorStars.toFixed(1)}★ earned → ${withdrawAptm.toFixed(4)} $APTM to wallet`);
-
+            // ── Step 8: Log the settlement ───────────────────────────────────────
+            logTransaction(addr, "settle", totalStars,
+                `Settled ${totalStars.toFixed(2)}★ total (${livePurchased.toFixed(2)} purchased + ${liveCreatorStars.toFixed(2)} earned) → ${withdrawAptm.toFixed(4)} $APTM`
+            );
             await window.fs.addDoc(window.fs.collection(window.db, "transactions"), {
-                address: addr.toLowerCase(), type: "settle",
-                amount: liveCreatorStars,
-                description: `Settled ${liveCreatorStars.toFixed(1)}★ earned → ${withdrawAptm.toFixed(4)} $APTM`,
-                timestamp: Date.now()
+                address:     addr.toLowerCase(),
+                type:        "settle",
+                amount:      totalStars,
+                description: `Settled ${totalStars.toFixed(2)}★ → ${withdrawAptm.toFixed(4)} $APTM to wallet`,
+                timestamp:   Date.now()
             });
 
             showToast(`✓ Settled! ${withdrawAptm.toFixed(4)} APTM → wallet`);
             updateUI();
             updateDrawerUI();
             await syncData();
-            verifyVaultHealth(); // refresh vault state after withdrawal
+            verifyVaultHealth();
         } catch (e) {
             console.error(e);
             alert("Settlement failed: " + (e.reason || e.message || String(e)).slice(0, 200));
