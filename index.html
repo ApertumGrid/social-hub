@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCIALHUB — Signal Protocol v14</title>
+    <title>SOCIALHUB — Signal Protocol v15</title>
 
     <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
@@ -426,11 +426,35 @@
         }
         .cbtn:hover { color: var(--teal); border-color: rgba(45,212,191,0.3); }
         .cbtn.reply:hover { color: var(--purple-lt); border-color: rgba(124,92,191,0.3); }
-        .reply-area { display: none; margin-top: 8px; }
+        .reply-area { display: none; margin-top: 10px; }
         .reply-row  { display: flex; gap: 7px; }
         .reply-row .field { margin-top: 0; flex: 1; }
         .cmt-input-row { display: flex; gap: 8px; }
         .cmt-input-row .field { margin-top: 0; flex: 1; }
+
+        /* V15: Clean reply textarea — always visible white border */
+        .cmt-body   { margin-bottom: 4px; line-height: 1.5; }
+        .cmt-text   { color: var(--text-primary); }
+        .reply-textarea {
+            display: block;
+            width: 100%;
+            min-height: 58px;
+            background: var(--bg-input);
+            border: 1px solid rgba(255,255,255,0.22);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 0.82rem;
+            padding: 10px 12px;
+            outline: none;
+            resize: vertical;
+            box-sizing: border-box;
+            transition: border-color 0.15s;
+            margin-bottom: 8px;
+        }
+        .reply-textarea:focus { border-color: rgba(124,92,191,0.6); box-shadow: 0 0 0 2px rgba(124,92,191,0.12); }
+        .reply-textarea::placeholder { color: var(--text-muted); }
+        .reply-send-row { display: flex; justify-content: flex-end; }
         .close-comments-btn {
             display: block; width: 100%;
             padding: 7px 14px;
@@ -862,9 +886,12 @@
                 <div class="card">
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
                         <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px;">
-                            <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">Active Stars</div>
+                            <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">Total Spendable Stars</div>
                             <div style="font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--gold);" id="creator-revenue-display">0 ★</div>
-                            <div class="balance-note">⚡ Live ledger</div>
+                            <div class="balance-note" style="margin-top:4px;">
+                                <span style="color:var(--gold);" id="studio-purchased-stars">0</span> purchased &nbsp;+&nbsp;
+                                <span style="color:var(--green);" id="studio-earned-stars">0</span> earned
+                            </div>
                         </div>
                         <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px;">
                             <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">APTM Vault</div>
@@ -1107,7 +1134,7 @@
 
 <script>
     // ═══════════════════════════════════════════════════════════════════
-    // ⚙️  GLOBAL CONFIG  (V14)
+    // ⚙️  GLOBAL CONFIG  (V15)
     // ═══════════════════════════════════════════════════════════════════
     const CONFIG = {
         ADMIN_ADDRESS:    "0xe348fedea1850a0c2d4ac0fed3f903774de1e16a",
@@ -1162,32 +1189,57 @@
     let selectedFile = null;
 
     // ═══════════════════════════════════════════════════════════════════
-    // PRICE HEARTBEAT  (V13 FIX — CORS PROXY)
+    // PRICE HEARTBEAT  (V15 — GeckoTerminal APTM/USD Liquidity Pool)
     //
-    // Direct CoinGecko calls are blocked by CORS on GitHub Pages.
-    // We route through allorigins.win which adds the required headers.
-    // Response comes back as JSON with the real payload in data.contents
-    // (a stringified JSON string that we parse manually).
+    // Pulls price directly from the APTM/USD pool on the Apertum network:
+    //   Pool address: 0xb3A9Dc7b9cedd8dF550aD5795C56e7ACd90E59ff
+    //   Network:      apertum (GeckoTerminal network slug)
+    //
+    // GeckoTerminal REST API is CORS-enabled — no proxy needed.
     // Falls back to 0.3391 on any error.
     // ═══════════════════════════════════════════════════════════════════
+    const POOL_ADDRESS = "0xb3A9Dc7b9cedd8dF550aD5795C56e7ACd90E59ff";
+
     async function getLiveAptmPrice() {
         try {
-            const cgUrl  = "https://api.coingecko.com/api/v3/simple/price?ids=apertum&vs_currencies=usd";
-            const proxy  = "https://api.allorigins.win/get?url=" + encodeURIComponent(cgUrl);
-            const res    = await fetch(proxy);
-            if (!res.ok) throw new Error("Proxy HTTP " + res.status);
-            const outer  = await res.json();
-            // allorigins wraps the real response body as a string in outer.contents
-            const inner  = JSON.parse(outer.contents);
-            const price  = inner?.apertum?.usd;
+            // GeckoTerminal public API — no auth, CORS-open
+            const url = `https://api.geckoterminal.com/api/v2/networks/apertum/pools/${POOL_ADDRESS}`;
+            const res = await fetch(url, { headers: { "Accept": "application/json;version=20230302" } });
+            if (!res.ok) throw new Error("GeckoTerminal HTTP " + res.status);
+            const json  = await res.json();
+            // price is in data.attributes.base_token_price_usd (string)
+            const price = parseFloat(json?.data?.attributes?.base_token_price_usd);
             if (price && price > 0) {
-                console.log(`[Heartbeat] APTM Price: $${price.toFixed(4)} (CoinGecko via allorigins)`);
+                console.log(`[Heartbeat] APTM Price: $${price.toFixed(4)} (GeckoTerminal pool)`);
                 return price;
             }
-            throw new Error("No price in response");
+            // fallback: try quote_token_price_usd inverted if base is the other token
+            const quotePrice = parseFloat(json?.data?.attributes?.quote_token_price_usd);
+            if (quotePrice && quotePrice > 0) {
+                const inverted = 1 / quotePrice;
+                console.log(`[Heartbeat] APTM Price (inverted): $${inverted.toFixed(4)}`);
+                return inverted;
+            }
+            throw new Error("No price in pool response");
         } catch (err) {
-            console.warn(`[Heartbeat] Price fetch failed (${err.message}). Using fallback $0.3391`);
-            return 0.3391;
+            // Second attempt via allorigins CORS proxy as failsafe
+            try {
+                const gtUrl  = `https://api.geckoterminal.com/api/v2/networks/apertum/pools/${POOL_ADDRESS}`;
+                const proxy  = "https://api.allorigins.win/get?url=" + encodeURIComponent(gtUrl);
+                const res2   = await fetch(proxy);
+                if (!res2.ok) throw new Error("Proxy HTTP " + res2.status);
+                const outer  = await res2.json();
+                const inner  = JSON.parse(outer.contents);
+                const price2 = parseFloat(inner?.data?.attributes?.base_token_price_usd);
+                if (price2 && price2 > 0) {
+                    console.log(`[Heartbeat] APTM Price: $${price2.toFixed(4)} (GeckoTerminal via proxy)`);
+                    return price2;
+                }
+                throw new Error("No price via proxy");
+            } catch (err2) {
+                console.warn(`[Heartbeat] Both price sources failed (${err.message} | ${err2.message}). Using fallback $0.3391`);
+                return 0.3391;
+            }
         }
     }
 
@@ -1461,14 +1513,17 @@
             s('user-stars',              totalStr);
             s('sidebar-purchased-stars', purchasedStars.toFixed(1));
             s('sidebar-earned-stars',    creatorEarnings.toFixed(1));
-            // Studio nav badge — shows creator-earned stars specifically
-            s('sidebar-stars-badge',     creatorEarnings.toFixed(1) + " ★");
+            // Studio nav badge — total spendable
+            s('sidebar-stars-badge',     totalStars.toFixed(1) + " ★");
             // Right panel — total spendable
             s('rp-stars',                totalStr);
             s('sidebar-aptm-value',      (currentAptmBalance || "0.0000") + " $APTM");
             s('earnings-aptm-value',     (currentAptmBalance || "0.0000") + " $APTM");
             s('rp-aptm',                 parseFloat(currentAptmBalance || 0).toFixed(4));
-            s('creator-revenue-display', creatorEarnings.toFixed(1) + " ★");
+            // Creator Studio "Active Stars" tile → total spendable (purchased + earned)
+            s('creator-revenue-display', totalStr);
+            s('studio-purchased-stars',  purchasedStars.toFixed(1));
+            s('studio-earned-stars',     creatorEarnings.toFixed(1));
             s('live-price-display',      fmt + ' / APTM');
             s('rp-rate',                 fmt);
             s('total-anchors-display',   totalAnchors);
@@ -1588,8 +1643,7 @@
                 purchasedStars  = 0;
                 creatorEarnings = 0;
             }
-            const el = document.getElementById('creator-revenue-display');
-            if (el) el.textContent = creatorEarnings.toFixed(1) + " ★";
+            // creator-revenue-display always shows TOTAL (purchased + earned) — synced via updateUI()
             updateUI();
         });
     }
@@ -1695,20 +1749,99 @@
     }
 
     async function adminWithdraw() {
-        if (!hubContract) return alert("Connect Wallet First");
+        if (!hubContract || !signer) return alert("Connect Wallet First");
         if (!userAddress || userAddress.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) {
             return alert("Admin only.");
         }
         try {
+            // ── Step 1: read total admin revenue from Firebase (sum of platform_revenue docs)
+            let totalRevenueStars = 0;
+            if (window.db) {
+                try {
+                    const snap = await window.fs.getDocs(window.fs.collection(window.db, "platform_revenue"));
+                    snap.forEach(d => { totalRevenueStars += (d.data().amount || 0); });
+                } catch (e) { console.warn("Could not read platform_revenue:", e); }
+            }
+            // Also read the cached total from admin_revenue/global as a cross-check
+            let globalTotal = 0;
+            try {
+                const globalSnap = await window.fs.getDoc(window.fs.doc(window.db, "admin_revenue", "global"));
+                if (globalSnap.exists()) globalTotal = globalSnap.data().total || 0;
+            } catch (_) {}
+            // Use the larger of the two to be safe
+            const revenueStars = Math.max(totalRevenueStars, globalTotal);
+
+            if (revenueStars <= 0) return alert("No platform revenue to withdraw.");
+
+            // ── Step 2: convert stars → APTM
+            // Formula: APTM = (revenueStars × STAR_USD) / currentAptmPriceUsd
+            const aptmValue   = (revenueStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
+
+            // ── Step 3: check on-chain balance of the contract / admin vault
+            const onChainRaw  = await hubContract.aptmBalances(userAddress);
+            const onChainAptm = parseFloat(ethers.utils.formatEther(onChainRaw));
+            const withdrawAptm = Math.min(aptmValue, onChainAptm);
+
+            if (withdrawAptm <= 0) {
+                return alert(
+                    `Admin Revenue: ${revenueStars.toFixed(2)} ★ = ${aptmValue.toFixed(6)} APTM\n` +
+                    `On-chain vault: ${onChainAptm.toFixed(6)} APTM\n\n` +
+                    `The on-chain vault is empty. Revenue is tracked but no APTM has been deposited to back it yet.`
+                );
+            }
+
+            const confirmed = confirm(
+                `Admin Revenue Withdrawal\n\n` +
+                `Revenue Stars:  ${revenueStars.toFixed(2)} ★\n` +
+                `APTM Value:     ${aptmValue.toFixed(6)} APTM\n` +
+                `On-chain Vault: ${onChainAptm.toFixed(6)} APTM\n` +
+                `Will Withdraw:  ${withdrawAptm.toFixed(6)} APTM\n\n` +
+                `This will reset platform revenue to 0. Proceed?`
+            );
+            if (!confirmed) return;
+
             showToast("Calling adminWithdraw()…");
+
+            // ── Step 4: call adminWithdraw on the contract (transfers all contract balance to admin)
             const tx = await hubContract.adminWithdraw({ gasLimit: 300000 });
             await tx.wait();
-            showToast("Admin Withdrawal Successful ✓");
-            logTransaction(userAddress, "settle", 0, "Admin withdrew platform revenue to wallet");
+
+            // ── Step 5: Reset Firebase platform_revenue to 0
+            if (window.db) {
+                try {
+                    // Delete all platform_revenue documents
+                    const revSnap = await window.fs.getDocs(window.fs.collection(window.db, "platform_revenue"));
+                    const deletes = [];
+                    revSnap.forEach(d => {
+                        deletes.push(window.fs.updateDoc(window.fs.doc(window.db, "platform_revenue", d.id), { _cleared: true, amount: 0 }));
+                    });
+                    await Promise.all(deletes);
+
+                    // Reset the global total to 0
+                    await window.fs.setDoc(
+                        window.fs.doc(window.db, "admin_revenue", "global"),
+                        { total: 0, lastWithdraw: Date.now(), lastUpdated: Date.now() },
+                        { merge: true }
+                    );
+                } catch (e) { console.warn("Firebase reset after admin withdraw:", e); }
+            }
+
+            logTransaction(userAddress, "settle", withdrawAptm, `Admin withdrew ${revenueStars.toFixed(2)}★ = ${withdrawAptm.toFixed(4)} APTM`);
+
+            // Update displays to show 0
+            const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            s('admin-revenue-display', "0.00 ★");
+            s('admin-revenue-count',   "0 fee events");
+            s('drawer-admin-revenue',  "0.00 ★");
+            s('drawer-admin-count',    "0 fee events");
+
+            showToast(`Admin Withdrawal Successful ✓ ${withdrawAptm.toFixed(4)} APTM`);
+            updateUI();
+            updateDrawerUI();
             syncData();
         } catch (e) {
             console.error(e);
-            alert("Admin withdraw failed: " + (e.reason || e.message).slice(0, 120));
+            alert("Admin withdraw failed: " + (e.reason || e.message || e).toString().slice(0, 160));
         }
     }
 
@@ -1741,22 +1874,70 @@
     }
 
     async function settleToWallet() {
-        if (!hubContract) return alert("Connect Wallet First");
+        if (!hubContract || !signer) return alert("Connect Wallet First");
         try {
-            const addr        = await signer.getAddress();
-            const rawBalance  = await hubContract.aptmBalances(addr);
-            const humanAmount = ethers.utils.formatEther(rawBalance);
-            const amt         = prompt(`Withdraw\nBalance: ${humanAmount} APTM`, humanAmount);
-            if (amt && hubContract) {
-                showToast("Opening MetaMask…");
-                const withdrawWei = ethers.utils.parseUnits(parseFloat(amt).toFixed(18), 18);
-                const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
-                await tx.wait();
-                logTransaction(addr, "settle", parseFloat(amt), `Settled ${parseFloat(amt).toFixed(4)} $APTM to wallet`);
-                showToast("Success! ✓");
-                syncData();
+            const addr = await signer.getAddress();
+
+            // Read BOTH star pools live from Firebase
+            let livePurchased = 0, liveEarned = 0;
+            if (window.db) {
+                try {
+                    const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr.toLowerCase()));
+                    if (snap.exists()) {
+                        livePurchased = snap.data().stars        || 0;
+                        liveEarned    = snap.data().creatorStars  || 0;
+                    }
+                } catch (_) { livePurchased = purchasedStars; liveEarned = creatorEarnings; }
             }
-        } catch (e) { console.error(e); alert("Failed: " + (e.reason || e.message).slice(0, 100)); }
+            const totalStars = livePurchased + liveEarned;
+            if (totalStars <= 0) return alert("No stars to settle. Earn or deposit some first.");
+
+            // Convert total stars → APTM value
+            // Formula: APTM = (totalStars × STAR_USD) / currentAptmPriceUsd
+            // Also crosscheck against on-chain aptmBalances vault
+            const starsToAptm     = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
+            const onChainRaw      = await hubContract.aptmBalances(addr);
+            const onChainAptm     = parseFloat(ethers.utils.formatEther(onChainRaw));
+
+            // Withdraw the lesser of: stars-derived value vs actual on-chain balance
+            const withdrawAptm    = Math.min(starsToAptm, onChainAptm);
+
+            if (withdrawAptm <= 0) return alert(`On-chain APTM vault is empty (${onChainAptm.toFixed(4)} APTM). Deposit APTM first to fund the vault.`);
+
+            const confirmed = confirm(
+                `Settle Stars to Wallet\n\n` +
+                `Total Stars:    ${totalStars.toFixed(1)} ★\n` +
+                `Stars Value:    ${starsToAptm.toFixed(6)} APTM\n` +
+                `On-chain Vault: ${onChainAptm.toFixed(6)} APTM\n` +
+                `Will Withdraw:  ${withdrawAptm.toFixed(6)} APTM\n\n` +
+                `Proceed?`
+            );
+            if (!confirmed) return;
+
+            showToast("Opening MetaMask…");
+            const withdrawWei = ethers.utils.parseEther(withdrawAptm.toFixed(18));
+            const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
+            await tx.wait();
+
+            // Zero out Firebase star balances after successful on-chain withdrawal
+            if (window.db) {
+                try {
+                    await window.fs.setDoc(
+                        window.fs.doc(window.db, "user_balances", addr.toLowerCase()),
+                        { stars: 0, creatorStars: 0, lastUpdated: Date.now() },
+                        { merge: true }
+                    );
+                    purchasedStars  = 0;
+                    creatorEarnings = 0;
+                } catch (e) { console.warn("Could not zero Firebase balances:", e); }
+            }
+
+            logTransaction(addr, "settle", withdrawAptm, `Settled ${totalStars.toFixed(1)}★ → ${withdrawAptm.toFixed(4)} $APTM to wallet`);
+            showToast(`Settled! ${withdrawAptm.toFixed(4)} APTM → wallet ✓`);
+            updateUI();
+            updateDrawerUI();
+            syncData();
+        } catch (e) { console.error(e); alert("Settle failed: " + (e.reason || e.message || e).toString().slice(0, 120)); }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -2129,18 +2310,27 @@
                 const authorAddr = comment.authorAddr || "unknown";
                 const row        = document.createElement('div');
                 row.className    = 'cmt-row' + (isNested ? ' nested' : '');
-                row.innerHTML    = `
-                    <span class="cmt-author">${comment.author || "Anonymous"}</span>: ${comment.text}
-                    <div class="cmt-meta">
-                        <span class="cbtn" id="like-btn-${cId}" onclick="likeComment('${cId}','${authorAddr}')">❤ <span id="hc-${cId}">${comment.likes || comment.hypes || 0}</span></span>
-                        <span class="cbtn reply" id="reply-box-${cId}" onclick="toggleReplyInput('${cId}')">↩ Reply</span>
-                    </div>
-                    <div class="reply-area" id="reply-area-${cId}" style="display:none; margin-top:8px;">
-                        <div class="reply-row">
-                            <textarea class="field" id="reply-input-${cId}" placeholder="Write a reply… (1★)" style="font-size:0.8rem; min-height:52px; resize:none;"></textarea>
-                            <button class="btn btn-purple btn-sm" style="align-self:flex-end;" onclick="submitReply('${cId}','${authorAddr}','${postId}')">Send</button>
-                        </div>
-                    </div>`;
+                row.innerHTML =
+                    `<div class="cmt-body">` +
+                        `<span class="cmt-author">${comment.author || "Anonymous"}</span>` +
+                        `<span class="cmt-text">: ${comment.text}</span>` +
+                    `</div>` +
+                    `<div class="cmt-meta">` +
+                        `<span class="cbtn" id="like-btn-${cId}" onclick="likeComment('${cId}','${authorAddr}')">` +
+                            `❤ <span id="hc-${cId}">${comment.likes || comment.hypes || 0}</span>` +
+                        `</span>` +
+                        `<span class="cbtn reply" id="reply-box-${cId}" onclick="toggleReplyInput('${cId}')">↩ Reply</span>` +
+                    `</div>` +
+                    `<div class="reply-area" id="reply-area-${cId}">` +
+                        `<textarea` +
+                            ` id="reply-input-${cId}"` +
+                            ` class="reply-textarea"` +
+                            ` placeholder="Write a reply… (1★)"` +
+                        `></textarea>` +
+                        `<div class="reply-send-row">` +
+                            `<button class="btn btn-purple btn-sm" onclick="submitReply('${cId}','${authorAddr}','${postId}')">Send Reply</button>` +
+                        `</div>` +
+                    `</div>`;
                 return row;
             };
             topLevel.forEach(c => {
@@ -2434,7 +2624,7 @@
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP (V14)
+    // STARTUP (V15)
     // ═══════════════════════════════════════════════════════════════════
     window.addEventListener('load', async () => {
         try {
