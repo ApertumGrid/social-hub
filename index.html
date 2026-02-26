@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOCIALHUB — Signal Protocol v15</title>
+    <title>SOCIALHUB — Signal Protocol v16</title>
 
     <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
@@ -417,44 +417,51 @@
             background: rgba(124,92,191,0.04);
         }
         .cmt-author { color: var(--gold); font-weight: 700; }
-        .cmt-meta { display: flex; gap: 8px; margin-top: 8px; }
+        .cmt-meta { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
         .cbtn {
             font-size: 0.68rem; font-weight: 600; cursor: pointer;
             padding: 3px 9px; border-radius: 5px;
             border: 1px solid var(--border); color: var(--text-muted);
             background: transparent; transition: all 0.12s;
+            user-select: none;
         }
         .cbtn:hover { color: var(--teal); border-color: rgba(45,212,191,0.3); }
-        .cbtn.reply:hover { color: var(--purple-lt); border-color: rgba(124,92,191,0.3); }
-        .reply-area { display: none; margin-top: 10px; }
-        .reply-row  { display: flex; gap: 7px; }
-        .reply-row .field { margin-top: 0; flex: 1; }
-        .cmt-input-row { display: flex; gap: 8px; }
-        .cmt-input-row .field { margin-top: 0; flex: 1; }
+        .cbtn.reply { color: var(--text-muted); }
+        .cbtn.reply:hover { color: var(--purple-lt); border-color: rgba(124,92,191,0.3); background: var(--purple-glow); }
 
-        /* V15: Clean reply textarea — always visible white border */
-        .cmt-body   { margin-bottom: 4px; line-height: 1.5; }
-        .cmt-text   { color: var(--text-primary); }
+        /* Reply input area — hidden until toggled */
+        .reply-area {
+            display: none;
+            margin-top: 10px;
+            background: var(--bg-card2);
+            border: 1px solid rgba(124,92,191,0.2);
+            border-radius: var(--radius-md);
+            padding: 10px;
+        }
         .reply-textarea {
             display: block;
             width: 100%;
-            min-height: 58px;
+            min-height: 56px;
             background: var(--bg-input);
-            border: 1px solid rgba(255,255,255,0.22);
-            border-radius: var(--radius-md);
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: var(--radius-sm);
             color: var(--text-primary);
             font-family: var(--font-body);
-            font-size: 0.82rem;
-            padding: 10px 12px;
+            font-size: 0.8rem;
+            padding: 9px 12px;
             outline: none;
-            resize: vertical;
+            resize: none;
             box-sizing: border-box;
             transition: border-color 0.15s;
             margin-bottom: 8px;
         }
-        .reply-textarea:focus { border-color: rgba(124,92,191,0.6); box-shadow: 0 0 0 2px rgba(124,92,191,0.12); }
+        .reply-textarea:focus { border-color: rgba(124,92,191,0.55); }
         .reply-textarea::placeholder { color: var(--text-muted); }
-        .reply-send-row { display: flex; justify-content: flex-end; }
+        .reply-send-row { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
+        .reply-send-row .cost-hint { font-size: 0.62rem; color: var(--text-muted); font-family: var(--font-mono); }
+
+        .cmt-input-row { display: flex; gap: 8px; align-items: center; }
+        .cmt-input-row .field { margin-top: 0; flex: 1; }
         .close-comments-btn {
             display: block; width: 100%;
             padding: 7px 14px;
@@ -1134,11 +1141,12 @@
 
 <script>
     // ═══════════════════════════════════════════════════════════════════
-    // ⚙️  GLOBAL CONFIG  (V15)
+    // ⚙️  GLOBAL CONFIG  (V16)
     // ═══════════════════════════════════════════════════════════════════
     const CONFIG = {
+        // ── Core vault contract — ALL balance checks use this address ──
         ADMIN_ADDRESS:    "0xe348fedea1850a0c2d4ac0fed3f903774de1e16a",
-        CONTRACT_ADDRESS: "0x42e0a97844ac6623207f2a363aa318e83268910f",
+        CONTRACT_ADDRESS: "0x42E0A97844ac6623207F2a363aa318E83268910F", // canonical checksummed form
         STARS_PER_5_APTM: 169,
         STAR_USD:         0.01,
         PLATFORM_CUT:     0.2,
@@ -1151,6 +1159,10 @@
         },
         STORAGE_BUCKET: "gs://socialhub-33014.firebasestorage.app"
     };
+
+    // NOTE: POOL_ADDRESS below is used ONLY for the GeckoTerminal price feed.
+    // It is NOT the vault contract. All on-chain balance/withdraw calls
+    // go exclusively to CONFIG.CONTRACT_ADDRESS above.
 
     // ═══════════════════════════════════════════════════════════════════
     // GLOBAL STATE
@@ -1189,7 +1201,7 @@
     let selectedFile = null;
 
     // ═══════════════════════════════════════════════════════════════════
-    // PRICE HEARTBEAT  (V15 — GeckoTerminal APTM/USD Liquidity Pool)
+    // PRICE HEARTBEAT  (V16 — GeckoTerminal APTM/USD Liquidity Pool)
     //
     // Pulls price directly from the APTM/USD pool on the Apertum network:
     //   Pool address: 0xb3A9Dc7b9cedd8dF550aD5795C56e7ACd90E59ff
@@ -1749,75 +1761,81 @@
     }
 
     async function adminWithdraw() {
-        if (!hubContract || !signer) return alert("Connect Wallet First");
+        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
         if (!userAddress || userAddress.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) {
             return alert("Admin only.");
         }
         try {
-            // ── Step 1: read total admin revenue from Firebase (sum of platform_revenue docs)
+            // ── Step 1: Read platform revenue stars from Firebase ──────────────────
             let totalRevenueStars = 0;
             if (window.db) {
                 try {
                     const snap = await window.fs.getDocs(window.fs.collection(window.db, "platform_revenue"));
-                    snap.forEach(d => { totalRevenueStars += (d.data().amount || 0); });
+                    snap.forEach(d => {
+                        // skip cleared docs
+                        if (!d.data()._cleared) totalRevenueStars += (d.data().amount || 0);
+                    });
                 } catch (e) { console.warn("Could not read platform_revenue:", e); }
             }
-            // Also read the cached total from admin_revenue/global as a cross-check
+            // Cross-check against admin_revenue/global
             let globalTotal = 0;
             try {
                 const globalSnap = await window.fs.getDoc(window.fs.doc(window.db, "admin_revenue", "global"));
                 if (globalSnap.exists()) globalTotal = globalSnap.data().total || 0;
             } catch (_) {}
-            // Use the larger of the two to be safe
             const revenueStars = Math.max(totalRevenueStars, globalTotal);
 
-            if (revenueStars <= 0) return alert("No platform revenue to withdraw.");
+            // ── Step 2: Read the ACTUAL contract balance via provider.getBalance ──
+            // This is the native coin (APTM) held in the vault contract itself.
+            // DO NOT use aptmBalances(admin) — that is a per-user deposit slot,
+            // not the contract treasury that adminWithdraw() drains.
+            const contractBalanceRaw  = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
+            const contractBalanceAptm = parseFloat(ethers.utils.formatEther(contractBalanceRaw));
 
-            // ── Step 2: convert stars → APTM
-            // Formula: APTM = (revenueStars × STAR_USD) / currentAptmPriceUsd
-            const aptmValue   = (revenueStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
-
-            // ── Step 3: check on-chain balance of the contract / admin vault
-            const onChainRaw  = await hubContract.aptmBalances(userAddress);
-            const onChainAptm = parseFloat(ethers.utils.formatEther(onChainRaw));
-            const withdrawAptm = Math.min(aptmValue, onChainAptm);
-
-            if (withdrawAptm <= 0) {
+            if (contractBalanceAptm <= 0) {
                 return alert(
-                    `Admin Revenue: ${revenueStars.toFixed(2)} ★ = ${aptmValue.toFixed(6)} APTM\n` +
-                    `On-chain vault: ${onChainAptm.toFixed(6)} APTM\n\n` +
-                    `The on-chain vault is empty. Revenue is tracked but no APTM has been deposited to back it yet.`
+                    `Contract vault balance: ${contractBalanceAptm.toFixed(6)} APTM\n\n` +
+                    `The contract holds no APTM to withdraw. Revenue is tracked in Firebase (${revenueStars.toFixed(2)} ★) ` +
+                    `but the on-chain vault is empty.`
                 );
             }
 
+            // ── Step 3: Convert stars → APTM for display purposes ────────────────
+            const aptmValue    = (revenueStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
+            // Withdraw whatever is actually in the contract (adminWithdraw drains it all)
+            const withdrawAptm = contractBalanceAptm;
+
             const confirmed = confirm(
                 `Admin Revenue Withdrawal\n\n` +
-                `Revenue Stars:  ${revenueStars.toFixed(2)} ★\n` +
-                `APTM Value:     ${aptmValue.toFixed(6)} APTM\n` +
-                `On-chain Vault: ${onChainAptm.toFixed(6)} APTM\n` +
-                `Will Withdraw:  ${withdrawAptm.toFixed(6)} APTM\n\n` +
-                `This will reset platform revenue to 0. Proceed?`
+                `Firebase Revenue:     ${revenueStars.toFixed(2)} ★\n` +
+                `Stars → APTM Value:   ${aptmValue.toFixed(6)} APTM\n` +
+                `Contract Vault Holds: ${contractBalanceAptm.toFixed(6)} APTM\n` +
+                `Will Withdraw:        ${withdrawAptm.toFixed(6)} APTM\n\n` +
+                `adminWithdraw() sends the entire vault balance to the admin wallet.\n` +
+                `Firebase revenue counter will be reset to 0. Proceed?`
             );
             if (!confirmed) return;
 
             showToast("Calling adminWithdraw()…");
 
-            // ── Step 4: call adminWithdraw on the contract (transfers all contract balance to admin)
+            // ── Step 4: Execute on-chain adminWithdraw ────────────────────────────
+            // adminWithdraw() transfers ALL contract balance to PLATFORM_ADMIN.
             const tx = await hubContract.adminWithdraw({ gasLimit: 300000 });
             await tx.wait();
 
-            // ── Step 5: Reset Firebase platform_revenue to 0
+            // ── Step 5: Reset Firebase platform_revenue to 0 ─────────────────────
             if (window.db) {
                 try {
-                    // Delete all platform_revenue documents
                     const revSnap = await window.fs.getDocs(window.fs.collection(window.db, "platform_revenue"));
-                    const deletes = [];
+                    const ops = [];
                     revSnap.forEach(d => {
-                        deletes.push(window.fs.updateDoc(window.fs.doc(window.db, "platform_revenue", d.id), { _cleared: true, amount: 0 }));
+                        ops.push(window.fs.updateDoc(
+                            window.fs.doc(window.db, "platform_revenue", d.id),
+                            { _cleared: true, amount: 0, clearedAt: Date.now() }
+                        ));
                     });
-                    await Promise.all(deletes);
+                    await Promise.all(ops);
 
-                    // Reset the global total to 0
                     await window.fs.setDoc(
                         window.fs.doc(window.db, "admin_revenue", "global"),
                         { total: 0, lastWithdraw: Date.now(), lastUpdated: Date.now() },
@@ -1826,22 +1844,23 @@
                 } catch (e) { console.warn("Firebase reset after admin withdraw:", e); }
             }
 
-            logTransaction(userAddress, "settle", withdrawAptm, `Admin withdrew ${revenueStars.toFixed(2)}★ = ${withdrawAptm.toFixed(4)} APTM`);
+            logTransaction(userAddress, "settle", withdrawAptm,
+                `Admin withdrew ${revenueStars.toFixed(2)}★ = ${withdrawAptm.toFixed(4)} APTM from vault`);
 
-            // Update displays to show 0
+            // ── Step 6: Update all revenue displays to 0 ─────────────────────────
             const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
             s('admin-revenue-display', "0.00 ★");
             s('admin-revenue-count',   "0 fee events");
             s('drawer-admin-revenue',  "0.00 ★");
             s('drawer-admin-count',    "0 fee events");
 
-            showToast(`Admin Withdrawal Successful ✓ ${withdrawAptm.toFixed(4)} APTM`);
+            showToast(`✓ Withdrawn ${withdrawAptm.toFixed(4)} APTM to admin wallet`);
             updateUI();
             updateDrawerUI();
             syncData();
         } catch (e) {
             console.error(e);
-            alert("Admin withdraw failed: " + (e.reason || e.message || e).toString().slice(0, 160));
+            alert("Admin withdraw failed: " + (e.reason || e.message || String(e)).slice(0, 200));
         }
     }
 
@@ -1874,7 +1893,7 @@
     }
 
     async function settleToWallet() {
-        if (!hubContract || !signer) return alert("Connect Wallet First");
+        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
         try {
             const addr = await signer.getAddress();
 
@@ -1892,23 +1911,38 @@
             const totalStars = livePurchased + liveEarned;
             if (totalStars <= 0) return alert("No stars to settle. Earn or deposit some first.");
 
-            // Convert total stars → APTM value
+            // Convert total stars → APTM
             // Formula: APTM = (totalStars × STAR_USD) / currentAptmPriceUsd
-            // Also crosscheck against on-chain aptmBalances vault
-            const starsToAptm     = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
-            const onChainRaw      = await hubContract.aptmBalances(addr);
-            const onChainAptm     = parseFloat(ethers.utils.formatEther(onChainRaw));
+            const starsToAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
 
-            // Withdraw the lesser of: stars-derived value vs actual on-chain balance
-            const withdrawAptm    = Math.min(starsToAptm, onChainAptm);
+            // Read user's deposited balance in the contract (their personal slot)
+            const onChainRaw  = await hubContract.aptmBalances(addr);
+            const onChainAptm = parseFloat(ethers.utils.formatEther(onChainRaw));
 
-            if (withdrawAptm <= 0) return alert(`On-chain APTM vault is empty (${onChainAptm.toFixed(4)} APTM). Deposit APTM first to fund the vault.`);
+            // Also read the total contract balance as a fallback reference
+            const contractBalRaw  = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
+            const contractBalAptm = parseFloat(ethers.utils.formatEther(contractBalRaw));
+
+            // Withdraw the lesser of stars-value vs what is actually in the contract
+            const availableAptm = Math.max(onChainAptm, 0);
+            const withdrawAptm  = Math.min(starsToAptm, Math.max(availableAptm, contractBalAptm));
+
+            if (withdrawAptm <= 0) {
+                return alert(
+                    `Settle failed — vault is empty.\n\n` +
+                    `Your Stars:          ${totalStars.toFixed(1)} ★\n` +
+                    `Stars Value (APTM):  ${starsToAptm.toFixed(6)}\n` +
+                    `Your Deposit Slot:   ${onChainAptm.toFixed(6)} APTM\n` +
+                    `Contract Balance:    ${contractBalAptm.toFixed(6)} APTM\n\n` +
+                    `Deposit APTM first to fund the vault.`
+                );
+            }
 
             const confirmed = confirm(
                 `Settle Stars to Wallet\n\n` +
                 `Total Stars:    ${totalStars.toFixed(1)} ★\n` +
                 `Stars Value:    ${starsToAptm.toFixed(6)} APTM\n` +
-                `On-chain Vault: ${onChainAptm.toFixed(6)} APTM\n` +
+                `Your vault:     ${onChainAptm.toFixed(6)} APTM\n` +
                 `Will Withdraw:  ${withdrawAptm.toFixed(6)} APTM\n\n` +
                 `Proceed?`
             );
@@ -1937,7 +1971,7 @@
             updateUI();
             updateDrawerUI();
             syncData();
-        } catch (e) { console.error(e); alert("Settle failed: " + (e.reason || e.message || e).toString().slice(0, 120)); }
+        } catch (e) { console.error(e); alert("Settle failed: " + (e.reason || e.message || String(e)).slice(0, 160)); }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -2308,29 +2342,32 @@
             const renderRow = (comment, isNested) => {
                 const cId        = comment._id;
                 const authorAddr = comment.authorAddr || "unknown";
+                const likeCount  = comment.likes || comment.hypes || 0;
                 const row        = document.createElement('div');
                 row.className    = 'cmt-row' + (isNested ? ' nested' : '');
-                row.innerHTML =
-                    `<div class="cmt-body">` +
-                        `<span class="cmt-author">${comment.author || "Anonymous"}</span>` +
-                        `<span class="cmt-text">: ${comment.text}</span>` +
-                    `</div>` +
+
+                // Build the row's inner HTML — classic dark-block style
+                const metaHtml =
                     `<div class="cmt-meta">` +
                         `<span class="cbtn" id="like-btn-${cId}" onclick="likeComment('${cId}','${authorAddr}')">` +
-                            `❤ <span id="hc-${cId}">${comment.likes || comment.hypes || 0}</span>` +
+                            `❤ <span id="hc-${cId}">${likeCount}</span>` +
                         `</span>` +
                         `<span class="cbtn reply" id="reply-box-${cId}" onclick="toggleReplyInput('${cId}')">↩ Reply</span>` +
-                    `</div>` +
+                    `</div>`;
+
+                const replyHtml =
                     `<div class="reply-area" id="reply-area-${cId}">` +
-                        `<textarea` +
-                            ` id="reply-input-${cId}"` +
-                            ` class="reply-textarea"` +
-                            ` placeholder="Write a reply… (1★)"` +
-                        `></textarea>` +
+                        `<textarea id="reply-input-${cId}" class="reply-textarea" placeholder="Write a reply… (1★)"></textarea>` +
                         `<div class="reply-send-row">` +
-                            `<button class="btn btn-purple btn-sm" onclick="submitReply('${cId}','${authorAddr}','${postId}')">Send Reply</button>` +
+                            `<span class="cost-hint">1★ to reply · 80% to commenter</span>` +
+                            `<button class="btn btn-purple btn-sm" onclick="submitReply('${cId}','${authorAddr}','${postId}')">↩ Send Reply</button>` +
                         `</div>` +
                     `</div>`;
+
+                row.innerHTML =
+                    `<span class="cmt-author">${comment.author || "Anonymous"}</span>: ${comment.text}` +
+                    metaHtml + replyHtml;
+
                 return row;
             };
             topLevel.forEach(c => {
@@ -2624,7 +2661,7 @@
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // STARTUP (V15)
+    // STARTUP (V16)
     // ═══════════════════════════════════════════════════════════════════
     window.addEventListener('load', async () => {
         try {
