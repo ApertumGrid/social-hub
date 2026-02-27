@@ -566,7 +566,9 @@
         #load-more-btn { display: none; background: transparent; border: 1px solid var(--border); color: var(--text-muted); font-size: 0.75rem; width: 100%; margin-top: 4px; }
         #load-more-btn:hover { border-color: var(--purple-lt); color: var(--purple-lt); }
         #media-preview-container { display: none; margin-top: 10px; border-radius: var(--radius-md); overflow: hidden; background: #000; border: 1px solid var(--border); }
-        #preview-img { max-width: 100%; max-height: 200px; display: block; margin: 0 auto; }
+        #preview-img   { max-width: 100%; max-height: 200px; display: block; margin: 0 auto; }
+        #preview-iframe{ width: 100%; height: 200px; border: none; display: block; }
+        #preview-video { width: 100%; max-height: 200px; display: block; }
         .page-heading { font-size: 1.1rem; font-weight: 700; color: var(--text-white); margin-bottom: 14px; }
         .page-heading span { color: var(--purple-lt); }
         .info-box { padding: 12px 14px; background: var(--purple-dim); border: 1px solid rgba(124,92,191,0.2); border-radius: var(--radius-md); font-size: 0.78rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 14px; }
@@ -1309,8 +1311,12 @@
                     </div>
 
                     <div id="url-input-wrap">
-                        <input type="text" id="post-media" class="field" placeholder="Image URL (3.0★) · Video URL (10.0★)" oninput="updatePreview(this.value)">
-                        <div id="media-preview-container"><img id="preview-img" src=""></div>
+                        <input type="text" id="post-media" class="field" placeholder="Video URL (10★) · Image URL (3★) — YouTube, Vimeo, or .mp4" oninput="updatePreview(this.value)">
+                        <div id="media-preview-container">
+                            <img   id="preview-img"   src="" style="max-width:100%;max-height:200px;display:none;margin:0 auto;display:none;">
+                            <iframe id="preview-iframe" src="" frameborder="0" allowfullscreen style="width:100%;height:200px;display:none;"></iframe>
+                            <video  id="preview-video"  src="" controls style="width:100%;max-height:200px;display:none;"></video>
+                        </div>
                     </div>
 
                     <div id="file-input-wrap" style="display:none;">
@@ -1890,18 +1896,28 @@
     }
 
     function updatePostFeeDisplay() {
-        const el = document.getElementById('post-fee-display');
-        if (!el) return;
+        const el  = document.getElementById('post-fee-display');
+        const btn = document.getElementById('broadcast-btn');
         const url = document.getElementById('post-media')?.value || '';
         let cost = CONFIG.FEES.TEXT.toFixed(1) + ' ★';
+        let btnLabel = '◈ Broadcast Signal';
+
         if (mediaTabMode === 'file' && selectedFile) {
             const isVid = selectedFile.type.startsWith('video/');
             cost = (isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO).toFixed(1) + ' ★  (Firebase upload — no MetaMask)';
+            btnLabel = isVid
+                ? `◈ Broadcast Video (${CONFIG.FEES.VIDEO} Stars)`
+                : `◈ Broadcast Image (${CONFIG.FEES.PHOTO} Stars)`;
         } else if (url) {
-            const isVid = url.includes('mp4') || getYoutubeId(url);
+            const isVid = isVideoUrl(url);
             cost = (isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO).toFixed(1) + ' ★';
+            btnLabel = isVid
+                ? `◈ Broadcast Video (${CONFIG.FEES.VIDEO} Stars)`
+                : `◈ Broadcast Image (${CONFIG.FEES.PHOTO} Stars)`;
         }
-        el.textContent = 'Est. cost: ' + cost;
+
+        if (el) el.textContent = 'Est. cost: ' + cost;
+        if (btn) btn.textContent = btnLabel;
     }
 
     function handleFileSelect(input) {
@@ -2614,11 +2630,51 @@
 
     function showNextPage() { visibleCount += pageSize; refreshFeedVisibility(); }
 
+    function getVimeoId(url) {
+        const match = url.match(/(?:vimeo\.com\/)(\d+)/);
+        return match ? match[1] : null;
+    }
+
+    function isVideoUrl(url) {
+        return !!(getYoutubeId(url) || getVimeoId(url) || /\.mp4(\?|$)/i.test(url));
+    }
+
     function updatePreview(url) {
         const container = document.getElementById('media-preview-container');
-        const img       = document.getElementById('preview-img');
-        if (url && url.startsWith('http')) { img.src = url; container.style.display = 'block'; }
-        else { container.style.display = 'none'; }
+        const imgEl     = document.getElementById('preview-img');
+        const iframeEl  = document.getElementById('preview-iframe');
+        const videoEl   = document.getElementById('preview-video');
+
+        // Hide all previews first
+        imgEl.style.display    = 'none';
+        iframeEl.style.display = 'none';
+        videoEl.style.display  = 'none';
+        iframeEl.src = '';
+        videoEl.src  = '';
+        imgEl.src    = '';
+
+        if (url && url.startsWith('http')) {
+            container.style.display = 'block';
+            const ytId     = getYoutubeId(url);
+            const vimeoId  = getVimeoId(url);
+            const isMp4    = /\.mp4(\?|$)/i.test(url);
+
+            if (ytId) {
+                iframeEl.src = `https://www.youtube.com/embed/${ytId}`;
+                iframeEl.style.display = 'block';
+            } else if (vimeoId) {
+                iframeEl.src = `https://player.vimeo.com/video/${vimeoId}`;
+                iframeEl.style.display = 'block';
+            } else if (isMp4) {
+                videoEl.src = url;
+                videoEl.style.display = 'block';
+            } else {
+                imgEl.src = url;
+                imgEl.style.display = 'block';
+            }
+        } else {
+            container.style.display = 'none';
+        }
         updatePostFeeDisplay();
     }
 
@@ -2701,7 +2757,7 @@
         } else {
             const url = document.getElementById('post-media').value.trim();
             if (url) {
-                if (url.includes('mp4') || getYoutubeId(url)) {
+                if (isVideoUrl(url)) {
                     feeAmount = CONFIG.FEES.VIDEO; postType = 3; postTypeLabel = "Video";
                 } else {
                     feeAmount = CONFIG.FEES.PHOTO; postType = 2; postTypeLabel = "Photo";
@@ -3437,7 +3493,11 @@
                 if (ytId) {
                     mediaHtml = `${storageBadge}<div class="post-media"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
                 } else if (post.media) {
-                    if (post.type === 3) {
+                    const vimeoId = getVimeoId(post.media);
+                    const isMp4   = /\.mp4(\?|$)/i.test(post.media);
+                    if (vimeoId) {
+                        mediaHtml = `${storageBadge}<div class="post-media"><iframe src="https://player.vimeo.com/video/${vimeoId}" allowfullscreen></iframe></div>`;
+                    } else if (post.type === 3 || isMp4) {
                         mediaHtml = `${storageBadge}<div class="post-media"><video src="${post.media}" controls crossorigin="anonymous" style="width:100%;max-height:360px;"></video></div>`;
                     } else {
                         mediaHtml = `${storageBadge}<div class="post-media"><img src="${post.media}" loading="lazy" crossorigin="anonymous"></div>`;
