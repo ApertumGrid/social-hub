@@ -353,6 +353,15 @@
         /* Post cards */
         .post-card { animation: fadeUp 0.25s ease both; }
         @keyframes fadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+        @keyframes postFlash {
+            0%   { box-shadow: 0 0 0 0 rgba(45,212,191,0); border-color: rgba(45,212,191,0.9); }
+            25%  { box-shadow: 0 0 0 6px rgba(45,212,191,0.35); }
+            60%  { box-shadow: 0 0 18px 4px rgba(45,212,191,0.25); border-color: rgba(45,212,191,0.9); }
+            100% { box-shadow: 0 0 0 0 rgba(45,212,191,0); border-color: rgba(255,255,255,0.07); }
+        }
+        .post-flash { animation: postFlash 1.8s ease-out forwards; }
+        .ledger-row[data-post-id] { cursor: pointer; }
+        .ledger-row[data-post-id]:hover { background: rgba(45,212,191,0.05); border-radius: 6px; }
         .post-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
         .post-meta { flex-grow: 1; }
         .post-author { font-size: 0.85rem; font-weight: 600; color: var(--text-white); }
@@ -2112,6 +2121,27 @@
         } catch (e) { console.error("UI Update Error:", e); }
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // TOTAL ANCHORS — real-time count of unique user_balances docs
+    // This counts every wallet that has ever interacted with the platform,
+    // updating live without any polling. Fires once on app load.
+    // ═══════════════════════════════════════════════════════════════════
+    let _anchorsUnsub = null;
+    function subscribeAnchorCount() {
+        if (_anchorsUnsub || !window.db) return;
+        const col = window.fs.collection(window.db, "user_balances");
+        _anchorsUnsub = window.fs.onSnapshot(col, (snap) => {
+            const count = snap.size;
+            const formatted = count.toLocaleString();   // adds comma: 1,200
+            const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            s('total-anchors-display', formatted);
+            s('rp-anchors',            formatted);
+            totalAnchors = count;   // keep global in sync for other callers
+        }, (err) => {
+            console.warn("Anchor count listener error:", err.message);
+        });
+    }
+
     async function saveProfile() {
         const nameVal = document.getElementById('handle-input').value.trim();
         const picVal  = document.getElementById('avatar-input').value.trim();
@@ -2275,11 +2305,12 @@
     // ═══════════════════════════════════════════════════════════════════
     // TRANSACTION LEDGER
     // ═══════════════════════════════════════════════════════════════════
-    function logTransaction(address, type, amount, description) {
+    function logTransaction(address, type, amount, description, postId) {
         if (!address || !window.db) return;
-        window.fs.addDoc(window.fs.collection(window.db, "user_transactions"), {
-            address: address.toLowerCase(), type, amount, description, timestamp: Date.now()
-        }).catch(e => console.warn("logTransaction:", e));
+        const data = { address: address.toLowerCase(), type, amount, description, timestamp: Date.now() };
+        if (postId) data.postId = String(postId);
+        window.fs.addDoc(window.fs.collection(window.db, "user_transactions"), data)
+            .catch(e => console.warn("logTransaction:", e));
     }
 
     // 100% of post fees + 20% of interactions → admin_revenue
@@ -2331,10 +2362,17 @@
             const date   = new Date(tx.timestamp).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
             const row    = document.createElement('div');
             row.className = 'ledger-row';
+            const jumpHint = tx.postId
+                ? `<span style="font-size:0.55rem;color:var(--teal);margin-left:4px;opacity:0.75;">↗ view post</span>`
+                : '';
             row.innerHTML = `
-                <div class="ledger-desc">${tx.description}<small>${date}</small></div>
+                <div class="ledger-desc">${tx.description}${jumpHint}<small>${date}</small></div>
                 <div style="width:58px;text-align:center;flex-shrink:0;"><span class="ledger-badge ${tx.type}">${badge}</span></div>
                 <div class="ledger-amount ${amtCls}">${amtStr}</div>`;
+            if (tx.postId) {
+                row.setAttribute('data-post-id', tx.postId);
+                row.addEventListener('click', () => jumpToPost(tx.postId));
+            }
             el.appendChild(row);
         });
     }
@@ -2728,6 +2766,33 @@
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // JUMP TO POST — switches to Feed, scrolls to the post, flashes it.
+    // Called when a ledger row with a linked postId is clicked.
+    // ═══════════════════════════════════════════════════════════════════
+    function jumpToPost(postId) {
+        // 1. Switch to the Home Feed tab
+        switchPage('home', document.getElementById('nav-home'));
+        setBnav('home');
+        // Also sync mobile action bar if present
+        if (typeof showMobileTab === 'function') showMobileTab('home');
+
+        // 2. Scroll and flash — allow a frame for display:contents to settle
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                const card = document.querySelector('[data-id="' + postId + '"]');
+                if (!card) return;
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // 3. Flash the card with teal glow animation
+                card.classList.remove('post-flash');   // reset if already animating
+                void card.offsetWidth;                  // force reflow to restart
+                card.classList.add('post-flash');
+                setTimeout(() => card.classList.remove('post-flash'), 2000);
+            }, 120);
+        });
+    }
+    window.jumpToPost = jumpToPost;   // expose for any onclick= attribute
+
     function getYoutubeId(url) {
         const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
         const match  = url.match(regExp);
@@ -2969,7 +3034,8 @@
             if (recipientAddress && recipientAddress !== "unknown") {
                 await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
                 logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
-                    isComment ? "Earned 0.8★ — someone hyped your comment" : "Earned 0.8★ — someone hyped your post");
+                    isComment ? "Earned 0.8★ — someone hyped your comment" : "Earned 0.8★ — someone hyped your post",
+                    isComment ? null : entityId);
             }
 
             // Deduct 1★ from sender using waterfall — purchasedStars first (deductStars)
@@ -2977,7 +3043,9 @@
 
             // 20% admin revenue
             logAdminRevenue(userAddress, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
-            logTransaction(userAddress, "spend", 1, isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype");
+            logTransaction(userAddress, "spend", 1,
+                isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype",
+                isComment ? null : entityId);
 
             updateUI();
             updateDrawerUI();
@@ -3033,7 +3101,8 @@
             // 80% to creator — goes into their creatorStars pool
             if (recipientAddress && recipientAddress !== "unknown") {
                 await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
-                logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, "Earned 0.8★ — someone commented on your content");
+                logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
+                    "Earned 0.8★ — someone commented on your content", postId);
             }
 
             // Deduct 1★ from commenter — purchasedStars first (deductStars)
@@ -3041,7 +3110,8 @@
 
             // 20% admin revenue
             logAdminRevenue(userAddress, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
-            logTransaction(userAddress, "spend", 1, isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment");
+            logTransaction(userAddress, "spend", 1,
+                isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment", postId);
 
             updateUI();
             updateDrawerUI();
@@ -3050,6 +3120,26 @@
             if (tray) tray.style.display = 'block';
             showToast("Comment Live! Creator +0.8★");
         } catch (e) { console.error(e); showToast("Failed."); }
+    }
+
+    const _commentCountListeners = {};   // keyed by postId, stores unsub fns
+
+    // ═══════════════════════════════════════════════════════════════════
+    // COMMENT COUNT — real-time badge on the Comment button per post.
+    // Fires immediately so counter is visible without clicking the tray.
+    // ═══════════════════════════════════════════════════════════════════
+    function subscribeCommentCount(postId) {
+        if (_commentCountListeners[postId] || !window.db) return;
+        const q = window.fs.query(
+            window.fs.collection(window.db, "comments"),
+            window.fs.where("postId", "==", String(postId))
+        );
+        _commentCountListeners[postId] = window.fs.onSnapshot(q, (snap) => {
+            const el = document.getElementById("cc-" + postId);
+            if (el) el.textContent = snap.size > 0 ? " (" + snap.size + ")" : "";
+        }, (err) => {
+            console.warn("Comment count listener error for post " + postId + ":", err.message);
+        });
     }
 
     const _commentListeners = {};
@@ -3499,9 +3589,15 @@
 
         window.fs.onSnapshot(q, (snapshot) => {
             feedContainer.innerHTML = "";
+            // Tear down existing comment-tray listeners
             Object.keys(_commentListeners).forEach(k => {
                 if (typeof _commentListeners[k] === 'function') _commentListeners[k]();
                 delete _commentListeners[k];
+            });
+            // Tear down existing comment-count listeners
+            Object.keys(_commentCountListeners).forEach(k => {
+                if (typeof _commentCountListeners[k] === 'function') _commentCountListeners[k]();
+                delete _commentCountListeners[k];
             });
 
             snapshot.forEach((docRef) => {
@@ -3566,6 +3662,7 @@
                         <button class="close-comments-btn" onclick="toggleTray('${postId}')">↑ Close Comments</button>
                     </div>`;
                 feedContainer.appendChild(item);
+                subscribeCommentCount(postId);   // live comment counter badge
             });
             if (typeof refreshFeedVisibility === "function") refreshFeedVisibility();
         });
@@ -3592,6 +3689,10 @@
             updateUI();
             updateDrawerUI();
             renderLedger(null); // V19: show connect-wallet prompt immediately
+
+            // Real-time Total Anchors count from user_balances collection
+            // Fires as soon as Firebase module is ready (db set by module script)
+            setTimeout(() => { subscribeAnchorCount(); }, 800);
 
             // Auto-connect if wallet was previously connected
             if (window.ethereum && window.ethereum.selectedAddress) {
@@ -3689,36 +3790,7 @@
 
     runPriceHeartbeat();                          // immediate on script load
     setInterval(runPriceHeartbeat, 30_000);       // every 30 seconds unconditionally
-</script>
 
-<script>
-    // SOURCE PROTECTION: Prevents Right-Click and Common Inspect Shortcuts
-    document.addEventListener('contextmenu', function(e) {
-        e.preventDefault();
-    }, false);
-
-    document.addEventListener('keydown', function(e) {
-        // Prevent F12 (DevTools)
-        if (e.keyCode == 123) {
-            e.preventDefault();
-            return false;
-        }
-        // Prevent Ctrl+Shift+I (Inspect)
-        if (e.ctrlKey && e.shiftKey && e.keyCode == 73) {
-            e.preventDefault();
-            return false;
-        }
-        // Prevent Ctrl+Shift+J (Console)
-        if (e.ctrlKey && e.shiftKey && e.keyCode == 74) {
-            e.preventDefault();
-            return false;
-        }
-        // Prevent Ctrl+U (View Source)
-        if (e.ctrlKey && e.keyCode == 85) {
-            e.preventDefault();
-            return false;
-        }
-    }, false);
 </script>
 </body>
 </html>
