@@ -429,6 +429,13 @@
         .cmt-author { color: var(--gold); font-weight: 700; }
         .cmt-text   { color: var(--text-primary); white-space: pre-wrap; word-wrap: break-word; }
         .comment-list div, .comment-list p { white-space: pre-wrap; }
+        .post-body a, .cmt-text a {
+            color: var(--teal);
+            text-decoration: underline;
+            text-underline-offset: 2px;
+            word-break: break-all;
+        }
+        .post-body a:hover, .cmt-text a:hover { color: var(--purple-lt); }
 
         /* Like / Reply micro-buttons */
         .cmt-meta { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
@@ -2630,6 +2637,28 @@
 
     function showNextPage() { visibleCount += pageSize; refreshFeedVisibility(); }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // LINKIFY — converts bare http(s) URLs in text into clickable anchors.
+    // Preserves all other characters (including newlines) so pre-wrap works.
+    // Safe: text is NOT treated as HTML before this runs — only the URL
+    // portions are wrapped in <a> tags; everything else stays as-is.
+    // ═══════════════════════════════════════════════════════════════════
+    function linkify(text) {
+        if (!text) return '';
+        // Escape any HTML special characters in the raw text first so
+        // user-supplied content cannot inject markup.
+        const escaped = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+        // Then replace URLs with anchor tags (URLs survive escaping intact).
+        return escaped.replace(
+            /(https?:\/\/[^\s<>"]+)/g,
+            '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+        );
+    }
+
     function getVimeoId(url) {
         const match = url.match(/(?:vimeo\.com\/)(\d+)/);
         return match ? match[1] : null;
@@ -3081,7 +3110,7 @@
                     const textDiv = document.createElement('div');
                     textDiv.className = "cmt-body-line";
                     textDiv.innerHTML = '<span class="cmt-author">' + (comment.author || "Anonymous") + '</span>: ' +
-                                        '<span class="cmt-text">' + (comment.text || "") + '</span>';
+                                        '<span class="cmt-text">' + linkify(comment.text || "") + '</span>';
 
                     const meta = document.createElement('div');
                     meta.className = "cmt-meta";
@@ -3519,7 +3548,7 @@
                         <span class="post-more">···</span>
                     </div>
                     ${mediaHtml}
-                    <div class="post-body">${post.text}</div>
+                    <div class="post-body">${linkify(post.text)}</div>
                     <div class="post-actions">
                         <div class="pact" onclick="hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span> Like</div>
                         <div class="pact" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comment<span class="pact-num" id="cc-${postId}" style="color:var(--teal);"></span></div>
