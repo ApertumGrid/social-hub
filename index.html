@@ -734,16 +734,17 @@
         }
 
         /* ══════════════════════════════════════════════════════════════
-           MOBILE — 768px structural
+           MOBILE — 768px  (ONLY this block changes — desktop untouched)
         ══════════════════════════════════════════════════════════════ */
         @media (max-width: 768px) {
-            /* ── Core layout ── */
+
+            /* ── Core structural resets ── */
             #sidebar, #right-panel { display: none !important; }
             #body-layout { grid-template-columns: 1fr; overflow: visible !important; }
             #toast { bottom: calc(var(--bottom-nav-h) + 14px); }
             #bottom-nav { display: flex; }
 
-            /* ── Allow body and app-shell to scroll ── */
+            /* ── Make page scrollable on mobile ── */
             body { overflow-y: auto !important; }
             #app-shell {
                 height: auto !important;
@@ -751,171 +752,213 @@
                 overflow: visible !important;
             }
 
-            /* ── Shrink topnav ── */
-            #topnav { height: 55px !important; }
-            .brand { font-size: 1rem !important; }
+            /* ── Shrink topnav to 50px ── */
+            #topnav {
+                height: 50px !important;
+                padding: 0 14px !important;
+            }
+            .brand { font-size: 0.95rem !important; }
+            .topnav-mid { display: none !important; }
+            .user-pill { display: none !important; }
 
-            /* ── Feed column: reserve space for sticky wallet bar (~110px) + bottom nav ── */
+            /* ── Feed column: pad top for sticky bar height (~130px) + bottom nav ── */
             #feed-col {
                 overflow: visible !important;
                 padding: 0 !important;
-                padding-top: 114px !important;
-                padding-bottom: calc(var(--bottom-nav-h) + 8px) !important;
+                padding-top: 130px !important;
+                padding-bottom: calc(var(--bottom-nav-h) + 12px) !important;
             }
 
-            /* ════════════════════════════════════════════════════
-               STICKY WALLET BAR — permanently visible under topnav
-               Hides the full drawer overlay; shows a compact bar
-               with Star Balance, APTM value, and gold Withdraw btn.
-            ════════════════════════════════════════════════════ */
+            /* ══════════════════════════════════════════════════════
+               STICKY WALLET PANEL
+               position: sticky is applied to #wallet-drawer-panel.
+               Because the drawer lives outside #app-shell in the DOM,
+               we use position: fixed (viewport-fixed = always visible)
+               which is functionally identical to sticky:top for this UI.
+            ══════════════════════════════════════════════════════ */
 
-            /* Kill the overlay backdrop */
+            /* Disable the overlay wrapper entirely */
             #wallet-drawer-backdrop { display: none !important; }
-
-            /* The drawer wrapper: fixed strip under the topnav */
             #wallet-drawer {
                 display: block !important;
                 position: fixed !important;
-                top: 55px !important;
+                top: 50px !important;
                 left: 0 !important;
                 right: 0 !important;
                 bottom: auto !important;
                 z-index: 1000 !important;
-                background: none !important;
-                pointer-events: none !important; /* pass through to panel */
+                background: transparent !important;
+                pointer-events: none !important;
             }
 
-            /* The panel: the actual sticky bar */
+            /* ── THE STICKY PANEL ── */
             #wallet-drawer-panel {
-                position: relative !important;
+                position: sticky !important;     /* per spec */
+                top: 50px !important;             /* per spec */
+                z-index: 1000 !important;         /* per spec */
                 transform: translateY(0) !important;
                 height: auto !important;
                 max-height: none !important;
                 transition: none !important;
                 border-radius: 0 !important;
                 border-top: none !important;
-                border-bottom: 2px solid var(--gold) !important;
-                background: #161b27 !important;
+                border-bottom: 2px solid var(--gold) !important;  /* gold bottom border */
+                background: #161b27 !important;   /* solid background per spec */
                 overflow: visible !important;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.45) !important;
+                box-shadow: 0 6px 24px rgba(0,0,0,0.55) !important;
                 pointer-events: all !important;
             }
 
-            /* Hide the back button — no overlay to close */
+            /* Hide back button — no overlay to dismiss */
             #drawer-back-btn { display: none !important; }
 
-            /* Wallet drawer content: horizontal compact bar layout */
+            /* ── WALLET DRAWER CONTENT: vertical stack ── */
             #wallet-drawer-content {
                 display: flex !important;
-                flex-direction: row !important;
-                align-items: center !important;
-                gap: 10px !important;
-                padding: 10px 14px !important;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0 !important;
+                padding: 12px 16px !important;
                 overflow: visible !important;
             }
 
-            /* Hide Buy Stars, Creator Studio, Admin, Connect prompt cards — not needed in bar */
+            /* Hide all rp-cards except the first (balance) and third (settle btn) */
             #wallet-drawer-content .rp-card:nth-child(2),
-            #wallet-drawer-content .rp-card:nth-child(3),
             #wallet-drawer-content .rp-card:nth-child(4),
             #drawer-connect-prompt { display: none !important; }
 
-            /* The star balance card: takes up left portion */
+            /* ── BALANCE CARD: centered label + big number ── */
             #wallet-drawer-content .rp-card:first-child {
-                flex: 1 !important;
                 background: transparent !important;
                 border: none !important;
                 border-radius: 0 !important;
-                padding: 0 !important;
+                padding: 0 0 10px 0 !important;
+                margin: 0 !important;
+                text-align: center !important;
                 display: flex !important;
                 flex-direction: column !important;
+                align-items: center !important;
                 gap: 2px !important;
-                margin: 0 !important;
             }
 
-            /* Star label */
+            /* "TOTAL SPENDABLE STARS" label */
             #wallet-drawer-content .rp-card:first-child .drawer-section-label {
-                font-size: 0.52rem !important;
-                letter-spacing: 1.5px !important;
+                font-size: 0.55rem !important;
+                letter-spacing: 2px !important;
                 color: var(--text-muted) !important;
-                text-align: left !important;
-                margin-bottom: 1px !important;
+                text-align: center !important;
+                margin-bottom: 2px !important;
             }
 
-            /* Big star number */
+            /* Big centered star balance */
             .drawer-stars-display {
-                font-size: 1.75rem !important;
                 font-family: var(--font-mono) !important;
+                font-size: 2.4rem !important;
                 font-weight: 700 !important;
                 color: var(--gold) !important;
                 line-height: 1 !important;
                 display: block !important;
-                text-align: left !important;
+                text-align: center !important;
             }
 
-            /* APTM price line */
+            /* Live APTM price line */
             .drawer-price-display {
-                font-size: 0.68rem !important;
+                font-size: 0.7rem !important;
                 color: var(--teal) !important;
                 font-family: var(--font-mono) !important;
                 font-weight: 600 !important;
-                text-align: left !important;
-                margin-top: 1px !important;
+                text-align: center !important;
+                margin-top: 2px !important;
             }
 
-            /* Hide the purchased/earned sub-grid — bar is compact */
+            /* Hide purchased/earned sub-grid and APTM val line — keep bar compact */
             #wallet-drawer-content .rp-card:first-child > div:nth-child(3),
             #wallet-drawer-content .rp-card:first-child > div:nth-child(4) {
                 display: none !important;
             }
-
-            /* APTM value line — show it */
             #wallet-drawer-content .rp-card:first-child > div:last-child {
-                display: block !important;
-                font-size: 0.62rem !important;
-                color: var(--text-muted) !important;
+                display: none !important;
             }
 
-            /* ── WITHDRAW BUTTON: full gold, right side of bar ── */
-            /* We need to inject the settle button into the bar.
-               The settle btn lives inside rp-card:nth-child(3) which is hidden.
-               Solution: use a CSS-only duplicate via the ::after pseudo technique
-               is not possible, so instead we un-hide just the button from card 3
-               and reposition it. We target the card but show ONLY its button. */
-
+            /* ── CREATOR STUDIO CARD (3rd): show only the Settle button ── */
             #wallet-drawer-content .rp-card:nth-child(3) {
-                display: flex !important;
-                flex-direction: column !important;
-                justify-content: center !important;
+                display: block !important;
                 background: transparent !important;
                 border: none !important;
                 padding: 0 !important;
                 margin: 0 !important;
                 border-radius: 0 !important;
-                flex-shrink: 0 !important;
             }
 
-            /* Hide all children of card 3 except the settle button */
+            /* Hide everything in card 3 except the settle button */
             #wallet-drawer-content .rp-card:nth-child(3) > *:not(.btn-teal) {
                 display: none !important;
             }
 
-            /* The gold Withdraw / Settle button */
+            /* ── FULL-WIDTH GOLD WITHDRAW BUTTON ── */
             #wallet-drawer-content .rp-card:nth-child(3) .btn-teal {
                 display: block !important;
-                width: auto !important;
-                min-width: 130px !important;
-                padding: 12px 16px !important;
-                font-size: 0.78rem !important;
+                width: 100% !important;           /* full-width per spec */
+                padding: 14px 20px !important;
+                font-size: 0.9rem !important;
                 font-weight: 700 !important;
-                letter-spacing: 0.2px !important;
+                letter-spacing: 0.3px !important;
                 border-radius: 10px !important;
                 margin-top: 0 !important;
-                background: var(--gold) !important;
+                background: var(--gold) !important;   /* Apertum gold */
                 color: #0d1117 !important;
                 border: none !important;
-                box-shadow: 0 3px 14px rgba(240,180,41,0.45) !important;
+                box-shadow: 0 4px 18px rgba(240,180,41,0.45) !important;
                 white-space: nowrap !important;
+                text-align: center !important;
+            }
+
+            /* ══════════════════════════════════════════════════════
+               LEDGER ROWS — transaction card style on mobile
+            ══════════════════════════════════════════════════════ */
+            #ledger-table-header { display: none !important; }
+
+            .ledger-row {
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 6px !important;
+                padding: 12px 14px !important;
+                margin-bottom: 8px !important;
+                background: rgba(255,255,255,0.05) !important;
+                border: 1px solid rgba(255,255,255,0.08) !important;
+                border-radius: 10px !important;
+                border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+            }
+
+            .ledger-row:last-child {
+                border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+                margin-bottom: 0 !important;
+            }
+
+            .ledger-desc {
+                font-size: 0.82rem !important;
+                width: 100% !important;
+                color: var(--text-primary) !important;
+                line-height: 1.45 !important;
+            }
+            .ledger-desc small {
+                display: block !important;
+                font-size: 0.65rem !important;
+                color: var(--text-muted) !important;
+                margin-top: 3px !important;
+            }
+            .ledger-badge {
+                width: auto !important;
+                font-size: 0.6rem !important;
+                padding: 3px 10px !important;
+                border-radius: 5px !important;
+            }
+            .ledger-amount {
+                width: auto !important;
+                font-size: 0.92rem !important;
+                font-weight: 700 !important;
+                text-align: left !important;
             }
         }
 
@@ -924,10 +967,10 @@
         ══════════════════════════════════════════════════════════════ */
         @media (max-width: 600px) {
 
-            /* ── HEADER: 55px, one line, no overflow ── */
+            /* ── HEADER: 50px, one line, no overflow ── */
             #topnav {
                 padding: 0 12px;
-                height: 55px;
+                height: 50px;
                 gap: 8px;
                 overflow: hidden;
             }
@@ -959,7 +1002,7 @@
             }
 
             /* ── FEED COLUMN ── */
-            #feed-col { padding: 0 !important; padding-top: 114px !important; padding-bottom: calc(var(--bottom-nav-h) + 8px) !important; }
+            #feed-col { padding: 0 !important; padding-top: 130px !important; padding-bottom: calc(var(--bottom-nav-h) + 8px) !important; }
             .feed-heading { padding: 12px 14px 6px; font-size: 0.82rem; }
 
             /* ── COMPOSER ── */
@@ -991,7 +1034,7 @@
             #page-profile.active,
             #page-info.active {
                 position: fixed;
-                top: 55px; left: 0; right: 0;
+                top: 50px; left: 0; right: 0;
                 bottom: var(--bottom-nav-h);
                 overflow-y: auto;
                 -webkit-overflow-scrolling: touch;
