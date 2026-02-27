@@ -733,8 +733,14 @@
             color: var(--teal); margin-bottom: 4px;
         }
 
-        /* ══════════════════════════════════════════════════════════════
-           MOBILE — 768px  (ONLY this block changes — desktop untouched)
+        /* ── MOBILE NAV BAR — hidden on desktop, shown via mobile media query ── */
+        #mobile-nav-bar { display: none; }
+        .mnav-btn { display: none; }
+
+                /* ══════════════════════════════════════════════════════════════
+           MOBILE — 768px  ★ FULL ENGINE RESTORATION ★
+           Desktop 3-column layout is 100% untouched.
+           All changes below are mobile-only.
         ══════════════════════════════════════════════════════════════ */
         @media (max-width: 768px) {
 
@@ -756,32 +762,83 @@
             #topnav {
                 height: 50px !important;
                 padding: 0 14px !important;
+                position: sticky !important;
+                top: 0 !important;
+                z-index: 3000 !important;
             }
-            .brand { font-size: 0.95rem !important; }
+            .brand { font-size: 0.9rem !important; }
             .topnav-mid { display: none !important; }
             .user-pill { display: none !important; }
+            #wallet-btn {
+                font-size: 0.62rem !important;
+                padding: 6px 10px !important;
+                gap: 5px !important;
+            }
 
-            /* ── Feed column: pad top = sticky bar actual height (~90px) + 20px breathing room ── */
-            /* 20px extra padding prevents the wallet bar from covering the first video */
+            /* ══════════════════════════════════════════════════════
+               MOBILE STICKY NAV BAR — 4 section buttons
+               Sits directly under #topnav (top: 50px)
+            ══════════════════════════════════════════════════════ */
+            #mobile-nav-bar {
+                display: flex !important;
+                position: sticky !important;
+                top: 50px !important;
+                z-index: 2000 !important;
+                background: #161b27 !important;
+                border-bottom: 2px solid rgba(124,92,191,0.35) !important;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.45) !important;
+                width: 100% !important;
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+                scrollbar-width: none !important;
+                gap: 0 !important;
+                flex-shrink: 0 !important;
+            }
+            #mobile-nav-bar::-webkit-scrollbar { display: none !important; }
+
+            .mnav-btn {
+                flex: 1 !important;
+                min-width: 80px !important;
+                padding: 10px 6px !important;
+                background: transparent !important;
+                border: none !important;
+                border-bottom: 2px solid transparent !important;
+                color: var(--text-muted) !important;
+                font-family: var(--font-body) !important;
+                font-size: 0.68rem !important;
+                font-weight: 600 !important;
+                cursor: pointer !important;
+                white-space: nowrap !important;
+                text-align: center !important;
+                letter-spacing: 0.3px !important;
+                transition: all 0.15s !important;
+                -webkit-tap-highlight-color: transparent !important;
+            }
+            .mnav-btn:hover { color: var(--text-primary) !important; }
+            .mnav-btn.active {
+                color: var(--purple-lt) !important;
+                border-bottom-color: var(--purple-lt) !important;
+                background: rgba(124,92,191,0.08) !important;
+            }
+
+            /* ── Feed column: pad top = topnav(50) + nav-bar(~40) + 12px gap ── */
             #feed-col {
                 overflow: visible !important;
                 padding: 0 !important;
-                padding-top: 110px !important;
+                padding-top: 102px !important;
                 padding-bottom: calc(var(--bottom-nav-h) + 12px) !important;
             }
 
             /* ══════════════════════════════════════════════════════
-               STICKY WALLET ACTION BAR — slim, floating above feed
+               WALLET ACTION BAR (slim strip for quick balance/withdraw)
+               Hidden on mobile in favour of the full Creator Studio tab.
+               The wallet drawer still works from bottom nav Wallet button.
             ══════════════════════════════════════════════════════ */
-
-            /* Disable the overlay backdrop */
             #wallet-drawer-backdrop { display: none !important; }
-
-            /* Wrapper: fixed under topnav, full width, pass-through */
             #wallet-drawer {
                 display: block !important;
                 position: fixed !important;
-                top: 50px !important;
+                top: 90px !important;
                 left: 0 !important;
                 right: 0 !important;
                 bottom: auto !important;
@@ -789,131 +846,88 @@
                 background: transparent !important;
                 pointer-events: none !important;
             }
-
-            /* ── THE SLIM STICKY PANEL ── */
             #wallet-drawer-panel {
-                position: sticky !important;
-                top: 50px !important;
-                z-index: 1000 !important;
-                transform: translateY(0) !important;
-                height: auto !important;
-                max-height: 120px !important;        /* slim action bar, not a giant box */
-                overflow: hidden !important;
-                transition: none !important;
-                border-radius: 0 !important;
-                border-top: none !important;
-                border-bottom: 2px solid var(--gold) !important;
-                background: #161b27 !important;      /* solid — no feed bleed-through */
-                box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important;  /* floats above feed */
-                pointer-events: all !important;
+                display: none !important;
             }
-
-            /* Hide back button */
             #drawer-back-btn { display: none !important; }
 
-            /* ── WALLET CONTENT: compact horizontal row ── */
-            #wallet-drawer-content {
-                display: flex !important;
-                flex-direction: row !important;
-                align-items: center !important;
-                gap: 10px !important;
-                padding: 8px 14px !important;        /* reduced vertical padding = slimmer */
-                overflow: hidden !important;
+            /* ══════════════════════════════════════════════════════
+               PAGE SYSTEM — all pages fill screen below the nav bar
+            ══════════════════════════════════════════════════════ */
+
+            /* page-home uses display:contents — keep feed scrollable */
+            #page-home {
+                display: contents !important;
             }
 
-            /* Hide Buy Stars (card 2), Admin (card 4), connect prompt */
-            #wallet-drawer-content .rp-card:nth-child(2),
-            #wallet-drawer-content .rp-card:nth-child(4),
-            #drawer-connect-prompt { display: none !important; }
-
-            /* ── BALANCE CARD: left side, centered text ── */
-            #wallet-drawer-content .rp-card:first-child {
-                flex: 1 !important;
-                background: transparent !important;
-                border: none !important;
-                border-radius: 0 !important;
-                padding: 0 !important;
-                margin: 0 !important;
-                text-align: center !important;
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: center !important;
-                justify-content: center !important;
-                gap: 1px !important;
-            }
-
-            /* "TOTAL SPENDABLE STARS" micro-label */
-            #wallet-drawer-content .rp-card:first-child .drawer-section-label {
-                font-size: 0.48rem !important;
-                letter-spacing: 1.5px !important;
-                color: var(--text-muted) !important;
-                text-align: center !important;
-                margin-bottom: 0 !important;
-            }
-
-            /* Star balance — slimmed down font size */
-            .drawer-stars-display {
-                font-family: var(--font-mono) !important;
-                font-size: 1.6rem !important;        /* reduced from 2.4rem — slim bar */
-                font-weight: 700 !important;
-                color: var(--gold) !important;
-                line-height: 1 !important;
+            /* Other pages fill viewport below topnav + mobile nav bar */
+            #page-earnings.active,
+            #page-profile.active,
+            #page-info.active {
                 display: block !important;
-                text-align: center !important;
-            }
-
-            /* APTM price line */
-            .drawer-price-display {
-                font-size: 0.62rem !important;
-                color: var(--teal) !important;
-                font-family: var(--font-mono) !important;
-                font-weight: 600 !important;
-                text-align: center !important;
-                margin-top: 1px !important;
-            }
-
-            /* Hide purchased/earned grid and APTM value row — keep bar tight */
-            #wallet-drawer-content .rp-card:first-child > div:nth-child(3),
-            #wallet-drawer-content .rp-card:first-child > div:nth-child(4),
-            #wallet-drawer-content .rp-card:first-child > div:last-child {
-                display: none !important;
-            }
-
-            /* ── CREATOR STUDIO CARD (3rd): strip to button only ── */
-            #wallet-drawer-content .rp-card:nth-child(3) {
-                display: flex !important;
-                flex-direction: column !important;
-                justify-content: center !important;
-                flex-shrink: 0 !important;
-                background: transparent !important;
-                border: none !important;
+                position: fixed !important;
+                top: 90px !important;
+                left: 0 !important;
+                right: 0 !important;
+                bottom: var(--bottom-nav-h) !important;
+                overflow-y: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+                background: var(--bg-app) !important;
+                z-index: 500 !important;
                 padding: 0 !important;
+                padding-bottom: calc(var(--bottom-nav-h) + 20px) !important;
+            }
+
+            /* ── PAGE HEADINGS ── */
+            .page-heading {
+                font-size: 1rem !important;
+                font-weight: 700 !important;
                 margin: 0 !important;
-                border-radius: 0 !important;
+                padding: 16px 16px 10px !important;
+                color: var(--text-white) !important;
             }
 
-            /* Hide everything except the settle button */
-            #wallet-drawer-content .rp-card:nth-child(3) > *:not(.btn-teal) {
-                display: none !important;
+            /* ══════════════════════════════════════════════════════
+               CREATOR STUDIO PAGE (page-earnings)
+               Full balance, settle button, and transaction ledger
+            ══════════════════════════════════════════════════════ */
+            #page-earnings .card {
+                border-radius: 12px !important;
+                margin: 0 12px 12px !important;
+                padding: 16px !important;
             }
 
-            /* ── GOLD WITHDRAW BUTTON — full-width, slimmed padding ── */
-            #wallet-drawer-content .rp-card:nth-child(3) .btn-teal {
+            /* Total Stars tile — large gold number */
+            #creator-revenue-display {
+                font-size: 2.2rem !important;
+                color: var(--gold) !important;
+            }
+
+            /* APTM value */
+            #earnings-aptm-value {
+                font-size: 1rem !important;
+                margin-top: 4px !important;
+            }
+
+            /* Settle button — full-width gold CTA */
+            #page-earnings .btn-teal {
                 display: block !important;
                 width: 100% !important;
-                padding: 10px 14px !important;       /* reduced padding = slimmer */
-                font-size: 0.78rem !important;       /* reduced font = slimmer */
+                padding: 16px 20px !important;
+                font-size: 0.92rem !important;
                 font-weight: 700 !important;
-                letter-spacing: 0.2px !important;
-                border-radius: 8px !important;
-                margin-top: 0 !important;
+                letter-spacing: 0.3px !important;
+                border-radius: 12px !important;
+                margin-top: 12px !important;
                 background: var(--gold) !important;
                 color: #0d1117 !important;
                 border: none !important;
-                box-shadow: 0 3px 12px rgba(240,180,41,0.4) !important;
-                white-space: nowrap !important;
-                text-align: center !important;
+                box-shadow: 0 4px 20px rgba(240,180,41,0.4) !important;
             }
+
+            /* Admin panel */
+            #admin-revenue-panel { border-radius: 12px !important; margin: 0 12px 12px !important; }
+            #admin-withdraw-btn  { width: 100% !important; margin-top: 10px !important; }
 
             /* ══════════════════════════════════════════════════════
                LEDGER ROWS — transaction card style on mobile
@@ -932,12 +946,9 @@
                 border-radius: 10px !important;
                 border-bottom: 1px solid rgba(255,255,255,0.08) !important;
             }
-
             .ledger-row:last-child {
-                border-bottom: 1px solid rgba(255,255,255,0.08) !important;
                 margin-bottom: 0 !important;
             }
-
             .ledger-desc {
                 font-size: 0.82rem !important;
                 width: 100% !important;
@@ -962,8 +973,77 @@
                 font-weight: 700 !important;
                 text-align: left !important;
             }
-        }
 
+            /* ══════════════════════════════════════════════════════
+               MY PROFILE PAGE (page-profile)
+               Name + avatar URL + save button, Firebase-persisted
+            ══════════════════════════════════════════════════════ */
+            #page-profile .card {
+                border-radius: 12px !important;
+                margin: 0 12px 12px !important;
+                padding: 16px !important;
+            }
+            #page-profile .btn-purple {
+                display: block !important;
+                width: 100% !important;
+                margin-top: 14px !important;
+                padding: 14px 20px !important;
+                font-size: 0.88rem !important;
+                font-weight: 700 !important;
+                border-radius: 12px !important;
+                letter-spacing: 0.3px !important;
+            }
+
+            /* ══════════════════════════════════════════════════════
+               TOKENOMICS PAGE (page-info)
+            ══════════════════════════════════════════════════════ */
+            #page-info .card {
+                border-radius: 12px !important;
+                padding: 16px !important;
+                margin: 0 12px 12px !important;
+            }
+            .tok-row { padding: 9px 0 !important; font-size: 0.8rem !important; }
+            .tok-section { font-size: 0.6rem !important; margin-top: 14px !important; }
+
+            /* ══════════════════════════════════════════════════════
+               HOME FEED COMPOSER + POST CARDS
+            ══════════════════════════════════════════════════════ */
+            #composer-card {
+                border-radius: 0 !important;
+                border-left: none !important;
+                border-right: none !important;
+                border-top: none !important;
+                margin: 0 0 2px !important;
+                padding: 12px !important;
+            }
+            .media-tabs { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin-bottom: 10px !important; }
+            .mtab { text-align: center !important; padding: 7px 4px !important; font-size: 0.68rem !important; }
+
+            .post-card {
+                padding: 12px 0 !important;
+                background: transparent !important;
+                border: none !important;
+                border-bottom: 1px solid var(--border) !important;
+                border-radius: 0 !important;
+                margin: 0 !important;
+            }
+            .post-card .post-header,
+            .post-card .post-body,
+            .post-card .post-actions,
+            .post-card .comment-tray { padding-left: 14px !important; padding-right: 14px !important; }
+            .post-media { width: 100% !important; max-height: none !important; border-radius: 0 !important; border-left: none !important; border-right: none !important; margin-bottom: 10px !important; }
+            .post-media img  { max-height: 60vw !important; }
+            .post-media iframe { height: 56vw !important; }
+            .feed-heading { padding: 12px 14px 6px !important; font-size: 0.82rem !important; }
+
+            /* ── LOAD MORE ── */
+            #load-more-btn { width: calc(100% - 28px) !important; margin: 8px 14px 16px !important; border-radius: 10px !important; }
+
+            /* ── BOTTOM NAV ── */
+            #bottom-nav { box-shadow: 0 -1px 0 var(--border), 0 -8px 24px rgba(0,0,0,0.3) !important; }
+            .bnav-item { font-size: 0.5rem !important; letter-spacing: 0.2px !important; }
+            .bnav-item .bnav-icon { font-size: 1.2rem !important; }
+        }
         /* ══════════════════════════════════════════════════════════════
            MOBILE — 600px full UX
         ══════════════════════════════════════════════════════════════ */
@@ -1181,6 +1261,14 @@
                 <span id="wallet-status">Connect Wallet</span>
             </button>
         </div>
+    </div>
+
+    <!-- MOBILE STICKY NAV BAR — hidden on desktop, sticky on mobile under #topnav -->
+    <div id="mobile-nav-bar">
+        <button class="mnav-btn active" id="mnav-feed"    onclick="mobileNav('home',     'mnav-feed')">⊞ Home Feed</button>
+        <button class="mnav-btn"        id="mnav-studio"  onclick="mobileNav('earnings', 'mnav-studio')">◆ Studio</button>
+        <button class="mnav-btn"        id="mnav-profile" onclick="mobileNav('profile',  'mnav-profile')">◉ Profile</button>
+        <button class="mnav-btn"        id="mnav-info"    onclick="mobileNav('info',     'mnav-info')">◎ Tokenomics</button>
     </div>
 
     <!-- BODY LAYOUT -->
@@ -1712,6 +1800,27 @@
         if (el) el.classList.add('active');
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // MOBILE NAV BAR — 4-button sticky navigation (mobile only)
+    // Drives the same page system as the desktop sidebar.
+    // ═══════════════════════════════════════════════════════════════════
+    function mobileNav(page, btnId) {
+        // Update active button state
+        document.querySelectorAll('.mnav-btn').forEach(b => b.classList.remove('active'));
+        const activeBtn = document.getElementById(btnId);
+        if (activeBtn) activeBtn.classList.add('active');
+
+        // Sync with existing switchPage system
+        switchPage(page, null);
+
+        // Sync bottom nav highlight too
+        const pageToNav = { home: 'home', earnings: 'studio', profile: 'home', info: 'info' };
+        setBnav(pageToNav[page] || 'home');
+
+        // Scroll to top of feed on each tab change
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
     function scrollToCompose() {
         switchPage('home', null);
         setBnav('home');
@@ -1913,6 +2022,10 @@
             subscribeToEarnings(userAddress);
             subscribeLedger(userAddress);
             subscribeAdminRevenue(userAddress);
+
+            // ── Load Firebase profile (name + avatar) for this wallet ──
+            await loadProfileFromFirebase(userAddress);
+
             if (typeof loadGlobalFeed === "function") loadGlobalFeed();
             showToast("Connected & Synced ✓");
         } catch (err) {
@@ -1997,16 +2110,67 @@
         } catch (e) { console.error("UI Update Error:", e); }
     }
 
-    function saveProfile() {
+    async function saveProfile() {
         const nameVal = document.getElementById('handle-input').value.trim();
         const picVal  = document.getElementById('avatar-input').value.trim();
-        if (nameVal && picVal) {
-            localStorage.setItem('hub_userName', nameVal);
-            localStorage.setItem('hub_userPic',  picVal);
-            userHandle = nameVal; userAvatar = picVal;
-            updateUI(); showToast("Identity Saved ✓"); loadGlobalFeed();
+        if (!nameVal) return alert("Please enter a display name.");
+
+        // Always save to localStorage for immediate use
+        localStorage.setItem('hub_userName', nameVal);
+        if (picVal) localStorage.setItem('hub_userPic', picVal);
+        userHandle = nameVal;
+        if (picVal) userAvatar = picVal;
+
+        // ── Persist to Firebase users collection keyed by walletAddress ──
+        // This lets the profile load automatically on reconnect from any device.
+        if (window.db && userAddress) {
+            try {
+                const userRef = window.fs.doc(window.db, "users", userAddress.toLowerCase());
+                await window.fs.setDoc(userRef, {
+                    displayName:   nameVal,
+                    avatarUrl:     picVal || userAvatar,
+                    walletAddress: userAddress.toLowerCase(),
+                    updatedAt:     Date.now()
+                }, { merge: true });
+                showToast("Identity Saved & Synced ✓");
+            } catch (e) {
+                console.warn("Firebase profile save failed:", e);
+                showToast("Saved locally ✓ (Firebase sync failed)");
+            }
         } else {
-            alert("Please enter both a name and an image URL");
+            showToast("Identity Saved Locally ✓");
+            if (!userAddress) showToast("Connect wallet to sync across devices.");
+        }
+
+        updateUI();
+        loadGlobalFeed();
+    }
+
+    // ── Load profile from Firebase when wallet connects ──────────────
+    async function loadProfileFromFirebase(walletAddr) {
+        if (!walletAddr || !window.db) return;
+        try {
+            const userRef = window.fs.doc(window.db, "users", walletAddr.toLowerCase());
+            const snap    = await window.fs.getDoc(userRef);
+            if (snap.exists()) {
+                const data = snap.data();
+                if (data.displayName) {
+                    userHandle = data.displayName;
+                    localStorage.setItem('hub_userName', data.displayName);
+                }
+                if (data.avatarUrl) {
+                    userAvatar = data.avatarUrl;
+                    localStorage.setItem('hub_userPic', data.avatarUrl);
+                }
+                // Pre-fill the profile form fields for easy editing
+                const handleInput = document.getElementById('handle-input');
+                const avatarInput = document.getElementById('avatar-input');
+                if (handleInput) handleInput.value = data.displayName || '';
+                if (avatarInput) avatarInput.value  = data.avatarUrl  || '';
+                updateUI();
+            }
+        } catch (e) {
+            console.warn("loadProfileFromFirebase:", e);
         }
     }
 
