@@ -409,6 +409,8 @@
         }
         .pact:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border); }
         .pact.boost:hover { color: var(--gold); border-color: rgba(240,180,41,0.3); background: rgba(240,180,41,0.06); }
+        .pact.views { cursor: default; opacity: 0.6; margin-left: auto; }
+        .pact.views:hover { background: transparent; color: var(--text-secondary); border-color: transparent; }
         .pact-num { font-family: var(--font-mono); font-size: 0.7rem; }
 
         /* ── V17 COMMENT SYSTEM ─────────────────────────────────────── */
@@ -3578,6 +3580,53 @@
     }
 
 
+    // ═══════════════════════════════════════════════════════════════════
+    // VIEW COUNTER — Intersection Observer (Index 18)
+    //
+    // Watches every .post-card. When ≥50% of the card has been visible
+    // for at least 1.5 seconds, increments `views` in Firestore once per
+    // post per browser session. Uses window.countedViews (a Set) to
+    // prevent double-counting on re-renders.
+    // ═══════════════════════════════════════════════════════════════════
+    window.countedViews = window.countedViews || new Set();
+
+    const viewObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            const card   = entry.target;
+            const postId = card.getAttribute('data-id');
+            if (!postId) return;
+
+            if (entry.isIntersecting) {
+                // Card has entered the viewport — start a 1.5s dwell timer
+                if (!card._viewTimer) {
+                    card._viewTimer = setTimeout(() => {
+                        card._viewTimer = null;
+                        // Only count once per session per post
+                        if (window.countedViews.has(postId)) return;
+                        if (!window.db || !window.fs) return;
+                        window.countedViews.add(postId);
+                        // Increment the `views` field in Firestore
+                        window.fs.updateDoc(
+                            window.fs.doc(window.db, "posts", postId),
+                            { views: window.fs.increment(1) }
+                        ).catch(e => console.warn("View increment failed for", postId, e));
+                        // Update the UI counter immediately (optimistic)
+                        const el = document.getElementById("views-" + postId);
+                        if (el) el.textContent = (parseInt(el.textContent || "0") + 1).toLocaleString();
+                    }, 1500);
+                }
+            } else {
+                // Card left viewport — cancel the pending dwell timer
+                if (card._viewTimer) {
+                    clearTimeout(card._viewTimer);
+                    card._viewTimer = null;
+                }
+            }
+        });
+    }, {
+        threshold: 0.5   // 50% of the card must be visible
+    });
+
     async function loadGlobalFeed() {
         const feedContainer = document.getElementById('feed-items');
         if (!feedContainer || !window.db) return;
@@ -3648,7 +3697,8 @@
                     <div class="post-actions">
                         <div class="pact" onclick="hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span> Like</div>
                         <div class="pact" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comment<span class="pact-num" id="cc-${postId}" style="color:var(--teal);"></span></div>
-                        <div class="pact boost" style="margin-left:auto;" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
+                        <div class="pact boost" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
+                        <div class="pact views" title="Impressions">👁 <span class="pact-num" id="views-${postId}">${(post.views || 0).toLocaleString()}</span></div>
                     </div>
                     <div class="comment-tray" id="tray-${postId}">
                         <div class="comment-list" id="list-${postId}"></div>
@@ -3662,6 +3712,7 @@
                         <button class="close-comments-btn" onclick="toggleTray('${postId}')">↑ Close Comments</button>
                     </div>`;
                 feedContainer.appendChild(item);
+                viewObserver.observe(item);              // start watching for impressions
                 subscribeCommentCount(postId);   // live comment counter badge
             });
             if (typeof refreshFeedVisibility === "function") refreshFeedVisibility();
