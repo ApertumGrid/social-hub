@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>SOCIALHUB — Apertum Signal Protocol</title>
+    <title>SOCIALHUB — Index 24 · Daily Signals</title>
     <link rel="icon" href="data:,">
 
     <!-- 1. Ethers.js -->
@@ -13,7 +13,7 @@
     <!-- 2. Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
         const firebaseConfig = {
@@ -30,7 +30,7 @@
         const storage = getStorage(app);
         window.db  = db;
         window.storage = storage;
-        window.fs  = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp };
+        window.fs  = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc };
         window.fsStorage = { ref, uploadBytesResumable, getDownloadURL };
     </script>
 
@@ -428,6 +428,202 @@
         }
         #wall-back-btn:hover {
             background: rgba(45,212,191,0.22); border-color: var(--teal); color: #fff;
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           INDEX 24 — DAILY SIGNALS BAR
+        ═══════════════════════════════════════════════════════════ */
+        #signals-bar {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 10px 16px;
+            background: var(--bg-card2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            overflow-x: auto;
+            flex-shrink: 0;
+            scrollbar-width: none;
+        }
+        #signals-bar::-webkit-scrollbar { display: none; }
+        #signals-bar:empty { display: none; }
+        .signal-empty-msg {
+            font-size: 0.72rem; color: var(--text-muted); padding: 4px 0; white-space: nowrap;
+        }
+        .signal-bubble {
+            display: flex; flex-direction: column; align-items: center; gap: 5px;
+            cursor: pointer; flex-shrink: 0;
+        }
+        .signal-bubble:hover .signal-ring { border-color: var(--teal); }
+        .signal-ring {
+            width: 52px; height: 52px; border-radius: 50%;
+            border: 2px solid var(--purple-lt);
+            padding: 2px;
+            background: var(--bg-card);
+            transition: border-color 0.15s;
+            position: relative;
+        }
+        .signal-ring img {
+            width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
+        }
+        .signal-ring-dot {
+            position: absolute; bottom: 1px; right: 1px;
+            width: 10px; height: 10px; border-radius: 50%;
+            background: var(--teal);
+            border: 2px solid var(--bg-card);
+        }
+        .signal-name {
+            font-size: 0.6rem; color: var(--text-secondary);
+            max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            text-align: center; font-weight: 600;
+        }
+        .signal-add-btn {
+            display: flex; flex-direction: column; align-items: center; gap: 5px;
+            cursor: pointer; flex-shrink: 0;
+        }
+        .signal-add-ring {
+            width: 52px; height: 52px; border-radius: 50%;
+            border: 2px dashed rgba(124,92,191,0.4);
+            background: var(--bg-input);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.4rem; color: var(--purple-lt);
+            transition: all 0.15s;
+        }
+        .signal-add-btn:hover .signal-add-ring {
+            border-color: var(--purple-lt); background: var(--purple-dim);
+        }
+        .signal-add-name { font-size: 0.6rem; color: var(--text-muted); font-weight: 600; }
+
+        /* Signal lightbox content */
+        #signal-lightbox {
+            position: fixed; inset: 0; z-index: 9990;
+            background: rgba(0,0,0,0.88);
+            display: none; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 16px;
+            padding: 20px;
+        }
+        #signal-lightbox.open { display: flex; }
+        #signal-lb-media { max-width: 100%; max-height: 60vh; border-radius: var(--radius-lg); }
+        #signal-lb-caption {
+            font-size: 0.95rem; color: var(--text-primary); text-align: center;
+            max-width: 500px; line-height: 1.6;
+        }
+        #signal-lb-meta {
+            font-size: 0.72rem; color: var(--text-secondary); text-align: center;
+        }
+        #signal-lb-hype-btn {
+            display: inline-flex; align-items: center; gap: 7px;
+            padding: 8px 20px; border-radius: 50px;
+            background: rgba(124,92,191,0.2); border: 1px solid rgba(124,92,191,0.5);
+            color: var(--purple-lt); font-size: 0.8rem; font-weight: 700;
+            cursor: pointer; transition: all 0.15s;
+        }
+        #signal-lb-hype-btn:hover { background: rgba(124,92,191,0.35); }
+        #signal-lb-timer-bar {
+            position: absolute; bottom: 0; left: 0;
+            height: 3px; background: var(--purple-lt);
+            border-radius: 0 2px 2px 0;
+            transition: width 5s linear;
+        }
+        #signal-lb-close {
+            position: absolute; top: 20px; right: 20px;
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+            color: #fff; font-size: 1.1rem; width: 36px; height: 36px;
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.13s; z-index: 10;
+        }
+        #signal-lb-close:hover { background: rgba(255,255,255,0.2); }
+
+        /* ═══════════════════════════════════════════════════════════
+           INDEX 24 — PROFILE HERO HEADER (Wall view)
+        ═══════════════════════════════════════════════════════════ */
+        #profile-hero {
+            display: none;
+            background: linear-gradient(135deg, rgba(124,92,191,0.22) 0%, rgba(45,212,191,0.12) 100%);
+            border: 1px solid rgba(124,92,191,0.4);
+            border-radius: var(--radius-lg);
+            padding: 24px 22px 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        #profile-hero.visible { display: block; }
+        #profile-hero::before {
+            content: '';
+            position: absolute; inset: 0;
+            background: radial-gradient(ellipse 60% 60% at 80% 50%, rgba(45,212,191,0.06), transparent);
+            pointer-events: none;
+        }
+        .hero-top { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+        #hero-avatar {
+            width: 72px; height: 72px; border-radius: 50%;
+            border: 3px solid rgba(124,92,191,0.6);
+            object-fit: cover; flex-shrink: 0;
+            box-shadow: 0 0 20px rgba(124,92,191,0.3);
+        }
+        .hero-info { flex-grow: 1; }
+        #hero-name {
+            font-size: 1.3rem; font-weight: 700; color: var(--text-white);
+            margin-bottom: 4px; line-height: 1.2;
+        }
+        #hero-addr {
+            font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+        .hero-stats { display: flex; gap: 20px; flex-wrap: wrap; }
+        .hero-stat { display: flex; flex-direction: column; gap: 2px; }
+        .hero-stat-val {
+            font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700;
+            color: var(--gold);
+        }
+        .hero-stat-val.teal { color: var(--teal); }
+        .hero-stat-val.purple { color: var(--purple-lt); }
+        .hero-stat-label { font-size: 0.62rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+        .hero-signals-section { margin-top: 14px; }
+        .hero-signals-label {
+            font-size: 0.62rem; color: var(--text-muted); text-transform: uppercase;
+            letter-spacing: 1.5px; font-weight: 700; margin-bottom: 8px;
+        }
+        .hero-signals-row { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; }
+        .hero-signals-row::-webkit-scrollbar { display: none; }
+        #hero-back-btn {
+            position: absolute; top: 14px; right: 14px;
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 14px; border-radius: 50px;
+            background: rgba(45,212,191,0.1); border: 1px solid rgba(45,212,191,0.3);
+            color: var(--teal); font-size: 0.72rem; font-weight: 700;
+            cursor: pointer; transition: all 0.13s;
+        }
+        #hero-back-btn:hover { background: rgba(45,212,191,0.2); border-color: var(--teal); color: #fff; }
+
+        /* Signal toggle in composer */
+        .signal-toggle-row {
+            display: flex; align-items: center; gap: 10px;
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: rgba(124,92,191,0.06);
+            border: 1px solid rgba(124,92,191,0.2);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all 0.13s;
+        }
+        .signal-toggle-row:hover { background: rgba(124,92,191,0.12); border-color: rgba(124,92,191,0.4); }
+        .signal-toggle-row.active { background: rgba(124,92,191,0.18); border-color: rgba(124,92,191,0.55); }
+        .signal-toggle-check {
+            width: 20px; height: 20px; border-radius: 5px;
+            border: 1.5px solid rgba(124,92,191,0.5);
+            background: var(--bg-input);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; color: var(--purple-lt);
+            flex-shrink: 0; transition: all 0.13s;
+        }
+        .signal-toggle-row.active .signal-toggle-check {
+            background: var(--purple); border-color: var(--purple-lt);
+        }
+        .signal-toggle-label { font-size: 0.78rem; color: var(--text-secondary); flex-grow: 1; }
+        .signal-toggle-row.active .signal-toggle-label { color: var(--purple-lt); font-weight: 600; }
+        .signal-toggle-cost {
+            font-family: var(--font-mono); font-size: 0.65rem; color: var(--gold); font-weight: 700;
         }
         .boosted-badge {
             font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700;
@@ -1473,15 +1669,52 @@
                         <div class="progress-status" id="progress-status">Preparing…</div>
                     </div>
 
+                    <div class="signal-toggle-row" id="signal-toggle" onclick="toggleSignalMode()">
+                        <div class="signal-toggle-check" id="signal-toggle-check"></div>
+                        <span class="signal-toggle-label">⚡ Post as Daily Signal (24h) — featured in Stories bar</span>
+                        <span class="signal-toggle-cost">+1★</span>
+                    </div>
+
                     <div class="fee-display" id="post-fee-display"></div>
                     <div id="vault-liquidity-warning">⚠ Low Liquidity — Vault holds 0 APTM. Broadcast & Post disabled until funded.</div>
                     <button class="btn btn-purple" id="broadcast-btn" onclick="handleBroadcast()">◈ Broadcast Signal</button>
                 </div>
 
-                <!-- Wall filter header — shown when viewing a user's wall -->
-                <div id="wall-header">
+                <!-- Wall filter header — replaced by Profile Hero in Index 24 -->
+                <div id="profile-hero">
+                    <button id="hero-back-btn" onclick="clearWall()">← Home Feed</button>
+                    <div class="hero-top">
+                        <img id="hero-avatar" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub">
+                        <div class="hero-info">
+                            <div id="hero-name">…</div>
+                            <div id="hero-addr"></div>
+                            <div class="hero-stats">
+                                <div class="hero-stat">
+                                    <div class="hero-stat-val" id="hero-hype-total">0 ★</div>
+                                    <div class="hero-stat-label">Total Hype Received</div>
+                                </div>
+                                <div class="hero-stat">
+                                    <div class="hero-stat-val teal" id="hero-post-count">0</div>
+                                    <div class="hero-stat-label">Posts</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="hero-signals-section" id="hero-signals-section" style="display:none;">
+                        <div class="hero-signals-label">⚡ Active Daily Signals</div>
+                        <div class="hero-signals-row" id="hero-signals-row"></div>
+                    </div>
+                </div>
+
+                <!-- Legacy wall header hidden — Profile Hero replaces it -->
+                <div id="wall-header" style="display:none!important;">
                     <div id="wall-header-title">Viewing <span id="wall-header-name">…</span>'s Wall</div>
                     <button id="wall-back-btn" onclick="clearWall()">← Return to Home Feed</button>
+                </div>
+
+                <!-- SIGNALS BAR (Daily Signals — 24h Stories) -->
+                <div id="signals-bar">
+                    <span class="signal-empty-msg">⚡ Daily Signals loading…</span>
                 </div>
 
                 <div id="feed-items"></div>
@@ -1559,6 +1792,11 @@
                     <div class="tok-row"><span class="tok-label">Image Signal</span><span class="tok-value">3.0 ★</span></div>
                     <div class="tok-row"><span class="tok-label">Video Signal</span><span class="tok-value">10.0 ★</span></div>
                     <div class="tok-row"><span class="tok-label">Boost to Top</span><span class="tok-value">10.0 ★</span></div>
+                    <div class="tok-section">Daily Signals (Stories)</div>
+                    <div class="tok-row"><span class="tok-label">Post as Daily Signal (24h)</span><span class="tok-value">+1.0 ★ (100% platform)</span></div>
+                    <div class="tok-row"><span class="tok-label">Hype a Daily Signal</span><span class="tok-value">1.0 ★</span></div>
+                    <div class="tok-row"><span class="tok-label">Signal Hype — Creator Split</span><span class="tok-value">+0.8 ★ (80%)</span></div>
+                    <div class="tok-row"><span class="tok-label">Signal Hype — Platform Split</span><span class="tok-value">0.2 ★ (20%)</span></div>
                     <div class="tok-section">Interaction Costs</div>
                     <div class="tok-row"><span class="tok-label">Hype a Signal</span><span class="tok-value">1.0 ★</span></div>
                     <div class="tok-row"><span class="tok-label">Comment / Reply</span><span class="tok-value">1.0 ★</span></div>
@@ -2036,25 +2274,31 @@
         const el  = document.getElementById('post-fee-display');
         const btn = document.getElementById('broadcast-btn');
         const url = document.getElementById('post-media')?.value || '';
-        let cost = CONFIG.FEES.TEXT.toFixed(1) + ' ★';
+        let baseCost = CONFIG.FEES.TEXT;
         let btnLabel = '◈ Broadcast Signal';
 
         if (mediaTabMode === 'file' && selectedFile) {
             const isVid = selectedFile.type.startsWith('video/');
-            cost = (isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO).toFixed(1) + ' ★  (Firebase upload — no MetaMask)';
+            baseCost = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
             btnLabel = isVid
                 ? `◈ Broadcast Video (${CONFIG.FEES.VIDEO} Stars)`
                 : `◈ Broadcast Image (${CONFIG.FEES.PHOTO} Stars)`;
         } else if (url) {
             const isVid = isVideoUrl(url);
-            cost = (isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO).toFixed(1) + ' ★';
+            baseCost = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
             btnLabel = isVid
                 ? `◈ Broadcast Video (${CONFIG.FEES.VIDEO} Stars)`
                 : `◈ Broadcast Image (${CONFIG.FEES.PHOTO} Stars)`;
         }
 
-        if (el) el.textContent = 'Est. cost: ' + cost;
-        if (btn) btn.textContent = btnLabel;
+        const signalSurcharge = _signalMode ? 1 : 0;
+        const totalCost = baseCost + signalSurcharge;
+        const costStr   = totalCost.toFixed(1) + ' ★' + (_signalMode ? ' (incl. 1★ Signal fee)' : '');
+
+        if (el) el.textContent = 'Est. cost: ' + costStr;
+        if (btn) btn.textContent = _signalMode
+            ? `⚡ ${btnLabel.replace('◈ ', '')} + Signal (${totalCost}★)`
+            : btnLabel;
     }
 
     function handleFileSelect(input) {
@@ -3910,6 +4154,9 @@
             // Start global feed
             setTimeout(() => { loadGlobalFeed(); }, 1500);
 
+            // Index 24: Load Daily Signals bar
+            setTimeout(() => { loadSignals(); }, 1800);
+
             // V18: Vault health check — disables Broadcast/Post if vault is empty
             setTimeout(() => { verifyVaultHealth(); }, 2000);
             setInterval(() => { verifyVaultHealth(); }, 60_000); // re-check every minute
@@ -4039,8 +4286,6 @@
         if (typeof showMobileTab === 'function') showMobileTab('home');
 
         // 2. Try to resolve a display name for this wallet.
-        //    Check: (a) it's the connected user, (b) Firebase users collection,
-        //    (c) fall back to truncated address.
         let wallName = targetAddr.slice(0, 6) + '…' + targetAddr.slice(-4);
         if (userAddress && targetAddr.toLowerCase() === userAddress.toLowerCase()) {
             wallName = localStorage.getItem('hub_userName') || wallName;
@@ -4057,15 +4302,17 @@
 
         // 3. Set the module-level filter and re-render the feed
         _wallFilter = targetAddr;
-        visibleCount = 50;           // show up to 50 of this user's posts
+        visibleCount = 50;
 
-        // 4. Show the wall header banner
-        const header = document.getElementById('wall-header');
-        const nameEl = document.getElementById('wall-header-name');
-        if (header) header.classList.add('visible');
-        if (nameEl) nameEl.textContent = wallName;
+        // 4. Show the Profile Hero header (Index 24) — hide signals bar
+        const signalsBar = document.getElementById('signals-bar');
+        if (signalsBar) signalsBar.style.display = 'none';
+        showProfileHero(targetAddr, wallName);
 
-        // 5. Hide composer and "Load More" — wall is read-only context
+        // 5. Load this user's signals in the hero section
+        loadSignals(targetAddr.toLowerCase());
+
+        // 6. Hide composer and "Load More" — wall is read-only context
         const composer  = document.getElementById('composer-card');
         const loadMore  = document.getElementById('load-more-btn');
         const feedHead  = document.querySelector('.feed-heading');
@@ -4073,12 +4320,10 @@
         if (loadMore)  loadMore.style.display  = 'none';
         if (feedHead)  feedHead.style.display  = 'none';
 
-        // 6. Re-render — the onSnapshot callback already holds the data;
-        //    triggering loadGlobalFeed() fires a fresh snapshot read which
-        //    the callback will now filter by _wallFilter.
+        // 7. Re-render the feed filtered by wall
         loadGlobalFeed();
 
-        // 7. Smooth scroll to top
+        // 8. Smooth scroll to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -4087,20 +4332,25 @@
         _wallFilter  = null;
         visibleCount = 10;
 
-        // 2. Hide wall header
-        const header = document.getElementById('wall-header');
-        if (header) header.classList.remove('visible');
+        // 2. Hide Profile Hero
+        const hero = document.getElementById('profile-hero');
+        if (hero) hero.classList.remove('visible');
 
-        // 3. Restore composer and feed heading
+        // 3. Restore signals bar with global signals
+        const signalsBar = document.getElementById('signals-bar');
+        if (signalsBar) signalsBar.style.display = '';
+        loadSignals();
+
+        // 4. Restore composer and feed heading
         const composer = document.getElementById('composer-card');
         const feedHead = document.querySelector('.feed-heading');
         if (composer) composer.style.display = '';
         if (feedHead) feedHead.style.display = '';
 
-        // 4. Reload the global (unfiltered) feed
+        // 5. Reload the global (unfiltered) feed
         loadGlobalFeed();
 
-        // 5. Scroll to top
+        // 6. Scroll to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -4111,7 +4361,415 @@
     runPriceHeartbeat();                          // immediate on script load
     setInterval(runPriceHeartbeat, 30_000);       // every 30 seconds unconditionally
 
+    // ═══════════════════════════════════════════════════════════════════
+    // INDEX 24 — DAILY SIGNALS (STORIES)
+    // ═══════════════════════════════════════════════════════════════════
+    let _signalMode = false;          // composer toggle state
+    let _currentSignalId = null;      // signal being viewed in lightbox
+    let _signalAutoCloseTimer = null; // 5s auto-close timer
+    let _signalUnsub = null;          // live feed unsubscribe
+
+    // ─── Toggle Signal Mode in composer ─────────────────────────────────────────
+    function toggleSignalMode() {
+        _signalMode = !_signalMode;
+        const row   = document.getElementById('signal-toggle');
+        const check = document.getElementById('signal-toggle-check');
+        if (row)   row.classList.toggle('active', _signalMode);
+        if (check) check.textContent = _signalMode ? '✓' : '';
+        updatePostFeeDisplay();
+    }
+    window.toggleSignalMode = toggleSignalMode;
+
+    // ─── Load & render the signals bar ───────────────────────────────────────────
+    function loadSignals(filterAddr) {
+        if (!window.db) return;
+        if (_signalUnsub) { try { _signalUnsub(); } catch(_) {} _signalUnsub = null; }
+
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+
+        let q;
+        if (filterAddr) {
+            q = window.fs.query(
+                window.fs.collection(window.db, 'signals'),
+                window.fs.where('authorAddr', '==', filterAddr.toLowerCase()),
+                window.fs.where('timestamp', '>', cutoff),
+                window.fs.orderBy('timestamp', 'desc')
+            );
+        } else {
+            q = window.fs.query(
+                window.fs.collection(window.db, 'signals'),
+                window.fs.where('timestamp', '>', cutoff),
+                window.fs.orderBy('timestamp', 'desc')
+            );
+        }
+
+        const renderBar = (snap) => {
+            const bar = document.getElementById('signals-bar');
+            if (!bar) return;
+            bar.innerHTML = '';
+
+            // Add-signal button if not in wall view
+            if (!filterAddr) {
+                const addBtn = document.createElement('div');
+                addBtn.className = 'signal-add-btn';
+                addBtn.title = 'Post a Daily Signal';
+                addBtn.innerHTML = '<div class="signal-add-ring">+</div><span class="signal-add-name">New Signal</span>';
+                addBtn.onclick = () => {
+                    // scroll to composer and activate signal toggle
+                    const c = document.getElementById('composer-card');
+                    if (c) c.scrollIntoView({ behavior: 'smooth' });
+                    if (!_signalMode) toggleSignalMode();
+                };
+                bar.appendChild(addBtn);
+            }
+
+            if (snap.empty) {
+                const msg = document.createElement('span');
+                msg.className = 'signal-empty-msg';
+                msg.textContent = filterAddr ? 'No active signals in the last 24h' : 'No Daily Signals yet — be first!';
+                bar.appendChild(msg);
+                return;
+            }
+
+            snap.forEach(docRef => {
+                const s = docRef.data();
+                const sId = docRef.id;
+                const pic = s.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${s.authorAddr||'anon'}`;
+                const name = s.author || 'Anonymous';
+
+                const bubble = document.createElement('div');
+                bubble.className = 'signal-bubble';
+                bubble.title = `${name}'s Signal`;
+                bubble.innerHTML = `
+                    <div class="signal-ring">
+                        <img src="${pic}" crossorigin="anonymous">
+                        <div class="signal-ring-dot"></div>
+                    </div>
+                    <span class="signal-name">${name}</span>`;
+                bubble.onclick = () => openSignalLightbox(sId, s);
+                bar.appendChild(bubble);
+            });
+        };
+
+        _signalUnsub = window.fs.onSnapshot(q, renderBar, (err) => {
+            // Fallback without ordering if index missing
+            console.warn('[Signals] Index missing, falling back:', err.message);
+            const fq = filterAddr
+                ? window.fs.query(window.fs.collection(window.db, 'signals'), window.fs.where('authorAddr', '==', filterAddr.toLowerCase()))
+                : window.fs.collection(window.db, 'signals');
+            _signalUnsub = window.fs.onSnapshot(fq, (snap2) => {
+                const cutoffNow = Date.now() - 24 * 60 * 60 * 1000;
+                const filtered = { docs: [], empty: true };
+                snap2.forEach(d => {
+                    const data = d.data();
+                    if ((data.timestamp || 0) > cutoffNow) { filtered.docs.push(d); filtered.empty = false; }
+                });
+                const fakeSnap = {
+                    empty: filtered.empty,
+                    forEach: (fn) => filtered.docs.forEach(fn)
+                };
+                renderBar(fakeSnap);
+            });
+        });
+    }
+    window.loadSignals = loadSignals;
+
+    // ─── Open Signal in Lightbox (5-second auto-close) ────────────────────────
+    function openSignalLightbox(signalId, data) {
+        _currentSignalId = signalId;
+        const lb  = document.getElementById('signal-lightbox');
+        const img = document.getElementById('signal-lb-img');
+        const vid = document.getElementById('signal-lb-video');
+        const cap = document.getElementById('signal-lb-caption');
+        const met = document.getElementById('signal-lb-meta');
+        const bar = document.getElementById('signal-lb-timer-bar');
+        if (!lb) return;
+
+        img.style.display = 'none'; img.src = '';
+        vid.style.display = 'none'; vid.src = '';
+
+        if (data.media) {
+            const isVideo = /\.(mp4|webm|ogg)(\?|$)/i.test(data.media) || (data.type === 3);
+            if (isVideo) {
+                vid.src = data.media; vid.style.display = 'block';
+            } else {
+                img.src = data.media; img.style.display = 'block';
+            }
+        }
+
+        cap.textContent = data.text || '';
+        const ago = Math.round((Date.now() - (data.timestamp || 0)) / 60000);
+        met.textContent = `${data.author || 'Anonymous'} · ${ago < 60 ? ago + 'm ago' : Math.floor(ago/60) + 'h ago'} · ❤ ${data.hypes || 0} Hypes`;
+
+        // Reset and animate the timer bar
+        bar.style.transition = 'none';
+        bar.style.width = '100%';
+        lb.classList.add('open');
+        document.body.style.overflow = 'hidden';
+
+        // Animate timer bar shrinking over 5s
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                bar.style.transition = 'width 5s linear';
+                bar.style.width = '0%';
+            });
+        });
+
+        // 5 second auto-close
+        if (_signalAutoCloseTimer) clearTimeout(_signalAutoCloseTimer);
+        _signalAutoCloseTimer = setTimeout(closeSignalLightbox, 5000);
+    }
+    window.openSignalLightbox = openSignalLightbox;
+
+    function closeSignalLightbox() {
+        const lb = document.getElementById('signal-lightbox');
+        if (!lb) return;
+        lb.classList.remove('open');
+        document.body.style.overflow = '';
+        _currentSignalId = null;
+        if (_signalAutoCloseTimer) { clearTimeout(_signalAutoCloseTimer); _signalAutoCloseTimer = null; }
+        const vid = document.getElementById('signal-lb-video');
+        if (vid) { vid.pause(); vid.src = ''; }
+    }
+    window.closeSignalLightbox = closeSignalLightbox;
+
+    // ─── Hype a Signal (1★ cost, 80/20 split) ─────────────────────────────────
+    async function hypeSignal() {
+        if (!_currentSignalId) return;
+        if (!userAddress) return showToast('Connect wallet first!');
+
+        let livePurchased = 0, liveEarned = 0;
+        if (window.db) {
+            try {
+                const snap = await window.fs.getDoc(window.fs.doc(window.db, 'user_balances', userAddress.toLowerCase()));
+                if (snap.exists()) { livePurchased = snap.data().stars || 0; liveEarned = snap.data().creatorStars || 0; }
+            } catch(_) {}
+        }
+        if ((livePurchased + liveEarned) < 1) return showToast('Not enough Stars!');
+
+        try {
+            const sRef  = window.fs.doc(window.db, 'signals', _currentSignalId);
+            const sSnap = await window.fs.getDoc(sRef);
+            if (!sSnap.exists()) return showToast('Signal no longer exists.');
+            const sData = sSnap.data();
+
+            // Increment hypes on signal
+            await window.fs.updateDoc(sRef, { hypes: window.fs.increment(1) });
+
+            // 80% → creator's creatorStars
+            if (sData.authorAddr && sData.authorAddr !== 'unknown') {
+                await creditCreatorStars(sData.authorAddr, CONFIG.CREATOR_CUT);
+                logTransaction(sData.authorAddr, 'earn', CONFIG.CREATOR_CUT, 'Earned 0.8★ — someone hyped your Daily Signal');
+            }
+
+            // Deduct 1★ from sender
+            await deductStars(1);
+
+            // 20% → platform_revenue
+            logAdminRevenue(userAddress, 'signal_hype', CONFIG.PLATFORM_CUT);
+            logTransaction(userAddress, 'spend', 1, 'Hyped a Daily Signal (1★ → 0.8 creator, 0.2 platform)');
+
+            // Update meta line in lightbox
+            const met = document.getElementById('signal-lb-meta');
+            if (met) {
+                const newHypes = (sData.hypes || 0) + 1;
+                met.textContent = met.textContent.replace(/❤ \d+ Hypes/, `❤ ${newHypes} Hypes`);
+            }
+            updateUI(); updateDrawerUI();
+            showToast('Hyped! Creator +0.8★');
+        } catch(e) { console.error(e); showToast('Hype failed.'); }
+    }
+    window.hypeSignal = hypeSignal;
+
+    // ─── Profile Hero — load wall data for a given address ───────────────────────
+    async function showProfileHero(targetAddr, wallName) {
+        const hero = document.getElementById('profile-hero');
+        if (!hero) return;
+
+        // Populate basic identity
+        document.getElementById('hero-name').textContent = wallName;
+        document.getElementById('hero-addr').textContent = targetAddr.slice(0,6) + '…' + targetAddr.slice(-4);
+
+        // Try to set the avatar from Firebase users collection
+        let avatarUrl = `https://api.dicebear.com/7.x/identicon/svg?seed=${targetAddr}`;
+        if (window.db) {
+            try {
+                const uSnap = await window.fs.getDoc(window.fs.doc(window.db, 'users', targetAddr.toLowerCase()));
+                if (uSnap.exists() && uSnap.data().avatarUrl) avatarUrl = uSnap.data().avatarUrl;
+            } catch(_) {}
+        }
+        document.getElementById('hero-avatar').src = avatarUrl;
+
+        hero.classList.add('visible');
+
+        // Aggregate hypes and post count from posts feed
+        if (window.db) {
+            try {
+                const q = window.fs.query(
+                    window.fs.collection(window.db, 'posts'),
+                    window.fs.where('authorAddr', '==', targetAddr)
+                );
+                const snap = await window.fs.getDocs(q);
+                let totalHypes = 0; let postCount = 0;
+                snap.forEach(d => { totalHypes += (d.data().hypes || 0); postCount++; });
+
+                // Also try lowercase address
+                const q2 = window.fs.query(
+                    window.fs.collection(window.db, 'posts'),
+                    window.fs.where('authorAddr', '==', targetAddr.toLowerCase())
+                );
+                const snap2 = await window.fs.getDocs(q2);
+                snap2.forEach(d => { totalHypes += (d.data().hypes || 0); postCount++; });
+
+                document.getElementById('hero-hype-total').textContent = totalHypes + ' ★';
+                document.getElementById('hero-post-count').textContent = postCount;
+            } catch(e) { console.warn('Hero stats failed:', e); }
+        }
+
+        // Load this user's active Daily Signals in the hero section
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        if (window.db) {
+            try {
+                const sq = window.fs.query(
+                    window.fs.collection(window.db, 'signals'),
+                    window.fs.where('authorAddr', '==', targetAddr.toLowerCase()),
+                    window.fs.where('timestamp', '>', cutoff)
+                );
+                const sigSnap = await window.fs.getDocs(sq);
+                if (!sigSnap.empty) {
+                    const section = document.getElementById('hero-signals-section');
+                    const row     = document.getElementById('hero-signals-row');
+                    if (section) section.style.display = '';
+                    if (row)     row.innerHTML = '';
+                    sigSnap.forEach(docRef => {
+                        const s = docRef.data();
+                        const pic = s.avatar || avatarUrl;
+                        const bubble = document.createElement('div');
+                        bubble.className = 'signal-bubble';
+                        bubble.innerHTML = `<div class="signal-ring"><img src="${pic}" crossorigin="anonymous"><div class="signal-ring-dot"></div></div><span class="signal-name">Signal</span>`;
+                        bubble.onclick = () => openSignalLightbox(docRef.id, s);
+                        if (row) row.appendChild(bubble);
+                    });
+                }
+            } catch(_) {}
+        }
+    }
+
+    // ─── Override handleBroadcast to also post as signal if toggled ──────────────
+    const _origHandleBroadcast = handleBroadcast;
+
+    async function handleBroadcastWithSignal() {
+        // Remember signal mode before calling original (which clears text field)
+        const wasSignalMode = _signalMode;
+
+        // If signal mode is ON, we need extra 1★ on top of the post cost
+        if (wasSignalMode) {
+            // Quick balance preflight
+            let livePurchased = 0, liveEarned = 0;
+            if (window.db && userAddress) {
+                try {
+                    const snap = await window.fs.getDoc(window.fs.doc(window.db, 'user_balances', userAddress.toLowerCase()));
+                    if (snap.exists()) { livePurchased = snap.data().stars || 0; liveEarned = snap.data().creatorStars || 0; }
+                } catch(_) {}
+            }
+
+            // Determine base cost
+            const txt = document.getElementById('post-text')?.value.trim();
+            const url = document.getElementById('post-media')?.value.trim();
+            let baseCost = CONFIG.FEES.TEXT;
+            if (mediaTabMode === 'file' && selectedFile) {
+                baseCost = selectedFile.type.startsWith('video/') ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
+            } else if (url) {
+                baseCost = isVideoUrl(url) ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
+            }
+            const totalCost = baseCost + 1; // +1★ for signal
+
+            if ((livePurchased + liveEarned) < totalCost) {
+                return alert(`Insufficient Stars for Daily Signal!\nRequired: ${totalCost.toFixed(1)}★ (post + 1★ signal fee)\nAvailable: ${(livePurchased + liveEarned).toFixed(1)}★`);
+            }
+
+            // Capture data BEFORE broadcast clears fields
+            const capturedText  = document.getElementById('post-text')?.value.trim();
+            const capturedMedia = document.getElementById('post-media')?.value.trim();
+            const capturedFile  = selectedFile;
+            const capturedMode  = mediaTabMode;
+
+            // Run the normal broadcast
+            await _origHandleBroadcast();
+
+            // Now post the signal (if wallet still connected after broadcast)
+            if (userAddress && window.db) {
+                try {
+                    let signalMedia = capturedMedia || '';
+                    let signalType  = 1;
+
+                    if (capturedMode === 'file' && capturedFile) {
+                        // Media URL was already uploaded by handleBroadcast — fetch latest post
+                        // to get the firebase URL. Simplest: just use the preview if available.
+                        const previewImg = document.getElementById('file-preview-img');
+                        if (previewImg && previewImg.src && previewImg.src.startsWith('http')) {
+                            signalMedia = previewImg.src;
+                            signalType  = capturedFile.type.startsWith('video/') ? 3 : 2;
+                        }
+                    } else if (capturedMedia) {
+                        signalType = isVideoUrl(capturedMedia) ? 3 : 2;
+                    }
+
+                    // Deduct the 1★ signal posting fee (100% → platform)
+                    await deductStars(1);
+                    logAdminRevenue(userAddress, 'daily_signal_post', 1);
+                    logTransaction(userAddress, 'spend', 1, 'Daily Signal posted (24h) — 1★ platform fee');
+
+                    const authorName = localStorage.getItem('hub_userName') || userHandle;
+                    const authorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
+
+                    await window.fs.addDoc(window.fs.collection(window.db, 'signals'), {
+                        text:       capturedText,
+                        media:      signalMedia,
+                        type:       signalType,
+                        author:     authorName,
+                        authorAddr: userAddress.toLowerCase(),
+                        avatar:     authorPic,
+                        timestamp:  Date.now(),
+                        hypes:      0
+                    });
+
+                    showToast('⚡ Daily Signal Posted! (24h)');
+                } catch(e) {
+                    console.error('Signal post failed:', e);
+                    showToast('Post broadcast OK, signal failed.');
+                }
+            }
+
+            // Turn off signal toggle after posting
+            if (_signalMode) toggleSignalMode();
+        } else {
+            await _origHandleBroadcast();
+        }
+    }
+
+    // Replace global handleBroadcast with the enhanced version
+    window.handleBroadcast = handleBroadcastWithSignal;
+
+    // ─── Close signal lightbox on Escape ──────────────────────────────────────
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.getElementById('signal-lightbox')?.classList.contains('open')) {
+            closeSignalLightbox();
+        }
+    });
+
 </script>
+
+<!-- SIGNAL LIGHTBOX (Index 24 — Daily Signals) -->
+<div id="signal-lightbox">
+    <button id="signal-lb-close" onclick="closeSignalLightbox()">✕</button>
+    <img id="signal-lb-img" class="signal-lb-media" style="max-width:100%;max-height:60vh;border-radius:12px;display:none;" src="">
+    <video id="signal-lb-video" class="signal-lb-media" style="max-width:100%;max-height:60vh;border-radius:12px;display:none;" controls></video>
+    <div id="signal-lb-caption"></div>
+    <div id="signal-lb-meta"></div>
+    <button id="signal-lb-hype-btn" onclick="hypeSignal()">❤ Hype Signal (1★) → Creator +0.8★</button>
+    <div id="signal-lb-timer-bar" style="width:100%;"></div>
+</div>
 
 <!-- IMAGE LIGHTBOX OVERLAY (Index 19) -->
 <div id="img-lightbox" onclick="closeLightbox()">
