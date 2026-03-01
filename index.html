@@ -2189,6 +2189,18 @@
             const pbH  = document.getElementById('pb-handle');  if (pbH)  pbH.textContent = userHandle;
             const nvH  = document.getElementById('nav-handle');  if (nvH)  nvH.textContent = userHandle;
 
+            // Admin panel — OWNER ONLY. !important prevents any stylesheet override.
+            const isAdmin = userAddress && userAddress.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase();
+            const adminPanel = document.getElementById('admin-revenue-panel');
+            if (adminPanel) {
+                if (isAdmin) {
+                    adminPanel.style.removeProperty('display');   // let the block rule apply
+                    adminPanel.style.setProperty('display', 'block', 'important');
+                } else {
+                    adminPanel.style.setProperty('display', 'none', 'important');
+                }
+            }
+
             // Sync drawer
             updateDrawerUI();
         } catch (e) { console.error("UI Update Error:", e); }
@@ -2523,102 +2535,101 @@
         if (!userAddress || userAddress.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) {
             return alert("Admin only.");
         }
+
+        // ── Step 1: Verify live price is available ────────────────────────────
+        if (!currentAptmPriceUsd || currentAptmPriceUsd <= 0) {
+            return alert("Live APTM price not yet loaded. Wait a moment and try again.");
+        }
+
+        // ── Step 2: Fetch the authoritative revenue total from admin_revenue/global ─
+        let revenueStars = 0;
         try {
-            // ── Step 1: Read platform revenue stars from Firebase ──────────────────
-            let totalRevenueStars = 0;
-            if (window.db) {
-                try {
-                    const snap = await window.fs.getDocs(window.fs.collection(window.db, "platform_revenue"));
-                    snap.forEach(d => {
-                        // skip cleared docs
-                        if (!d.data()._cleared) totalRevenueStars += (d.data().amount || 0);
-                    });
-                } catch (e) { console.warn("Could not read platform_revenue:", e); }
-            }
-            // Cross-check against admin_revenue/global
-            let globalTotal = 0;
-            try {
-                const globalSnap = await window.fs.getDoc(window.fs.doc(window.db, "admin_revenue", "global"));
-                if (globalSnap.exists()) globalTotal = globalSnap.data().total || 0;
-            } catch (_) {}
-            const revenueStars = Math.max(totalRevenueStars, globalTotal);
-
-            // ── Step 2: Read the ACTUAL contract balance via provider.getBalance ──
-            // This is the native coin (APTM) held in the vault contract itself.
-            // DO NOT use aptmBalances(admin) — that is a per-user deposit slot,
-            // not the contract treasury that adminWithdraw() drains.
-            const contractBalanceRaw  = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
-            const contractBalanceAptm = parseFloat(ethers.utils.formatEther(contractBalanceRaw));
-
-            if (contractBalanceAptm <= 0) {
-                return alert(
-                    `Contract vault balance: ${contractBalanceAptm.toFixed(6)} APTM\n\n` +
-                    `The contract holds no APTM to withdraw. Revenue is tracked in Firebase (${revenueStars.toFixed(2)} ★) ` +
-                    `but the on-chain vault is empty.`
-                );
-            }
-
-            // ── Step 3: Convert stars → APTM for display purposes ────────────────
-            const aptmValue    = (revenueStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
-            // Withdraw whatever is actually in the contract (adminWithdraw drains it all)
-            const withdrawAptm = contractBalanceAptm;
-
-            const confirmed = confirm(
-                `Admin Revenue Withdrawal\n\n` +
-                `Firebase Revenue:     ${revenueStars.toFixed(2)} ★\n` +
-                `Stars → APTM Value:   ${aptmValue.toFixed(6)} APTM\n` +
-                `Contract Vault Holds: ${contractBalanceAptm.toFixed(6)} APTM\n` +
-                `Will Withdraw:        ${withdrawAptm.toFixed(6)} APTM\n\n` +
-                `adminWithdraw() sends the entire vault balance to the admin wallet.\n` +
-                `Firebase revenue counter will be reset to 0. Proceed?`
+            const globalSnap = await window.fs.getDoc(
+                window.fs.doc(window.db, "admin_revenue", "global")
             );
-            if (!confirmed) return;
+            if (globalSnap.exists()) revenueStars = globalSnap.data().total || 0;
+        } catch (e) {
+            return alert("Could not read admin_revenue/global: " + e.message);
+        }
 
-            showToast("Calling adminWithdraw()…");
+        if (revenueStars <= 0) {
+            return alert("No accumulated platform revenue to withdraw (admin_revenue/global = 0 ★).");
+        }
 
-            // ── Step 4: Execute on-chain adminWithdraw ────────────────────────────
-            // adminWithdraw() transfers ALL contract balance to PLATFORM_ADMIN.
-            const tx = await hubContract.adminWithdraw({ gasLimit: 300000 });
+        // ── Step 3: Convert stars → APTM using live heartbeat price ──────────
+        // Formula: APTM = (stars × $0.01 per star) ÷ (live APTM/USD price)
+        // This is the EXACT inverse of the deposit formula:
+        //   stars = floor(APTM × livePrice ÷ STAR_USD)
+        const revenueAptm = (revenueStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
+        const revenueWei  = ethers.utils.parseEther(revenueAptm.toFixed(18));
+
+        // ── Step 4: Check contract has enough balance (safety check only) ────
+        const contractBalRaw  = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
+        const contractBalAptm = parseFloat(ethers.utils.formatEther(contractBalRaw));
+
+        if (contractBalAptm < revenueAptm) {
+            return alert(
+                `Vault underfunded.\n\n` +
+                `Revenue owed:       ${revenueStars.toFixed(2)} ★  =  ${revenueAptm.toFixed(6)} APTM\n` +
+                `Contract balance:   ${contractBalAptm.toFixed(6)} APTM\n\n` +
+                `The vault does not hold enough APTM to cover the revenue withdrawal.\n` +
+                `User deposits may have already consumed the available balance.`
+            );
+        }
+
+        const confirmed = confirm(
+            `Admin Revenue Withdrawal\n\n` +
+            `Accumulated Revenue:  ${revenueStars.toFixed(2)} ★\n` +
+            `Live APTM Price:      $${currentAptmPriceUsd.toFixed(4)}\n` +
+            `Will Withdraw:        ${revenueAptm.toFixed(6)} APTM\n` +
+            `Contract Balance:     ${contractBalAptm.toFixed(6)} APTM\n` +
+            `Remaining in vault:   ${(contractBalAptm - revenueAptm).toFixed(6)} APTM\n\n` +
+            `userWithdraw() will transfer ONLY the revenue-equivalent APTM.\n` +
+            `User deposits are NOT touched. Firebase counter resets to 0.\n\n` +
+            `Proceed?`
+        );
+        if (!confirmed) return;
+
+        showToast("Calling userWithdraw() for revenue amount…");
+
+        try {
+            // ── Step 5: Execute on-chain — withdraw ONLY the revenue APTM ────────
+            // userWithdraw(uint256 _amountWei) transfers a specific amount to caller.
+            // adminWithdraw() (no args) would drain EVERYTHING — we do NOT use that.
+            const tx = await hubContract.userWithdraw(revenueWei, { gasLimit: 500000 });
             await tx.wait();
 
-            // ── Step 5: Reset Firebase platform_revenue to 0 ─────────────────────
+            // ── Step 6: Reset admin_revenue/global to 0 in Firebase ──────────────
             if (window.db) {
                 try {
-                    const revSnap = await window.fs.getDocs(window.fs.collection(window.db, "platform_revenue"));
-                    const ops = [];
-                    revSnap.forEach(d => {
-                        ops.push(window.fs.updateDoc(
-                            window.fs.doc(window.db, "platform_revenue", d.id),
-                            { _cleared: true, amount: 0, clearedAt: Date.now() }
-                        ));
-                    });
-                    await Promise.all(ops);
-
                     await window.fs.setDoc(
                         window.fs.doc(window.db, "admin_revenue", "global"),
                         { total: 0, lastWithdraw: Date.now(), lastUpdated: Date.now() },
                         { merge: true }
                     );
-                } catch (e) { console.warn("Firebase reset after admin withdraw:", e); }
+                } catch (e) { console.warn("Firebase admin_revenue reset failed:", e); }
             }
 
-            logTransaction(userAddress, "settle", withdrawAptm,
-                `Admin withdrew ${revenueStars.toFixed(2)}★ = ${withdrawAptm.toFixed(4)} APTM from vault`);
+            logTransaction(
+                userAddress, "settle", revenueAptm,
+                `Admin withdrew ${revenueStars.toFixed(2)} ★ = ${revenueAptm.toFixed(6)} APTM at $${currentAptmPriceUsd.toFixed(4)}/APTM`
+            );
 
-            // ── Step 6: Update all revenue displays to 0 ─────────────────────────
+            // ── Step 7: Update all revenue displays to 0 ─────────────────────────
             const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
             s('admin-revenue-display', "0.00 ★");
             s('admin-revenue-count',   "0 fee events");
             s('drawer-admin-revenue',  "0.00 ★");
             s('drawer-admin-count',    "0 fee events");
 
-            showToast(`✓ Withdrawn ${withdrawAptm.toFixed(4)} APTM to admin wallet`);
+            showToast(`✓ Withdrawn ${revenueAptm.toFixed(6)} APTM to admin wallet`);
             updateUI();
             updateDrawerUI();
             syncData();
+
         } catch (e) {
             console.error(e);
-            alert("Admin withdraw failed: " + (e.reason || e.message || String(e)).slice(0, 200));
+            alert("Admin withdraw failed: " + (e.reason || e.message || String(e)).slice(0, 300));
         }
     }
 
