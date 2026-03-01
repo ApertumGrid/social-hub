@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>SOCIALHUB — Index 24 · Daily Signals</title>
+    <title>SOCIALHUB — Index 25 · Daily Signals</title>
     <link rel="icon" href="data:,">
 
     <!-- 1. Ethers.js -->
@@ -2273,32 +2273,38 @@
     function updatePostFeeDisplay() {
         const el  = document.getElementById('post-fee-display');
         const btn = document.getElementById('broadcast-btn');
+
+        // ── INDEX 25 FIX: Signal Mode is MUTUALLY EXCLUSIVE to regular posting.
+        //    When _signalMode is TRUE  → cost is exactly 1.0 ★, posts to `signals`.
+        //    When _signalMode is FALSE → cost is the normal broadcast fee, posts to `posts`.
+        //    The two costs are NEVER added together.
+        if (_signalMode) {
+            if (el)  el.textContent  = 'Est. cost: 1.0 ★ (Daily Signal — 24h, 100% platform)';
+            if (btn) btn.textContent = '⚡ Post Daily Signal (1★)';
+            return;
+        }
+
+        // Normal broadcast mode — derive cost from media type as before
         const url = document.getElementById('post-media')?.value || '';
-        let baseCost = CONFIG.FEES.TEXT;
+        let cost     = CONFIG.FEES.TEXT;   // 1.2 ★ default (text)
         let btnLabel = '◈ Broadcast Signal';
 
         if (mediaTabMode === 'file' && selectedFile) {
             const isVid = selectedFile.type.startsWith('video/');
-            baseCost = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
+            cost     = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
             btnLabel = isVid
                 ? `◈ Broadcast Video (${CONFIG.FEES.VIDEO} Stars)`
                 : `◈ Broadcast Image (${CONFIG.FEES.PHOTO} Stars)`;
         } else if (url) {
             const isVid = isVideoUrl(url);
-            baseCost = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
+            cost     = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
             btnLabel = isVid
                 ? `◈ Broadcast Video (${CONFIG.FEES.VIDEO} Stars)`
                 : `◈ Broadcast Image (${CONFIG.FEES.PHOTO} Stars)`;
         }
 
-        const signalSurcharge = _signalMode ? 1 : 0;
-        const totalCost = baseCost + signalSurcharge;
-        const costStr   = totalCost.toFixed(1) + ' ★' + (_signalMode ? ' (incl. 1★ Signal fee)' : '');
-
-        if (el) el.textContent = 'Est. cost: ' + costStr;
-        if (btn) btn.textContent = _signalMode
-            ? `⚡ ${btnLabel.replace('◈ ', '')} + Signal (${totalCost}★)`
-            : btnLabel;
+        if (el)  el.textContent  = 'Est. cost: ' + cost.toFixed(1) + ' ★';
+        if (btn) btn.textContent = btnLabel;
     }
 
     function handleFileSelect(input) {
@@ -3196,123 +3202,16 @@
     //   Photo post:  3.0 ★  → 100% admin
     //   Video post: 10.0 ★  → 100% admin
     // ═══════════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
+    // BROADCAST — INDEX 25: Handled by handleBroadcastWithSignal below.
+    // The unified function covers both Signal Mode (1★ → signals collection)
+    // and Normal Mode (1.2/3/10★ → posts collection). See bottom of script.
+    // ═══════════════════════════════════════════════════════════════════
     async function handleBroadcast() {
-        const txt = document.getElementById('post-text').value.trim();
-        if (!txt) return showToast("Write something first!");
-        if (!userAddress) return showToast("Connect your wallet first!");
-
-        // Read BOTH star pools from Firebase and sum them
-        let livePurchased = 0;
-        let liveEarned    = 0;
-        if (window.db) {
-            try {
-                const userRef = window.fs.doc(window.db, "user_balances", userAddress.toLowerCase());
-                const snap    = await window.fs.getDoc(userRef);
-                if (snap.exists()) {
-                    livePurchased = snap.data().stars        || 0;
-                    liveEarned    = snap.data().creatorStars  || 0;
-                }
-            } catch (e) { console.warn("Balance check failed:", e); }
-        }
-        const totalAvailable = livePurchased + liveEarned;
-
-        let mediaUrl   = "";
-        let feeAmount  = CONFIG.FEES.TEXT;   // 1.2 ★ — text post default
-        let postType   = 1;
-        let isFirebase = false;
-        let postTypeLabel = "Text";
-
-        if (mediaTabMode === 'file' && selectedFile) {
-            const isVid    = selectedFile.type.startsWith('video/');
-            feeAmount      = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
-            postType       = isVid ? 3 : 2;
-            postTypeLabel  = isVid ? "Video" : "Photo";
-            isFirebase     = true;
-        } else {
-            const url = document.getElementById('post-media').value.trim();
-            if (url) {
-                if (isVideoUrl(url)) {
-                    feeAmount = CONFIG.FEES.VIDEO; postType = 3; postTypeLabel = "Video";
-                } else {
-                    feeAmount = CONFIG.FEES.PHOTO; postType = 2; postTypeLabel = "Photo";
-                }
-                mediaUrl = url;
-            }
-        }
-
-        // Check combined balance
-        if (totalAvailable < feeAmount) {
-            return alert(
-                `Insufficient Stars!\n` +
-                `Post Type:       ${postTypeLabel}\n` +
-                `Required:        ${feeAmount.toFixed(1)}★\n` +
-                `Purchased Stars: ${livePurchased.toFixed(1)}★\n` +
-                `Earned Stars:    ${liveEarned.toFixed(1)}★\n` +
-                `Total Available: ${totalAvailable.toFixed(1)}★\n\n` +
-                `Deposit more APTM to increase your balance.`
-            );
-        }
-
-        // Firebase Storage upload (NO MetaMask)
-        if (isFirebase && selectedFile) {
-            showToast("Uploading to Firebase Storage…");
-            try {
-                mediaUrl = await uploadToFirebaseStorage(selectedFile);
-                showToast("Upload complete! Writing post…");
-            } catch (e) {
-                console.error("Firebase upload failed:", e);
-                return alert("Upload failed: " + e.message);
-            }
-        }
-
-        // Deduct stars using waterfall (purchased first, then earned)
-        try {
-            await deductSpendableStars(userAddress, feeAmount);
-        } catch (e) {
-            console.error("Star deduction failed:", e);
-            return alert("Failed to deduct stars. Please try again.");
-        }
-
-        // V20: 100% of post fee → platform_revenue. No creator rebate on own posts.
-        const firestoreLabel = postType === 1 ? "text_post" : postType === 2 ? "photo_post" : "video_post";
-        logAdminRevenue(userAddress, firestoreLabel, feeAmount);
-        logTransaction(userAddress, "spend", feeAmount,
-            `${postTypeLabel} Broadcast — ${feeAmount.toFixed(1)}★ creation fee (100% platform)`);
-
-        // Write post to Firestore
-        try {
-            const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
-            const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
-            const postData = {
-                text:       txt,
-                media:      mediaUrl,
-                firebase:   isFirebase,
-                author:     postAuthorName,
-                authorAddr: userAddress,
-                avatar:     postAuthorPic,
-                timestamp:  Date.now(),
-                hypes:      0,
-                type:       postType,
-                feePaid:    feeAmount,
-                isBoosted:  false
-            };
-            await window.fs.addDoc(window.fs.collection(window.db, "posts"), postData);
-
-            // Reset composer
-            document.getElementById('post-text').value  = "";
-            document.getElementById('post-media').value = "";
-            selectedFile = null;
-            const fPrev = document.getElementById('file-preview-wrap');
-            if (fPrev) fPrev.style.display = 'none';
-            const progWrap = document.getElementById('upload-progress-wrap');
-            if (progWrap) progWrap.style.display = 'none';
-
-            updateUI();
-            showToast("Signal Live! ◈");
-        } catch (e) {
-            console.error("Firebase write failed:", e);
-            alert("Post failed: " + e.message);
-        }
+        // Delegates to the unified handler defined at bottom of script.
+        // window.handleBroadcast is overwritten there; this stub is kept
+        // only so any early inline onclick="handleBroadcast()" calls resolve.
+        return handleBroadcastWithSignal();
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -4655,100 +4554,226 @@
         }
     }
 
-    // ─── Override handleBroadcast to also post as signal if toggled ──────────────
-    const _origHandleBroadcast = handleBroadcast;
-
+    // ─── INDEX 25: Unified broadcast handler — STRICT if/else signal vs post ────
+    //
+    //   Signal Mode ON  → costs exactly 1★ (100% platform) → writes to `signals`
+    //   Signal Mode OFF → costs normal post fee (1.2/3/10★) → writes to `posts`
+    //   The two paths never run together and costs are NEVER added.
+    // ─────────────────────────────────────────────────────────────────────────────
     async function handleBroadcastWithSignal() {
-        // Remember signal mode before calling original (which clears text field)
-        const wasSignalMode = _signalMode;
 
-        // If signal mode is ON, we need extra 1★ on top of the post cost
-        if (wasSignalMode) {
-            // Quick balance preflight
-            let livePurchased = 0, liveEarned = 0;
-            if (window.db && userAddress) {
-                try {
-                    const snap = await window.fs.getDoc(window.fs.doc(window.db, 'user_balances', userAddress.toLowerCase()));
-                    if (snap.exists()) { livePurchased = snap.data().stars || 0; liveEarned = snap.data().creatorStars || 0; }
-                } catch(_) {}
+        const txt = document.getElementById('post-text')?.value.trim();
+        if (!txt) return showToast('Write something first!');
+        if (!userAddress) return showToast('Connect your wallet first!');
+
+        // ── Read live balance once, shared by both paths ──────────────────────────
+        let livePurchased = 0, liveEarned = 0;
+        if (window.db) {
+            try {
+                const snap = await window.fs.getDoc(
+                    window.fs.doc(window.db, 'user_balances', userAddress.toLowerCase())
+                );
+                if (snap.exists()) {
+                    livePurchased = snap.data().stars       || 0;
+                    liveEarned    = snap.data().creatorStars || 0;
+                }
+            } catch (e) { console.warn('Balance check failed:', e); }
+        }
+        const totalAvailable = livePurchased + liveEarned;
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // PATH A — DAILY SIGNAL MODE (1★ flat, 100% platform, writes to `signals`)
+        // ══════════════════════════════════════════════════════════════════════════
+        if (_signalMode) {
+            const SIGNAL_FEE = 1.0;
+
+            if (totalAvailable < SIGNAL_FEE) {
+                return alert(
+                    `Insufficient Stars for Daily Signal!\n` +
+                    `Required:        ${SIGNAL_FEE.toFixed(1)} ★\n` +
+                    `Purchased Stars: ${livePurchased.toFixed(1)} ★\n` +
+                    `Earned Stars:    ${liveEarned.toFixed(1)} ★\n` +
+                    `Total Available: ${totalAvailable.toFixed(1)} ★\n\n` +
+                    `Deposit more APTM to increase your balance.`
+                );
             }
 
-            // Determine base cost
-            const txt = document.getElementById('post-text')?.value.trim();
-            const url = document.getElementById('post-media')?.value.trim();
-            let baseCost = CONFIG.FEES.TEXT;
+            // Resolve media URL — support file upload path
+            let signalMedia = '';
+            let signalType  = 1;
+            let isFirebase  = false;
+
             if (mediaTabMode === 'file' && selectedFile) {
-                baseCost = selectedFile.type.startsWith('video/') ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
-            } else if (url) {
-                baseCost = isVideoUrl(url) ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
-            }
-            const totalCost = baseCost + 1; // +1★ for signal
-
-            if ((livePurchased + liveEarned) < totalCost) {
-                return alert(`Insufficient Stars for Daily Signal!\nRequired: ${totalCost.toFixed(1)}★ (post + 1★ signal fee)\nAvailable: ${(livePurchased + liveEarned).toFixed(1)}★`);
-            }
-
-            // Capture data BEFORE broadcast clears fields
-            const capturedText  = document.getElementById('post-text')?.value.trim();
-            const capturedMedia = document.getElementById('post-media')?.value.trim();
-            const capturedFile  = selectedFile;
-            const capturedMode  = mediaTabMode;
-
-            // Run the normal broadcast
-            await _origHandleBroadcast();
-
-            // Now post the signal (if wallet still connected after broadcast)
-            if (userAddress && window.db) {
+                isFirebase = true;
+                showToast('Uploading media for Daily Signal…');
                 try {
-                    let signalMedia = capturedMedia || '';
-                    let signalType  = 1;
-
-                    if (capturedMode === 'file' && capturedFile) {
-                        // Media URL was already uploaded by handleBroadcast — fetch latest post
-                        // to get the firebase URL. Simplest: just use the preview if available.
-                        const previewImg = document.getElementById('file-preview-img');
-                        if (previewImg && previewImg.src && previewImg.src.startsWith('http')) {
-                            signalMedia = previewImg.src;
-                            signalType  = capturedFile.type.startsWith('video/') ? 3 : 2;
-                        }
-                    } else if (capturedMedia) {
-                        signalType = isVideoUrl(capturedMedia) ? 3 : 2;
-                    }
-
-                    // Deduct the 1★ signal posting fee (100% → platform)
-                    await deductStars(1);
-                    logAdminRevenue(userAddress, 'daily_signal_post', 1);
-                    logTransaction(userAddress, 'spend', 1, 'Daily Signal posted (24h) — 1★ platform fee');
-
-                    const authorName = localStorage.getItem('hub_userName') || userHandle;
-                    const authorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
-
-                    await window.fs.addDoc(window.fs.collection(window.db, 'signals'), {
-                        text:       capturedText,
-                        media:      signalMedia,
-                        type:       signalType,
-                        author:     authorName,
-                        authorAddr: userAddress.toLowerCase(),
-                        avatar:     authorPic,
-                        timestamp:  Date.now(),
-                        hypes:      0
-                    });
-
-                    showToast('⚡ Daily Signal Posted! (24h)');
-                } catch(e) {
-                    console.error('Signal post failed:', e);
-                    showToast('Post broadcast OK, signal failed.');
+                    signalMedia = await uploadToFirebaseStorage(selectedFile);
+                    signalType  = selectedFile.type.startsWith('video/') ? 3 : 2;
+                    showToast('Upload complete! Posting signal…');
+                } catch (e) {
+                    console.error('Signal upload failed:', e);
+                    return alert('Upload failed: ' + e.message);
+                }
+            } else {
+                const url = document.getElementById('post-media')?.value.trim() || '';
+                if (url) {
+                    signalMedia = url;
+                    signalType  = isVideoUrl(url) ? 3 : 2;
                 }
             }
 
-            // Turn off signal toggle after posting
+            // Deduct exactly 1★ (waterfall: purchased first)
+            try {
+                await deductSpendableStars(userAddress, SIGNAL_FEE);
+            } catch (e) {
+                console.error('Signal star deduction failed:', e);
+                return alert('Failed to deduct stars. Please try again.');
+            }
+
+            // 100% of signal fee → platform revenue
+            logAdminRevenue(userAddress, 'daily_signal_post', SIGNAL_FEE);
+            logTransaction(userAddress, 'spend', SIGNAL_FEE,
+                `Daily Signal posted (24h) — ${SIGNAL_FEE.toFixed(1)}★ fee (100% platform)`);
+
+            // Write to `signals` collection
+            try {
+                const authorName = localStorage.getItem('hub_userName') || userHandle;
+                const authorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
+                await window.fs.addDoc(window.fs.collection(window.db, 'signals'), {
+                    text:       txt,
+                    media:      signalMedia,
+                    type:       signalType,
+                    firebase:   isFirebase,
+                    author:     authorName,
+                    authorAddr: userAddress.toLowerCase(),
+                    avatar:     authorPic,
+                    timestamp:  Date.now(),
+                    hypes:      0
+                });
+            } catch (e) {
+                console.error('Signal write failed:', e);
+                return alert('Signal post failed: ' + e.message);
+            }
+
+            // Reset composer
+            document.getElementById('post-text').value  = '';
+            document.getElementById('post-media').value = '';
+            selectedFile = null;
+            const fPrev    = document.getElementById('file-preview-wrap');
+            const progWrap = document.getElementById('upload-progress-wrap');
+            if (fPrev)    fPrev.style.display    = 'none';
+            if (progWrap) progWrap.style.display = 'none';
+
+            // Turn off signal toggle
             if (_signalMode) toggleSignalMode();
+
+            updateUI();
+            loadSignals();   // refresh the signals bar immediately
+            showToast('⚡ Daily Signal Live! (24h)');
+            return;
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // PATH B — NORMAL BROADCAST (1.2/3.0/10.0★, writes to `posts`)
+        // ══════════════════════════════════════════════════════════════════════════
+        let mediaUrl      = '';
+        let feeAmount     = CONFIG.FEES.TEXT;   // 1.2★ default
+        let postType      = 1;
+        let isFirebase    = false;
+        let postTypeLabel = 'Text';
+
+        if (mediaTabMode === 'file' && selectedFile) {
+            const isVid   = selectedFile.type.startsWith('video/');
+            feeAmount     = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
+            postType      = isVid ? 3 : 2;
+            postTypeLabel = isVid ? 'Video' : 'Photo';
+            isFirebase    = true;
         } else {
-            await _origHandleBroadcast();
+            const url = document.getElementById('post-media').value.trim();
+            if (url) {
+                if (isVideoUrl(url)) {
+                    feeAmount = CONFIG.FEES.VIDEO; postType = 3; postTypeLabel = 'Video';
+                } else {
+                    feeAmount = CONFIG.FEES.PHOTO; postType = 2; postTypeLabel = 'Photo';
+                }
+                mediaUrl = url;
+            }
+        }
+
+        if (totalAvailable < feeAmount) {
+            return alert(
+                `Insufficient Stars!\n` +
+                `Post Type:       ${postTypeLabel}\n` +
+                `Required:        ${feeAmount.toFixed(1)}★\n` +
+                `Purchased Stars: ${livePurchased.toFixed(1)}★\n` +
+                `Earned Stars:    ${liveEarned.toFixed(1)}★\n` +
+                `Total Available: ${totalAvailable.toFixed(1)}★\n\n` +
+                `Deposit more APTM to increase your balance.`
+            );
+        }
+
+        // Firebase Storage upload (NO MetaMask)
+        if (isFirebase && selectedFile) {
+            showToast('Uploading to Firebase Storage…');
+            try {
+                mediaUrl = await uploadToFirebaseStorage(selectedFile);
+                showToast('Upload complete! Writing post…');
+            } catch (e) {
+                console.error('Firebase upload failed:', e);
+                return alert('Upload failed: ' + e.message);
+            }
+        }
+
+        // Deduct stars using waterfall (purchased first, then earned)
+        try {
+            await deductSpendableStars(userAddress, feeAmount);
+        } catch (e) {
+            console.error('Star deduction failed:', e);
+            return alert('Failed to deduct stars. Please try again.');
+        }
+
+        // 100% of post fee → platform_revenue. No creator rebate on own posts.
+        const firestoreLabel = postType === 1 ? 'text_post' : postType === 2 ? 'photo_post' : 'video_post';
+        logAdminRevenue(userAddress, firestoreLabel, feeAmount);
+        logTransaction(userAddress, 'spend', feeAmount,
+            `${postTypeLabel} Broadcast — ${feeAmount.toFixed(1)}★ creation fee (100% platform)`);
+
+        // Write post to `posts` Firestore collection
+        try {
+            const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
+            const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
+            await window.fs.addDoc(window.fs.collection(window.db, 'posts'), {
+                text:       txt,
+                media:      mediaUrl,
+                firebase:   isFirebase,
+                author:     postAuthorName,
+                authorAddr: userAddress,
+                avatar:     postAuthorPic,
+                timestamp:  Date.now(),
+                hypes:      0,
+                type:       postType,
+                feePaid:    feeAmount,
+                isBoosted:  false
+            });
+
+            // Reset composer
+            document.getElementById('post-text').value  = '';
+            document.getElementById('post-media').value = '';
+            selectedFile = null;
+            const fPrev    = document.getElementById('file-preview-wrap');
+            const progWrap = document.getElementById('upload-progress-wrap');
+            if (fPrev)    fPrev.style.display    = 'none';
+            if (progWrap) progWrap.style.display = 'none';
+
+            updateUI();
+            showToast('Signal Live! ◈');
+        } catch (e) {
+            console.error('Firebase write failed:', e);
+            alert('Post failed: ' + e.message);
         }
     }
 
-    // Replace global handleBroadcast with the enhanced version
+    // Replace global handleBroadcast with the unified Index 25 version
     window.handleBroadcast = handleBroadcastWithSignal;
 
     // ─── Close signal lightbox on Escape ──────────────────────────────────────
