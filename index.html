@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>SOCIALHUB — Index 26 · Daily Signals</title>
+    <title>SOCIALHUB — Index 27 · Identity Sync</title>
     <link rel="icon" href="data:,">
 
     <!-- 1. Ethers.js -->
@@ -236,6 +236,8 @@
             padding: 20px;
             display: flex; flex-direction: column; gap: 14px;
             min-width: 0; /* critical for proper flex/grid shrink */
+            /* INDEX 27: scroll-padding so hero top is never under a sticky bar */
+            scroll-padding-top: 0;
         }
         #feed-col::-webkit-scrollbar { width: 3px; }
         #feed-col::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 3px; }
@@ -556,7 +558,10 @@
             border-radius: var(--radius-lg);
             padding: 24px 22px 20px;
             position: relative;
-            overflow: hidden;
+            /* INDEX 27: overflow visible so absolutely-positioned back btn is never clipped */
+            overflow: visible;
+            /* Ensure hero is always fully visible at top of feed-col scroll */
+            scroll-margin-top: 0;
         }
         #profile-hero.visible { display: block; }
         #profile-hero::before {
@@ -564,6 +569,9 @@
             position: absolute; inset: 0;
             background: radial-gradient(ellipse 60% 60% at 80% 50%, rgba(45,212,191,0.06), transparent);
             pointer-events: none;
+            /* Keep the pseudo-element clipped within the rounded border */
+            border-radius: var(--radius-lg);
+            overflow: hidden;
         }
         .hero-top { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
         #hero-avatar {
@@ -571,6 +579,17 @@
             border: 3px solid rgba(124,92,191,0.6);
             object-fit: cover; flex-shrink: 0;
             box-shadow: 0 0 20px rgba(124,92,191,0.3);
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        /* INDEX 27: Teal glow when user has an active Daily Signal */
+        #hero-avatar.has-signal {
+            border: 3px solid #00f2fe;
+            box-shadow: 0 0 0 3px rgba(0, 242, 254, 0.25), 0 0 24px rgba(0, 242, 254, 0.4);
+            animation: signal-pulse 2s ease-in-out infinite;
+        }
+        @keyframes signal-pulse {
+            0%, 100% { box-shadow: 0 0 0 3px rgba(0,242,254,0.25), 0 0 24px rgba(0,242,254,0.4); }
+            50%       { box-shadow: 0 0 0 5px rgba(0,242,254,0.15), 0 0 36px rgba(0,242,254,0.6); }
         }
         .hero-info { flex-grow: 1; min-width: 0; }
         #hero-name {
@@ -1128,19 +1147,19 @@
             .mdash-btn .mbtn-icon { font-size: 1.1rem !important; line-height: 1 !important; }
 
             /* ── Main content: pad top so not hidden behind sticky bars ── */
+            /* topnav = 50px, mobile-dashboard ≈ 68px → total ≈ 118px; use 124px with buffer */
             #feed-col {
                 overflow: visible !important;
                 padding: 0 !important;
-                padding-top: 130px !important;
+                padding-top: 124px !important;
                 padding-bottom: 24px !important;
             }
 
-            /* ── INDEX 26: Wall view reduces top padding — hero is the scroll anchor ── */
+            /* ── INDEX 27: Wall view — hero is first item, same padding keeps it clear ── */
+            /* The hero header needs full clearance so it starts below the sticky bars */
             #feed-col.wall-view {
-                padding-top: 110px !important;
+                padding-top: 124px !important;
             }
-
-            /* ── INDEX 26: Profile Hero — mobile responsive layout ── */
             #profile-hero {
                 border-radius: 0 !important;
                 border-left: none !important;
@@ -1393,8 +1412,8 @@
             }
 
             /* ── FEED COLUMN ── */
-            #feed-col { padding: 0 !important; padding-top: 130px !important; padding-bottom: 24px !important; }
-            #feed-col.wall-view { padding-top: 110px !important; }
+            #feed-col { padding: 0 !important; padding-top: 124px !important; padding-bottom: 24px !important; }
+            #feed-col.wall-view { padding-top: 124px !important; }
             /* ── INDEX 26: Very small screens — tighten hero ── */
             #hero-avatar { width: 52px !important; height: 52px !important; }
             #hero-name { font-size: 0.95rem !important; }
@@ -4288,8 +4307,10 @@
         // 7. Re-render the feed filtered by wall
         loadGlobalFeed();
 
-        // 8. Smooth scroll to top
+        // 8. Scroll to top — both window (mobile) and feed-col div (desktop)
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        const feedColEl = document.getElementById('feed-col');
+        if (feedColEl) feedColEl.scrollTop = 0;
     }
 
     function clearWall() {
@@ -4297,32 +4318,38 @@
         _wallFilter  = null;
         visibleCount = 10;
 
-        // 2. Hide Profile Hero; remove wall-view mobile padding class
+        // 2. Tear down the live identity listener (INDEX 27)
+        if (_heroUnsub) { try { _heroUnsub(); } catch(_) {} _heroUnsub = null; }
+
+        // 3. Hide Profile Hero; remove wall-view mobile padding class
         const hero = document.getElementById('profile-hero');
         if (hero) hero.classList.remove('visible');
         const feedCol = document.getElementById('feed-col');
         if (feedCol) feedCol.classList.remove('wall-view');
 
-        // 3. Reset bio element
+        // 4. Reset avatar glow, bio and name to defaults
+        const avatarEl = document.getElementById('hero-avatar');
+        if (avatarEl) avatarEl.classList.remove('has-signal');
         const bioEl = document.getElementById('hero-bio');
         if (bioEl) { bioEl.textContent = ''; bioEl.classList.remove('visible'); }
 
-        // 4. Restore signals bar with global signals
+        // 5. Restore signals bar with global signals
         const signalsBar = document.getElementById('signals-bar');
         if (signalsBar) signalsBar.style.display = '';
         loadSignals();
 
-        // 5. Restore composer and feed heading
+        // 6. Restore composer and feed heading
         const composer = document.getElementById('composer-card');
         const feedHead = document.querySelector('.feed-heading');
         if (composer) composer.style.display = '';
         if (feedHead) feedHead.style.display = '';
 
-        // 6. Reload the global (unfiltered) feed
+        // 7. Reload the global (unfiltered) feed
         loadGlobalFeed();
 
-        // 7. Scroll to top
+        // 8. Scroll to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (feedCol) feedCol.scrollTop = 0;
     }
 
     // Expose for onclick attributes
@@ -4339,6 +4366,7 @@
     let _currentSignalId = null;      // signal being viewed in lightbox
     let _signalAutoCloseTimer = null; // 15s auto-close timer (INDEX 26)
     let _signalUnsub = null;          // live feed unsubscribe
+    let _heroUnsub   = null;          // INDEX 27: live profile hero identity listener
 
     // ─── Toggle Signal Mode in composer ─────────────────────────────────────────
     function toggleSignalMode() {
@@ -4613,116 +4641,195 @@
     }
     window.hypeSignal = hypeSignal;
 
-    // ─── Profile Hero — INDEX 26: fetch from user_metadata → users fallback ──────
+    // ─── Profile Hero — INDEX 27: onSnapshot live identity + signals hype total ──
+    //
+    //  Key improvements over Index 26:
+    //  1. Identity (name, avatar, bio) uses onSnapshot → re-renders the instant
+    //     Firebase delivers data, no race condition with async getDoc.
+    //  2. "Total Hype Received" sums hypes from BOTH posts AND signals collections.
+    //  3. Avatar gets a teal glow (.has-signal) when the user has any active signal.
+    //  4. Works for any viewer — does not require the viewer to be logged in.
+    // ─────────────────────────────────────────────────────────────────────────────
     async function showProfileHero(targetAddr, wallName) {
         const hero = document.getElementById('profile-hero');
         if (!hero) return;
 
-        // ── Step 1: Identity resolution — user_metadata first, users as fallback ──
-        // user_metadata is the authoritative profile store (set via profile save).
-        // users is a legacy/fallback collection. We check both to maximise coverage.
-        let resolvedName   = wallName;   // default: passed-in name (already resolved by viewUserWall)
-        let avatarUrl      = `https://api.dicebear.com/7.x/identicon/svg?seed=${targetAddr}`;
-        let bioText        = '';
+        const addrLower = targetAddr.toLowerCase();
 
-        if (window.db) {
-            // Primary: user_metadata collection
-            try {
-                const metaSnap = await window.fs.getDoc(
-                    window.fs.doc(window.db, 'user_metadata', targetAddr.toLowerCase())
-                );
-                if (metaSnap.exists()) {
-                    const md = metaSnap.data();
-                    if (md.displayName) resolvedName = md.displayName;
-                    if (md.avatarUrl)   avatarUrl    = md.avatarUrl;
-                    if (md.bio)         bioText      = md.bio;
-                }
-            } catch (_) {}
+        // ── Teardown any previous hero listener ───────────────────────────────────
+        if (_heroUnsub) { try { _heroUnsub(); } catch(_) {} _heroUnsub = null; }
 
-            // Fallback: users collection (only fills gaps not found in user_metadata)
-            if (!bioText || avatarUrl.includes('dicebear')) {
+        // ── Step 1: Show hero immediately with placeholder data ───────────────────
+        // This prevents a blank flash while Firebase responds.
+        document.getElementById('hero-name').textContent = wallName || (addrLower.slice(0,6) + '…' + addrLower.slice(-4));
+        document.getElementById('hero-addr').textContent = addrLower.slice(0,6) + '…' + addrLower.slice(-4);
+        document.getElementById('hero-avatar').src = `https://api.dicebear.com/7.x/identicon/svg?seed=${addrLower}`;
+        document.getElementById('hero-avatar').classList.remove('has-signal');
+        const bioEl = document.getElementById('hero-bio');
+        if (bioEl) { bioEl.textContent = ''; bioEl.classList.remove('visible'); }
+
+        hero.classList.add('visible');
+        const feedCol = document.getElementById('feed-col');
+        if (feedCol) {
+            feedCol.classList.add('wall-view');
+            // Scroll the feed-col container to top (works on both desktop and mobile)
+            feedCol.scrollTop = 0;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        if (!window.db) return;
+
+        // ── Step 2: onSnapshot on user_metadata — live identity sync ─────────────
+        // This fires immediately with cached data (if any), then again when
+        // the server responds. The UI updates each time without any user action.
+        const metaRef = window.fs.doc(window.db, 'user_metadata', addrLower);
+        _heroUnsub = window.fs.onSnapshot(metaRef, async (metaSnap) => {
+
+            // Build identity from snapshot (or fall back to users collection)
+            let resolvedName = wallName || (addrLower.slice(0,6) + '…' + addrLower.slice(-4));
+            let avatarUrl    = `https://api.dicebear.com/7.x/identicon/svg?seed=${addrLower}`;
+            let bioText      = '';
+
+            if (metaSnap.exists()) {
+                const md = metaSnap.data();
+                if (md.displayName) resolvedName = md.displayName;
+                if (md.avatarUrl)   avatarUrl    = md.avatarUrl;
+                if (md.bio)         bioText      = md.bio;
+            } else {
+                // Fallback: try the `users` collection (legacy / alternative store)
                 try {
                     const uSnap = await window.fs.getDoc(
-                        window.fs.doc(window.db, 'users', targetAddr.toLowerCase())
+                        window.fs.doc(window.db, 'users', addrLower)
                     );
                     if (uSnap.exists()) {
                         const ud = uSnap.data();
-                        if (!bioText && ud.bio)                               bioText  = ud.bio;
-                        if (avatarUrl.includes('dicebear') && ud.avatarUrl)   avatarUrl = ud.avatarUrl;
-                        if (resolvedName === wallName && ud.displayName)      resolvedName = ud.displayName;
+                        if (ud.displayName) resolvedName = ud.displayName;
+                        if (ud.avatarUrl)   avatarUrl    = ud.avatarUrl;
+                        if (ud.bio)         bioText      = ud.bio;
                     }
                 } catch (_) {}
             }
-        }
 
-        // ── Step 2: Populate identity fields ──────────────────────────────────────
-        document.getElementById('hero-name').textContent = resolvedName;
-        document.getElementById('hero-addr').textContent =
-            targetAddr.slice(0, 6) + '…' + targetAddr.slice(-4);
-        document.getElementById('hero-avatar').src = avatarUrl;
+            // Apply identity to DOM
+            const nameEl   = document.getElementById('hero-name');
+            const addrEl   = document.getElementById('hero-addr');
+            const avatarEl = document.getElementById('hero-avatar');
+            const bioEl2   = document.getElementById('hero-bio');
 
-        // Bio: show if present, hide if empty
-        const bioEl = document.getElementById('hero-bio');
-        if (bioEl) {
-            if (bioText) {
-                bioEl.textContent = bioText;
-                bioEl.classList.add('visible');
-            } else {
-                bioEl.textContent = '';
-                bioEl.classList.remove('visible');
+            if (nameEl)   nameEl.textContent   = resolvedName;
+            if (addrEl)   addrEl.textContent   = addrLower.slice(0,6) + '…' + addrLower.slice(-4);
+            if (avatarEl) avatarEl.src          = avatarUrl;
+            if (bioEl2) {
+                if (bioText) { bioEl2.textContent = bioText; bioEl2.classList.add('visible'); }
+                else          { bioEl2.textContent = '';      bioEl2.classList.remove('visible'); }
             }
-        }
+        }, (_err) => {
+            // onSnapshot error — silently ignore (fallback data is already shown)
+        });
 
-        // ── Step 3: Show hero; add wall-view class on feed-col for mobile padding ─
-        hero.classList.add('visible');
-        const feedCol = document.getElementById('feed-col');
-        if (feedCol) feedCol.classList.add('wall-view');
+        // ── Step 3: Aggregate total hypes from posts + signals (one-time fetch) ───
+        // We use getDocs rather than onSnapshot here because hype counts
+        // change frequently and a live listener would be very chatty.
+        try {
+            let totalHypes = 0;
+            let postCount  = 0;
 
-        // ── Step 4: Aggregate hype total and post count from posts collection ──────
-        if (window.db) {
-            try {
-                // Query both original-case and lowercase address to handle mixed data
-                let totalHypes = 0, postCount = 0;
-                const addrs = [...new Set([targetAddr, targetAddr.toLowerCase()])];
-                for (const addr of addrs) {
-                    const q = window.fs.query(
-                        window.fs.collection(window.db, 'posts'),
-                        window.fs.where('authorAddr', '==', addr)
-                    );
-                    const snap = await window.fs.getDocs(q);
-                    snap.forEach(d => { totalHypes += (d.data().hypes || 0); postCount++; });
-                }
-                document.getElementById('hero-hype-total').textContent = totalHypes + ' ★';
-                document.getElementById('hero-post-count').textContent = postCount;
-            } catch (e) { console.warn('Hero stats failed:', e); }
-        }
+            // Deduplicate addresses to avoid double-counting if already lowercase
+            const addrs = [...new Set([targetAddr, addrLower])];
 
-        // ── Step 5: Load this user's active Daily Signals into the hero row ────────
-        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-        if (window.db) {
-            try {
+            for (const addr of addrs) {
+                // Hypes from posts
+                const pq = window.fs.query(
+                    window.fs.collection(window.db, 'posts'),
+                    window.fs.where('authorAddr', '==', addr)
+                );
+                const pSnap = await window.fs.getDocs(pq);
+                pSnap.forEach(d => { totalHypes += (d.data().hypes || 0); postCount++; });
+
+                // Hypes from signals
                 const sq = window.fs.query(
                     window.fs.collection(window.db, 'signals'),
-                    window.fs.where('authorAddr', '==', targetAddr.toLowerCase()),
-                    window.fs.where('timestamp', '>', cutoff)
+                    window.fs.where('authorAddr', '==', addr)
                 );
-                const sigSnap = await window.fs.getDocs(sq);
-                const section = document.getElementById('hero-signals-section');
-                const row     = document.getElementById('hero-signals-row');
-                if (!sigSnap.empty && row) {
-                    if (section) section.style.display = '';
+                const sSnap = await window.fs.getDocs(sq);
+                sSnap.forEach(d => { totalHypes += (d.data().hypes || 0); });
+            }
+
+            const hypeEl = document.getElementById('hero-hype-total');
+            const postEl = document.getElementById('hero-post-count');
+            if (hypeEl) hypeEl.textContent = totalHypes + ' ★';
+            if (postEl) postEl.textContent = postCount;
+        } catch (e) { console.warn('Hero stats failed:', e); }
+
+        // ── Step 4: Active signals → hero row + teal avatar glow ─────────────────
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        try {
+            const sigQuery = window.fs.query(
+                window.fs.collection(window.db, 'signals'),
+                window.fs.where('authorAddr', '==', addrLower),
+                window.fs.where('timestamp', '>', cutoff)
+            );
+            const sigSnap = await window.fs.getDocs(sigQuery);
+
+            const section  = document.getElementById('hero-signals-section');
+            const row      = document.getElementById('hero-signals-row');
+            const avatarEl = document.getElementById('hero-avatar');
+
+            if (!sigSnap.empty) {
+                // Active signals exist → teal glow on avatar
+                if (avatarEl) avatarEl.classList.add('has-signal');
+
+                if (section) section.style.display = '';
+                if (row) {
                     row.innerHTML = '';
                     sigSnap.forEach(docRef => {
                         const s   = docRef.data();
-                        const pic = s.avatar || avatarUrl;
+                        const pic = s.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${addrLower}`;
                         const bubble = document.createElement('div');
                         bubble.className = 'signal-bubble';
                         bubble.innerHTML = `<div class="signal-ring"><img src="${pic}" crossorigin="anonymous"><div class="signal-ring-dot"></div></div><span class="signal-name">Signal</span>`;
                         bubble.onclick = () => openSignalLightbox(docRef.id, s);
                         row.appendChild(bubble);
                     });
-                } else if (section) {
-                    section.style.display = 'none';
+                }
+            } else {
+                // No active signals — no glow, hide section
+                if (avatarEl) avatarEl.classList.remove('has-signal');
+                if (section)  section.style.display = 'none';
+            }
+        } catch (e) {
+            // If composite index is missing, fall back to client-side filter
+            try {
+                const fallbackQ = window.fs.query(
+                    window.fs.collection(window.db, 'signals'),
+                    window.fs.where('authorAddr', '==', addrLower)
+                );
+                const fallbackSnap = await window.fs.getDocs(fallbackQ);
+                const activeSigs   = [];
+                fallbackSnap.forEach(d => { if ((d.data().timestamp || 0) > cutoff) activeSigs.push(d); });
+
+                const section  = document.getElementById('hero-signals-section');
+                const row      = document.getElementById('hero-signals-row');
+                const avatarEl = document.getElementById('hero-avatar');
+
+                if (activeSigs.length > 0) {
+                    if (avatarEl) avatarEl.classList.add('has-signal');
+                    if (section)  section.style.display = '';
+                    if (row) {
+                        row.innerHTML = '';
+                        activeSigs.forEach(docRef => {
+                            const s   = docRef.data();
+                            const pic = s.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${addrLower}`;
+                            const bubble = document.createElement('div');
+                            bubble.className = 'signal-bubble';
+                            bubble.innerHTML = `<div class="signal-ring"><img src="${pic}" crossorigin="anonymous"><div class="signal-ring-dot"></div></div><span class="signal-name">Signal</span>`;
+                            bubble.onclick = () => openSignalLightbox(docRef.id, s);
+                            row.appendChild(bubble);
+                        });
+                    }
+                } else {
+                    if (avatarEl) avatarEl.classList.remove('has-signal');
+                    if (section)  section.style.display = 'none';
                 }
             } catch (_) {}
         }
