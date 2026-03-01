@@ -389,6 +389,46 @@
         .post-addr   { font-family: var(--font-mono); font-size: 0.6rem; color: var(--text-muted); margin-top: 1px; }
         .post-more   { color: var(--text-muted); cursor: pointer; font-size: 1rem; padding: 4px 8px; border-radius: 6px; }
         .post-more:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+        /* ── USER WALL ─────────────────────────────────────────────── */
+        /* Clickable avatar + name wrapper */
+        .wall-identity {
+            display: flex; align-items: center; gap: 10px;
+            cursor: pointer; border-radius: 8px;
+            padding: 2px 6px 2px 2px;
+            margin: -2px -6px -2px -2px;          /* keep header alignment */
+            transition: background 0.13s;
+            flex-shrink: 0;
+        }
+        .wall-identity:hover { background: rgba(124,92,191,0.12); }
+        .wall-identity:hover .post-author { color: var(--purple-lt); }
+        .wall-identity .av { pointer-events: none; }   /* let parent handle click */
+
+        /* Wall header banner — shown above feed when filtering */
+        #wall-header {
+            display: none;                         /* hidden until viewUserWall() */
+            align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+            background: linear-gradient(135deg, rgba(124,92,191,0.18), rgba(45,212,191,0.10));
+            border: 1px solid rgba(124,92,191,0.35);
+            border-radius: var(--radius-md);
+            padding: 12px 16px;
+            margin-bottom: 8px;
+        }
+        #wall-header.visible { display: flex; }
+        #wall-header-title {
+            font-size: 0.88rem; font-weight: 700; color: var(--text-white);
+        }
+        #wall-header-title span { color: var(--purple-lt); }
+        #wall-back-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 7px 14px; border-radius: 50px;
+            background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.35);
+            color: var(--teal); font-size: 0.75rem; font-weight: 700;
+            cursor: pointer; transition: all 0.13s; white-space: nowrap;
+        }
+        #wall-back-btn:hover {
+            background: rgba(45,212,191,0.22); border-color: var(--teal); color: #fff;
+        }
         .boosted-badge {
             font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700;
             background: rgba(240,180,41,0.1); border: 1px solid rgba(240,180,41,0.3);
@@ -1438,6 +1478,12 @@
                     <button class="btn btn-purple" id="broadcast-btn" onclick="handleBroadcast()">◈ Broadcast Signal</button>
                 </div>
 
+                <!-- Wall filter header — shown when viewing a user's wall -->
+                <div id="wall-header">
+                    <div id="wall-header-title">Viewing <span id="wall-header-name">…</span>'s Wall</div>
+                    <button id="wall-back-btn" onclick="clearWall()">← Return to Home Feed</button>
+                </div>
+
                 <div id="feed-items"></div>
                 <button id="load-more-btn" class="btn" onclick="showNextPage()">Load More Signals</button>
             </div>
@@ -1466,6 +1512,7 @@
                         <strong>How it works:</strong> Stars power instant interactions on the internal ledger. Click <strong>Settle Total Balance to Wallet</strong> to convert your <strong>entire</strong> balance — both purchased and earned stars — into $APTM at the live price. Both balances are wiped to zero after the transaction mines.
                     </div>
                     <button class="btn btn-teal" style="width:auto; padding:10px 24px;" onclick="settleStarsToWallet()">Settle Total Balance to Wallet →</button>
+                    <button class="btn btn-gold" style="width:auto; padding:10px 20px; margin-top:10px;" onclick="viewUserWall(userAddress)">◉ View My Public Wall</button>
                 </div>
 
                 <div class="card">
@@ -1737,6 +1784,7 @@
     let userAvatar   = localStorage.getItem('hub_userPic')  || "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
     let visibleCount = 10;
     const pageSize   = 10;
+    let _wallFilter  = null;   // null = global feed; string = filter to this wallet address
 
     // V13: Total spendable = purchased + earned. Used everywhere for balance checks.
     function getTotalSpendableStars() {
@@ -3738,11 +3786,19 @@
             snapshot.forEach((docRef) => {
                 const post      = docRef.data();
                 const postId    = docRef.id;
+
+                // ── WALL FILTER: skip posts not by the target wallet ──────────
+                if (_wallFilter && post.authorAddr &&
+                    post.authorAddr.toLowerCase() !== _wallFilter.toLowerCase()) return;
+
                 const isMe      = (post.authorAddr && userAddress && post.authorAddr.toLowerCase() === userAddress.toLowerCase());
                 const localName = localStorage.getItem('hub_userName');
                 const localPic  = localStorage.getItem('hub_userPic');
                 const displayPic  = (isMe && localPic)  ? localPic  : (post.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${post.authorAddr || 'anon'}`);
                 const displayName = (isMe && localName) ? localName : (post.author || "Anonymous");
+
+                // Safe wallet address for onclick — never inject raw address into template
+                const safeAddr = (post.authorAddr || '').replace(/'/g, '');
 
                 let mediaHtml = '';
                 const ytId    = getYoutubeId(post.media || "");
@@ -3771,10 +3827,12 @@
 
                 item.innerHTML = `
                     <div class="post-header">
-                        <img src="${displayPic}" class="av" crossorigin="anonymous">
-                        <div class="post-meta">
-                            <div class="post-author">${displayName} ${post.isBoosted ? '<span class="boosted-badge">🚀 BOOSTED</span>' : ''}</div>
-                            <div class="post-addr">${post.authorAddr ? post.authorAddr.slice(0,6)+'…'+post.authorAddr.slice(-4) : 'anon'}</div>
+                        <div class="wall-identity" onclick="viewUserWall('${safeAddr}')" title="View ${displayName}'s wall">
+                            <img src="${displayPic}" class="av" crossorigin="anonymous">
+                            <div class="post-meta">
+                                <div class="post-author">${displayName} ${post.isBoosted ? '<span class="boosted-badge">🚀 BOOSTED</span>' : ''}</div>
+                                <div class="post-addr">${post.authorAddr ? post.authorAddr.slice(0,6)+'…'+post.authorAddr.slice(-4) : 'anon'}</div>
+                            </div>
                         </div>
                         <span class="post-more">···</span>
                     </div>
@@ -3964,6 +4022,91 @@
     });
     window.openLightbox  = openLightbox;
     window.closeLightbox = closeLightbox;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // USER WALL — filter the global feed to a single creator (Index 23)
+    //
+    // _wallFilter (module-level string|null) is read inside the
+    // loadGlobalFeed onSnapshot callback. Setting it and calling
+    // loadGlobalFeed() re-renders without opening a new Firestore query.
+    // ═══════════════════════════════════════════════════════════════════
+    async function viewUserWall(targetAddr) {
+        if (!targetAddr) return;
+
+        // 1. Switch to home feed tab so the feed is visible
+        switchPage('home', document.getElementById('nav-home'));
+        setBnav('home');
+        if (typeof showMobileTab === 'function') showMobileTab('home');
+
+        // 2. Try to resolve a display name for this wallet.
+        //    Check: (a) it's the connected user, (b) Firebase users collection,
+        //    (c) fall back to truncated address.
+        let wallName = targetAddr.slice(0, 6) + '…' + targetAddr.slice(-4);
+        if (userAddress && targetAddr.toLowerCase() === userAddress.toLowerCase()) {
+            wallName = localStorage.getItem('hub_userName') || wallName;
+        } else if (window.db) {
+            try {
+                const snap = await window.fs.getDoc(
+                    window.fs.doc(window.db, 'users', targetAddr.toLowerCase())
+                );
+                if (snap.exists() && snap.data().displayName) {
+                    wallName = snap.data().displayName;
+                }
+            } catch (_) {}
+        }
+
+        // 3. Set the module-level filter and re-render the feed
+        _wallFilter = targetAddr;
+        visibleCount = 50;           // show up to 50 of this user's posts
+
+        // 4. Show the wall header banner
+        const header = document.getElementById('wall-header');
+        const nameEl = document.getElementById('wall-header-name');
+        if (header) header.classList.add('visible');
+        if (nameEl) nameEl.textContent = wallName;
+
+        // 5. Hide composer and "Load More" — wall is read-only context
+        const composer  = document.getElementById('composer-card');
+        const loadMore  = document.getElementById('load-more-btn');
+        const feedHead  = document.querySelector('.feed-heading');
+        if (composer)  composer.style.display  = 'none';
+        if (loadMore)  loadMore.style.display  = 'none';
+        if (feedHead)  feedHead.style.display  = 'none';
+
+        // 6. Re-render — the onSnapshot callback already holds the data;
+        //    triggering loadGlobalFeed() fires a fresh snapshot read which
+        //    the callback will now filter by _wallFilter.
+        loadGlobalFeed();
+
+        // 7. Smooth scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function clearWall() {
+        // 1. Reset filter state
+        _wallFilter  = null;
+        visibleCount = 10;
+
+        // 2. Hide wall header
+        const header = document.getElementById('wall-header');
+        if (header) header.classList.remove('visible');
+
+        // 3. Restore composer and feed heading
+        const composer = document.getElementById('composer-card');
+        const feedHead = document.querySelector('.feed-heading');
+        if (composer) composer.style.display = '';
+        if (feedHead) feedHead.style.display = '';
+
+        // 4. Reload the global (unfiltered) feed
+        loadGlobalFeed();
+
+        // 5. Scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Expose for onclick attributes
+    window.viewUserWall = viewUserWall;
+    window.clearWall    = clearWall;
 
     runPriceHeartbeat();                          // immediate on script load
     setInterval(runPriceHeartbeat, 30_000);       // every 30 seconds unconditionally
