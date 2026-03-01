@@ -354,12 +354,33 @@
         .post-card { animation: fadeUp 0.25s ease both; }
         @keyframes fadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
         @keyframes postFlash {
-            0%   { box-shadow: 0 0 0 0 rgba(45,212,191,0); border-color: rgba(45,212,191,0.9); }
-            25%  { box-shadow: 0 0 0 6px rgba(45,212,191,0.35); }
-            60%  { box-shadow: 0 0 18px 4px rgba(45,212,191,0.25); border-color: rgba(45,212,191,0.9); }
-            100% { box-shadow: 0 0 0 0 rgba(45,212,191,0); border-color: rgba(255,255,255,0.07); }
+            0%   {
+                box-shadow:       0 0 0 0 rgba(240,180,41,0);
+                border-color:     rgba(240,180,41,0.95);
+                background-color: rgba(240,180,41,0.07);
+            }
+            12%  {
+                box-shadow:       0 0 0 8px rgba(240,180,41,0.45), 0 0 32px 4px rgba(240,180,41,0.2);
+                border-color:     rgba(240,180,41,1);
+                background-color: rgba(240,180,41,0.10);
+            }
+            35%  {
+                box-shadow:       0 0 0 6px rgba(45,212,191,0.4), 0 0 28px 6px rgba(45,212,191,0.2);
+                border-color:     rgba(45,212,191,0.95);
+                background-color: rgba(45,212,191,0.07);
+            }
+            70%  {
+                box-shadow:       0 0 12px 2px rgba(45,212,191,0.18);
+                border-color:     rgba(45,212,191,0.5);
+                background-color: rgba(45,212,191,0.03);
+            }
+            100% {
+                box-shadow:       0 0 0 0 rgba(45,212,191,0);
+                border-color:     rgba(255,255,255,0.07);
+                background-color: transparent;
+            }
         }
-        .post-flash { animation: postFlash 1.8s ease-out forwards; }
+        .post-flash { animation: postFlash 2.4s ease-out forwards; }
         .ledger-row[data-post-id] { cursor: pointer; }
         .ledger-row[data-post-id]:hover { background: rgba(45,212,191,0.05); border-radius: 6px; }
         .post-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -1189,6 +1210,20 @@
             #bottom-nav { box-shadow: 0 -1px 0 var(--border), 0 -8px 24px rgba(0,0,0,0.3); }
             .bnav-item { font-size: 0.5rem; letter-spacing: 0.2px; }
             .bnav-item .bnav-icon { font-size: 1.2rem; }
+
+            /* ── MOBILE ACTION BAR: very small screens (≤380px, e.g. iPhone SE) ── */
+            @media (max-width: 380px) {
+                .mdash-btn {
+                    font-size: 0.58rem !important;
+                    padding: 10px 2px !important;
+                    white-space: normal !important;
+                    word-break: break-word !important;
+                    min-height: 44px !important;
+                    gap: 2px !important;
+                }
+                .mdash-btn .mbtn-icon { font-size: 1rem !important; }
+                #mobile-dashboard { gap: 3px !important; padding: 6px 4px !important; }
+            }
         }
 
         /* ── BOTTOM NAV BASE ── */
@@ -2798,6 +2833,10 @@
         if (el) el.classList.add('active');
         if (p === 'home') {
             document.getElementById('page-home').style.display = 'contents';
+            // Scroll back to top so the user lands at the Broadcast composer
+            const feedCol = document.getElementById('feed-col');
+            if (feedCol) feedCol.scrollTop = 0;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         } else {
             const pg = document.getElementById('page-' + p);
             if (pg) pg.classList.add('active');
@@ -2825,7 +2864,7 @@
                 card.classList.remove('post-flash');   // reset if already animating
                 void card.offsetWidth;                  // force reflow to restart
                 card.classList.add('post-flash');
-                setTimeout(() => card.classList.remove('post-flash'), 2000);
+                setTimeout(() => card.classList.remove('post-flash'), 2400);
             }, 120);
         });
     }
@@ -3882,10 +3921,12 @@
             if (pageInfo) { pageInfo.style.display = 'block'; pageInfo.classList.add('active'); }
         }
 
-        // Scroll to top of feed-col
+        // Scroll to top of feed-col — smooth when returning home, instant otherwise
         const feedCol = document.getElementById('feed-col');
-        if (feedCol) feedCol.scrollTop = 0;
-        window.scrollTo(0, 0);
+        if (tabName === 'home') {
+            if (feedCol) feedCol.scrollTop = 0;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════
