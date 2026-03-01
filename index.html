@@ -377,12 +377,13 @@
         .post-media {
             width: 100%; border-radius: var(--radius-md); overflow: hidden;
             margin-bottom: 12px; background: #000;
-            max-height: 360px;
+            height: auto;
+            max-height: 600px;
             display: flex; justify-content: center;
             border: 1px solid var(--border);
         }
-        .post-media img  { width: 100%; max-height: 360px; object-fit: cover; display: block; }
-        .post-media iframe { width: 100%; height: 280px; border: none; }
+        .post-media img  { width: 100%; height: auto; max-height: 600px; object-fit: contain; display: block; cursor: zoom-in; }
+        .post-media iframe { width: 100%; height: 320px; border: none; }
 
         .firebase-tag {
             display: inline-flex; align-items: center; gap: 5px;
@@ -1023,8 +1024,8 @@
             .post-card .post-body,
             .post-card .post-actions,
             .post-card .comment-tray { padding-left: 14px !important; padding-right: 14px !important; }
-            .post-media { width: 100% !important; max-height: none !important; border-radius: 0 !important; border-left: none !important; border-right: none !important; margin-bottom: 10px !important; }
-            .post-media img  { max-height: 60vw !important; }
+            .post-media { width: 100% !important; height: auto !important; max-height: none !important; border-radius: 0 !important; border-left: none !important; border-right: none !important; margin-bottom: 10px !important; }
+            .post-media img  { height: auto !important; max-height: 80vw !important; object-fit: contain !important; cursor: zoom-in !important; }
             .post-media iframe { height: 56vw !important; }
             .feed-heading { padding: 12px 14px 6px !important; font-size: 0.82rem !important; }
 
@@ -1098,8 +1099,8 @@
             .post-card .post-body,
             .post-card .post-actions,
             .post-card .comment-tray { padding-left: 14px; padding-right: 14px; }
-            .post-media { width: 100%; max-height: none; border-radius: 0; border-left: none; border-right: none; margin-bottom: 10px; }
-            .post-media img  { max-height: 60vw; }
+            .post-media { width: 100%; height: auto; max-height: none; border-radius: 0; border-left: none; border-right: none; margin-bottom: 10px; }
+            .post-media img  { height: auto; max-height: 80vw; object-fit: contain; cursor: zoom-in; }
             .post-media iframe { height: 56vw; }
             .card { border-radius: var(--radius-md); }
 
@@ -1223,6 +1224,41 @@
         #bnav-ledger.active { color: var(--teal); }
         #bnav-info.active   { color: var(--gold); }
         #bnav-wallet.active { color: var(--green); }
+
+        /* ══════════════════════════════════════════════════════════════
+           IMAGE LIGHTBOX — full-screen overlay (Index 19)
+        ══════════════════════════════════════════════════════════════ */
+        #img-lightbox {
+            display: none;
+            position: fixed; inset: 0; z-index: 99999;
+            background: rgba(0, 0, 0, 0.92);
+            backdrop-filter: blur(6px);
+            align-items: center; justify-content: center;
+            cursor: zoom-out;
+        }
+        #img-lightbox.open { display: flex; }
+        #img-lightbox img {
+            max-width: min(96vw, 1200px);
+            max-height: 92vh;
+            width: auto; height: auto;
+            object-fit: contain;
+            border-radius: 6px;
+            box-shadow: 0 8px 64px rgba(0,0,0,0.8);
+            cursor: default;
+            user-select: none;
+        }
+        #lightbox-close {
+            position: fixed; top: 18px; right: 22px;
+            font-size: 2rem; line-height: 1;
+            color: rgba(255,255,255,0.75);
+            cursor: pointer; z-index: 100000;
+            background: none; border: none;
+            transition: color 0.15s;
+        }
+        #lightbox-close:hover { color: #fff; }
+
+        /* ── auto-expand textarea ── */
+        #post-text { overflow-y: hidden; resize: none; min-height: 80px; }
     </style>
 </head>
 <body>
@@ -1321,7 +1357,7 @@
                         </div>
                     </div>
 
-                    <textarea id="post-text" class="field" style="min-height:64px;" placeholder="What's your signal?"></textarea>
+                    <textarea id="post-text" class="field" placeholder="What's your signal?"></textarea>
 
                     <div class="media-tabs">
                         <div class="mtab active" id="tab-url"  onclick="setMediaTab('url')">🔗 URL</div>
@@ -3674,7 +3710,7 @@
                     } else if (post.type === 3 || isMp4) {
                         mediaHtml = `${storageBadge}<div class="post-media"><video src="${post.media}" controls crossorigin="anonymous" style="width:100%;max-height:360px;"></video></div>`;
                     } else {
-                        mediaHtml = `${storageBadge}<div class="post-media"><img src="${post.media}" loading="lazy" crossorigin="anonymous"></div>`;
+                        mediaHtml = `${storageBadge}<div class="post-media"><img src="${post.media}" loading="lazy" crossorigin="anonymous" onclick="openLightbox(this.src)" title="Click to enlarge"></div>`;
                     }
                 }
 
@@ -3723,12 +3759,25 @@
     // DEPOSIT ESTIMATE LIVE UPDATE (drawer)
     // ═══════════════════════════════════════════════════════════════════
     document.addEventListener('DOMContentLoaded', () => {
+        // ── Drawer deposit estimate ──
         const inp = document.getElementById('drawer-deposit-input');
         if (inp) {
             inp.addEventListener('input', () => {
                 const v = parseFloat(inp.value);
                 if (!isNaN(v)) updateDepositEstimate(v);
             });
+        }
+
+        // ── Auto-expanding broadcast textarea (Index 19) ──
+        const postText = document.getElementById('post-text');
+        if (postText) {
+            const autoResize = (el) => {
+                el.style.height = 'auto';           // collapse first so shrinking works
+                el.style.height = el.scrollHeight + 'px';
+            };
+            postText.addEventListener('input', () => autoResize(postText));
+            // Also run once on load in case content is pre-filled
+            autoResize(postText);
         }
     });
 
@@ -3839,9 +3888,41 @@
         window.scrollTo(0, 0);
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // IMAGE LIGHTBOX (Index 19)
+    // ═══════════════════════════════════════════════════════════════════
+    function openLightbox(src) {
+        const lb  = document.getElementById('img-lightbox');
+        const img = document.getElementById('lightbox-img');
+        if (!lb || !img) return;
+        img.src = src;
+        lb.classList.add('open');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeLightbox() {
+        const lb = document.getElementById('img-lightbox');
+        if (!lb) return;
+        lb.classList.remove('open');
+        document.getElementById('lightbox-img').src = '';
+        document.body.style.overflow = '';
+    }
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeLightbox();
+    });
+    window.openLightbox  = openLightbox;
+    window.closeLightbox = closeLightbox;
+
     runPriceHeartbeat();                          // immediate on script load
     setInterval(runPriceHeartbeat, 30_000);       // every 30 seconds unconditionally
 
 </script>
+
+<!-- IMAGE LIGHTBOX OVERLAY (Index 19) -->
+<div id="img-lightbox" onclick="closeLightbox()">
+    <button id="lightbox-close" onclick="closeLightbox()" title="Close">✕</button>
+    <img id="lightbox-img" src="" alt="" onclick="event.stopPropagation()">
+</div>
+
 </body>
 </html>
