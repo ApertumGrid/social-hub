@@ -4609,86 +4609,87 @@
     // #mobile-dashboard action bar on phones.
     // ═══════════════════════════════════════════════════════════════════
     function showMobileTab(tabName) {
-        // ── Clear wall/post filter on every tab switch ────────────────────────────
-        // Exception: _jumpingToPost suppresses both the clear and the reload so the
-        // existing feed cards stay in the DOM long enough to be scrolled to.
-        if (!_jumpingToPost) {
-            _clearWallState();
-        }
-
-        // Update button active states
-        const buttons = {
-            home:       'mdash-home',
-            studio:     'mdash-studio',
-            profile:    'mdash-profile',
-            tokenomics: 'mdash-info'
-        };
-        Object.entries(buttons).forEach(([key, id]) => {
-            const btn = document.getElementById(id);
-            if (btn) btn.classList.toggle('active', key === tabName);
-        });
-
-        // Grab all page divs inside feed-col
-        const pageHome     = document.getElementById('page-home');
-        const pageEarnings = document.getElementById('page-earnings');
-        const pageProfile  = document.getElementById('page-profile');
-        const pageInfo     = document.getElementById('page-info');
-
-        // Reset all pages to hidden
-        if (pageHome)     { pageHome.style.display = 'none'; }
-        if (pageEarnings) { pageEarnings.style.display = 'none'; pageEarnings.classList.remove('active'); }
-        if (pageProfile)  { pageProfile.style.display = 'none'; pageProfile.classList.remove('active'); }
-        if (pageInfo)     { pageInfo.style.display = 'none'; pageInfo.classList.remove('active'); }
-
-        // Also hide the composer and feed items for non-home tabs
-        const composerCard  = document.getElementById('composer-card');
-        const feedItems     = document.getElementById('feed-items');
-        const feedHeading   = document.querySelector('.feed-heading');
-        const loadMoreBtn   = document.getElementById('load-more-btn');
-
-        if (tabName === 'home') {
-            // Show Home Feed — restore display:contents behaviour
-            if (pageHome) { pageHome.style.display = 'contents'; }
-            if (composerCard) composerCard.style.display = '';
-            if (feedItems)    feedItems.style.display = '';
-            if (feedHeading)  feedHeading.style.display = '';
-            if (loadMoreBtn)  loadMoreBtn.style.display = '';
-            // Reload global feed only on normal home navigation, not during jumpToPost
-            if (!_jumpingToPost && typeof loadGlobalFeed === 'function') loadGlobalFeed();
-
-        } else if (tabName === 'studio') {
-            // Show Creator Studio (spendable stars, settle button, ledger)
-            if (composerCard) composerCard.style.display = 'none';
-            if (feedItems)    feedItems.style.display = 'none';
-            if (feedHeading)  feedHeading.style.display = 'none';
-            if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
-            if (pageEarnings) { pageEarnings.style.display = 'block'; pageEarnings.classList.add('active'); }
-
-        } else if (tabName === 'profile') {
-            // Show My Profile (display name + image URL inputs)
-            if (composerCard) composerCard.style.display = 'none';
-            if (feedItems)    feedItems.style.display = 'none';
-            if (feedHeading)  feedHeading.style.display = 'none';
-            if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
-            if (pageProfile) { pageProfile.style.display = 'block'; pageProfile.classList.add('active'); }
-
-        } else if (tabName === 'tokenomics') {
-            // Show Tokenomics (economy text)
-            if (composerCard) composerCard.style.display = 'none';
-            if (feedItems)    feedItems.style.display = 'none';
-            if (feedHeading)  feedHeading.style.display = 'none';
-            if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
-            if (pageInfo) { pageInfo.style.display = 'block'; pageInfo.classList.add('active'); }
-        }
-
-        // Scroll to top of feed-col — smooth when returning home, instant otherwise
-        const feedCol = document.getElementById('feed-col');
-        if (tabName === 'home') {
-            if (feedCol) feedCol.scrollTop = 0;
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
+    // ── SURGICAL FIX: Force-kill the jump state if moving to Studio or Tokenomics ──
+    if (tabName !== 'home') {
+        _jumpingToPost = false; 
+        _clearWallState();
+    }
+    
+    // Original logic: Clear wall/post filter on tab switch
+    if (!_jumpingToPost) {
+        _clearWallState();
     }
 
+    // Update button active states
+    const buttons = {
+        home:       'mdash-home',
+        studio:     'mdash-studio',
+        profile:    'mdash-profile',
+        tokenomics: 'mdash-info'
+    };
+    Object.entries(buttons).forEach(([key, id]) => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.toggle('active', key === tabName);
+    });
+
+    // Grab all page divs
+    const pageHome     = document.getElementById('page-home');
+    const pageEarnings = document.getElementById('page-earnings');
+    const pageProfile  = document.getElementById('page-profile');
+    const pageInfo     = document.getElementById('page-info');
+
+    // Reset all pages to hidden
+    if (pageHome)     { pageHome.style.display = 'none'; }
+    if (pageEarnings) { pageEarnings.style.display = 'none'; pageEarnings.classList.remove('active'); }
+    if (pageProfile)  { pageProfile.style.display = 'none'; pageProfile.classList.remove('active'); }
+    if (pageInfo)     { pageInfo.style.display = 'none'; pageInfo.classList.remove('active'); }
+
+    // Hide shared feed components
+    const composerCard  = document.getElementById('composer-card');
+    const feedItems     = document.getElementById('feed-items');
+    const feedHeading   = document.querySelector('.feed-heading');
+    const loadMoreBtn   = document.getElementById('load-more-btn');
+
+    if (tabName === 'home') {
+        if (pageHome) { pageHome.style.display = 'contents'; }
+        if (composerCard) composerCard.style.display = '';
+        if (feedItems)    feedItems.style.display = '';
+        if (feedHeading)  feedHeading.style.display = '';
+        if (loadMoreBtn)  loadMoreBtn.style.display = '';
+        if (!_jumpingToPost && typeof loadGlobalFeed === 'function') loadGlobalFeed();
+
+    } else if (tabName === 'studio') {
+        if (composerCard) composerCard.style.display = 'none';
+        if (feedItems)    feedItems.style.display = 'none';
+        if (feedHeading)  feedHeading.style.display = 'none';
+        if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
+        if (pageEarnings) { pageEarnings.style.display = 'block'; pageEarnings.classList.add('active'); }
+        // Force reload the ledger so the history appears
+        if (typeof loadUserLedger === 'function') loadUserLedger();
+
+    } else if (tabName === 'profile') {
+        if (composerCard) composerCard.style.display = 'none';
+        if (feedItems)    feedItems.style.display = 'none';
+        if (feedHeading)  feedHeading.style.display = 'none';
+        if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
+        if (pageProfile) { pageProfile.style.display = 'block'; pageProfile.classList.add('active'); }
+
+    } else if (tabName === 'tokenomics') {
+        if (composerCard) composerCard.style.display = 'none';
+        if (feedItems)    feedItems.style.display = 'none';
+        if (feedHeading)  feedHeading.style.display = 'none';
+        if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
+        if (pageInfo) { pageInfo.style.display = 'block'; pageInfo.classList.add('active'); }
+    }
+
+    const feedCol = document.getElementById('feed-col');
+    if (tabName === 'home') {
+        if (feedCol) feedCol.scrollTop = 0;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+        window.scrollTo(0, 0);
+    }
+}
     // ═══════════════════════════════════════════════════════════════════
     // IMAGE LIGHTBOX (Index 19)
     // ═══════════════════════════════════════════════════════════════════
