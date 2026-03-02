@@ -2258,8 +2258,7 @@
     let userAvatar   = localStorage.getItem('hub_userPic')  || "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
     let visibleCount = 10;
     const pageSize   = 10;
-    let _wallFilter     = null;   // null = global feed; string = filter to this wallet address
-    let _jumpingToPost  = false;  // true only while jumpToPost is navigating — suppresses feed reload
+    let _wallFilter  = null;   // null = global feed; string = filter to this wallet address
 
     // V13: Total spendable = purchased + earned. Used everywhere for balance checks.
     function getTotalSpendableStars() {
@@ -2406,11 +2405,6 @@
         document.querySelectorAll('.mnav-btn').forEach(b => b.classList.remove('active'));
         const activeBtn = document.getElementById(btnId);
         if (activeBtn) activeBtn.classList.add('active');
-
-        // Clear wall filter on any non-home navigation
-        if (page !== 'home') {
-            _clearWallState();
-        }
 
         // Sync with existing switchPage system
         switchPage(page, null);
@@ -3482,69 +3476,7 @@
         });
     }
 
-    // ─── _clearWallState: resets wall-filter and hides wall UI ──────────────────
-    // Called by switchPage() and showMobileTab() on EVERY navigation, including
-    // navigating back to 'home'. This ensures that after jumpToPost (or any other
-    // filtered view), switching pages always produces a clean, unfiltered state.
-    function _clearWallState() {
-        _wallFilter  = null;
-        visibleCount = 10;
-
-        // Tear down live identity listener
-        if (typeof _heroUnsub !== 'undefined' && _heroUnsub) {
-            try { _heroUnsub(); } catch (_) {} _heroUnsub = null;
-        }
-
-        // Hide profile hero
-        const hero = document.getElementById('profile-hero');
-        if (hero) hero.classList.remove('visible');
-
-        // Hide legacy wall-header (belt-and-suspenders)
-        const wallHeader = document.getElementById('wall-header');
-        if (wallHeader) wallHeader.style.display = 'none';
-
-        // Remove wall-view padding class from feed column
-        const feedCol = document.getElementById('feed-col');
-        if (feedCol) feedCol.classList.remove('wall-view');
-
-        // Reset avatar glow + bio
-        const avatarEl = document.getElementById('hero-avatar');
-        if (avatarEl) avatarEl.classList.remove('has-signal');
-        const bioEl = document.getElementById('hero-bio');
-        if (bioEl) { bioEl.textContent = ''; bioEl.classList.remove('visible'); }
-
-        // Clear USDT estimate
-        const usdtEl = document.getElementById('hero-usdt-estimate');
-        if (usdtEl) { usdtEl.textContent = ''; usdtEl.classList.remove('visible'); }
-
-        // Reset privacy-gate blocks
-        const ownBlock   = document.getElementById('hero-earnings-own');
-        const otherBlock = document.getElementById('hero-earnings-other');
-        if (ownBlock)   ownBlock.style.display  = '';
-        if (otherBlock) otherBlock.style.display = 'none';
-
-        // Restore signals bar
-        const signalsBar = document.getElementById('signals-bar');
-        if (signalsBar) signalsBar.style.display = '';
-
-        // Restore composer, feed heading, load-more
-        const composer = document.getElementById('composer-card');
-        const feedHead = document.querySelector('.feed-heading');
-        const loadMore = document.getElementById('load-more-btn');
-        if (composer) composer.style.display = '';
-        if (feedHead) feedHead.style.display  = '';
-        if (loadMore) loadMore.style.display  = '';
-    }
-
     function switchPage(p, el) {
-        // ── Always clear any active wall/post filter on every navigation ─────────
-        // Exception: when _jumpingToPost is true, we are navigating home specifically
-        // to scroll to a card — the existing feed must NOT be reloaded or the card
-        // will be wiped before the scroll can find it.
-        if (!_jumpingToPost) {
-            _clearWallState();
-        }
-
         document.getElementById('page-home').style.display = 'none';
         ['earnings', 'profile', 'info'].forEach(id => {
             const pg = document.getElementById('page-' + id);
@@ -3554,10 +3486,6 @@
         if (el) el.classList.add('active');
         if (p === 'home') {
             document.getElementById('page-home').style.display = 'contents';
-            if (!_jumpingToPost) {
-                // Normal home navigation — reload the global (unfiltered) feed
-                if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
-            }
             // Scroll back to top so the user lands at the Broadcast composer
             const feedCol = document.getElementById('feed-col');
             if (feedCol) feedCol.scrollTop = 0;
@@ -3569,58 +3497,29 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // JUMP TO POST — switches to Feed, scrolls to the specific post card
-    // and flashes it with a teal glow. Called from ledger row clicks.
-    //
-    // Problem this solves: the previous version called switchPage() which
-    // called loadGlobalFeed() wiping the DOM, then tried to find the card
-    // 120ms later — a timing race it reliably lost.
-    //
-    // Fix: _jumpingToPost flag tells switchPage / showMobileTab NOT to
-    // reload the feed. The existing cards stay in the DOM. A retry loop
-    // polls until the target card appears (it will be there already since
-    // the global feed is already loaded), then scrolls and flashes it.
+    // JUMP TO POST — switches to Feed, scrolls to the post, flashes it.
+    // Called when a ledger row with a linked postId is clicked.
     // ═══════════════════════════════════════════════════════════════════
     function jumpToPost(postId) {
-        if (!postId) return;
-
-        // 1. Set flag BEFORE calling switchPage so neither switchPage nor
-        //    showMobileTab trigger a feed reload that would wipe the cards.
-        _jumpingToPost = true;
-
-        // 2. Switch page layout to home (shows feed-col, hides other pages).
-        //    Does NOT clear the feed or reload because _jumpingToPost is true.
+        // 1. Switch to the Home Feed tab
         switchPage('home', document.getElementById('nav-home'));
         setBnav('home');
+        // Also sync mobile action bar if present
         if (typeof showMobileTab === 'function') showMobileTab('home');
 
-        // 3. Clear the flag now that navigation calls are done.
-        _jumpingToPost = false;
-
-        // 4. Retry loop — poll for the card up to ~2 seconds (40 × 50 ms).
-        //    Needed because display:contents takes a frame to settle, and on
-        //    first load the Firestore snapshot may not have delivered yet.
-        let attempts = 0;
-        const maxAttempts = 40;
-
-        function tryScroll() {
-            const card = document.querySelector('[data-id="' + postId + '"]');
-            if (card) {
-                // Card found — scroll and flash it
+        // 2. Scroll and flash — allow a frame for display:contents to settle
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                const card = document.querySelector('[data-id="' + postId + '"]');
+                if (!card) return;
                 card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                card.classList.remove('post-flash');
-                void card.offsetWidth;                   // force reflow to restart animation
+                // 3. Flash the card with teal glow animation
+                card.classList.remove('post-flash');   // reset if already animating
+                void card.offsetWidth;                  // force reflow to restart
                 card.classList.add('post-flash');
                 setTimeout(() => card.classList.remove('post-flash'), 2400);
-            } else if (attempts < maxAttempts) {
-                attempts++;
-                setTimeout(tryScroll, 50);
-            }
-            // If still not found after 2 s, fail silently — the user is on the feed
-        }
-
-        // Give display:contents one frame to apply before first poll
-        requestAnimationFrame(() => setTimeout(tryScroll, 50));
+            }, 120);
+        });
     }
     window.jumpToPost = jumpToPost;   // expose for any onclick= attribute
 
@@ -4609,87 +4508,77 @@
     // #mobile-dashboard action bar on phones.
     // ═══════════════════════════════════════════════════════════════════
     function showMobileTab(tabName) {
-    // ── SURGICAL FIX: Force-kill the jump state if moving to Studio or Tokenomics ──
-    if (tabName !== 'home') {
-        _jumpingToPost = false; 
-        _clearWallState();
-    }
-    
-    // Original logic: Clear wall/post filter on tab switch
-    if (!_jumpingToPost) {
-        _clearWallState();
-    }
+        // Update button active states
+        const buttons = {
+            home:       'mdash-home',
+            studio:     'mdash-studio',
+            profile:    'mdash-profile',
+            tokenomics: 'mdash-info'
+        };
+        Object.entries(buttons).forEach(([key, id]) => {
+            const btn = document.getElementById(id);
+            if (btn) btn.classList.toggle('active', key === tabName);
+        });
 
-    // Update button active states
-    const buttons = {
-        home:       'mdash-home',
-        studio:     'mdash-studio',
-        profile:    'mdash-profile',
-        tokenomics: 'mdash-info'
-    };
-    Object.entries(buttons).forEach(([key, id]) => {
-        const btn = document.getElementById(id);
-        if (btn) btn.classList.toggle('active', key === tabName);
-    });
+        // Grab all page divs inside feed-col
+        const pageHome     = document.getElementById('page-home');
+        const pageEarnings = document.getElementById('page-earnings');
+        const pageProfile  = document.getElementById('page-profile');
+        const pageInfo     = document.getElementById('page-info');
 
-    // Grab all page divs
-    const pageHome     = document.getElementById('page-home');
-    const pageEarnings = document.getElementById('page-earnings');
-    const pageProfile  = document.getElementById('page-profile');
-    const pageInfo     = document.getElementById('page-info');
+        // Reset all pages to hidden
+        if (pageHome)     { pageHome.style.display = 'none'; }
+        if (pageEarnings) { pageEarnings.style.display = 'none'; pageEarnings.classList.remove('active'); }
+        if (pageProfile)  { pageProfile.style.display = 'none'; pageProfile.classList.remove('active'); }
+        if (pageInfo)     { pageInfo.style.display = 'none'; pageInfo.classList.remove('active'); }
 
-    // Reset all pages to hidden
-    if (pageHome)     { pageHome.style.display = 'none'; }
-    if (pageEarnings) { pageEarnings.style.display = 'none'; pageEarnings.classList.remove('active'); }
-    if (pageProfile)  { pageProfile.style.display = 'none'; pageProfile.classList.remove('active'); }
-    if (pageInfo)     { pageInfo.style.display = 'none'; pageInfo.classList.remove('active'); }
+        // Also hide the composer and feed items for non-home tabs
+        const composerCard  = document.getElementById('composer-card');
+        const feedItems     = document.getElementById('feed-items');
+        const feedHeading   = document.querySelector('.feed-heading');
+        const loadMoreBtn   = document.getElementById('load-more-btn');
 
-    // Hide shared feed components
-    const composerCard  = document.getElementById('composer-card');
-    const feedItems     = document.getElementById('feed-items');
-    const feedHeading   = document.querySelector('.feed-heading');
-    const loadMoreBtn   = document.getElementById('load-more-btn');
+        if (tabName === 'home') {
+            // Show Home Feed — restore display:contents behaviour
+            if (pageHome) { pageHome.style.display = 'contents'; }
+            if (composerCard) composerCard.style.display = '';
+            if (feedItems)    feedItems.style.display = '';
+            if (feedHeading)  feedHeading.style.display = '';
+            if (loadMoreBtn)  loadMoreBtn.style.display = '';
 
-    if (tabName === 'home') {
-        if (pageHome) { pageHome.style.display = 'contents'; }
-        if (composerCard) composerCard.style.display = '';
-        if (feedItems)    feedItems.style.display = '';
-        if (feedHeading)  feedHeading.style.display = '';
-        if (loadMoreBtn)  loadMoreBtn.style.display = '';
-        if (!_jumpingToPost && typeof loadGlobalFeed === 'function') loadGlobalFeed();
+        } else if (tabName === 'studio') {
+            // Show Creator Studio (spendable stars, settle button, ledger)
+            if (composerCard) composerCard.style.display = 'none';
+            if (feedItems)    feedItems.style.display = 'none';
+            if (feedHeading)  feedHeading.style.display = 'none';
+            if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
+            if (pageEarnings) { pageEarnings.style.display = 'block'; pageEarnings.classList.add('active'); }
 
-    } else if (tabName === 'studio') {
-        if (composerCard) composerCard.style.display = 'none';
-        if (feedItems)    feedItems.style.display = 'none';
-        if (feedHeading)  feedHeading.style.display = 'none';
-        if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
-        if (pageEarnings) { pageEarnings.style.display = 'block'; pageEarnings.classList.add('active'); }
-        // Force reload the ledger so the history appears
-        if (typeof loadUserLedger === 'function') loadUserLedger();
+        } else if (tabName === 'profile') {
+            // Show My Profile (display name + image URL inputs)
+            if (composerCard) composerCard.style.display = 'none';
+            if (feedItems)    feedItems.style.display = 'none';
+            if (feedHeading)  feedHeading.style.display = 'none';
+            if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
+            if (pageProfile) { pageProfile.style.display = 'block'; pageProfile.classList.add('active'); }
 
-    } else if (tabName === 'profile') {
-        if (composerCard) composerCard.style.display = 'none';
-        if (feedItems)    feedItems.style.display = 'none';
-        if (feedHeading)  feedHeading.style.display = 'none';
-        if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
-        if (pageProfile) { pageProfile.style.display = 'block'; pageProfile.classList.add('active'); }
+        } else if (tabName === 'tokenomics') {
+            // Show Tokenomics (economy text)
+            if (composerCard) composerCard.style.display = 'none';
+            if (feedItems)    feedItems.style.display = 'none';
+            if (feedHeading)  feedHeading.style.display = 'none';
+            if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
+            if (pageInfo) { pageInfo.style.display = 'block'; pageInfo.classList.add('active'); }
+        }
 
-    } else if (tabName === 'tokenomics') {
-        if (composerCard) composerCard.style.display = 'none';
-        if (feedItems)    feedItems.style.display = 'none';
-        if (feedHeading)  feedHeading.style.display = 'none';
-        if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
-        if (pageInfo) { pageInfo.style.display = 'block'; pageInfo.classList.add('active'); }
+        // Scroll to top of feed-col — smooth when returning home, instant otherwise
+        const feedCol = document.getElementById('feed-col');
+        if (tabName === 'home') {
+            if (feedCol) feedCol.scrollTop = 0;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     }
 
-    const feedCol = document.getElementById('feed-col');
-    if (tabName === 'home') {
-        if (feedCol) feedCol.scrollTop = 0;
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else {
-        window.scrollTo(0, 0);
-    }
-}
     // ═══════════════════════════════════════════════════════════════════
     // IMAGE LIGHTBOX (Index 19)
     // ═══════════════════════════════════════════════════════════════════
