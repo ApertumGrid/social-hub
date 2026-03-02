@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>SOCIALHUB — The Future of Social</title> 
+    <title>SOCIALHUB — The Future of Social</title>
     <link rel="icon" href="data:,">
 
     <!-- 1. Ethers.js -->
@@ -106,6 +106,67 @@
             opacity: 0.18;
             background-image: radial-gradient(circle, rgba(100,120,180,0.4) 1px, transparent 1px);
             background-size: 28px 28px;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════
+           INDEX 28 — COMMUNITY HYPE TICKER
+           Slim scrolling banner above the app shell (above nav)
+        ═══════════════════════════════════════════════════════════════ */
+        #hype-ticker {
+            position: relative;
+            z-index: 5001;
+            background: linear-gradient(90deg, #0d1117 0%, rgba(124,92,191,0.18) 30%, rgba(45,212,191,0.12) 70%, #0d1117 100%);
+            border-bottom: 1px solid rgba(45,212,191,0.25);
+            height: 28px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        #hype-ticker-track {
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+            animation: ticker-scroll 28s linear infinite;
+            /* Will be set dynamically when value is populated */
+        }
+        #hype-ticker-track:hover { animation-play-state: paused; }
+        @keyframes ticker-scroll {
+            0%   { transform: translateX(100vw); }
+            100% { transform: translateX(-100%); }
+        }
+        .ticker-item {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 0 40px;
+            font-family: var(--font-mono); font-size: 0.65rem; font-weight: 700;
+            color: var(--teal); letter-spacing: 1.5px; text-transform: uppercase;
+        }
+        .ticker-item .ticker-stars {
+            color: var(--gold); font-weight: 800;
+        }
+        .ticker-dot {
+            width: 4px; height: 4px; border-radius: 50%;
+            background: rgba(45,212,191,0.5); flex-shrink: 0;
+        }
+        /* Fade edges */
+        #hype-ticker::before,
+        #hype-ticker::after {
+            content: '';
+            position: absolute; top: 0; bottom: 0; z-index: 2; width: 60px;
+            pointer-events: none;
+        }
+        #hype-ticker::before {
+            left: 0;
+            background: linear-gradient(90deg, #0d1117, transparent);
+        }
+        #hype-ticker::after {
+            right: 0;
+            background: linear-gradient(270deg, #0d1117, transparent);
+        }
+        /* On mobile: ticker is slightly shorter */
+        @media (max-width: 600px) {
+            #hype-ticker { height: 24px; }
+            .ticker-item { font-size: 0.58rem; padding: 0 28px; }
         }
 
         /* App shell: full width, full height, no border-radius on desktop */
@@ -616,6 +677,33 @@
         .hero-stat-val.teal { color: var(--teal); }
         .hero-stat-val.purple { color: var(--purple-lt); }
         .hero-stat-label { font-size: 0.62rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+        /* INDEX 28: USDT estimated value label under hype total */
+        .hero-usdt-val {
+            font-size: 0.62rem; color: var(--green); font-family: var(--font-mono);
+            font-weight: 600; margin-top: 2px; display: none;
+        }
+        .hero-usdt-val.visible { display: block; }
+
+        /* ─── INDEX 28 FINAL: Privacy Gate — Reputation badge for other users' walls ─ */
+        /* Shown only when viewing someone else's wall. Hides all earnings data.        */
+        #hero-earnings-own   { /* default: visible — controlled by JS */ }
+        #hero-earnings-other { display: none;   /* hidden until JS shows it */         }
+        .hero-rep-badge {
+            display: inline-flex; align-items: center; gap: 7px;
+            padding: 5px 14px;
+            background: rgba(45,212,191,0.08);
+            border: 1px solid rgba(45,212,191,0.28);
+            border-radius: 50px;
+            font-size: 0.65rem; font-weight: 700; letter-spacing: 0.8px;
+            text-transform: uppercase; color: var(--teal);
+            margin-top: 6px; width: fit-content;
+        }
+        .hero-rep-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--teal); flex-shrink: 0;
+            animation: blink 2s ease-in-out infinite;
+        }
+
         .hero-signals-section { margin-top: 14px; }
         .hero-signals-label {
             font-size: 0.62rem; color: var(--text-muted); text-transform: uppercase;
@@ -953,6 +1041,24 @@
             transform: translateY(8px); letter-spacing: 0.4px;
         }
         #toast.show { opacity: 1; transform: translateY(0); }
+
+        /* ── INDEX 28: Global Activity Pulse — bottom-left, teal, distinct from local toast ── */
+        #global-pulse {
+            position: fixed; bottom: 22px; left: 22px; z-index: 9998;
+            background: var(--bg-card);
+            border: 1px solid rgba(45,212,191,0.4);
+            color: var(--teal);
+            font-family: var(--font-mono); font-size: 0.72rem; font-weight: 600;
+            padding: 10px 18px; border-radius: var(--radius-md);
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.3s, transform 0.3s;
+            transform: translateY(10px); letter-spacing: 0.3px;
+            max-width: 280px;
+        }
+        #global-pulse.show { opacity: 1; transform: translateY(0); }
+        @media (max-width: 600px) {
+            #global-pulse { bottom: 14px; left: 14px; font-size: 0.65rem; max-width: 220px; }
+        }
 
         /* ══════════════════════════════════════════════════════════════
            MOBILE WALLET DRAWER (V11 NEW)
@@ -1618,13 +1724,34 @@
 </head>
 <body>
 
+<!-- INDEX 28: COMMUNITY HYPE TICKER — above everything, live from admin_revenue/global -->
+<div id="hype-ticker" aria-label="Community Hype Economy Counter">
+    <div id="hype-ticker-track">
+        <span class="ticker-item">
+            <span class="ticker-dot"></span>
+            ✨ COMMUNITY HYPE: <span id="ticker-stars" class="ticker-stars">…</span> ★ GENERATED
+            <span class="ticker-dot"></span>
+        </span>
+        <span class="ticker-item">
+            <span class="ticker-dot"></span>
+            ✨ COMMUNITY HYPE: <span class="ticker-stars ticker-stars-clone">…</span> ★ GENERATED
+            <span class="ticker-dot"></span>
+        </span>
+        <span class="ticker-item">
+            <span class="ticker-dot"></span>
+            ✨ COMMUNITY HYPE: <span class="ticker-stars ticker-stars-clone">…</span> ★ GENERATED
+            <span class="ticker-dot"></span>
+        </span>
+    </div>
+</div>
+
 <div id="app-shell">
 
     <!-- TOP NAV -->
     <div id="topnav">
         <div class="brand">
             <div class="brand-icon">◈</div>
-            SOCIALHUB
+            SOCIALHUB — The Future of Social
         </div>
         <div class="topnav-mid"></div>
         <div class="topnav-right">
@@ -1774,14 +1901,36 @@
                             <div id="hero-addr"></div>
                             <div id="hero-bio"></div>
                             <div class="hero-stats">
-                                <div class="hero-stat">
-                                    <div class="hero-stat-val" id="hero-hype-total">0 ★</div>
-                                    <div class="hero-stat-label">Total Hype Received</div>
+
+                                <!-- OWN WALL — shows star count + USDT value (hidden on others' walls) -->
+                                <div id="hero-earnings-own">
+                                    <div style="display:flex; gap:20px; flex-wrap:wrap;">
+                                        <div class="hero-stat">
+                                            <div class="hero-stat-val" id="hero-hype-total">0 ★</div>
+                                            <div class="hero-stat-label">Total Hype Received</div>
+                                            <div class="hero-usdt-val" id="hero-usdt-estimate"></div>
+                                        </div>
+                                        <div class="hero-stat">
+                                            <div class="hero-stat-val teal" id="hero-post-count">0</div>
+                                            <div class="hero-stat-label">Posts</div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div class="hero-stat">
-                                    <div class="hero-stat-val teal" id="hero-post-count">0</div>
-                                    <div class="hero-stat-label">Posts</div>
+
+                                <!-- OTHER USER'S WALL — no earnings, shows post count + reputation badge -->
+                                <div id="hero-earnings-other">
+                                    <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-end;">
+                                        <div class="hero-stat">
+                                            <div class="hero-stat-val teal" id="hero-post-count-other">0</div>
+                                            <div class="hero-stat-label">Posts</div>
+                                        </div>
+                                    </div>
+                                    <div class="hero-rep-badge">
+                                        <span class="hero-rep-dot"></span>
+                                        Reputation: Active Creator
+                                    </div>
                                 </div>
+
                             </div>
                         </div>
                     </div>
@@ -2070,6 +2219,8 @@
 </div>
 
 <div id="toast"></div>
+<!-- INDEX 28: Global Activity Pulse — fires for ALL visitors on hype/signal events -->
+<div id="global-pulse"></div>
 
 <script>
     // ═══════════════════════════════════════════════════════════════════
@@ -3217,6 +3368,114 @@
         if (t) { t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2800); }
     }
 
+    // ─── INDEX 28: Global Activity Pulse ─────────────────────────────────────────
+    // Shows bottom-left teal notification to ALL visitors simultaneously
+    function showPulse(msg) {
+        const el = document.getElementById('global-pulse');
+        if (!el) return;
+        el.textContent = msg;
+        el.classList.add('show');
+        if (el._pulseTimer) clearTimeout(el._pulseTimer);
+        el._pulseTimer = setTimeout(() => el.classList.remove('show'), 3500);
+    }
+
+    // ─── INDEX 28: Community Hype Ticker — live from admin_revenue/global ────────
+    // Formula: totalStars = admin_revenue.global.total / 0.2
+    // (Because platform keeps 20% of all hypes, so total economy = platformRevenue / 0.2)
+    function startCommunityHypeTicker() {
+        if (!window.db) { setTimeout(startCommunityHypeTicker, 1000); return; }
+        const globalRef = window.fs.doc(window.db, 'admin_revenue', 'global');
+        window.fs.onSnapshot(globalRef, (snap) => {
+            let totalStars = 0;
+            if (snap.exists()) {
+                const platformRevenue = snap.data().total || 0;
+                // platformRevenue = 20% of all hype/signal activity
+                // total economy = platformRevenue / 0.2
+                totalStars = Math.round(platformRevenue / 0.2);
+            }
+            const display = totalStars > 0
+                ? totalStars.toLocaleString()
+                : '…';
+            // Update primary display
+            const primaryEl = document.getElementById('ticker-stars');
+            if (primaryEl) primaryEl.textContent = display;
+            // Update all clones
+            document.querySelectorAll('.ticker-stars-clone').forEach(el => {
+                el.textContent = display;
+            });
+        }, (_err) => {
+            // If read fails, show placeholder
+            const primaryEl = document.getElementById('ticker-stars');
+            if (primaryEl) primaryEl.textContent = '∞';
+        });
+    }
+
+    // ─── INDEX 28: Global Activity Pulse — real-time hype/signal listener ─────────
+    // Listens to platform_revenue collection. Every new document (= every hype/signal)
+    // triggers a pulse notification for ALL connected visitors simultaneously.
+    function startGlobalPulse() {
+        if (!window.db) { setTimeout(startGlobalPulse, 1000); return; }
+
+        // onSnapshot on platform_revenue ordered by timestamp descending, limit 1
+        // We use a snapshot listener — when a NEW doc is added, it fires for everyone.
+        let _firstPulseFire = true;  // skip initial load (don't spam on page open)
+
+        const q = window.fs.query(
+            window.fs.collection(window.db, 'platform_revenue'),
+            window.fs.orderBy('timestamp', 'desc'),
+            window.fs.where('timestamp', '>', Date.now())  // only NEW events after page load
+        );
+
+        window.fs.onSnapshot(q, (snap) => {
+            if (_firstPulseFire) {
+                _firstPulseFire = false;
+                return; // suppress initial state load
+            }
+            snap.docChanges().forEach(change => {
+                if (change.type !== 'added') return;
+                const data       = change.doc.data();
+                const actionType = data.actionType || '';
+                const addr       = (data.sourceAddress || '').slice(0, 6);
+
+                let msg = '';
+                if (actionType === 'hype_post' || actionType === 'hype_comment') {
+                    msg = `🔥 ${addr}… just got Hyped!`;
+                } else if (actionType === 'signal_hype') {
+                    msg = `🔥 A Signal just got Hyped!`;
+                } else if (actionType === 'daily_signal_post') {
+                    msg = `📸 New Signal Posted!`;
+                } else if (actionType === 'text_post' || actionType === 'photo_post' || actionType === 'video_post') {
+                    msg = `📡 New Signal Broadcast!`;
+                } else if (actionType === 'boost_post') {
+                    msg = `🚀 Someone just Boosted a post!`;
+                }
+                if (msg) showPulse(msg);
+            });
+        }, (err) => {
+            // If composite index not ready, fall back to simpler query without where
+            console.warn('Global pulse fallback:', err.message);
+            let _fallbackFirst = true;
+            const fallbackQ = window.fs.query(
+                window.fs.collection(window.db, 'platform_revenue'),
+                window.fs.orderBy('timestamp', 'desc')
+            );
+            window.fs.onSnapshot(fallbackQ, (snap) => {
+                if (_fallbackFirst) { _fallbackFirst = false; return; }
+                snap.docChanges().forEach(change => {
+                    if (change.type !== 'added') return;
+                    const data = change.doc.data();
+                    const actionType = data.actionType || '';
+                    const addr = (data.sourceAddress || '').slice(0, 6);
+                    let msg = '';
+                    if (actionType.includes('hype')) msg = `🔥 ${addr}… just got Hyped!`;
+                    else if (actionType.includes('signal')) msg = `📸 New Signal Posted!`;
+                    else if (actionType.includes('post')) msg = `📡 New Signal Broadcast!`;
+                    if (msg) showPulse(msg);
+                });
+            });
+        });
+    }
+
     function switchPage(p, el) {
         document.getElementById('page-home').style.display = 'none';
         ['earnings', 'profile', 'info'].forEach(id => {
@@ -4141,6 +4400,12 @@
             // Index 24: Load Daily Signals bar
             setTimeout(() => { loadSignals(); }, 1800);
 
+            // INDEX 28: Community Hype Ticker (live economy counter)
+            setTimeout(() => { startCommunityHypeTicker(); }, 2000);
+
+            // INDEX 28: Global Activity Pulse (real-time hype/signal events)
+            setTimeout(() => { startGlobalPulse(); }, 2500);
+
             // V18: Vault health check — disables Broadcast/Post if vault is empty
             setTimeout(() => { verifyVaultHealth(); }, 2000);
             setInterval(() => { verifyVaultHealth(); }, 60_000); // re-check every minute
@@ -4288,10 +4553,16 @@
         _wallFilter = targetAddr;
         visibleCount = 50;
 
-        // 4. Show the Profile Hero header (Index 24) — hide signals bar
+        // 4. Show the Profile Hero header — hide signals bar
         const signalsBar = document.getElementById('signals-bar');
         if (signalsBar) signalsBar.style.display = 'none';
-        showProfileHero(targetAddr, wallName);
+
+        // ── INDEX 28 FINAL: Privacy Gate ─────────────────────────────────────────
+        // isOwnWall is TRUE only when the connected wallet IS the wall being viewed.
+        // This controls whether the hero shows earnings or the rep badge.
+        // Falls back to false if no wallet is connected — always protects privacy.
+        const isOwnWall = !!(userAddress && targetAddr.toLowerCase() === userAddress.toLowerCase());
+        showProfileHero(targetAddr, wallName, isOwnWall);
 
         // 5. Load this user's signals in the hero section
         loadSignals(targetAddr.toLowerCase());
@@ -4332,6 +4603,13 @@
         if (avatarEl) avatarEl.classList.remove('has-signal');
         const bioEl = document.getElementById('hero-bio');
         if (bioEl) { bioEl.textContent = ''; bioEl.classList.remove('visible'); }
+        const usdtEl = document.getElementById('hero-usdt-estimate');
+        if (usdtEl) { usdtEl.textContent = ''; usdtEl.classList.remove('visible'); }
+        // Reset privacy-gate blocks to neutral state for next open
+        const ownBlock   = document.getElementById('hero-earnings-own');
+        const otherBlock = document.getElementById('hero-earnings-other');
+        if (ownBlock)   ownBlock.style.display   = '';
+        if (otherBlock) otherBlock.style.display  = 'none';
 
         // 5. Restore signals bar with global signals
         const signalsBar = document.getElementById('signals-bar');
@@ -4644,48 +4922,62 @@
     // ─── Profile Hero — INDEX 27: onSnapshot live identity + signals hype total ──
     //
     //  Key improvements over Index 26:
-    //  1. Identity (name, avatar, bio) uses onSnapshot → re-renders the instant
-    //     Firebase delivers data, no race condition with async getDoc.
-    //  2. "Total Hype Received" sums hypes from BOTH posts AND signals collections.
-    //  3. Avatar gets a teal glow (.has-signal) when the user has any active signal.
-    //  4. Works for any viewer — does not require the viewer to be logged in.
+    // ─── Profile Hero — INDEX 28 FINAL ───────────────────────────────────────────
+    //
+    //  PRIVACY GATE (isOwnWall parameter):
+    //  isOwnWall = true  → viewer owns this wall: show star count + USDT value
+    //  isOwnWall = false → viewer is someone else: hide ALL earnings, show rep badge
+    //
+    //  Other features from Index 27 (preserved):
+    //  • onSnapshot live identity from user_metadata → users fallback
+    //  • Hype total from posts + signals collections
+    //  • Teal avatar glow when user has an active Daily Signal
     // ─────────────────────────────────────────────────────────────────────────────
-    async function showProfileHero(targetAddr, wallName) {
+    async function showProfileHero(targetAddr, wallName, isOwnWall) {
         const hero = document.getElementById('profile-hero');
         if (!hero) return;
 
+        // If argument is missing, default false — always protect privacy
+        const ownWall   = (isOwnWall === true);
         const addrLower = targetAddr.toLowerCase();
 
         // ── Teardown any previous hero listener ───────────────────────────────────
         if (_heroUnsub) { try { _heroUnsub(); } catch(_) {} _heroUnsub = null; }
 
-        // ── Step 1: Show hero immediately with placeholder data ───────────────────
-        // This prevents a blank flash while Firebase responds.
-        document.getElementById('hero-name').textContent = wallName || (addrLower.slice(0,6) + '…' + addrLower.slice(-4));
-        document.getElementById('hero-addr').textContent = addrLower.slice(0,6) + '…' + addrLower.slice(-4);
-        document.getElementById('hero-avatar').src = `https://api.dicebear.com/7.x/identicon/svg?seed=${addrLower}`;
+        // ── Step 1: Render immediately with placeholders (prevents blank flash) ───
+        document.getElementById('hero-name').textContent  = wallName || (addrLower.slice(0,6) + '…' + addrLower.slice(-4));
+        document.getElementById('hero-addr').textContent  = addrLower.slice(0,6) + '…' + addrLower.slice(-4);
+        document.getElementById('hero-avatar').src        = `https://api.dicebear.com/7.x/identicon/svg?seed=${addrLower}`;
         document.getElementById('hero-avatar').classList.remove('has-signal');
         const bioEl = document.getElementById('hero-bio');
         if (bioEl) { bioEl.textContent = ''; bioEl.classList.remove('visible'); }
+
+        // ── Step 2: Apply privacy gate ────────────────────────────────────────────
+        const ownBlock   = document.getElementById('hero-earnings-own');
+        const otherBlock = document.getElementById('hero-earnings-other');
+        const usdtEl     = document.getElementById('hero-usdt-estimate');
+        if (ownWall) {
+            if (ownBlock)   ownBlock.style.display   = '';
+            if (otherBlock) otherBlock.style.display  = 'none';
+        } else {
+            if (ownBlock)   ownBlock.style.display   = 'none';
+            if (otherBlock) otherBlock.style.display  = '';
+            if (usdtEl) { usdtEl.textContent = ''; usdtEl.classList.remove('visible'); }
+        }
 
         hero.classList.add('visible');
         const feedCol = document.getElementById('feed-col');
         if (feedCol) {
             feedCol.classList.add('wall-view');
-            // Scroll the feed-col container to top (works on both desktop and mobile)
             feedCol.scrollTop = 0;
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         if (!window.db) return;
 
-        // ── Step 2: onSnapshot on user_metadata — live identity sync ─────────────
-        // This fires immediately with cached data (if any), then again when
-        // the server responds. The UI updates each time without any user action.
+        // ── Step 3: Live identity via onSnapshot on user_metadata ─────────────────
         const metaRef = window.fs.doc(window.db, 'user_metadata', addrLower);
         _heroUnsub = window.fs.onSnapshot(metaRef, async (metaSnap) => {
-
-            // Build identity from snapshot (or fall back to users collection)
             let resolvedName = wallName || (addrLower.slice(0,6) + '…' + addrLower.slice(-4));
             let avatarUrl    = `https://api.dicebear.com/7.x/identicon/svg?seed=${addrLower}`;
             let bioText      = '';
@@ -4696,11 +4988,8 @@
                 if (md.avatarUrl)   avatarUrl    = md.avatarUrl;
                 if (md.bio)         bioText      = md.bio;
             } else {
-                // Fallback: try the `users` collection (legacy / alternative store)
                 try {
-                    const uSnap = await window.fs.getDoc(
-                        window.fs.doc(window.db, 'users', addrLower)
-                    );
+                    const uSnap = await window.fs.getDoc(window.fs.doc(window.db, 'users', addrLower));
                     if (uSnap.exists()) {
                         const ud = uSnap.data();
                         if (ud.displayName) resolvedName = ud.displayName;
@@ -4710,35 +4999,26 @@
                 } catch (_) {}
             }
 
-            // Apply identity to DOM
             const nameEl   = document.getElementById('hero-name');
-            const addrEl   = document.getElementById('hero-addr');
+            const addrEl2  = document.getElementById('hero-addr');
             const avatarEl = document.getElementById('hero-avatar');
             const bioEl2   = document.getElementById('hero-bio');
-
-            if (nameEl)   nameEl.textContent   = resolvedName;
-            if (addrEl)   addrEl.textContent   = addrLower.slice(0,6) + '…' + addrLower.slice(-4);
-            if (avatarEl) avatarEl.src          = avatarUrl;
+            if (nameEl)   nameEl.textContent  = resolvedName;
+            if (addrEl2)  addrEl2.textContent = addrLower.slice(0,6) + '…' + addrLower.slice(-4);
+            if (avatarEl) avatarEl.src         = avatarUrl;
             if (bioEl2) {
                 if (bioText) { bioEl2.textContent = bioText; bioEl2.classList.add('visible'); }
                 else          { bioEl2.textContent = '';      bioEl2.classList.remove('visible'); }
             }
-        }, (_err) => {
-            // onSnapshot error — silently ignore (fallback data is already shown)
-        });
+        }, (_err) => { /* silently ignore — placeholder already shown */ });
 
-        // ── Step 3: Aggregate total hypes from posts + signals (one-time fetch) ───
-        // We use getDocs rather than onSnapshot here because hype counts
-        // change frequently and a live listener would be very chatty.
+        // ── Step 4: Aggregate hype totals (posts + signals) — privacy-aware ───────
         try {
             let totalHypes = 0;
             let postCount  = 0;
-
-            // Deduplicate addresses to avoid double-counting if already lowercase
             const addrs = [...new Set([targetAddr, addrLower])];
 
             for (const addr of addrs) {
-                // Hypes from posts
                 const pq = window.fs.query(
                     window.fs.collection(window.db, 'posts'),
                     window.fs.where('authorAddr', '==', addr)
@@ -4746,7 +5026,6 @@
                 const pSnap = await window.fs.getDocs(pq);
                 pSnap.forEach(d => { totalHypes += (d.data().hypes || 0); postCount++; });
 
-                // Hypes from signals
                 const sq = window.fs.query(
                     window.fs.collection(window.db, 'signals'),
                     window.fs.where('authorAddr', '==', addr)
@@ -4755,13 +5034,25 @@
                 sSnap.forEach(d => { totalHypes += (d.data().hypes || 0); });
             }
 
-            const hypeEl = document.getElementById('hero-hype-total');
-            const postEl = document.getElementById('hero-post-count');
-            if (hypeEl) hypeEl.textContent = totalHypes + ' ★';
-            if (postEl) postEl.textContent = postCount;
+            if (ownWall) {
+                // Own wall: show full earnings + USDT
+                const hypeEl  = document.getElementById('hero-hype-total');
+                const postEl  = document.getElementById('hero-post-count');
+                const usdtEl2 = document.getElementById('hero-usdt-estimate');
+                if (hypeEl)  hypeEl.textContent  = totalHypes + ' ★';
+                if (postEl)  postEl.textContent   = postCount;
+                if (usdtEl2) {
+                    usdtEl2.textContent = `Est. Value: $${(totalHypes * 0.01).toFixed(2)} USDT`;
+                    usdtEl2.classList.add('visible');
+                }
+            } else {
+                // Other user: show ONLY post count — no earnings, no USDT
+                const postElOther = document.getElementById('hero-post-count-other');
+                if (postElOther) postElOther.textContent = postCount;
+            }
         } catch (e) { console.warn('Hero stats failed:', e); }
 
-        // ── Step 4: Active signals → hero row + teal avatar glow ─────────────────
+        // ── Step 5: Active signals → hero row + teal avatar glow ─────────────────
         const cutoff = Date.now() - 24 * 60 * 60 * 1000;
         try {
             const sigQuery = window.fs.query(
@@ -4769,17 +5060,14 @@
                 window.fs.where('authorAddr', '==', addrLower),
                 window.fs.where('timestamp', '>', cutoff)
             );
-            const sigSnap = await window.fs.getDocs(sigQuery);
-
+            const sigSnap  = await window.fs.getDocs(sigQuery);
             const section  = document.getElementById('hero-signals-section');
             const row      = document.getElementById('hero-signals-row');
             const avatarEl = document.getElementById('hero-avatar');
 
             if (!sigSnap.empty) {
-                // Active signals exist → teal glow on avatar
                 if (avatarEl) avatarEl.classList.add('has-signal');
-
-                if (section) section.style.display = '';
+                if (section)  section.style.display = '';
                 if (row) {
                     row.innerHTML = '';
                     sigSnap.forEach(docRef => {
@@ -4793,25 +5081,24 @@
                     });
                 }
             } else {
-                // No active signals — no glow, hide section
                 if (avatarEl) avatarEl.classList.remove('has-signal');
                 if (section)  section.style.display = 'none';
             }
         } catch (e) {
-            // If composite index is missing, fall back to client-side filter
+            // Composite index missing — client-side filter fallback
             try {
-                const fallbackQ = window.fs.query(
+                const fallbackQ    = window.fs.query(
                     window.fs.collection(window.db, 'signals'),
                     window.fs.where('authorAddr', '==', addrLower)
                 );
                 const fallbackSnap = await window.fs.getDocs(fallbackQ);
                 const activeSigs   = [];
-                fallbackSnap.forEach(d => { if ((d.data().timestamp || 0) > cutoff) activeSigs.push(d); });
-
+                fallbackSnap.forEach(d => {
+                    if ((d.data().timestamp || 0) > cutoff) activeSigs.push(d);
+                });
                 const section  = document.getElementById('hero-signals-section');
                 const row      = document.getElementById('hero-signals-row');
                 const avatarEl = document.getElementById('hero-avatar');
-
                 if (activeSigs.length > 0) {
                     if (avatarEl) avatarEl.classList.add('has-signal');
                     if (section)  section.style.display = '';
