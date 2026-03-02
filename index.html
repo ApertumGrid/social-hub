@@ -2258,7 +2258,8 @@
     let userAvatar   = localStorage.getItem('hub_userPic')  || "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
     let visibleCount = 10;
     const pageSize   = 10;
-    let _wallFilter  = null;   // null = global feed; string = filter to this wallet address
+    let _wallFilter     = null;   // null = global feed; string = filter to this wallet address
+    let _jumpingToPost  = false;  // true only while jumpToPost is navigating — suppresses feed reload
 
     // V13: Total spendable = purchased + earned. Used everywhere for balance checks.
     function getTotalSpendableStars() {
@@ -3537,9 +3538,12 @@
 
     function switchPage(p, el) {
         // ── Always clear any active wall/post filter on every navigation ─────────
-        // This covers: user-wall views, jumpToPost states, and any filtered feed.
-        // Called for ALL targets including 'home' so the feed always resets cleanly.
-        _clearWallState();
+        // Exception: when _jumpingToPost is true, we are navigating home specifically
+        // to scroll to a card — the existing feed must NOT be reloaded or the card
+        // will be wiped before the scroll can find it.
+        if (!_jumpingToPost) {
+            _clearWallState();
+        }
 
         document.getElementById('page-home').style.display = 'none';
         ['earnings', 'profile', 'info'].forEach(id => {
@@ -3550,8 +3554,10 @@
         if (el) el.classList.add('active');
         if (p === 'home') {
             document.getElementById('page-home').style.display = 'contents';
-            // Reload the global (unfiltered) feed — clears any jumpToPost or wall filter
-            if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
+            if (!_jumpingToPost) {
+                // Normal home navigation — reload the global (unfiltered) feed
+                if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
+            }
             // Scroll back to top so the user lands at the Broadcast composer
             const feedCol = document.getElementById('feed-col');
             if (feedCol) feedCol.scrollTop = 0;
@@ -3563,29 +3569,58 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // JUMP TO POST — switches to Feed, scrolls to the post, flashes it.
-    // Called when a ledger row with a linked postId is clicked.
+    // JUMP TO POST — switches to Feed, scrolls to the specific post card
+    // and flashes it with a teal glow. Called from ledger row clicks.
+    //
+    // Problem this solves: the previous version called switchPage() which
+    // called loadGlobalFeed() wiping the DOM, then tried to find the card
+    // 120ms later — a timing race it reliably lost.
+    //
+    // Fix: _jumpingToPost flag tells switchPage / showMobileTab NOT to
+    // reload the feed. The existing cards stay in the DOM. A retry loop
+    // polls until the target card appears (it will be there already since
+    // the global feed is already loaded), then scrolls and flashes it.
     // ═══════════════════════════════════════════════════════════════════
     function jumpToPost(postId) {
-        // 1. Switch to the Home Feed tab
+        if (!postId) return;
+
+        // 1. Set flag BEFORE calling switchPage so neither switchPage nor
+        //    showMobileTab trigger a feed reload that would wipe the cards.
+        _jumpingToPost = true;
+
+        // 2. Switch page layout to home (shows feed-col, hides other pages).
+        //    Does NOT clear the feed or reload because _jumpingToPost is true.
         switchPage('home', document.getElementById('nav-home'));
         setBnav('home');
-        // Also sync mobile action bar if present
         if (typeof showMobileTab === 'function') showMobileTab('home');
 
-        // 2. Scroll and flash — allow a frame for display:contents to settle
-        requestAnimationFrame(() => {
-            setTimeout(() => {
-                const card = document.querySelector('[data-id="' + postId + '"]');
-                if (!card) return;
+        // 3. Clear the flag now that navigation calls are done.
+        _jumpingToPost = false;
+
+        // 4. Retry loop — poll for the card up to ~2 seconds (40 × 50 ms).
+        //    Needed because display:contents takes a frame to settle, and on
+        //    first load the Firestore snapshot may not have delivered yet.
+        let attempts = 0;
+        const maxAttempts = 40;
+
+        function tryScroll() {
+            const card = document.querySelector('[data-id="' + postId + '"]');
+            if (card) {
+                // Card found — scroll and flash it
                 card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                // 3. Flash the card with teal glow animation
-                card.classList.remove('post-flash');   // reset if already animating
-                void card.offsetWidth;                  // force reflow to restart
+                card.classList.remove('post-flash');
+                void card.offsetWidth;                   // force reflow to restart animation
                 card.classList.add('post-flash');
                 setTimeout(() => card.classList.remove('post-flash'), 2400);
-            }, 120);
-        });
+            } else if (attempts < maxAttempts) {
+                attempts++;
+                setTimeout(tryScroll, 50);
+            }
+            // If still not found after 2 s, fail silently — the user is on the feed
+        }
+
+        // Give display:contents one frame to apply before first poll
+        requestAnimationFrame(() => setTimeout(tryScroll, 50));
     }
     window.jumpToPost = jumpToPost;   // expose for any onclick= attribute
 
@@ -4574,8 +4609,12 @@
     // #mobile-dashboard action bar on phones.
     // ═══════════════════════════════════════════════════════════════════
     function showMobileTab(tabName) {
-        // ── Always clear any active wall/post filter on every tab switch ─────────
-        _clearWallState();
+        // ── Clear wall/post filter on every tab switch ────────────────────────────
+        // Exception: _jumpingToPost suppresses both the clear and the reload so the
+        // existing feed cards stay in the DOM long enough to be scrolled to.
+        if (!_jumpingToPost) {
+            _clearWallState();
+        }
 
         // Update button active states
         const buttons = {
@@ -4614,8 +4653,8 @@
             if (feedItems)    feedItems.style.display = '';
             if (feedHeading)  feedHeading.style.display = '';
             if (loadMoreBtn)  loadMoreBtn.style.display = '';
-            // Reload global (unfiltered) feed — clears any jumpToPost or wall filter
-            if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
+            // Reload global feed only on normal home navigation, not during jumpToPost
+            if (!_jumpingToPost && typeof loadGlobalFeed === 'function') loadGlobalFeed();
 
         } else if (tabName === 'studio') {
             // Show Creator Studio (spendable stars, settle button, ledger)
