@@ -3482,19 +3482,10 @@
     }
 
     // ─── _clearWallState: resets wall-filter and hides wall UI ──────────────────
-    // Called automatically by switchPage() and showMobileTab() whenever the user
-    // navigates away from the feed. This fixes the "Tokenomics/Studio blank" bug
-    // where the app stayed in filtered-wall mode after clicking a side-nav item.
-    //
-    // It is intentionally lighter than clearWall():
-    //   • Resets _wallFilter → null so the feed goes global
-    //   • Hides the Profile Hero and removes wall-view padding class
-    //   • Tears down the live identity listener (_heroUnsub)
-    //   • Restores composer, feed-heading, signals bar, and load-more button
-    //   • Does NOT call loadGlobalFeed() — the caller handles feed refresh when needed
+    // Called by switchPage() and showMobileTab() on EVERY navigation, including
+    // navigating back to 'home'. This ensures that after jumpToPost (or any other
+    // filtered view), switching pages always produces a clean, unfiltered state.
     function _clearWallState() {
-        if (!_wallFilter && !document.getElementById('profile-hero')?.classList.contains('visible')) return;
-
         _wallFilter  = null;
         visibleCount = 10;
 
@@ -3506,6 +3497,10 @@
         // Hide profile hero
         const hero = document.getElementById('profile-hero');
         if (hero) hero.classList.remove('visible');
+
+        // Hide legacy wall-header (belt-and-suspenders)
+        const wallHeader = document.getElementById('wall-header');
+        if (wallHeader) wallHeader.style.display = 'none';
 
         // Remove wall-view padding class from feed column
         const feedCol = document.getElementById('feed-col');
@@ -3541,12 +3536,10 @@
     }
 
     function switchPage(p, el) {
-        // ── Clear any active wall filter before switching pages ──────────────────
-        // Without this, navigating to Tokenomics or Creator Studio while on a
-        // user wall would leave _wallFilter set, causing those pages to appear blank.
-        if (p !== 'home') {
-            _clearWallState();
-        }
+        // ── Always clear any active wall/post filter on every navigation ─────────
+        // This covers: user-wall views, jumpToPost states, and any filtered feed.
+        // Called for ALL targets including 'home' so the feed always resets cleanly.
+        _clearWallState();
 
         document.getElementById('page-home').style.display = 'none';
         ['earnings', 'profile', 'info'].forEach(id => {
@@ -3557,6 +3550,8 @@
         if (el) el.classList.add('active');
         if (p === 'home') {
             document.getElementById('page-home').style.display = 'contents';
+            // Reload the global (unfiltered) feed — clears any jumpToPost or wall filter
+            if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
             // Scroll back to top so the user lands at the Broadcast composer
             const feedCol = document.getElementById('feed-col');
             if (feedCol) feedCol.scrollTop = 0;
@@ -4579,10 +4574,8 @@
     // #mobile-dashboard action bar on phones.
     // ═══════════════════════════════════════════════════════════════════
     function showMobileTab(tabName) {
-        // ── Clear wall filter when navigating away from feed ─────────────────────
-        if (tabName !== 'home') {
-            _clearWallState();
-        }
+        // ── Always clear any active wall/post filter on every tab switch ─────────
+        _clearWallState();
 
         // Update button active states
         const buttons = {
@@ -4621,6 +4614,8 @@
             if (feedItems)    feedItems.style.display = '';
             if (feedHeading)  feedHeading.style.display = '';
             if (loadMoreBtn)  loadMoreBtn.style.display = '';
+            // Reload global (unfiltered) feed — clears any jumpToPost or wall filter
+            if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
 
         } else if (tabName === 'studio') {
             // Show Creator Studio (spendable stars, settle button, ledger)
