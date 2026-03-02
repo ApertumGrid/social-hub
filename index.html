@@ -3672,8 +3672,9 @@
 
             updateUI();
             updateDrawerUI();
-            const counterEl = document.getElementById(displayId);
-            if (counterEl) counterEl.textContent = (parseInt(counterEl.textContent || "0") + 1);
+            // ── Fix 2A: Do NOT manually update the counter span here.
+            // The loadGlobalFeed onSnapshot 'modified' handler will receive the
+            // Firestore write and patch #hp-{postId} atomically — no jump, no race.
             showToast("Hyped! Creator +0.8★");
         } catch (e) { console.error(e); showToast("Hype failed."); }
     }
@@ -3957,10 +3958,9 @@
 
             logTransaction(userAddress, "spend", 1, "Spent 1★ to like a comment");
 
-            // Update UI counter
-            const counterEl = document.getElementById(`hc-${commentId}`);
-            if (counterEl) counterEl.textContent = (parseInt(counterEl.textContent || "0") + 1);
-
+            // ── Fix 2A (comments): Do not manually patch the counter span.
+            // The comments onSnapshot listener re-renders the comment list when
+            // the Firestore write lands, giving the correct server value.
             updateDrawerUI();
             showToast("Liked! Commenter +0.8★");
         } catch (e) { console.error(e); showToast("Like failed."); }
@@ -4248,105 +4248,190 @@
         threshold: 0.5   // 50% of the card must be visible
     });
 
+    // Holds the active unsubscribe function for the posts feed listener.
+    // Stored here so loadGlobalFeed() can tear it down before opening a new one
+    // (e.g. when switching between global feed and a user wall).
+    let _feedUnsub = null;
+
     async function loadGlobalFeed() {
         const feedContainer = document.getElementById('feed-items');
         if (!feedContainer || !window.db) return;
 
+        // ── Tear down previous listener before opening a new one ─────────────────
+        // Prevents duplicate listeners when viewUserWall / clearWall call this again.
+        if (_feedUnsub) { try { _feedUnsub(); } catch (_) {} _feedUnsub = null; }
+
+        // ── Tear down all comment sub-listeners and wipe the container ────────────
+        // We do this ONCE here, not inside the snapshot callback, so subsequent
+        // snapshot ticks (e.g. from a hype increment) never clear the DOM.
+        Object.keys(_commentListeners).forEach(k => {
+            if (typeof _commentListeners[k] === 'function') _commentListeners[k]();
+            delete _commentListeners[k];
+        });
+        Object.keys(_commentCountListeners).forEach(k => {
+            if (typeof _commentCountListeners[k] === 'function') _commentCountListeners[k]();
+            delete _commentCountListeners[k];
+        });
+        feedContainer.innerHTML = '';   // clear exactly once on (re-)load, never again
+
         const q = window.fs.query(
-            window.fs.collection(window.db, "posts"),
-            window.fs.orderBy("timestamp", "desc")
+            window.fs.collection(window.db, 'posts'),
+            window.fs.orderBy('timestamp', 'desc')
         );
 
-        window.fs.onSnapshot(q, (snapshot) => {
-            feedContainer.innerHTML = "";
-            // Tear down existing comment-tray listeners
-            Object.keys(_commentListeners).forEach(k => {
-                if (typeof _commentListeners[k] === 'function') _commentListeners[k]();
-                delete _commentListeners[k];
-            });
-            // Tear down existing comment-count listeners
-            Object.keys(_commentCountListeners).forEach(k => {
-                if (typeof _commentCountListeners[k] === 'function') _commentCountListeners[k]();
-                delete _commentCountListeners[k];
-            });
+        // ── Helper: build a single post card element ──────────────────────────────
+        function buildPostCard(postId, post) {
+            const isMe        = (post.authorAddr && userAddress &&
+                                  post.authorAddr.toLowerCase() === userAddress.toLowerCase());
+            const localName   = localStorage.getItem('hub_userName');
+            const localPic    = localStorage.getItem('hub_userPic');
+            const displayPic  = (isMe && localPic)  ? localPic
+                                : (post.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${post.authorAddr || 'anon'}`);
+            const displayName = (isMe && localName) ? localName : (post.author || 'Anonymous');
+            const safeAddr    = (post.authorAddr || '').replace(/'/g, '');
 
-            snapshot.forEach((docRef) => {
-                const post      = docRef.data();
-                const postId    = docRef.id;
+            let mediaHtml = '';
+            const ytId         = getYoutubeId(post.media || '');
+            const storageBadge = post.firebase
+                ? `<div style="margin-bottom:8px;"><span class="firebase-tag"><span class="a-dot" style="background:#ffb300; animation:blink 2s infinite;"></span>FIREBASE STORAGE</span></div>`
+                : '';
 
-                // ── WALL FILTER: skip posts not by the target wallet ──────────
-                if (_wallFilter && post.authorAddr &&
-                    post.authorAddr.toLowerCase() !== _wallFilter.toLowerCase()) return;
+            if (ytId) {
+                mediaHtml = `${storageBadge}<div class="post-media"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
+            } else if (post.media) {
+                const vimeoId = getVimeoId(post.media);
+                const isMp4   = /\.mp4(\?|$)/i.test(post.media);
+                if (vimeoId) {
+                    mediaHtml = `${storageBadge}<div class="post-media"><iframe src="https://player.vimeo.com/video/${vimeoId}" allowfullscreen></iframe></div>`;
+                } else if (post.type === 3 || isMp4) {
+                    mediaHtml = `${storageBadge}<div class="post-media"><video src="${post.media}" controls crossorigin="anonymous" style="width:100%;max-height:360px;"></video></div>`;
+                } else {
+                    mediaHtml = `${storageBadge}<div class="post-media"><img src="${post.media}" loading="lazy" crossorigin="anonymous" onclick="openLightbox(this.src)" title="Click to enlarge"></div>`;
+                }
+            }
 
-                const isMe      = (post.authorAddr && userAddress && post.authorAddr.toLowerCase() === userAddress.toLowerCase());
-                const localName = localStorage.getItem('hub_userName');
-                const localPic  = localStorage.getItem('hub_userPic');
-                const displayPic  = (isMe && localPic)  ? localPic  : (post.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${post.authorAddr || 'anon'}`);
-                const displayName = (isMe && localName) ? localName : (post.author || "Anonymous");
+            const card = document.createElement('div');
+            card.className = 'card post-card';
+            card.setAttribute('data-id', postId);
+            if (post.isBoosted) card.style.borderColor = 'rgba(240,180,41,0.3)';
 
-                // Safe wallet address for onclick — never inject raw address into template
-                const safeAddr = (post.authorAddr || '').replace(/'/g, '');
+            card.innerHTML = `
+                <div class="post-header">
+                    <div class="wall-identity" onclick="viewUserWall('${safeAddr}')" title="View ${displayName}'s wall">
+                        <img src="${displayPic}" class="av" crossorigin="anonymous">
+                        <div class="post-meta">
+                            <div class="post-author">${displayName} ${post.isBoosted ? '<span class="boosted-badge">🚀 BOOSTED</span>' : ''}</div>
+                            <div class="post-addr">${post.authorAddr ? post.authorAddr.slice(0,6)+'…'+post.authorAddr.slice(-4) : 'anon'}</div>
+                        </div>
+                    </div>
+                    <span class="post-more">···</span>
+                </div>
+                ${mediaHtml}
+                <div class="post-body">${linkify(post.text)}</div>
+                <div class="post-actions">
+                    <div class="pact" onclick="hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span> Like</div>
+                    <div class="pact" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comment<span class="pact-num" id="cc-${postId}" style="color:var(--teal);"></span></div>
+                    <div class="pact boost" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
+                    <div class="pact views" title="Impressions">👁 <span class="pact-num" id="views-${postId}">${(post.views || 0).toLocaleString()}</span></div>
+                </div>
+                <div class="comment-tray" id="tray-${postId}">
+                    <div class="comment-list" id="list-${postId}"></div>
+                    <div class="cmt-input-row" style="flex-direction:column; gap:6px;">
+                        <textarea class="cmt-persistent-box" placeholder="Add a comment (1★)…" id="input-${postId}" rows="2"></textarea>
+                        <div style="display:flex; justify-content:flex-end; gap:8px; align-items:center;">
+                            <span style="font-size:0.6rem; color:var(--text-muted); font-family:var(--font-mono);">1★ · 80% to creator</span>
+                            <button class="btn btn-purple btn-sm" onclick="addComment('${post.authorAddr}','${postId}')">Send</button>
+                        </div>
+                    </div>
+                    <button class="close-comments-btn" onclick="toggleTray('${postId}')">↑ Close Comments</button>
+                </div>`;
+            return card;
+        }
 
-                let mediaHtml = '';
-                const ytId    = getYoutubeId(post.media || "");
-                const storageBadge = post.firebase
-                    ? `<div style="margin-bottom:8px;"><span class="firebase-tag"><span class="a-dot" style="background:#ffb300; animation:blink 2s infinite;"></span>FIREBASE STORAGE</span></div>`
-                    : '';
+        // ── onSnapshot: use docChanges() — only touch cards that ACTUALLY changed ─
+        // This is the core fix for the white-flash / camera-flash scroll bug.
+        // Previously, every snapshot tick (including the ones fired by scrolling
+        // Firestore's internal keep-alive) would wipe innerHTML and repaint everything.
+        // Now we only add, remove, or surgically patch the specific card(s) that changed.
+        _feedUnsub = window.fs.onSnapshot(q, (snapshot) => {
 
-                if (ytId) {
-                    mediaHtml = `${storageBadge}<div class="post-media"><iframe src="https://www.youtube.com/embed/${ytId}" allowfullscreen></iframe></div>`;
-                } else if (post.media) {
-                    const vimeoId = getVimeoId(post.media);
-                    const isMp4   = /\.mp4(\?|$)/i.test(post.media);
-                    if (vimeoId) {
-                        mediaHtml = `${storageBadge}<div class="post-media"><iframe src="https://player.vimeo.com/video/${vimeoId}" allowfullscreen></iframe></div>`;
-                    } else if (post.type === 3 || isMp4) {
-                        mediaHtml = `${storageBadge}<div class="post-media"><video src="${post.media}" controls crossorigin="anonymous" style="width:100%;max-height:360px;"></video></div>`;
-                    } else {
-                        mediaHtml = `${storageBadge}<div class="post-media"><img src="${post.media}" loading="lazy" crossorigin="anonymous" onclick="openLightbox(this.src)" title="Click to enlarge"></div>`;
+            snapshot.docChanges().forEach(change => {
+                const postId = change.doc.id;
+                const post   = change.doc.data();
+
+                // ── Wall filter ──────────────────────────────────────────────────
+                const passesFilter = !_wallFilter || (
+                    post.authorAddr &&
+                    post.authorAddr.toLowerCase() === _wallFilter.toLowerCase()
+                );
+
+                // ── REMOVED or filtered out: delete the card if it exists ────────
+                if (change.type === 'removed' || !passesFilter) {
+                    const existing = feedContainer.querySelector(`[data-id="${postId}"]`);
+                    if (existing) {
+                        if (typeof _commentListeners[postId]      === 'function') {
+                            _commentListeners[postId]();
+                            delete _commentListeners[postId];
+                        }
+                        if (typeof _commentCountListeners[postId] === 'function') {
+                            _commentCountListeners[postId]();
+                            delete _commentCountListeners[postId];
+                        }
+                        viewObserver.unobserve(existing);
+                        existing.remove();
                     }
+                    return;
                 }
 
-                const item = document.createElement('div');
-                item.className = 'card post-card';
-                item.setAttribute('data-id', postId);
-                if (post.isBoosted) item.style.borderColor = 'rgba(240,180,41,0.3)';
+                // ── ADDED: build card and insert at correct sorted position ───────
+                if (change.type === 'added') {
+                    // Guard: if a card for this ID somehow already exists, skip
+                    if (feedContainer.querySelector(`[data-id="${postId}"]`)) return;
 
-                item.innerHTML = `
-                    <div class="post-header">
-                        <div class="wall-identity" onclick="viewUserWall('${safeAddr}')" title="View ${displayName}'s wall">
-                            <img src="${displayPic}" class="av" crossorigin="anonymous">
-                            <div class="post-meta">
-                                <div class="post-author">${displayName} ${post.isBoosted ? '<span class="boosted-badge">🚀 BOOSTED</span>' : ''}</div>
-                                <div class="post-addr">${post.authorAddr ? post.authorAddr.slice(0,6)+'…'+post.authorAddr.slice(-4) : 'anon'}</div>
-                            </div>
-                        </div>
-                        <span class="post-more">···</span>
-                    </div>
-                    ${mediaHtml}
-                    <div class="post-body">${linkify(post.text)}</div>
-                    <div class="post-actions">
-                        <div class="pact" onclick="hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span> Like</div>
-                        <div class="pact" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comment<span class="pact-num" id="cc-${postId}" style="color:var(--teal);"></span></div>
-                        <div class="pact boost" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
-                        <div class="pact views" title="Impressions">👁 <span class="pact-num" id="views-${postId}">${(post.views || 0).toLocaleString()}</span></div>
-                    </div>
-                    <div class="comment-tray" id="tray-${postId}">
-                        <div class="comment-list" id="list-${postId}"></div>
-                        <div class="cmt-input-row" style="flex-direction:column; gap:6px;">
-                            <textarea class="cmt-persistent-box" placeholder="Add a comment (1★)…" id="input-${postId}" rows="2"></textarea>
-                            <div style="display:flex; justify-content:flex-end; gap:8px; align-items:center;">
-                                <span style="font-size:0.6rem; color:var(--text-muted); font-family:var(--font-mono);">1★ · 80% to creator</span>
-                                <button class="btn btn-purple btn-sm" onclick="addComment('${post.authorAddr}','${postId}')">Send</button>
-                            </div>
-                        </div>
-                        <button class="close-comments-btn" onclick="toggleTray('${postId}')">↑ Close Comments</button>
-                    </div>`;
-                feedContainer.appendChild(item);
-                viewObserver.observe(item);              // start watching for impressions
-                subscribeCommentCount(postId);   // live comment counter badge
+                    const card   = buildPostCard(postId, post);
+
+                    // snapshot.docs is ordered desc by timestamp (matches the query).
+                    // Find the card that should immediately follow this one in the DOM
+                    // so we can insertBefore it to maintain correct order.
+                    const docIds   = snapshot.docs.map(d => d.id);
+                    const myIndex  = docIds.indexOf(postId);
+                    const afterId  = docIds[myIndex + 1];
+                    const afterEl  = afterId ? feedContainer.querySelector(`[data-id="${afterId}"]`) : null;
+
+                    if (afterEl) {
+                        feedContainer.insertBefore(card, afterEl);
+                    } else {
+                        feedContainer.appendChild(card);
+                    }
+
+                    viewObserver.observe(card);
+                    subscribeCommentCount(postId);
+                    return;
+                }
+
+                // ── MODIFIED: surgically update only the fields that can change ───
+                // This is what actually handles the hype-count update after a like.
+                // We patch the specific <span> in-place — no DOM replacement, no flash.
+                if (change.type === 'modified') {
+                    const existing = feedContainer.querySelector(`[data-id="${postId}"]`);
+                    if (!existing) return;  // card not in DOM (filtered), nothing to do
+
+                    // Update hype counter in-place (Fix 2B complement)
+                    const hypeSpan  = existing.querySelector(`#hp-${postId}`);
+                    if (hypeSpan)  hypeSpan.textContent  = (post.hypes  || 0);
+
+                    // Update view counter in-place
+                    const viewSpan  = existing.querySelector(`#views-${postId}`);
+                    if (viewSpan)  viewSpan.textContent  = (post.views  || 0).toLocaleString();
+
+                    // Update boost border
+                    existing.style.borderColor = post.isBoosted ? 'rgba(240,180,41,0.3)' : '';
+                }
             });
-            if (typeof refreshFeedVisibility === "function") refreshFeedVisibility();
+
+            if (typeof refreshFeedVisibility === 'function') refreshFeedVisibility();
+        }, (err) => {
+            console.warn('[loadGlobalFeed] snapshot error:', err.message);
         });
     }
 
@@ -4907,12 +4992,11 @@
             logAdminRevenue(userAddress, 'signal_hype', CONFIG.PLATFORM_CUT);
             logTransaction(userAddress, 'spend', 1, 'Hyped a Daily Signal (1★ → 0.8 creator, 0.2 platform)');
 
-            // Update meta line in lightbox
-            const met = document.getElementById('signal-lb-meta');
-            if (met) {
-                const newHypes = (sData.hypes || 0) + 1;
-                met.textContent = met.textContent.replace(/❤ \d+ Hypes/, `❤ ${newHypes} Hypes`);
-            }
+            // ── Fix 2B: Do NOT manually patch the meta line count here.
+            // sData.hypes is a point-in-time read taken BEFORE the increment write,
+            // so (sData.hypes + 1) can be stale if multiple users hype concurrently.
+            // The correct count will appear automatically the next time the lightbox
+            // is opened (openSignalLightbox re-reads the document fresh every time).
             updateUI(); updateDrawerUI();
             showToast('Hyped! Creator +0.8★');
         } catch(e) { console.error(e); showToast('Hype failed.'); }
@@ -5350,21 +5434,6 @@
             closeSignalLightbox();
         }
     });
-    // ─── Close signal lightbox on Escape ──────────────────────────────────────
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && document.getElementById('signal-lightbox')?.classList.contains('open')) {
-            closeSignalLightbox();
-        }
-    });
-
-    // --- SECURITY: DISABLE RIGHT-CLICK & INSPECT ---
-    document.addEventListener('contextmenu', e => e.preventDefault());
-    document.addEventListener('keydown', e => {
-        if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && ['I','J'].includes(e.key)) || (e.ctrlKey && e.key === 'u')) {
-            e.preventDefault();
-        }
-    });
-    document.addEventListener('dragstart', e => { if (e.target.nodeName === 'IMG') e.preventDefault(); });
 
 </script>
 
