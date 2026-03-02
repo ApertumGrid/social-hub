@@ -2406,6 +2406,11 @@
         const activeBtn = document.getElementById(btnId);
         if (activeBtn) activeBtn.classList.add('active');
 
+        // Clear wall filter on any non-home navigation
+        if (page !== 'home') {
+            _clearWallState();
+        }
+
         // Sync with existing switchPage system
         switchPage(page, null);
 
@@ -3476,7 +3481,73 @@
         });
     }
 
+    // ─── _clearWallState: resets wall-filter and hides wall UI ──────────────────
+    // Called automatically by switchPage() and showMobileTab() whenever the user
+    // navigates away from the feed. This fixes the "Tokenomics/Studio blank" bug
+    // where the app stayed in filtered-wall mode after clicking a side-nav item.
+    //
+    // It is intentionally lighter than clearWall():
+    //   • Resets _wallFilter → null so the feed goes global
+    //   • Hides the Profile Hero and removes wall-view padding class
+    //   • Tears down the live identity listener (_heroUnsub)
+    //   • Restores composer, feed-heading, signals bar, and load-more button
+    //   • Does NOT call loadGlobalFeed() — the caller handles feed refresh when needed
+    function _clearWallState() {
+        if (!_wallFilter && !document.getElementById('profile-hero')?.classList.contains('visible')) return;
+
+        _wallFilter  = null;
+        visibleCount = 10;
+
+        // Tear down live identity listener
+        if (typeof _heroUnsub !== 'undefined' && _heroUnsub) {
+            try { _heroUnsub(); } catch (_) {} _heroUnsub = null;
+        }
+
+        // Hide profile hero
+        const hero = document.getElementById('profile-hero');
+        if (hero) hero.classList.remove('visible');
+
+        // Remove wall-view padding class from feed column
+        const feedCol = document.getElementById('feed-col');
+        if (feedCol) feedCol.classList.remove('wall-view');
+
+        // Reset avatar glow + bio
+        const avatarEl = document.getElementById('hero-avatar');
+        if (avatarEl) avatarEl.classList.remove('has-signal');
+        const bioEl = document.getElementById('hero-bio');
+        if (bioEl) { bioEl.textContent = ''; bioEl.classList.remove('visible'); }
+
+        // Clear USDT estimate
+        const usdtEl = document.getElementById('hero-usdt-estimate');
+        if (usdtEl) { usdtEl.textContent = ''; usdtEl.classList.remove('visible'); }
+
+        // Reset privacy-gate blocks
+        const ownBlock   = document.getElementById('hero-earnings-own');
+        const otherBlock = document.getElementById('hero-earnings-other');
+        if (ownBlock)   ownBlock.style.display  = '';
+        if (otherBlock) otherBlock.style.display = 'none';
+
+        // Restore signals bar
+        const signalsBar = document.getElementById('signals-bar');
+        if (signalsBar) signalsBar.style.display = '';
+
+        // Restore composer, feed heading, load-more
+        const composer = document.getElementById('composer-card');
+        const feedHead = document.querySelector('.feed-heading');
+        const loadMore = document.getElementById('load-more-btn');
+        if (composer) composer.style.display = '';
+        if (feedHead) feedHead.style.display  = '';
+        if (loadMore) loadMore.style.display  = '';
+    }
+
     function switchPage(p, el) {
+        // ── Clear any active wall filter before switching pages ──────────────────
+        // Without this, navigating to Tokenomics or Creator Studio while on a
+        // user wall would leave _wallFilter set, causing those pages to appear blank.
+        if (p !== 'home') {
+            _clearWallState();
+        }
+
         document.getElementById('page-home').style.display = 'none';
         ['earnings', 'profile', 'info'].forEach(id => {
             const pg = document.getElementById('page-' + id);
@@ -4508,6 +4579,11 @@
     // #mobile-dashboard action bar on phones.
     // ═══════════════════════════════════════════════════════════════════
     function showMobileTab(tabName) {
+        // ── Clear wall filter when navigating away from feed ─────────────────────
+        if (tabName !== 'home') {
+            _clearWallState();
+        }
+
         // Update button active states
         const buttons = {
             home:       'mdash-home',
