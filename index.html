@@ -3199,76 +3199,70 @@
     }
 
     async function settleStarsToWallet() {
-        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
-        const addr = (await signer.getAddress()).toLowerCase();
+    if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
+    
+    const addr = (await signer.getAddress()).toLowerCase();
 
-        // 1. Get the TRUTH from Firebase (the 80% they earned is recorded here)
-        let livePurchased = 0, liveEarned = 0;
-        try {
-            const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr));
-            if (snap.exists()) {
-                livePurchased = snap.data().stars || 0;
-                liveEarned = snap.data().creatorStars || 0;
-            }
-        } catch (e) { return alert("Firebase Sync Error"); }
-
-        const totalStars = livePurchased + liveEarned;
-        if (totalStars <= 0) return alert("Nothing to settle.");
-
-        // 2. Convert their total stars (including the 80% earnings) to APTM
-        const totalOwedAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
-        const settleWei = ethers.utils.parseUnits(totalOwedAptm.toFixed(18), 18);
-
-        // 3. CHECK THE SMART CONTRACT'S TOTAL LIQUIDITY
-        // We don't care about "Admin Revenue" or "User Deposits". 
-        // We care about the TOTAL APTM sitting in the contract.
-        const contractTotalRaw = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
-        const contractTotalAptm = parseFloat(ethers.utils.formatEther(contractTotalRaw));
-
-        if (totalOwedAptm > contractTotalAptm) {
-            return alert(`Contract Liquidity Issue: You are owed ${totalOwedAptm.toFixed(4)}, but the contract only holds ${contractTotalAptm.toFixed(4)}.`);
+    // 1. Get the TRUTH from Firebase (Purchased + 80% Earned)
+    let livePurchased = 0, liveEarned = 0;
+    try {
+        const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr));
+        if (snap.exists()) {
+            livePurchased = snap.data().stars || 0;
+            liveEarned = snap.data().creatorStars || 0;
         }
-
-        const confirmed = confirm(`Automated Settlement\n\nTotal Stars: ${totalStars.toFixed(1)}\nValue: ${totalOwedAptm.toFixed(6)} APTM\n\nProceed?`);
-        if (!confirmed) return;
-
-        showToast("Authorizing Payout...");
-
-        try {
-            // 4. THE FIX: We call the function that pulls from the GENERAL POOL.
-            // If userWithdraw is failing because of deposit limits, 
-            // we use the 'withdrawAptm' (Admin-level) logic if the user is the owner,
-            // OR we ensure userWithdraw is called with a high enough gas limit to ignore the revert simulation.
-            
-            let tx;
-            // If you are the Admin/Owner, we use the "Master Key" to pay out the 80%
-            if (addr === CONFIG.OWNER_ADDRESS.toLowerCase()) {
-                tx = await hubContract.withdrawAptm(addr, settleWei);
-            } else {
-                // For 100,000 users, the contract MUST have a way to pay out earned revenue.
-                // We send it to userWithdraw and force it past the simulation.
-                tx = await hubContract.userWithdraw(settleWei, { gasLimit: 800000 });
-            }
-
-            showToast("Transaction sent! Waiting for confirmation...");
-            await tx.wait();
-
-            // 5. Success - Clear Firebase
-            if (window.db) {
-                await window.fs.setDoc(
-                    window.fs.doc(window.db, "user_balances", addr),
-                    { stars: 0, creatorStars: 0, lastWithdraw: Date.now() },
-                    { merge: true }
-                );
-            }
-
-            showToast("Settled Successfully! ✓");
-            updateUI();
-        } catch (e) {
-            console.error(e);
-            alert("Settlement Failed: The contract's internal ledger is blocking the 80% payout. You need to enable 'Reward Payouts' in the Smart Contract.");
-        }
+    } catch (e) { 
+        console.error("Firebase Sync Error:", e);
+        return alert("Firebase Sync Error"); 
     }
+
+    const totalStars = livePurchased + liveEarned;
+    if (totalStars <= 0) return alert("Nothing to settle.");
+
+    // 2. Convert Total Stars to APTM based on your Live Heartbeat
+    // Formula: (Stars * 0.01) / Price of 1 APTM
+    const totalOwedAptm = (totalStars * 0.01) / currentAptmPriceUsd;
+    const settleWei = ethers.utils.parseUnits(totalOwedAptm.toFixed(18), 18);
+
+    // 3. CHECK LIQUIDITY 
+    // We check the user's specific starBalances recorded on the contract
+    const contractBalRaw = await hubContract.starBalances(addr);
+    
+    // Check if the contract actually has enough APTM to cover the Firebase claim
+    if (settleWei.gt(contractBalRaw)) {
+        const actualAptm = ethers.utils.formatEther(contractBalRaw);
+        return alert(`On-chain Balance Mismatch: Firebase says you have ${totalStars} stars, but the Blockchain Ledger only has ${actualAptm} APTM. Please sync your stars first.`);
+    }
+
+    const confirmed = confirm(`Settlement Summary\n\nTotal Stars: ${totalStars.toFixed(1)}\nValue: ~${totalOwedAptm.toFixed(6)} APTM\n\nProceed to Wallet?`);
+    if (!confirmed) return;
+
+    showToast("Processing Withdrawal...");
+
+    try {
+        // 4. THE CORRECT TERM: userWithdraw
+        // We call the function exactly as named in your V2 contract
+        const tx = await hubContract.userWithdraw(settleWei, { gasLimit: 500000 });
+
+        showToast("Transaction sent! Waiting for confirmation...");
+        await tx.wait();
+
+        // 5. SUCCESS: Reset Firebase
+        if (window.db) {
+            await window.fs.setDoc(
+                window.fs.doc(window.db, "user_balances", addr),
+                { stars: 0, creatorStars: 0, lastWithdraw: Date.now() },
+                { merge: true }
+            );
+        }
+
+        showToast("Settled Successfully! ✓");
+        if(typeof syncData === "function") syncData(); 
+    } catch (e) {
+        console.error("Contract Error:", e);
+        alert("Withdrawal Failed: Ensure you have enough gas and the contract has liquidity.");
+    }
+}
 
     // ═══════════════════════════════════════════════════════════════════
     // FEED HELPERS
