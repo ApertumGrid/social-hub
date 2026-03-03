@@ -4243,9 +4243,16 @@ async function settleStarsToWallet() {
         );
     }
 
-    // ── 5. Convert total stars → APTM → Wei ────────────────────────────────
-    const totalAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
-    const totalWei  = ethers.utils.parseEther(totalAptm.toFixed(18));
+    // ── 5. Convert total stars → APTM → Wei (WITH 80/20 SPLIT FIX) ──────────
+    // Formula matches SocialHubEngineV2: 
+    // Purchased = 100% | Earned (recipientCut) = 80%
+    const purchasedValue = livePurchased * CONFIG.STAR_USD;
+    const earnedValue    = liveCreatorStars * CONFIG.STAR_USD * 0.80; 
+    
+    const totalAptm = (purchasedValue + earnedValue) / currentAptmPriceUsd;
+    
+    // Use .toFixed(16) to ensure we never ask for 1 wei more than the contract has
+    const totalWei  = ethers.utils.parseEther(totalAptm.toFixed(16));
 
     // ── 6. Single confirm dialog ──────────────────────────────────────────
     const syncLine = liveCreatorStars > 0
@@ -4255,10 +4262,9 @@ async function settleStarsToWallet() {
 
     const confirmed = confirm(
         `Settle Total Balance to Wallet\n\n` +
-        `Purchased Stars:   ${livePurchased.toFixed(2)} ★\n` +
-        `Earned Stars:      ${liveCreatorStars.toFixed(2)} ★\n` +
+        `Purchased Stars:   ${livePurchased.toFixed(2)} ★ (100% Value)\n` +
+        `Earned Stars:      ${liveCreatorStars.toFixed(2)} ★ (80% Creator Share)\n` +
         `───────────────────────────────\n` +
-        `Total Stars:       ${totalStars.toFixed(2)} ★\n` +
         `Live APTM Price:   $${currentAptmPriceUsd.toFixed(4)}\n` +
         `Will Receive:      ${totalAptm.toFixed(6)} APTM\n\n` +
         syncLine +
@@ -4337,8 +4343,7 @@ async function settleStarsToWallet() {
         if (typeof logTransaction === "function") {
             logTransaction(
                 addr, "settle", totalAptm,
-                `Settled ${totalStars.toFixed(2)} ★ ` +
-                `(${livePurchased.toFixed(2)} purch + ${liveCreatorStars.toFixed(2)} earned) ` +
+                `Settled stars (${livePurchased.toFixed(2)} purch + ${liveCreatorStars.toFixed(2)} earned) ` +
                 `→ ${totalAptm.toFixed(6)} $APTM`
             );
         }
