@@ -3476,60 +3476,83 @@
         });
     }
 
-    function switchPage(p, el) {
-        // ── NAVIGATION TRAP FIX: always reset wall filter & restore feed UI ──
-        // If _wallFilter is set (user was viewing a user wall or came from
-        // "View Post" in Creator Studio), clear it so any subsequent tab switch
-        // shows the correct full content and doesn't leave things hidden/blank.
+    // ── NAV TRAP FIX: single source-of-truth for all tab navigation ──────────
+    // Both switchPage() and showMobileTab() now call _activateTab() so there
+    // is never a desync between the two systems.  jumpToPost() calls
+    // _activateTab('home') directly so the full restore always runs.
+    function _activateTab(tabName, desktopNavEl) {
+        // 1. Clear wall filter if one is active (e.g. from a "View Post" jump
+        //    that was preceded by a user-wall view).
         if (_wallFilter) {
             _wallFilter = null;
             visibleCount = 10;
-            // Tear down live identity listener if present
             if (typeof _heroUnsub !== 'undefined' && _heroUnsub) {
                 try { _heroUnsub(); } catch(_) {} _heroUnsub = null;
             }
-            // Hide profile hero
             const hero = document.getElementById('profile-hero');
             if (hero) hero.classList.remove('visible');
-            const feedColEl2 = document.getElementById('feed-col');
-            if (feedColEl2) feedColEl2.classList.remove('wall-view');
-            // Restore signals bar
-            const signalsBar = document.getElementById('signals-bar');
-            if (signalsBar) signalsBar.style.display = '';
+            const fcEl = document.getElementById('feed-col');
+            if (fcEl) fcEl.classList.remove('wall-view');
+            const sigBar = document.getElementById('signals-bar');
+            if (sigBar) sigBar.style.display = '';
         }
-        // Always restore composer and feed heading visibility so home tab works
-        // after returning from a wall view or "View Post" jump
-        const composerCard2 = document.getElementById('composer-card');
-        const feedHead2     = document.querySelector('.feed-heading');
-        const feedItems2    = document.getElementById('feed-items');
-        const loadMoreBtn2  = document.getElementById('load-more-btn');
 
-        document.getElementById('page-home').style.display = 'none';
-        ['earnings', 'profile', 'info'].forEach(id => {
-            const pg = document.getElementById('page-' + id);
-            if (pg) pg.classList.remove('active');
-        });
+        // 2. Grab all the elements we need to show/hide
+        const pageHome     = document.getElementById('page-home');
+        const pageEarnings = document.getElementById('page-earnings');
+        const pageProfile  = document.getElementById('page-profile');
+        const pageInfo     = document.getElementById('page-info');
+        const composerCard = document.getElementById('composer-card');
+        const feedItems    = document.getElementById('feed-items');
+        const feedHeading  = document.querySelector('.feed-heading');
+        const loadMoreBtn  = document.getElementById('load-more-btn');
+
+        // 3. Reset ALL page states to hidden/inactive
+        if (pageEarnings) { pageEarnings.style.display = 'none'; pageEarnings.classList.remove('active'); }
+        if (pageProfile)  { pageProfile.style.display  = 'none'; pageProfile.classList.remove('active'); }
+        if (pageInfo)     { pageInfo.style.display      = 'none'; pageInfo.classList.remove('active'); }
+
+        // 4. Reset desktop nav active states
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        if (el) el.classList.add('active');
-        if (p === 'home') {
-            document.getElementById('page-home').style.display = 'contents';
-            if (composerCard2) composerCard2.style.display = '';
-            if (feedItems2)    feedItems2.style.display = '';
-            if (feedHead2)     feedHead2.style.display = '';
-            if (loadMoreBtn2)  loadMoreBtn2.style.display = '';
-            // Scroll back to top so the user lands at the Broadcast composer
+        if (desktopNavEl) desktopNavEl.classList.add('active');
+
+        // 5. Reset mobile dashboard button active states
+        const mobileTabMap = { home: 'mdash-home', earnings: 'mdash-studio', info: 'mdash-info', profile: 'mdash-profile' };
+        // also handle showMobileTab names
+        const mobileBtnMap = { home: 'mdash-home', studio: 'mdash-studio', tokenomics: 'mdash-info', profile: 'mdash-profile',
+                                earnings: 'mdash-studio', info: 'mdash-info' };
+        Object.values(mobileBtnMap).forEach(id => { const b = document.getElementById(id); if (b) b.classList.remove('active'); });
+        const activeMobileBtn = mobileBtnMap[tabName];
+        if (activeMobileBtn) { const b = document.getElementById(activeMobileBtn); if (b) b.classList.add('active'); }
+
+        // 6. Show the correct content for the active tab
+        if (tabName === 'home') {
+            if (pageHome)     pageHome.style.display     = 'contents';
+            if (composerCard) composerCard.style.display = '';
+            if (feedItems)    feedItems.style.display    = '';
+            if (feedHeading)  feedHeading.style.display  = '';
+            if (loadMoreBtn)  loadMoreBtn.style.display  = '';
             const feedCol = document.getElementById('feed-col');
             if (feedCol) feedCol.scrollTop = 0;
             window.scrollTo({ top: 0, behavior: 'smooth' });
+
         } else {
-            // Non-home tabs: ensure feed items are hidden so the page content shows
-            if (composerCard2) composerCard2.style.display = 'none';
-            if (feedItems2)    feedItems2.style.display = 'none';
-            if (feedHead2)     feedHead2.style.display = 'none';
-            if (loadMoreBtn2)  loadMoreBtn2.style.display = 'none';
-            const pg = document.getElementById('page-' + p);
-            if (pg) pg.classList.add('active');
+            // All non-home tabs: hide the feed content so the page panel shows
+            if (composerCard) composerCard.style.display = 'none';
+            if (feedItems)    feedItems.style.display    = 'none';
+            if (feedHeading)  feedHeading.style.display  = 'none';
+            if (loadMoreBtn)  loadMoreBtn.style.display  = 'none';
+
+            // Map both desktop ('earnings','info','profile') and mobile ('studio','tokenomics') names
+            const pageMap = { earnings: 'earnings', studio: 'earnings', info: 'info', tokenomics: 'info', profile: 'profile' };
+            const pageId  = pageMap[tabName];
+            const pg      = pageId ? document.getElementById('page-' + pageId) : null;
+            if (pg) { pg.style.display = 'block'; pg.classList.add('active'); }
         }
+    }
+
+    function switchPage(p, el) {
+        _activateTab(p, el);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -3537,11 +3560,11 @@
     // Called when a ledger row with a linked postId is clicked.
     // ═══════════════════════════════════════════════════════════════════
     function jumpToPost(postId) {
-        // 1. Switch to the Home Feed tab
-        switchPage('home', document.getElementById('nav-home'));
+        // 1. Switch to the Home Feed tab using the single source-of-truth switcher.
+        //    This clears any wall filter, restores feed-items/composer visibility,
+        //    and syncs BOTH desktop nav and mobile tab buttons in one call.
+        _activateTab('home', document.getElementById('nav-home'));
         setBnav('home');
-        // Also sync mobile action bar if present
-        if (typeof showMobileTab === 'function') showMobileTab('home');
 
         // 2. Scroll and flash — allow a frame for display:contents to settle
         requestAnimationFrame(() => {
@@ -4560,90 +4583,10 @@
     // #mobile-dashboard action bar on phones.
     // ═══════════════════════════════════════════════════════════════════
     function showMobileTab(tabName) {
-        // ── NAVIGATION TRAP FIX (mobile): clear wall filter on any tab switch ──
-        if (tabName !== 'home' && _wallFilter) {
-            _wallFilter = null;
-            visibleCount = 10;
-            if (typeof _heroUnsub !== 'undefined' && _heroUnsub) {
-                try { _heroUnsub(); } catch(_) {} _heroUnsub = null;
-            }
-            const hero = document.getElementById('profile-hero');
-            if (hero) hero.classList.remove('visible');
-            const feedColEl3 = document.getElementById('feed-col');
-            if (feedColEl3) feedColEl3.classList.remove('wall-view');
-            const signalsBar = document.getElementById('signals-bar');
-            if (signalsBar) signalsBar.style.display = '';
-        }
-
-        // Update button active states
-        const buttons = {
-            home:       'mdash-home',
-            studio:     'mdash-studio',
-            profile:    'mdash-profile',
-            tokenomics: 'mdash-info'
-        };
-        Object.entries(buttons).forEach(([key, id]) => {
-            const btn = document.getElementById(id);
-            if (btn) btn.classList.toggle('active', key === tabName);
-        });
-
-        // Grab all page divs inside feed-col
-        const pageHome     = document.getElementById('page-home');
-        const pageEarnings = document.getElementById('page-earnings');
-        const pageProfile  = document.getElementById('page-profile');
-        const pageInfo     = document.getElementById('page-info');
-
-        // Reset all pages to hidden
-        if (pageHome)     { pageHome.style.display = 'none'; }
-        if (pageEarnings) { pageEarnings.style.display = 'none'; pageEarnings.classList.remove('active'); }
-        if (pageProfile)  { pageProfile.style.display = 'none'; pageProfile.classList.remove('active'); }
-        if (pageInfo)     { pageInfo.style.display = 'none'; pageInfo.classList.remove('active'); }
-
-        // Also hide the composer and feed items for non-home tabs
-        const composerCard  = document.getElementById('composer-card');
-        const feedItems     = document.getElementById('feed-items');
-        const feedHeading   = document.querySelector('.feed-heading');
-        const loadMoreBtn   = document.getElementById('load-more-btn');
-
-        if (tabName === 'home') {
-            // Show Home Feed — restore display:contents behaviour
-            if (pageHome) { pageHome.style.display = 'contents'; }
-            if (composerCard) composerCard.style.display = '';
-            if (feedItems)    feedItems.style.display = '';
-            if (feedHeading)  feedHeading.style.display = '';
-            if (loadMoreBtn)  loadMoreBtn.style.display = '';
-
-        } else if (tabName === 'studio') {
-            // Show Creator Studio (spendable stars, settle button, ledger)
-            if (composerCard) composerCard.style.display = 'none';
-            if (feedItems)    feedItems.style.display = 'none';
-            if (feedHeading)  feedHeading.style.display = 'none';
-            if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
-            if (pageEarnings) { pageEarnings.style.display = 'block'; pageEarnings.classList.add('active'); }
-
-        } else if (tabName === 'profile') {
-            // Show My Profile (display name + image URL inputs)
-            if (composerCard) composerCard.style.display = 'none';
-            if (feedItems)    feedItems.style.display = 'none';
-            if (feedHeading)  feedHeading.style.display = 'none';
-            if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
-            if (pageProfile) { pageProfile.style.display = 'block'; pageProfile.classList.add('active'); }
-
-        } else if (tabName === 'tokenomics') {
-            // Show Tokenomics (economy text)
-            if (composerCard) composerCard.style.display = 'none';
-            if (feedItems)    feedItems.style.display = 'none';
-            if (feedHeading)  feedHeading.style.display = 'none';
-            if (loadMoreBtn)  loadMoreBtn.style.display = 'none';
-            if (pageInfo) { pageInfo.style.display = 'block'; pageInfo.classList.add('active'); }
-        }
-
-        // Scroll to top of feed-col — smooth when returning home, instant otherwise
-        const feedCol = document.getElementById('feed-col');
-        if (tabName === 'home') {
-            if (feedCol) feedCol.scrollTop = 0;
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
+        // Delegate entirely to the single source-of-truth tab switcher.
+        // This eliminates the desync between switchPage and showMobileTab
+        // that caused the navigation trap after "View Post".
+        _activateTab(tabName, null);
     }
 
     // ═══════════════════════════════════════════════════════════════════
