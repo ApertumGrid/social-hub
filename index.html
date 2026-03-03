@@ -4196,9 +4196,6 @@
 //    • MetaMask connection / provider settings
 // ═══════════════════════════════════════════════════════════════════
 
-// Cloud Function endpoint — matches the Firebase project ID in firebaseConfig
-const SYNC_FUNCTION_URL = "https://us-central1-socialhub-33014.cloudfunctions.net/syncStarsToBlockchain";
-
 async function settleStarsToWallet() {
     if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
 
@@ -4228,42 +4225,30 @@ async function settleStarsToWallet() {
         return alert("Could not read your balance from Firebase: " + e.message);
     }
 
-    // ── 4. Total = purchased + earned (zero-safe) ──────────────────────────
+    // ── 4. Total Check ──────────────────────────────────────────────────
     const totalStars = (livePurchased || 0) + (liveCreatorStars || 0);
-    if (totalStars <= 0) {
-        return alert(
-            "Nothing to settle.\n\n" +
-            "Your total balance (purchased + earned) is 0 ★.\n" +
-            "Deposit APTM or earn stars through interactions first."
-        );
+    // Even if stars are 0, we still check the ledger in case a previous sync finished but withdraw failed
+    const initialLedgerWei = await hubContract.aptmBalances(addr);
+
+    if (totalStars <= 0 && initialLedgerWei.eq(0)) {
+        return alert("Nothing to settle. Your balances are 0.");
     }
 
-    // ── 5. Convert total stars → APTM → Wei (WITH 80/20 SPLIT FIX) ──────────
-    // Formula matches SocialHubEngineV2: 
-    // Purchased = 100% | Earned (recipientCut) = 80%
+    // ── 5. Preview Calculation (For Display Only) ──────────────────────────
     const purchasedValue = livePurchased * CONFIG.STAR_USD;
     const earnedValue    = liveCreatorStars * CONFIG.STAR_USD * 0.80; 
-    
-    const totalAptm = (purchasedValue + earnedValue) / currentAptmPriceUsd;
-    
-    // Use .toFixed(16) to ensure we never ask for 1 wei more than the contract has
-    const totalWei  = ethers.utils.parseEther(totalAptm.toFixed(16));
+    const previewAptm    = (purchasedValue + earnedValue) / currentAptmPriceUsd;
 
     // ── 6. Single confirm dialog ──────────────────────────────────────────
     const syncLine = liveCreatorStars > 0
-        ? `Step 1 — Platform server syncs ${liveCreatorStars.toFixed(2)} earned ★ to the contract (silent, no MetaMask).\n` +
-          `Step 2 — MetaMask opens once to withdraw your full balance.\n`
-        : `MetaMask will open once to withdraw your balance.\n`;
+        ? `Step 1 — Platform server syncs earned ★ to the contract.\n` +
+          `Step 2 — MetaMask opens to withdraw your total ledger balance.\n`
+        : `MetaMask will open to withdraw your ledger balance.\n`;
 
     const confirmed = confirm(
-        `Settle Total Balance to Wallet\n\n` +
-        `Purchased Stars:   ${livePurchased.toFixed(2)} ★ (100% Value)\n` +
-        `Earned Stars:      ${liveCreatorStars.toFixed(2)} ★ (80% Creator Share)\n` +
-        `───────────────────────────────\n` +
-        `Live APTM Price:   $${currentAptmPriceUsd.toFixed(4)}\n` +
-        `Will Receive:      ${totalAptm.toFixed(6)} APTM\n\n` +
+        `Settle Balance to Wallet\n\n` +
+        `Est. Receipt: ~${previewAptm.toFixed(6)} APTM\n\n` +
         syncLine +
-        `Both balances will be zeroed after the withdrawal confirms.\n` +
         `Proceed?`
     );
     if (!confirmed) return;
@@ -4281,82 +4266,53 @@ async function settleStarsToWallet() {
                 })
             });
 
-            let payload;
-            try { payload = await resp.json(); } catch (_) { payload = {}; }
-
+            const payload = await resp.json();
             if (!resp.ok || !payload.success) {
-                console.error("SocialHub Ledger sync error:", payload);
-                return alert(
-                    "Settlement Failed.\n\n" +
-                    (payload.error || "Server connection issue") +
-                    "\n\nYour Star balance is safe and unchanged."
-                );
+                return alert("Sync Failed: " + (payload.error || "Server Error"));
             }
-
-            console.log(`[Settlement] Ledger sync tx: ${payload.txHash}`);
-            showToast(`Ledger synced ✓ (tx: ${payload.txHash.slice(0, 10)}…) — opening MetaMask…`);
-
+            showToast(`Ledger synced ✓ — opening MetaMask…`);
         } catch (networkErr) {
-            console.error("Network error reaching syncStarsToBlockchain:", networkErr);
-            return alert(
-                "Could not reach the settlement server.\n\n" +
-                "Check your internet connection and try again.\n" +
-                "No funds have been moved."
-            );
+            return alert("Could not reach the settlement server.");
         }
-    } else {
-        showToast("No earned stars to sync — opening MetaMask for withdrawal…");
     }
 
-    // ── STEP B: USER WITHDRAWAL via MetaMask ─────────────────────────────
+    // ── STEP B: USER WITHDRAWAL via MetaMask (NO MORE GUESSTIMATING) ───────
     try {
-        showToast("Step 2/2 — Opening MetaMask for withdrawal…");
-        const withdrawTx = await hubContract.userWithdraw(totalWei, { gasLimit: 500000 });
+        showToast("Step 2/2 — Fetching final ledger balance...");
+        
+        // We fetch the EXACT value the contract holds for you right now
+        const finalLedgerWei = await hubContract.aptmBalances(addr);
+        
+        if (finalLedgerWei.eq(0)) {
+            return alert("The blockchain ledger shows 0 APTM. If you just synced, wait a few seconds and try again.");
+        }
+
+        const withdrawAptmStr = ethers.utils.formatEther(finalLedgerWei);
+
+        showToast(`Requesting ${parseFloat(withdrawAptmStr).toFixed(6)} APTM...`);
+        
+        // We pass the exact number the contract just told us it has. 
+        // This makes CALL_EXCEPTION impossible.
+        const withdrawTx = await hubContract.userWithdraw(finalLedgerWei, { gasLimit: 500000 });
+        
         showToast("Withdrawal submitted — waiting for confirmation…");
         await withdrawTx.wait();
 
         // ── Zero Firebase ONLY after on-chain confirmation ─────────────────
         if (window.db) {
-            try {
-                await window.fs.setDoc(
-                    window.fs.doc(window.db, "user_balances", addr),
-                    {
-                        stars:        0,
-                        creatorStars: 0,
-                        lastWithdraw: Date.now(),
-                        lastUpdated:  Date.now()
-                    },
-                    { merge: true }
-                );
-            } catch (e) { console.warn("Firebase balance reset failed:", e); }
-        }
-
-        // Sync in-memory cache so the UI reflects 0 immediately
-        if (typeof purchasedStars !== 'undefined') purchasedStars = 0;
-        if (typeof creatorEarnings !== 'undefined') creatorEarnings = 0;
-
-        if (typeof logTransaction === "function") {
-            logTransaction(
-                addr, "settle", totalAptm,
-                `Settled stars (${livePurchased.toFixed(2)} purch + ${liveCreatorStars.toFixed(2)} earned) ` +
-                `→ ${totalAptm.toFixed(6)} $APTM`
+            await window.fs.setDoc(
+                window.fs.doc(window.db, "user_balances", addr),
+                { stars: 0, creatorStars: 0, lastWithdraw: Date.now() },
+                { merge: true }
             );
         }
 
-        showToast(`✓ Settlement complete! ${totalAptm.toFixed(6)} APTM → wallet`);
-        
-        // Trigger UI updates
+        showToast(`✓ Settlement complete! ${parseFloat(withdrawAptmStr).toFixed(6)} APTM → wallet`);
         if (typeof updateUI === "function") updateUI();
-        if (typeof updateDrawerUI === "function") updateDrawerUI();
-        if (typeof syncData === "function") syncData();
 
     } catch (e) {
         console.error("userWithdraw failed:", e);
-        alert(
-            "Withdrawal failed.\n\n" +
-            (e.reason || e.message || String(e)).slice(0, 200) +
-            "\n\nClick Settle again to retry the withdrawal."
-        );
+        alert("Withdrawal failed: " + (e.reason || e.message || "Unknown error"));
     }
 }
 
