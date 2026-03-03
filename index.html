@@ -3198,86 +3198,103 @@
         if (amt) await _doDeposit(amt);
     }
 
-    async function settleToWallet() {
+    async function settleStarsToWallet() {
         if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
+
+        // 1. Verified wallet address
+        const addr = (await signer.getAddress()).toLowerCase();
+        if (!userAddress || userAddress.toLowerCase() !== addr) {
+            return alert("Wallet mismatch. Please reconnect your wallet and try again.");
+        }
+
+        // 2. Verified live price
+        if (!currentAptmPriceUsd || currentAptmPriceUsd <= 0) {
+            return alert("Live APTM price not yet loaded. Wait a moment and try again.");
+        }
+
+        // 3. Read BOTH star pools from this user's Firebase doc
+        let livePurchased    = 0;
+        let liveCreatorStars = 0;
         try {
-            const addr = await signer.getAddress();
-
-            // Read BOTH star pools live from Firebase
-            let livePurchased = 0, liveEarned = 0;
-            if (window.db) {
-                try {
-                    const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr.toLowerCase()));
-                    if (snap.exists()) {
-                        livePurchased = snap.data().stars        || 0;
-                        liveEarned    = snap.data().creatorStars  || 0;
-                    }
-                } catch (_) { livePurchased = purchasedStars; liveEarned = creatorEarnings; }
-            }
-            const totalStars = livePurchased + liveEarned;
-            if (totalStars <= 0) return alert("No stars to settle. Earn or deposit some first.");
-
-            // Convert total stars → APTM
-            // Formula: APTM = (totalStars × STAR_USD) / currentAptmPriceUsd
-            const starsToAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
-
-            // Read user's deposited balance in the contract (their personal slot)
-            const onChainRaw  = await hubContract.aptmBalances(addr);
-            const onChainAptm = parseFloat(ethers.utils.formatEther(onChainRaw));
-
-            // Also read the total contract balance as a fallback reference
-            const contractBalRaw  = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
-            const contractBalAptm = parseFloat(ethers.utils.formatEther(contractBalRaw));
-
-            // Withdraw the lesser of stars-value vs what is actually in the contract
-            const availableAptm = Math.max(onChainAptm, 0);
-            const withdrawAptm  = Math.min(starsToAptm, Math.max(availableAptm, contractBalAptm));
-
-            if (withdrawAptm <= 0) {
-                return alert(
-                    `Settle failed — vault is empty.\n\n` +
-                    `Your Stars:          ${totalStars.toFixed(1)} ★\n` +
-                    `Stars Value (APTM):  ${starsToAptm.toFixed(6)}\n` +
-                    `Your Deposit Slot:   ${onChainAptm.toFixed(6)} APTM\n` +
-                    `Contract Balance:    ${contractBalAptm.toFixed(6)} APTM\n\n` +
-                    `Deposit APTM first to fund the vault.`
-                );
-            }
-
-            const confirmed = confirm(
-                `Settle Stars to Wallet\n\n` +
-                `Total Stars:    ${totalStars.toFixed(1)} ★\n` +
-                `Stars Value:    ${starsToAptm.toFixed(6)} APTM\n` +
-                `Your vault:     ${onChainAptm.toFixed(6)} APTM\n` +
-                `Will Withdraw:  ${withdrawAptm.toFixed(6)} APTM\n\n` +
-                `Proceed?`
+            const userSnap = await window.fs.getDoc(
+                window.fs.doc(window.db, "user_balances", addr)
             );
-            if (!confirmed) return;
+            if (userSnap.exists()) {
+                livePurchased    = (userSnap.data().stars        || 0);
+                liveCreatorStars = (userSnap.data().creatorStars || 0);
+            }
+        } catch (e) {
+            return alert("Could not read your balance from Firebase: " + e.message);
+        }
 
-            showToast("Opening MetaMask…");
-            const withdrawWei = ethers.utils.parseEther(withdrawAptm.toFixed(18));
-            const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
+        // 4. Total = purchased + earned  (zero-safe)
+        const totalStars = (livePurchased || 0) + (liveCreatorStars || 0);
+        if (totalStars <= 0) {
+            return alert(
+                "Nothing to settle.\n\n" +
+                "Your total balance (purchased + earned) is 0 ★.\n" +
+                "Deposit APTM or earn stars through interactions first."
+            );
+        }
+
+        // 5. Convert stars → APTM
+        //    APTM = totalStars × $0.01/star ÷ live APTM price
+        const settleAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
+        // FIX: Using parseUnits with toFixed(18) to stop the 0x00 error
+        const settleWei  = ethers.utils.parseUnits(settleAptm.toFixed(18), 18);
+
+        // 6. Confirm — No more vault balance checks shown to user
+        const confirmed = confirm(
+            `Settle Total Balance to Wallet\n\n` +
+            `Purchased Stars:  ${livePurchased.toFixed(2)} ★\n` +
+            `Earned Stars:     ${liveCreatorStars.toFixed(2)} ★\n` +
+            `Total Stars:      ${totalStars.toFixed(2)} ★\n` +
+            `Live APTM Price:  $${currentAptmPriceUsd.toFixed(4)}\n` +
+            `Will Receive:     ${settleAptm.toFixed(6)} APTM\n\n` +
+            `Both star balances will be set to 0 after the transaction mines.\n` +
+            `Proceed?`
+        );
+        if (!confirmed) return;
+
+        showToast("Opening MetaMask for settlement…");
+
+        try {
+            // 7. Send the withdrawal transaction
+            const tx = await hubContract.userWithdraw(settleWei, { gasLimit: 500000 });
+            showToast("Transaction submitted — waiting for confirmation…");
+
+            // 8. Wait for on-chain confirmation BEFORE touching Firebase
             await tx.wait();
 
-            // Zero out Firebase star balances after successful on-chain withdrawal
+            // 9. Only now zero this user's Firebase doc
             if (window.db) {
                 try {
                     await window.fs.setDoc(
-                        window.fs.doc(window.db, "user_balances", addr.toLowerCase()),
-                        { stars: 0, creatorStars: 0, lastUpdated: Date.now() },
+                        window.fs.doc(window.db, "user_balances", addr),
+                        { stars: 0, creatorStars: 0, lastWithdraw: Date.now(), lastUpdated: Date.now() },
                         { merge: true }
                     );
-                    purchasedStars  = 0;
-                    creatorEarnings = 0;
-                } catch (e) { console.warn("Could not zero Firebase balances:", e); }
+                } catch (e) { console.warn("Firebase balance reset failed:", e); }
             }
 
-            logTransaction(addr, "settle", withdrawAptm, `Settled ${totalStars.toFixed(1)}★ → ${withdrawAptm.toFixed(4)} $APTM to wallet`);
-            showToast(`Settled! ${withdrawAptm.toFixed(4)} APTM → wallet ✓`);
+            // Sync local cache immediately
+            purchasedStars  = 0;
+            creatorEarnings = 0;
+
+            // 10. Log and refresh UI
+            logTransaction(
+                addr, "settle", settleAptm,
+                `Settled ${totalStars.toFixed(2)} ★ (${livePurchased.toFixed(2)} purch + ${liveCreatorStars.toFixed(2)} earned) → ${settleAptm.toFixed(6)} $APTM at $${currentAptmPriceUsd.toFixed(4)}/APTM`
+            );
+            showToast(`✓ Settled! ${settleAptm.toFixed(6)} APTM → wallet`);
             updateUI();
             updateDrawerUI();
             syncData();
-        } catch (e) { console.error(e); alert("Settle failed: " + (e.reason || e.message || String(e)).slice(0, 160)); }
+
+        } catch (e) {
+            console.error(e);
+            alert("Settlement failed: " + (e.reason || e.message || String(e)).slice(0, 200));
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════
