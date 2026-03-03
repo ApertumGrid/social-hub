@@ -3047,20 +3047,22 @@
         const drawerAdmin = document.getElementById('drawer-admin-section');
         if (drawerAdmin) drawerAdmin.style.display = 'block';
 
-        const q = window.fs.query(
-            window.fs.collection(window.db, "platform_revenue"),
-            window.fs.orderBy("timestamp", "desc")
-        );
+        // Read from admin_revenue/global — the authoritative withdrawable balance.
+        // This is incremented by logAdminRevenue() on every fee event and reset to 0
+        // by adminWithdraw() after a successful on-chain settlement. This is the correct
+        // source for "how much is available to withdraw now", unlike platform_revenue
+        // which is an append-only log and never resets.
+        const globalRef = window.fs.doc(window.db, 'admin_revenue', 'global');
         const render = (snap) => {
-            let total = 0; snap.forEach(d => { total += (d.data().amount || 0); });
+            const total = snap.exists() ? (snap.data().total || 0) : 0;
             const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
             s('admin-revenue-display', total.toFixed(2) + " ★");
-            s('admin-revenue-count',   snap.size + " fee events");
+            s('admin-revenue-count',   'live balance');
             s('drawer-admin-revenue',  total.toFixed(2) + " ★");
-            s('drawer-admin-count',    snap.size + " fee events");
+            s('drawer-admin-count',    'live balance');
         };
-        window.fs.onSnapshot(q, render, () => {
-            window.fs.onSnapshot(window.fs.collection(window.db, "platform_revenue"), render);
+        window.fs.onSnapshot(globalRef, render, (err) => {
+            console.warn('subscribeAdminRevenue error:', err.message);
         });
     }
 
@@ -3384,27 +3386,27 @@
     // (Because platform keeps 20% of all hypes, so total economy = platformRevenue / 0.2)
     function startCommunityHypeTicker() {
         if (!window.db) { setTimeout(startCommunityHypeTicker, 1000); return; }
-        const globalRef = window.fs.doc(window.db, 'admin_revenue', 'global');
-        window.fs.onSnapshot(globalRef, (snap) => {
-            let totalStars = 0;
-            if (snap.exists()) {
-                const platformRevenue = snap.data().total || 0;
-                // platformRevenue = 20% of all hype/signal activity
-                // total economy = platformRevenue / 0.2
-                totalStars = Math.round(platformRevenue / 0.2);
-            }
+        // Read from platform_revenue collection — the append-only all-time log.
+        // This never resets (unlike admin_revenue/global which zeroes on withdrawal),
+        // so the ticker always shows the true cumulative community economy figure.
+        const q = window.fs.query(
+            window.fs.collection(window.db, 'platform_revenue')
+        );
+        window.fs.onSnapshot(q, (snap) => {
+            let allTimeTotal = 0;
+            snap.forEach(d => { allTimeTotal += (d.data().amount || 0); });
+            // platform_revenue holds the platform's 20% cut of all activity.
+            // Divide by 0.2 to recover the full economy value that generated it.
+            const totalStars = Math.round(allTimeTotal / 0.2);
             const display = totalStars > 0
                 ? totalStars.toLocaleString()
                 : '…';
-            // Update primary display
             const primaryEl = document.getElementById('ticker-stars');
             if (primaryEl) primaryEl.textContent = display;
-            // Update all clones
             document.querySelectorAll('.ticker-stars-clone').forEach(el => {
                 el.textContent = display;
             });
         }, (_err) => {
-            // If read fails, show placeholder
             const primaryEl = document.getElementById('ticker-stars');
             if (primaryEl) primaryEl.textContent = '∞';
         });
@@ -4195,23 +4197,26 @@
 
         // ── Step 5: Convert stars → APTM (same formula as adminWithdraw) ──────
         // APTM = (totalStars × STAR_USD_per_star) ÷ (live APTM/USD price)
-        const settleAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
-        const settleWei  = ethers.utils.parseEther(settleAptm.toFixed(18));
+        const starsValueAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
 
-        // ── Step 6: Check vault has enough APTM to cover the payout ────────
+        // ── Step 6: Check vault and cap withdrawal to what is actually available ──
         const contractBalRaw  = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
         const contractBalAptm = parseFloat(ethers.utils.formatEther(contractBalRaw));
 
-        if (contractBalAptm < settleAptm) {
+        if (contractBalAptm <= 0) {
             return alert(
-                `Vault underfunded.\n\n` +
+                `Vault is empty.\n\n` +
                 `Your Stars:          ${totalStars.toFixed(2)} ★\n` +
-                `Stars Value (APTM):  ${settleAptm.toFixed(6)} APTM\n` +
-                `Contract Balance:    ${contractBalAptm.toFixed(6)} APTM\n\n` +
-                `The vault does not hold enough APTM to cover your settlement.\n` +
-                `Contact admin: ${CONFIG.ADMIN_ADDRESS}`
+                `Stars Value (APTM):  ${starsValueAptm.toFixed(6)} APTM\n` +
+                `Contract Balance:    0 APTM\n\n` +
+                `The vault holds no APTM. Contact admin: ${CONFIG.ADMIN_ADDRESS}`
             );
         }
+
+        // Cap to what the vault actually holds so the tx doesn’t revert on-chain
+        const settleAptm = Math.min(starsValueAptm, contractBalAptm);
+        // Use a fixed 6-decimal string to avoid ethers.js precision errors
+        const settleWei  = ethers.utils.parseEther(parseFloat(settleAptm.toFixed(6)).toString());
 
         // ── Step 7: Confirm with the user ────────────────────────────────────
         const confirmed = confirm(
@@ -4220,9 +4225,10 @@
             `Earned Stars:       ${liveCreatorStars.toFixed(2)} ★\n` +
             `─────────────────────────────\n` +
             `Total Stars:        ${totalStars.toFixed(2)} ★\n` +
+            `Stars Value (APTM): ${starsValueAptm.toFixed(6)} APTM\n` +
             `Live APTM Price:    $${currentAptmPriceUsd.toFixed(4)}\n` +
-            `Will Receive:       ${settleAptm.toFixed(6)} APTM\n` +
-            `Contract Balance:   ${contractBalAptm.toFixed(6)} APTM\n\n` +
+            `Contract Balance:   ${contractBalAptm.toFixed(6)} APTM\n` +
+            `Will Receive:       ${settleAptm.toFixed(6)} APTM\n\n` +
             `Both star balances will be set to 0 after the transaction mines.\n` +
             `Proceed?`
         );
