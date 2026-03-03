@@ -3477,6 +3477,33 @@
     }
 
     function switchPage(p, el) {
+        // ── NAVIGATION TRAP FIX: always reset wall filter & restore feed UI ──
+        // If _wallFilter is set (user was viewing a user wall or came from
+        // "View Post" in Creator Studio), clear it so any subsequent tab switch
+        // shows the correct full content and doesn't leave things hidden/blank.
+        if (_wallFilter) {
+            _wallFilter = null;
+            visibleCount = 10;
+            // Tear down live identity listener if present
+            if (typeof _heroUnsub !== 'undefined' && _heroUnsub) {
+                try { _heroUnsub(); } catch(_) {} _heroUnsub = null;
+            }
+            // Hide profile hero
+            const hero = document.getElementById('profile-hero');
+            if (hero) hero.classList.remove('visible');
+            const feedColEl2 = document.getElementById('feed-col');
+            if (feedColEl2) feedColEl2.classList.remove('wall-view');
+            // Restore signals bar
+            const signalsBar = document.getElementById('signals-bar');
+            if (signalsBar) signalsBar.style.display = '';
+        }
+        // Always restore composer and feed heading visibility so home tab works
+        // after returning from a wall view or "View Post" jump
+        const composerCard2 = document.getElementById('composer-card');
+        const feedHead2     = document.querySelector('.feed-heading');
+        const feedItems2    = document.getElementById('feed-items');
+        const loadMoreBtn2  = document.getElementById('load-more-btn');
+
         document.getElementById('page-home').style.display = 'none';
         ['earnings', 'profile', 'info'].forEach(id => {
             const pg = document.getElementById('page-' + id);
@@ -3486,11 +3513,20 @@
         if (el) el.classList.add('active');
         if (p === 'home') {
             document.getElementById('page-home').style.display = 'contents';
+            if (composerCard2) composerCard2.style.display = '';
+            if (feedItems2)    feedItems2.style.display = '';
+            if (feedHead2)     feedHead2.style.display = '';
+            if (loadMoreBtn2)  loadMoreBtn2.style.display = '';
             // Scroll back to top so the user lands at the Broadcast composer
             const feedCol = document.getElementById('feed-col');
             if (feedCol) feedCol.scrollTop = 0;
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } else {
+            // Non-home tabs: ensure feed items are hidden so the page content shows
+            if (composerCard2) composerCard2.style.display = 'none';
+            if (feedItems2)    feedItems2.style.display = 'none';
+            if (feedHead2)     feedHead2.style.display = 'none';
+            if (loadMoreBtn2)  loadMoreBtn2.style.display = 'none';
             const pg = document.getElementById('page-' + p);
             if (pg) pg.classList.add('active');
         }
@@ -4426,6 +4462,22 @@
 
                     // Update boost border
                     existing.style.borderColor = post.isBoosted ? 'rgba(240,180,41,0.3)' : '';
+
+                    // ── BOOST FIX: if this post just got boosted, move it to #1 spot ──
+                    // The Firestore query orders by timestamp desc, so the boosted post's
+                    // new serverTimestamp() makes it the first doc in snapshot.docs.
+                    // We mirror that in the DOM immediately without waiting for a page reload.
+                    if (post.isBoosted) {
+                        const firstCard = feedContainer.firstElementChild;
+                        if (firstCard && firstCard !== existing) {
+                            feedContainer.insertBefore(existing, firstCard);
+                        }
+                        // Update boosted badge in the author line if not already present
+                        const authorDiv = existing.querySelector('.post-author');
+                        if (authorDiv && !authorDiv.querySelector('.boosted-badge')) {
+                            authorDiv.innerHTML = authorDiv.innerHTML + ' <span class="boosted-badge">🚀 BOOSTED</span>';
+                        }
+                    }
                 }
             });
 
@@ -4508,6 +4560,21 @@
     // #mobile-dashboard action bar on phones.
     // ═══════════════════════════════════════════════════════════════════
     function showMobileTab(tabName) {
+        // ── NAVIGATION TRAP FIX (mobile): clear wall filter on any tab switch ──
+        if (tabName !== 'home' && _wallFilter) {
+            _wallFilter = null;
+            visibleCount = 10;
+            if (typeof _heroUnsub !== 'undefined' && _heroUnsub) {
+                try { _heroUnsub(); } catch(_) {} _heroUnsub = null;
+            }
+            const hero = document.getElementById('profile-hero');
+            if (hero) hero.classList.remove('visible');
+            const feedColEl3 = document.getElementById('feed-col');
+            if (feedColEl3) feedColEl3.classList.remove('wall-view');
+            const signalsBar = document.getElementById('signals-bar');
+            if (signalsBar) signalsBar.style.display = '';
+        }
+
         // Update button active states
         const buttons = {
             home:       'mdash-home',
