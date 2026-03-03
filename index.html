@@ -2275,7 +2275,8 @@
         "function totalAnchors() view returns (uint256)",
         "function userWithdraw(uint256 _amountWei) public",
         "function adminWithdraw() public",
-        "function PLATFORM_ADMIN() view returns (address)"
+        "function PLATFORM_ADMIN() view returns (address)",
+        "function backendInteract(address _from, address _to, uint256 _amountWei) public"
     ];
 
     let mediaTabMode = 'url';
@@ -3198,71 +3199,87 @@
         if (amt) await _doDeposit(amt);
     }
 
-    async function settleStarsToWallet() {
-    if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
-    
-    const addr = (await signer.getAddress()).toLowerCase();
+    async function settleToWallet() {
+        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
+        try {
+            const addr = await signer.getAddress();
 
-    // 1. Get the TRUTH from Firebase (Purchased + 80% Earned)
-    let livePurchased = 0, liveEarned = 0;
-    try {
-        const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr));
-        if (snap.exists()) {
-            livePurchased = snap.data().stars || 0;
-            liveEarned = snap.data().creatorStars || 0;
-        }
-    } catch (e) { 
-        console.error("Firebase Sync Error:", e);
-        return alert("Firebase Sync Error"); 
-    }
+            // Read BOTH star pools live from Firebase
+            let livePurchased = 0, liveEarned = 0;
+            if (window.db) {
+                try {
+                    const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr.toLowerCase()));
+                    if (snap.exists()) {
+                        livePurchased = snap.data().stars        || 0;
+                        liveEarned    = snap.data().creatorStars  || 0;
+                    }
+                } catch (_) { livePurchased = purchasedStars; liveEarned = creatorEarnings; }
+            }
+            const totalStars = livePurchased + liveEarned;
+            if (totalStars <= 0) return alert("No stars to settle. Earn or deposit some first.");
 
-    const totalStars = livePurchased + liveEarned;
-    if (totalStars <= 0) return alert("Nothing to settle.");
+            // Convert total stars → APTM
+            // Formula: APTM = (totalStars × STAR_USD) / currentAptmPriceUsd
+            const starsToAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
 
-    // 2. Convert Total Stars to APTM based on your Live Heartbeat
-    // Formula: (Stars * 0.01) / Price of 1 APTM
-    const totalOwedAptm = (totalStars * 0.01) / currentAptmPriceUsd;
-    const settleWei = ethers.utils.parseUnits(totalOwedAptm.toFixed(18), 18);
+            // Read user's deposited balance in the contract (their personal slot)
+            const onChainRaw  = await hubContract.aptmBalances(addr);
+            const onChainAptm = parseFloat(ethers.utils.formatEther(onChainRaw));
 
-    // 3. CHECK LIQUIDITY 
-    // We check the user's specific starBalances recorded on the contract
-    const contractBalRaw = await hubContract.starBalances(addr);
-    
-    // Check if the contract actually has enough APTM to cover the Firebase claim
-    if (settleWei.gt(contractBalRaw)) {
-        const actualAptm = ethers.utils.formatEther(contractBalRaw);
-        return alert(`On-chain Balance Mismatch: Firebase says you have ${totalStars} stars, but the Blockchain Ledger only has ${actualAptm} APTM. Please sync your stars first.`);
-    }
+            // Also read the total contract balance as a fallback reference
+            const contractBalRaw  = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
+            const contractBalAptm = parseFloat(ethers.utils.formatEther(contractBalRaw));
 
-    const confirmed = confirm(`Settlement Summary\n\nTotal Stars: ${totalStars.toFixed(1)}\nValue: ~${totalOwedAptm.toFixed(6)} APTM\n\nProceed to Wallet?`);
-    if (!confirmed) return;
+            // Withdraw the lesser of stars-value vs what is actually in the contract
+            const availableAptm = Math.max(onChainAptm, 0);
+            const withdrawAptm  = Math.min(starsToAptm, Math.max(availableAptm, contractBalAptm));
 
-    showToast("Processing Withdrawal...");
+            if (withdrawAptm <= 0) {
+                return alert(
+                    `Settle failed — vault is empty.\n\n` +
+                    `Your Stars:          ${totalStars.toFixed(1)} ★\n` +
+                    `Stars Value (APTM):  ${starsToAptm.toFixed(6)}\n` +
+                    `Your Deposit Slot:   ${onChainAptm.toFixed(6)} APTM\n` +
+                    `Contract Balance:    ${contractBalAptm.toFixed(6)} APTM\n\n` +
+                    `Deposit APTM first to fund the vault.`
+                );
+            }
 
-    try {
-        // 4. THE CORRECT TERM: userWithdraw
-        // We call the function exactly as named in your V2 contract
-        const tx = await hubContract.userWithdraw(settleWei, { gasLimit: 500000 });
-
-        showToast("Transaction sent! Waiting for confirmation...");
-        await tx.wait();
-
-        // 5. SUCCESS: Reset Firebase
-        if (window.db) {
-            await window.fs.setDoc(
-                window.fs.doc(window.db, "user_balances", addr),
-                { stars: 0, creatorStars: 0, lastWithdraw: Date.now() },
-                { merge: true }
+            const confirmed = confirm(
+                `Settle Stars to Wallet\n\n` +
+                `Total Stars:    ${totalStars.toFixed(1)} ★\n` +
+                `Stars Value:    ${starsToAptm.toFixed(6)} APTM\n` +
+                `Your vault:     ${onChainAptm.toFixed(6)} APTM\n` +
+                `Will Withdraw:  ${withdrawAptm.toFixed(6)} APTM\n\n` +
+                `Proceed?`
             );
-        }
+            if (!confirmed) return;
 
-        showToast("Settled Successfully! ✓");
-        if(typeof syncData === "function") syncData(); 
-    } catch (e) {
-        console.error("Contract Error:", e);
-        alert("Withdrawal Failed: Ensure you have enough gas and the contract has liquidity.");
+            showToast("Opening MetaMask…");
+            const withdrawWei = ethers.utils.parseEther(withdrawAptm.toFixed(18));
+            const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
+            await tx.wait();
+
+            // Zero out Firebase star balances after successful on-chain withdrawal
+            if (window.db) {
+                try {
+                    await window.fs.setDoc(
+                        window.fs.doc(window.db, "user_balances", addr.toLowerCase()),
+                        { stars: 0, creatorStars: 0, lastUpdated: Date.now() },
+                        { merge: true }
+                    );
+                    purchasedStars  = 0;
+                    creatorEarnings = 0;
+                } catch (e) { console.warn("Could not zero Firebase balances:", e); }
+            }
+
+            logTransaction(addr, "settle", withdrawAptm, `Settled ${totalStars.toFixed(1)}★ → ${withdrawAptm.toFixed(4)} $APTM to wallet`);
+            showToast(`Settled! ${withdrawAptm.toFixed(4)} APTM → wallet ✓`);
+            updateUI();
+            updateDrawerUI();
+            syncData();
+        } catch (e) { console.error(e); alert("Settle failed: " + (e.reason || e.message || String(e)).slice(0, 160)); }
     }
-}
 
     // ═══════════════════════════════════════════════════════════════════
     // FEED HELPERS
@@ -4114,18 +4131,28 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // ═══════════════════════════════════════════════════════════════════
-    // ═══════════════════════════════════════════════════════════════════
-    // ═══════════════════════════════════════════════════════════════════
-    // settleStarsToWallet()
+    // settleStarsToWallet()  — INDEX 33 FINAL
     //
-    // Math: totalStars = (stars || 0) + (creatorStars || 0)  [Firebase only]
-    //        settleAptm  = totalStars * STAR_USD / currentAptmPriceUsd
-    //        settleWei   = parseEther(settleAptm)
-    //        userWithdraw(settleWei)  -->  await tx.wait()  -->  zero Firebase
+    // Two-step settlement:
+    //   Step A — LEDGER SYNC
+    //     backendInteract(ADMIN_ADDRESS, userAddress, earnedStarsWei)
+    //     This reassigns the APTM backing the user's earned stars from
+    //     the ADMIN_ADDRESS slot into the user's aptmBalances slot on-chain.
+    //     ADMIN_ADDRESS is used only as the authorisation key; the platform's
+    //     20% (which lives in PLATFORM_ADMIN) is never touched.
     //
-    // No on-chain aptmBalances cap. No contract balance shown in UI.
-    // Firebase is only zeroed AFTER tx.wait() confirms on-chain.
+    //   Step B — WITHDRAWAL
+    //     userWithdraw(totalStarsWei)
+    //     Transfers the full (purchased + earned) APTM to the caller's wallet.
+    //
+    // Math:
+    //   earnedAptm = liveCreatorStars × STAR_USD / currentAptmPriceUsd
+    //   totalAptm  = totalStars       × STAR_USD / currentAptmPriceUsd
+    //   (both converted to 18-decimal Wei via ethers.utils.parseEther)
+    //
+    // Firebase is zeroed only AFTER both transactions confirm on-chain.
+    // Hyped/Comment events are NEVER sent to the blockchain — only this
+    // settlement call syncs the ledger.
     // ═══════════════════════════════════════════════════════════════════
     async function settleStarsToWallet() {
         if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
@@ -4141,7 +4168,7 @@
             return alert("Live APTM price not yet loaded. Wait a moment and try again.");
         }
 
-        // 3. Read BOTH star pools from this user's Firebase doc
+        // 3. Read BOTH star pools live from this user's Firebase doc
         let livePurchased    = 0;
         let liveCreatorStars = 0;
         try {
@@ -4156,7 +4183,7 @@
             return alert("Could not read your balance from Firebase: " + e.message);
         }
 
-        // 4. Total = purchased + earned  (zero-safe)
+        // 4. Total spendable = purchased + earned (zero-safe)
         const totalStars = (livePurchased || 0) + (liveCreatorStars || 0);
         if (totalStars <= 0) {
             return alert(
@@ -4166,38 +4193,70 @@
             );
         }
 
-        // 5. Convert stars → APTM
-        // Back to direct calculation. No "min" checks that cause early failures.
-        const settleAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
-        const settleWei  = ethers.utils.parseUnits(settleAptm.toFixed(18), 18);
+        // 5. Convert star pools → APTM Wei
+        //    Formula: APTM = stars × $0.01/star ÷ live APTM price
+        const earnedAptm  = (liveCreatorStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
+        const totalAptm   = (totalStars       * CONFIG.STAR_USD) / currentAptmPriceUsd;
+        const earnedWei   = ethers.utils.parseEther(earnedAptm.toFixed(18));
+        const totalWei    = ethers.utils.parseEther(totalAptm.toFixed(18));
 
-        // 6. Confirm — no contract balance shown
+        // 6. Confirm — single button, two on-chain steps clearly described
         const confirmed = confirm(
             `Settle Total Balance to Wallet\n\n` +
-            `Purchased Stars:  ${livePurchased.toFixed(2)} ★\n` +
-            `Earned Stars:     ${liveCreatorStars.toFixed(2)} ★\n` +
-            `Total Stars:      ${totalStars.toFixed(2)} ★\n` +
-            `Live APTM Price:  $${currentAptmPriceUsd.toFixed(4)}\n` +
-            `Will Receive:     ${settleAptm.toFixed(6)} APTM\n\n` +
-            `Both star balances will be set to 0 after the transaction mines.\n` +
+            `Purchased Stars:   ${livePurchased.toFixed(2)} ★\n` +
+            `Earned Stars:      ${liveCreatorStars.toFixed(2)} ★\n` +
+            `─────────────────────────────\n` +
+            `Total Stars:       ${totalStars.toFixed(2)} ★\n` +
+            `Live APTM Price:   $${currentAptmPriceUsd.toFixed(4)}\n` +
+            `Will Receive:      ${totalAptm.toFixed(6)} APTM\n\n` +
+            `Step 1 — MetaMask will sync your earned stars to the contract ledger.\n` +
+            `Step 2 — MetaMask will withdraw your full balance to your wallet.\n\n` +
+            `Both balances will be zeroed after both transactions confirm.\n` +
             `Proceed?`
         );
         if (!confirmed) return;
 
-        showToast("Opening MetaMask for settlement…");
+        // ── STEP A: LEDGER SYNC ──────────────────────────────────────────────────
+        // Only needed when the user has earned stars (creator rewards from
+        // hypes/comments that happened off-chain in Firebase).
+        // backendInteract(ADMIN_ADDRESS, userAddress, earnedWei) tells the contract
+        // to move that APTM from the admin's internal slot to the user's slot so
+        // userWithdraw can release it. The platform's 20% in PLATFORM_ADMIN is
+        // untouched — this only reassigns the user's 80% earned share.
+        if (liveCreatorStars > 0) {
+            try {
+                showToast("Step 1/2 — Syncing earned stars to contract ledger…");
+                const syncTx = await hubContract.backendInteract(
+                    CONFIG.ADMIN_ADDRESS,          // "from" — authorisation key
+                    addr,                          // "to"   — the withdrawing user
+                    earnedWei,                     // amount in Wei for earned stars
+                    { gasLimit: 120000 }
+                );
+                showToast("Ledger sync submitted — waiting for confirmation…");
+                await syncTx.wait();
+                showToast("Ledger synced ✓  —  Step 2/2 opening…");
+            } catch (e) {
+                console.error("backendInteract (ledger sync) failed:", e);
+                return alert(
+                    "Ledger sync failed — settlement aborted.\n\n" +
+                    (e.reason || e.message || String(e)).slice(0, 200) +
+                    "\n\nNo funds have been moved. Please try again."
+                );
+            }
+        } else {
+            showToast("No earned stars to sync — proceeding to withdrawal…");
+        }
 
+        // ── STEP B: WITHDRAWAL ───────────────────────────────────────────────────
+        // userWithdraw(totalWei) transfers the full (purchased + now-synced earned)
+        // APTM to the connected wallet. Firebase is only zeroed after this confirms.
         try {
-            // 7. Send the withdrawal transaction
-            // FORCED CALL: Removed .callStatic so it doesn't pre-check and fail early.
-            // This forces MetaMask to pop up immediately.
-            const tx = await hubContract.userWithdraw(settleWei, { gasLimit: 500000 });
-            
-            showToast("Transaction submitted — waiting for confirmation…");
+            showToast("Step 2/2 — Opening MetaMask for final withdrawal…");
+            const withdrawTx = await hubContract.userWithdraw(totalWei, { gasLimit: 500000 });
+            showToast("Withdrawal submitted — waiting for confirmation…");
+            await withdrawTx.wait();
 
-            // 8. Wait for on-chain confirmation BEFORE touching Firebase
-            await tx.wait();
-
-            // 9. Only now zero this user's Firebase doc
+            // 7. Zero this user's Firebase doc ONLY after both txns confirm
             if (window.db) {
                 try {
                     await window.fs.setDoc(
@@ -4212,20 +4271,24 @@
             purchasedStars  = 0;
             creatorEarnings = 0;
 
-            // 10. Log and refresh UI
+            // 8. Log and refresh UI
             logTransaction(
-                addr, "settle", settleAptm,
-                `Settled ${totalStars.toFixed(2)} ★ (${livePurchased.toFixed(2)} purch + ${liveCreatorStars.toFixed(2)} earned) → ${settleAptm.toFixed(6)} $APTM at $${currentAptmPriceUsd.toFixed(4)}/APTM`
+                addr, "settle", totalAptm,
+                `Settled ${totalStars.toFixed(2)} ★ (${livePurchased.toFixed(2)} purch + ${liveCreatorStars.toFixed(2)} earned) → ${totalAptm.toFixed(6)} $APTM at $${currentAptmPriceUsd.toFixed(4)}/APTM`
             );
-            showToast(`✓ Settled! ${settleAptm.toFixed(6)} APTM → wallet`);
+            showToast(`✓ Settlement complete! ${totalAptm.toFixed(6)} APTM → wallet`);
             updateUI();
             updateDrawerUI();
             syncData();
 
         } catch (e) {
-            console.error(e);
-            const reason = e.reason || e.message || String(e);
-            alert("Settlement failed: " + reason.slice(0, 200));
+            console.error("userWithdraw failed:", e);
+            alert(
+                "Withdrawal failed.\n\n" +
+                (e.reason || e.message || String(e)).slice(0, 200) +
+                "\n\nThe ledger sync completed but the withdrawal did not. " +
+                "Your stars have NOT been zeroed in Firebase. Please try settling again."
+            );
         }
     }
 
