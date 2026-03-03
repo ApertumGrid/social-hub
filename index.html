@@ -4182,10 +4182,20 @@
             );
         }
 
-        // 5. Convert stars → APTM
-        //    APTM = totalStars × $0.01/star ÷ live APTM price
-        const settleAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
+        // 5. Convert stars → APTM (Incorporating v20 Vault Check)
+        const requestedAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
+        
+        // V20 Logic: Check what the contract actually has
+        const vaultBalRaw = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
+        const vaultBalAptm = parseFloat(ethers.utils.formatEther(vaultBalRaw));
+        
+        // Only settle what is physically possible to prevent CALL_EXCEPTION
+        const settleAptm = Math.min(requestedAptm, vaultBalAptm);
         const settleWei  = ethers.utils.parseUnits(settleAptm.toFixed(18), 18);
+
+        if (settleAptm <= 0) {
+            return alert("Vault is currently empty. Settlement is pending vault refill.");
+        }
 
         // 6. Confirm — no contract balance shown
         const confirmed = confirm(
@@ -4204,7 +4214,10 @@
 
         try {
             // 7. Send the withdrawal transaction
+            // Using gasLimit and a "callStatic" check to catch errors before they cost gas
+            await hubContract.callStatic.userWithdraw(settleWei); 
             const tx = await hubContract.userWithdraw(settleWei, { gasLimit: 500000 });
+            
             showToast("Transaction submitted — waiting for confirmation…");
 
             // 8. Wait for on-chain confirmation BEFORE touching Firebase
@@ -4237,7 +4250,8 @@
 
         } catch (e) {
             console.error(e);
-            alert("Settlement failed: " + (e.reason || e.message || String(e)).slice(0, 200));
+            const reason = e.reason || e.message || String(e);
+            alert("Settlement failed: " + reason.slice(0, 200));
         }
     }
 
