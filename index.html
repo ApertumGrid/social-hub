@@ -4199,20 +4199,10 @@
             );
         }
 
-        // 5. Convert stars → APTM (Incorporating v20 Vault Check)
-        const requestedAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
-        
-        // V20 Logic: Check what the contract actually has
-        const vaultBalRaw = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
-        const vaultBalAptm = parseFloat(ethers.utils.formatEther(vaultBalRaw));
-        
-        // Only settle what is physically possible to prevent CALL_EXCEPTION
-        const settleAptm = Math.min(requestedAptm, vaultBalAptm);
+        // 5. Convert stars → APTM
+        // Back to direct calculation. No "min" checks that cause early failures.
+        const settleAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
         const settleWei  = ethers.utils.parseUnits(settleAptm.toFixed(18), 18);
-
-        if (settleAptm <= 0) {
-            return alert("Vault is currently empty. Settlement is pending vault refill.");
-        }
 
         // 6. Confirm — no contract balance shown
         const confirmed = confirm(
@@ -4231,8 +4221,8 @@
 
         try {
             // 7. Send the withdrawal transaction
-            // Using gasLimit and a "callStatic" check to catch errors before they cost gas
-            await hubContract.callStatic.userWithdraw(settleWei); 
+            // FORCED CALL: Removed .callStatic so it doesn't pre-check and fail early.
+            // This forces MetaMask to pop up immediately.
             const tx = await hubContract.userWithdraw(settleWei, { gasLimit: 500000 });
             
             showToast("Transaction submitted — waiting for confirmation…");
