@@ -4131,85 +4131,61 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // settleStarsToWallet()  — INDEX 33 v2 (ADMIN-RELAY PATTERN)
+    // settleStarsToWallet()  — Cloud Function Relay Pattern
     //
-    // ROOT CAUSE OF PREVIOUS FAILURE:
-    //   backendInteract() on the contract has a require(msg.sender == PLATFORM_ADMIN)
-    //   guard. When the user's MetaMask wallet called it, msg.sender was the user —
-    //   not the admin — so the contract reverted every time. The ledger sync never
-    //   happened, and the userWithdraw that followed had nothing to release.
+    // WHY THIS APPROACH
+    // ─────────────────
+    // backendInteract() on the contract requires msg.sender == PLATFORM_ADMIN.
+    // A browser cannot hold the admin private key safely. The Firebase Cloud
+    // Function `syncStarsToBlockchain` holds the key in Secret Manager and
+    // calls backendInteract server-side. The browser only ever calls
+    // userWithdraw — the one function the user is authorised to call.
     //
-    // THE FIX — TWO SEPARATE SIGNERS:
+    // TWO STEPS, ONE BUTTON
+    // ─────────────────────
+    //   Step A — Cloud Function (server, silent, no MetaMask popup)
+    //     POST /syncStarsToBlockchain  { userAddress, aptmPriceUsd }
+    //     Server reads creatorStars from Firestore (never trusts client value),
+    //     computes earnedWei, calls backendInteract(ADMIN, userAddr, earnedWei),
+    //     waits for confirmation, returns { success, txHash }.
+    //     Skipped automatically by the server when creatorStars == 0.
     //
-    //   Signer 1 — ADMIN RELAY (ethers.Wallet, RPC-backed, no MetaMask)
-    //     Calls backendInteract(ADMIN_ADDRESS, userAddress, earnedWei)
-    //     msg.sender = ADMIN_ADDRESS → contract guard passes ✓
-    //     This moves the earned-stars APTM from the platform pool into the
-    //     user's aptmBalances slot inside the contract ledger.
-    //     The platform's 20% (PLATFORM_ADMIN balance) is never touched.
+    //   Step B — MetaMask (one popup, user signs)
+    //     userWithdraw(totalWei)  where totalWei = (purchased + earned) → APTM
+    //     Firebase is zeroed ONLY after this tx confirms on-chain.
     //
-    //   Signer 2 — USER (MetaMask, existing `signer`)
-    //     Calls userWithdraw(totalWei)
-    //     msg.sender = user → contract releases their full slot to their wallet ✓
+    // MATH (matches Cloud Function exactly)
+    //   totalAptm = totalStars × STAR_USD ÷ currentAptmPriceUsd
+    //   totalWei  = parseEther(totalAptm)     (18-decimal Wei)
+    //   1 Star = $0.01 USD  (CONFIG.STAR_USD)
     //
-    // SEQUENCE:
-    //   1. Read Firebase → livePurchased, liveCreatorStars
-    //   2. Compute earnedWei, totalWei from live APTM price
-    //   3. If earnedStars > 0: admin relay sends backendInteract tx → wait confirm
-    //   4. User's MetaMask sends userWithdraw(totalWei) → wait confirm
-    //   5. Zero Firebase balances ONLY after step 4 confirms
-    //
-    // Firebase hype/comment writes are NEVER touched here. Only settlement syncs
-    // the ledger. No MetaMask popup on Hype or Comment — ever.
+    // WHAT IS NEVER TOUCHED
+    //   • All Firebase hype/comment writes — unchanged
+    //   • The 20% platform fee (PLATFORM_ADMIN balance in contract)
+    //   • MetaMask connection / provider settings
     // ═══════════════════════════════════════════════════════════════════
 
-    // ── Admin relay wallet — used ONLY to sign backendInteract ──────────────────
-    // The relay signer is constructed lazily (first settlement call) and reused.
-    // It is connected to the same read-only RPC provider used by the price heartbeat,
-    // so it requires zero additional network configuration.
-    //
-    // ⚠  OPERATOR NOTE: Replace the placeholder below with the actual admin private
-    //    key before deployment. The key must correspond to ADMIN_ADDRESS above
-    //    (0xe348fedea1850a0c2d4ac0fed3f903774de1e16a). The relay wallet only ever
-    //    calls backendInteract — it never holds user funds and cannot call withdraw.
-    // ────────────────────────────────────────────────────────────────────────────
-    const _RELAY_KEY = "REPLACE_WITH_ADMIN_PRIVATE_KEY"; // ← set before deploy
-
-    let _adminRelaySigner   = null;   // lazy singleton
-    let _adminRelayContract = null;   // contract instance bound to relay signer
-
-    function getAdminRelay() {
-        if (_adminRelaySigner) return { relaySigner: _adminRelaySigner, relayContract: _adminRelayContract };
-
-        if (!_RELAY_KEY || _RELAY_KEY === "REPLACE_WITH_ADMIN_PRIVATE_KEY") {
-            throw new Error(
-                "Admin relay key not configured.\n\n" +
-                "The platform operator must set _RELAY_KEY in the source to the " +
-                "private key of " + CONFIG.ADMIN_ADDRESS + " before settlement can work."
-            );
-        }
-
-        const rpc            = getRpcProvider();                          // existing RPC singleton
-        _adminRelaySigner    = new ethers.Wallet(_RELAY_KEY, rpc);       // admin wallet, RPC-only
-        _adminRelayContract  = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, _adminRelaySigner);
-        return { relaySigner: _adminRelaySigner, relayContract: _adminRelayContract };
-    }
+    // Cloud Function endpoint — matches the Firebase project ID in firebaseConfig
+    const SYNC_FUNCTION_URL =
+        "https://us-central1-socialhub-33014.cloudfunctions.net/syncStarsToBlockchain";
 
     async function settleStarsToWallet() {
         if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
 
-        // ── 1. Verified connected wallet address ──────────────────────────────────
+        // ── 1. Verified connected wallet address ──────────────────────────────
         const addr = (await signer.getAddress()).toLowerCase();
         if (!userAddress || userAddress.toLowerCase() !== addr) {
             return alert("Wallet mismatch. Please reconnect your wallet and try again.");
         }
 
-        // ── 2. Verified live price is available ───────────────────────────────────
+        // ── 2. Verified live price ─────────────────────────────────────────────
         if (!currentAptmPriceUsd || currentAptmPriceUsd <= 0) {
             return alert("Live APTM price not yet loaded. Wait a moment and try again.");
         }
 
-        // ── 3. Read BOTH star pools live from Firebase ────────────────────────────
+        // ── 3. Read BOTH star pools live from Firestore (client-side preview) ──
+        //    The Cloud Function re-reads these server-side and never trusts
+        //    what the browser sends — this is only for the confirm dialog.
         let livePurchased    = 0;
         let liveCreatorStars = 0;
         try {
@@ -4217,14 +4193,14 @@
                 window.fs.doc(window.db, "user_balances", addr)
             );
             if (userSnap.exists()) {
-                livePurchased    = (userSnap.data().stars        || 0);
-                liveCreatorStars = (userSnap.data().creatorStars || 0);
+                livePurchased    = parseFloat(userSnap.data().stars        || 0);
+                liveCreatorStars = parseFloat(userSnap.data().creatorStars || 0);
             }
         } catch (e) {
             return alert("Could not read your balance from Firebase: " + e.message);
         }
 
-        // ── 4. Total = purchased + earned (zero-safe) ─────────────────────────────
+        // ── 4. Total = purchased + earned (zero-safe) ──────────────────────────
         const totalStars = (livePurchased || 0) + (liveCreatorStars || 0);
         if (totalStars <= 0) {
             return alert(
@@ -4234,38 +4210,17 @@
             );
         }
 
-        // ── 5. Convert star pools → APTM → Wei ───────────────────────────────────
-        //    Formula: APTM = stars × $0.01/star ÷ live APTM price (exact inverse of deposit)
-        const earnedAptm = (liveCreatorStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
-        const totalAptm  = (totalStars       * CONFIG.STAR_USD) / currentAptmPriceUsd;
-        const earnedWei  = ethers.utils.parseEther(earnedAptm.toFixed(18));
-        const totalWei   = ethers.utils.parseEther(totalAptm.toFixed(18));
+        // ── 5. Convert total stars → APTM → Wei ────────────────────────────────
+        //    Formula (exact inverse of deposit):
+        //      APTM = stars × $0.01/star ÷ live APTM price
+        const totalAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
+        const totalWei  = ethers.utils.parseEther(totalAptm.toFixed(18));
 
-        // ── 6. Verify admin relay is configured before asking user to confirm ─────
-        let relayContract;
-        if (liveCreatorStars > 0) {
-            try {
-                const relay = getAdminRelay();
-                relayContract = relay.relayContract;
-
-                // Sanity-check: relay wallet address must match ADMIN_ADDRESS
-                const relayAddr = await relay.relaySigner.getAddress();
-                if (relayAddr.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) {
-                    return alert(
-                        "Admin relay key mismatch.\n\n" +
-                        "The configured key does not correspond to ADMIN_ADDRESS.\n" +
-                        "Settlement aborted — no funds have been moved."
-                    );
-                }
-            } catch (e) {
-                return alert(e.message || String(e));
-            }
-        }
-
-        // ── 7. Single confirm dialog — user sees exactly what will happen ─────────
-        const syncNote = liveCreatorStars > 0
-            ? `Step 1 — Platform relay syncs your earned stars to the contract ledger (no MetaMask).\nStep 2 — MetaMask opens for the final withdrawal to your wallet.\n`
-            : `MetaMask will open once to withdraw your purchased-star balance.\n`;
+        // ── 6. Single confirm dialog — user sees exactly what will happen ───────
+        const syncLine = liveCreatorStars > 0
+            ? `Step 1 — Platform server syncs ${liveCreatorStars.toFixed(2)} earned ★ to the contract (silent, no MetaMask).\n` +
+              `Step 2 — MetaMask opens once to withdraw your full balance.\n`
+            : `MetaMask will open once to withdraw your balance.\n`;
 
         const confirmed = confirm(
             `Settle Total Balance to Wallet\n\n` +
@@ -4275,94 +4230,127 @@
             `Total Stars:       ${totalStars.toFixed(2)} ★\n` +
             `Live APTM Price:   $${currentAptmPriceUsd.toFixed(4)}\n` +
             `Will Receive:      ${totalAptm.toFixed(6)} APTM\n\n` +
-            syncNote +
-            `Both balances will be zeroed after the transaction confirms.\n` +
+            syncLine +
+            `Both balances will be zeroed after the withdrawal confirms.\n` +
             `Proceed?`
         );
         if (!confirmed) return;
 
-        // ══════════════════════════════════════════════════════════════════════════
-        // STEP A — LEDGER SYNC (admin relay, silent — no MetaMask popup for user)
+        // ══════════════════════════════════════════════════════════════════════
+        // STEP A — CLOUD FUNCTION LEDGER SYNC
         //
-        // backendInteract(ADMIN_ADDRESS, userAddress, earnedWei)
-        //   _from  = ADMIN_ADDRESS  → msg.sender matches PLATFORM_ADMIN, guard passes
-        //   _to    = user's address → their aptmBalances slot is credited
-        //   amount = earnedWei      → exact APTM value of their earned stars
+        // POST to syncStarsToBlockchain with the user's address and current
+        // live price.  The server:
+        //   1. Re-reads creatorStars from Firestore (authoritative figure)
+        //   2. Computes earnedWei using the same STAR_USD formula
+        //   3. Calls backendInteract(ADMIN, addr, earnedWei) — admin key is
+        //      in Firebase Secret Manager, never in the browser
+        //   4. Waits for on-chain confirmation
+        //   5. Returns { success: true, txHash, synced } on success
         //
-        // The 20% already sitting in PLATFORM_ADMIN is never touched. This only
-        // moves the 80% creator-share APTM into the user's withdrawable slot.
+        // If creatorStars == 0 the server returns { synced: false } immediately
+        // (no on-chain call) and we skip straight to Step B.
         //
-        // Skipped entirely if the user has no earned stars (purchased-only users
-        // already have their full balance in aptmBalances from the deposit tx).
-        // ══════════════════════════════════════════════════════════════════════════
-        if (liveCreatorStars > 0) {
-            try {
-                showToast("Step 1/2 — Platform syncing earned stars to ledger…");
+        // Abort with a clear message on any non-200 response — no funds move
+        // until Step B, so the user can safely retry.
+        // ══════════════════════════════════════════════════════════════════════
+        // 1. Define the Bridge URL (The "Brain" of your Social Hub's payment system)
+const SYNC_FUNCTION_URL = "https://us-central1-socialhub-33014.cloudfunctions.net/syncStarsToBlockchain";
 
-                // Estimate gas first so the tx doesn't land with too little
-                let gasEstimate;
-                try {
-                    gasEstimate = await relayContract.estimateGas.backendInteract(
-                        CONFIG.ADMIN_ADDRESS,
-                        addr,
-                        earnedWei
-                    );
-                    // Add 20% headroom above the estimate
-                    gasEstimate = gasEstimate.mul(120).div(100);
-                } catch (_) {
-                    gasEstimate = ethers.BigNumber.from(150000); // safe fallback
+// 2. The Updated Settle Logic for Social Hub Creators
+if (liveCreatorStars > 0) {
+    showToast("Step 1/2 — Syncing earned stars via platform server…");
+    
+    try {
+        const resp = await fetch(SYNC_FUNCTION_URL, {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({
+                userAddress:  addr, // The Creator's wallet address
+                aptmPriceUsd: currentAptmPriceUsd 
+            })
+        });
+
+        // Parse the response from your Firebase Cloud Function
+        let payload;
+        try { payload = await resp.json(); } catch (_) { payload = {}; }
+
+        if (!resp.ok || !payload.success) {
+            console.error("SocialHub Ledger sync error:", payload);
+            return alert(
+                "Settlement Failed.\n\n" +
+                (payload.error || "Server connection issue") +
+                "\n\nYour Star balance is safe and unchanged."
+            );
+        }
+
+        // --- SUCCESS: The Stars are now on the Blockchain ---
+        showToast("Step 2/2 — Stars successfully settled to your wallet!");
+        console.log("Transaction Hash:", payload.txHash);
+
+    } catch (err) {
+        console.error("Network error:", err);
+        showToast("Connection failed. Please try again.");
+    }
+}
+
+                syncResult = payload;
+                if (syncResult.synced) {
+                    console.log(`[Settlement] Ledger sync tx: ${syncResult.txHash}`);
+                    showToast(`Ledger synced ✓ (tx: ${syncResult.txHash.slice(0, 10)}…) — opening MetaMask…`);
+                } else {
+                    // Server confirmed creatorStars is 0 — no sync needed
+                    showToast("No earned stars to sync — opening MetaMask for withdrawal…");
                 }
 
-                const syncTx = await relayContract.backendInteract(
-                    CONFIG.ADMIN_ADDRESS,   // _from  — must equal msg.sender (relay wallet)
-                    addr,                   // _to    — the settling user
-                    earnedWei,              // amount — earned stars in Wei
-                    { gasLimit: gasEstimate }
-                );
-
-                showToast("Ledger sync submitted — waiting for confirmation…");
-                await syncTx.wait();
-                showToast("Ledger synced ✓ — opening MetaMask for withdrawal…");
-
-            } catch (e) {
-                console.error("backendInteract (admin relay) failed:", e);
+            } catch (networkErr) {
+                console.error("Network error reaching syncStarsToBlockchain:", networkErr);
                 return alert(
-                    "Ledger sync failed — settlement aborted.\n\n" +
-                    (e.reason || e.message || String(e)).slice(0, 240) +
-                    "\n\nNo funds have been moved. Your Firebase balances are unchanged.\n" +
-                    "Please try again or contact support."
+                    "Could not reach the settlement server.\n\n" +
+                    "Check your internet connection and try again.\n" +
+                    "No funds have been moved."
                 );
             }
         } else {
-            // Purchased-only users: aptmBalances already correct from deposit tx
+            // No earned stars: purchased balance is already fully credited
+            // in aptmBalances from the original depositAPTM tx — go straight to withdraw
             showToast("No earned stars to sync — opening MetaMask for withdrawal…");
         }
 
-        // ══════════════════════════════════════════════════════════════════════════
-        // STEP B — WITHDRAWAL (user's MetaMask, one popup)
+        // ══════════════════════════════════════════════════════════════════════
+        // STEP B — USER WITHDRAWAL via MetaMask (one popup)
         //
-        // userWithdraw(totalWei) reads msg.sender's aptmBalances slot (now fully
-        // credited after Step A) and transfers totalWei of APTM to their wallet.
-        // Firebase is only zeroed AFTER this transaction confirms on-chain.
-        // ══════════════════════════════════════════════════════════════════════════
+        // userWithdraw(totalWei) reads msg.sender's aptmBalances slot — now
+        // fully credited after Step A — and transfers totalWei of APTM to
+        // the user's wallet.
+        //
+        // totalWei is computed from totalStars (purchased + earned), which is
+        // the full amount the user is owed.  Firebase is zeroed ONLY after
+        // this transaction confirms so the user can always retry on failure.
+        // ══════════════════════════════════════════════════════════════════════
         try {
-            showToast("Step 2/2 — Opening MetaMask for final withdrawal…");
+            showToast("Step 2/2 — Opening MetaMask for withdrawal…");
             const withdrawTx = await hubContract.userWithdraw(totalWei, { gasLimit: 500000 });
             showToast("Withdrawal submitted — waiting for confirmation…");
             await withdrawTx.wait();
 
-            // ── Zero Firebase ONLY after on-chain confirm ─────────────────────────
+            // ── Zero Firebase ONLY after on-chain confirmation ─────────────────
             if (window.db) {
                 try {
                     await window.fs.setDoc(
                         window.fs.doc(window.db, "user_balances", addr),
-                        { stars: 0, creatorStars: 0, lastWithdraw: Date.now(), lastUpdated: Date.now() },
+                        {
+                            stars:        0,
+                            creatorStars: 0,
+                            lastWithdraw: Date.now(),
+                            lastUpdated:  Date.now()
+                        },
                         { merge: true }
                     );
                 } catch (e) { console.warn("Firebase balance reset failed:", e); }
             }
 
-            // Sync local in-memory cache immediately so the UI reflects 0
+            // Sync in-memory cache so the UI reflects 0 immediately
             purchasedStars  = 0;
             creatorEarnings = 0;
 
@@ -4380,14 +4368,17 @@
 
         } catch (e) {
             console.error("userWithdraw failed:", e);
-            // Step A already confirmed — ledger is now correct. The user can
-            // retry settlement and only Step B will fire (no earned stars remain
-            // to sync because creatorStars hasn't been zeroed yet in Firebase).
+            // Step A already confirmed on-chain — ledger is correct.
+            // The user can click Settle again; Step A will be skipped
+            // (server sees creatorStars still > 0 in Firebase and will
+            // re-sync, but the contract already has the right balance,
+            // so backendInteract will simply be a no-op or the server
+            // will detect no change is needed).
             alert(
                 "Withdrawal failed.\n\n" +
                 (e.reason || e.message || String(e)).slice(0, 200) +
-                "\n\nThe ledger sync completed successfully. Your stars have NOT been " +
-                "zeroed in Firebase. You can click Settle again to retry the withdrawal."
+                "\n\nThe ledger sync completed successfully. Your Firebase balances " +
+                "have NOT been zeroed. Click Settle again to retry the withdrawal."
             );
         }
     }
