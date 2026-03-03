@@ -4468,37 +4468,49 @@
                     return;
                 }
 
-                // ── MODIFIED: surgically update only the fields that can change ───
-                // This is what actually handles the hype-count update after a like.
-                // We patch the specific <span> in-place — no DOM replacement, no flash.
+                // ── MODIFIED: patch fields in-place, then re-sort to match server order ─
                 if (change.type === 'modified') {
                     const existing = feedContainer.querySelector(`[data-id="${postId}"]`);
                     if (!existing) return;  // card not in DOM (filtered), nothing to do
 
-                    // Update hype counter in-place (Fix 2B complement)
-                    const hypeSpan  = existing.querySelector(`#hp-${postId}`);
-                    if (hypeSpan)  hypeSpan.textContent  = (post.hypes  || 0);
+                    // Patch counters in-place — no DOM replacement, no flash
+                    const hypeSpan = existing.querySelector(`#hp-${postId}`);
+                    if (hypeSpan)  hypeSpan.textContent = (post.hypes || 0);
 
-                    // Update view counter in-place
-                    const viewSpan  = existing.querySelector(`#views-${postId}`);
-                    if (viewSpan)  viewSpan.textContent  = (post.views  || 0).toLocaleString();
+                    const viewSpan = existing.querySelector(`#views-${postId}`);
+                    if (viewSpan)  viewSpan.textContent = (post.views || 0).toLocaleString();
 
-                    // Update boost border
                     existing.style.borderColor = post.isBoosted ? 'rgba(240,180,41,0.3)' : '';
 
-                    // ── BOOST FIX: if this post just got boosted, move it to #1 spot ──
-                    // The Firestore query orders by timestamp desc, so the boosted post's
-                    // new serverTimestamp() makes it the first doc in snapshot.docs.
-                    // We mirror that in the DOM immediately without waiting for a page reload.
-                    if (post.isBoosted) {
-                        const firstCard = feedContainer.firstElementChild;
-                        if (firstCard && firstCard !== existing) {
-                            feedContainer.insertBefore(existing, firstCard);
-                        }
-                        // Update boosted badge in the author line if not already present
-                        const authorDiv = existing.querySelector('.post-author');
-                        if (authorDiv && !authorDiv.querySelector('.boosted-badge')) {
-                            authorDiv.innerHTML = authorDiv.innerHTML + ' <span class="boosted-badge">🚀 BOOSTED</span>';
+                    // Update boosted badge if newly boosted
+                    const authorDiv = existing.querySelector('.post-author');
+                    if (authorDiv && post.isBoosted && !authorDiv.querySelector('.boosted-badge')) {
+                        authorDiv.innerHTML = authorDiv.innerHTML + ' <span class="boosted-badge">🚀 BOOSTED</span>';
+                    }
+
+                    // ── RE-SORT: mirror the card's position to its index in snapshot.docs ──
+                    // snapshot.docs is always ordered by timestamp desc (the Firestore query).
+                    // This is the ground truth — a boost updates the timestamp so the post
+                    // moves to whichever slot Firestore says it belongs.  A like/view does NOT
+                    // change the timestamp, so the post stays exactly where it is.
+                    // This replaces the old "always move to #1 on isBoosted" logic that caused
+                    // the alternating/jumping bug whenever a boosted post received a like.
+                    const docIds  = snapshot.docs.map(d => d.id);
+                    const myIndex = docIds.indexOf(postId);
+                    if (myIndex !== -1) {
+                        // Find the card that should sit immediately after this one
+                        const afterId = docIds[myIndex + 1];
+                        const afterEl = afterId ? feedContainer.querySelector(`[data-id="${afterId}"]`) : null;
+
+                        // Only move the card if its current DOM position is wrong
+                        const currentNext = existing.nextElementSibling;
+                        const correctNext = afterEl || null;
+                        if (currentNext !== correctNext) {
+                            if (correctNext) {
+                                feedContainer.insertBefore(existing, correctNext);
+                            } else {
+                                feedContainer.appendChild(existing);
+                            }
                         }
                     }
                 }
