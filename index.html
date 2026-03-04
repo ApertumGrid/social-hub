@@ -3200,81 +3200,86 @@
     }
 
     async function settleToWallet() {
-    if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
-    try {
-        const addr = await signer.getAddress();
-        const addrLower = addr.toLowerCase();
+        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
+        try {
+            const addr = await signer.getAddress();
 
-        // 1. Read BOTH star pools live from Firebase
-        let livePurchased = 0, liveEarned = 0;
-        if (window.db) {
-            try {
-                const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addrLower));
-                if (snap.exists()) {
-                    livePurchased = snap.data().stars || 0;
-                    liveEarned = snap.data().creatorStars || 0;
-                }
-            } catch (_) { 
-                livePurchased = typeof purchasedStars !== 'undefined' ? purchasedStars : 0; 
-                liveEarned = typeof creatorEarnings !== 'undefined' ? creatorEarnings : 0; 
+            // Read BOTH star pools live from Firebase
+            let livePurchased = 0, liveEarned = 0;
+            if (window.db) {
+                try {
+                    const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr.toLowerCase()));
+                    if (snap.exists()) {
+                        livePurchased = snap.data().stars        || 0;
+                        liveEarned    = snap.data().creatorStars  || 0;
+                    }
+                } catch (_) { livePurchased = purchasedStars; liveEarned = creatorEarnings; }
             }
-        }
+            const totalStars = livePurchased + liveEarned;
+            if (totalStars <= 0) return alert("No stars to settle. Earn or deposit some first.");
 
-        // 2. Read user's ACTUAL ledger balance from the contract
-        const onChainRaw = await hubContract.aptmBalances(addr);
-        
-        // 3. If they have Earned Stars in Firebase but the Ledger is lower, 
-        // they need to run the Sync (Step 1) first.
-        if (liveEarned > 0 && onChainRaw.eq(0)) {
-            return alert("Your earned stars haven't been synced to the blockchain yet. Please use the 'Settle' button that includes the Server Sync step.");
-        }
+            // Convert total stars → APTM
+            // Formula: APTM = (totalStars × STAR_USD) / currentAptmPriceUsd
+            const starsToAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
 
-        if (onChainRaw.eq(0)) return alert("Your blockchain ledger balance is 0. Nothing to withdraw.");
+            // Read user's deposited balance in the contract (their personal slot)
+            const onChainRaw  = await hubContract.aptmBalances(addr);
+            const onChainAptm = parseFloat(ethers.utils.formatEther(onChainRaw));
 
-        const onChainAptm = ethers.utils.formatEther(onChainRaw);
+            // Also read the total contract balance as a fallback reference
+            const contractBalRaw  = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
+            const contractBalAptm = parseFloat(ethers.utils.formatEther(contractBalRaw));
 
-        // 4. Confirmation - We withdraw exactly what the ledger says
-        const confirmed = confirm(
-            `Settle Balance to Wallet\n\n` +
-            `Your Ledger: ${parseFloat(onChainAptm).toFixed(6)} APTM\n` +
-            `Stars in App: ${(livePurchased + liveEarned).toFixed(1)} ★\n\n` +
-            `This will withdraw your full on-chain balance to your wallet.\n` +
-            `Proceed?`
-        );
-        if (!confirmed) return;
+            // Withdraw the lesser of stars-value vs what is actually in the contract
+            const availableAptm = Math.max(onChainAptm, 0);
+            const withdrawAptm  = Math.min(starsToAptm, Math.max(availableAptm, contractBalAptm));
 
-        showToast("Opening MetaMask…");
-        
-        // 5. Withdrawal - Use the EXACT Raw Wei from the contract to avoid rounding errors
-        const tx = await hubContract.userWithdraw(onChainRaw, { gasLimit: 500000 });
-        showToast("Transaction pending...");
-        await tx.wait();
-
-        // 6. Zero out Firebase after success
-        if (window.db) {
-            try {
-                await window.fs.setDoc(
-                    window.fs.doc(window.db, "user_balances", addrLower),
-                    { stars: 0, creatorStars: 0, lastUpdated: Date.now() },
-                    { merge: true }
+            if (withdrawAptm <= 0) {
+                return alert(
+                    `Settle failed — vault is empty.\n\n` +
+                    `Your Stars:          ${totalStars.toFixed(1)} ★\n` +
+                    `Stars Value (APTM):  ${starsToAptm.toFixed(6)}\n` +
+                    `Your Deposit Slot:   ${onChainAptm.toFixed(6)} APTM\n` +
+                    `Contract Balance:    ${contractBalAptm.toFixed(6)} APTM\n\n` +
+                    `Deposit APTM first to fund the vault.`
                 );
-                if (typeof purchasedStars !== 'undefined') purchasedStars = 0;
-                if (typeof creatorEarnings !== 'undefined') creatorEarnings = 0;
-            } catch (e) { console.warn("Could not zero Firebase balances:", e); }
-        }
+            }
 
-        logTransaction(addr, "settle", parseFloat(onChainAptm), `Settled ${onChainAptm} $APTM to wallet`);
-        showToast(`Settled! ${parseFloat(onChainAptm).toFixed(4)} APTM → wallet ✓`);
-        
-        if (typeof updateUI === "function") updateUI();
-        if (typeof updateDrawerUI === "function") updateDrawerUI();
-        if (typeof syncData === "function") syncData();
+            const confirmed = confirm(
+                `Settle Stars to Wallet\n\n` +
+                `Total Stars:    ${totalStars.toFixed(1)} ★\n` +
+                `Stars Value:    ${starsToAptm.toFixed(6)} APTM\n` +
+                `Your vault:     ${onChainAptm.toFixed(6)} APTM\n` +
+                `Will Withdraw:  ${withdrawAptm.toFixed(6)} APTM\n\n` +
+                `Proceed?`
+            );
+            if (!confirmed) return;
 
-    } catch (e) { 
-        console.error(e); 
-        alert("Settle failed: " + (e.reason || e.message || String(e)).slice(0, 160)); 
+            showToast("Opening MetaMask…");
+            const withdrawWei = ethers.utils.parseEther(withdrawAptm.toFixed(18));
+            const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
+            await tx.wait();
+
+            // Zero out Firebase star balances after successful on-chain withdrawal
+            if (window.db) {
+                try {
+                    await window.fs.setDoc(
+                        window.fs.doc(window.db, "user_balances", addr.toLowerCase()),
+                        { stars: 0, creatorStars: 0, lastUpdated: Date.now() },
+                        { merge: true }
+                    );
+                    purchasedStars  = 0;
+                    creatorEarnings = 0;
+                } catch (e) { console.warn("Could not zero Firebase balances:", e); }
+            }
+
+            logTransaction(addr, "settle", withdrawAptm, `Settled ${totalStars.toFixed(1)}★ → ${withdrawAptm.toFixed(4)} $APTM to wallet`);
+            showToast(`Settled! ${withdrawAptm.toFixed(4)} APTM → wallet ✓`);
+            updateUI();
+            updateDrawerUI();
+            syncData();
+        } catch (e) { console.error(e); alert("Settle failed: " + (e.reason || e.message || String(e)).slice(0, 160)); }
     }
-}
 
     // ═══════════════════════════════════════════════════════════════════
     // FEED HELPERS
@@ -3662,10 +3667,12 @@
             logTransaction(userAddress, "spend", boostCost,
                 `Post Boosted — ${boostCost}★ fee (100% platform) · Post ID: ${postId.slice(0, 8)}…`);
 
-            // Update post: serverTimestamp() pushes it to top of desc-ordered feed
+            // Update post: mark as boosted WITHOUT touching the original timestamp.
+            // The feed sorts by priority key: max(boostedAt, timestamp) desc, so
+            // any new broadcast with a newer timestamp always appears above older
+            // boosted posts, while boosted posts float above pre-boost content.
             const postRef = window.fs.doc(window.db, "posts", postId);
             await window.fs.updateDoc(postRef, {
-                timestamp: window.fs.serverTimestamp(),
                 isBoosted: true,
                 boostedAt: Date.now(),
                 boostedBy: userAddress.toLowerCase()
@@ -4161,163 +4168,209 @@
     // ═══════════════════════════════════════════════════════════════════
 
     // Cloud Function endpoint — matches the Firebase project ID in firebaseConfig
-   // ═══════════════════════════════════════════════════════════════════
-// settleStarsToWallet() — Cloud Function Relay Pattern
-//
-// WHY THIS APPROACH
-// ─────────────────
-// backendInteract() on the contract requires msg.sender == PLATFORM_ADMIN.
-// A browser cannot hold the admin private key safely. The Firebase Cloud
-// Function `syncStarsToBlockchain` holds the key in Secret Manager and
-// calls backendInteract server-side. The browser only ever calls
-// userWithdraw — the one function the user is authorised to call.
-//
-// TWO STEPS, ONE BUTTON
-// ─────────────────────
-//   Step A — Cloud Function (server, silent, no MetaMask popup)
-//     POST /syncStarsToBlockchain  { userAddress, aptmPriceUsd }
-//     Server reads creatorStars from Firestore (never trusts client value),
-//     computes earnedWei, calls backendInteract(ADMIN, userAddr, earnedWei),
-//     waits for confirmation, returns { success, txHash }.
-//     Skipped automatically by the server when creatorStars == 0.
-//
-//   Step B — MetaMask (one popup, user signs)
-//     userWithdraw(totalWei)  where totalWei = (purchased + earned) → APTM
-//     Firebase is zeroed ONLY after this tx confirms on-chain.
-//
-// MATH (matches Cloud Function exactly)
-//    totalAptm = totalStars × STAR_USD ÷ currentAptmPriceUsd
-//    totalWei  = parseEther(totalAptm)     (18-decimal Wei)
-//    1 Star = $0.01 USD  (CONFIG.STAR_USD)
-//
-// WHAT IS NEVER TOUCHED
-//    • All Firebase hype/comment writes — unchanged
-//    • The 20% platform fee (PLATFORM_ADMIN balance in contract)
-//    • MetaMask connection / provider settings
-// ═══════════════════════════════════════════════════════════════════
+    const SYNC_FUNCTION_URL =
+        "https://us-central1-socialhub-33014.cloudfunctions.net/syncStarsToBlockchain";
 
-async function settleStarsToWallet() {
-    // SURGICAL INJECTION: Define the missing URL variable
-    const SYNC_FUNCTION_URL = "https://us-central1-socialhub-33014.cloudfunctions.net/syncStarsToBlockchain";
+    async function settleStarsToWallet() {
+        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
 
-    if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
-
-    // ── 1. Verified connected wallet address ──────────────────────────────
-    const addr = (await signer.getAddress()).toLowerCase();
-    if (!userAddress || userAddress.toLowerCase() !== addr) {
-        return alert("Wallet mismatch. Please reconnect your wallet and try again.");
-    }
-
-    // ── 2. Verified live price ─────────────────────────────────────────────
-    if (!currentAptmPriceUsd || currentAptmPriceUsd <= 0) {
-        return alert("Live APTM price not yet loaded. Wait a moment and try again.");
-    }
-
-    // ── 3. Read BOTH star pools live from Firestore (client-side preview) ──
-    let livePurchased    = 0;
-    let liveCreatorStars = 0;
-    try {
-        const userSnap = await window.fs.getDoc(
-            window.fs.doc(window.db, "user_balances", addr)
-        );
-        if (userSnap.exists()) {
-            livePurchased    = parseFloat(userSnap.data().stars        || 0);
-            liveCreatorStars = parseFloat(userSnap.data().creatorStars || 0);
+        // ── 1. Verified connected wallet address ──────────────────────────────
+        const addr = (await signer.getAddress()).toLowerCase();
+        if (!userAddress || userAddress.toLowerCase() !== addr) {
+            return alert("Wallet mismatch. Please reconnect your wallet and try again.");
         }
-    } catch (e) {
-        return alert("Could not read your balance from Firebase: " + e.message);
-    }
 
-    // ── 4. Total Check ──────────────────────────────────────────────────
-    const totalStars = (livePurchased || 0) + (liveCreatorStars || 0);
-    // Even if stars are 0, we still check the ledger in case a previous sync finished but withdraw failed
-    const initialLedgerWei = await hubContract.aptmBalances(addr);
+        // ── 2. Verified live price ─────────────────────────────────────────────
+        if (!currentAptmPriceUsd || currentAptmPriceUsd <= 0) {
+            return alert("Live APTM price not yet loaded. Wait a moment and try again.");
+        }
 
-    if (totalStars <= 0 && initialLedgerWei.eq(0)) {
-        return alert("Nothing to settle. Your balances are 0.");
-    }
-
-    // ── 5. Preview Calculation (For Display Only) ──────────────────────────
-    const purchasedValue = livePurchased * CONFIG.STAR_USD;
-    const earnedValue    = liveCreatorStars * CONFIG.STAR_USD * 0.80; 
-    const previewAptm    = (purchasedValue + earnedValue) / currentAptmPriceUsd;
-
-    // ── 6. Single confirm dialog ──────────────────────────────────────────
-    const syncLine = liveCreatorStars > 0
-        ? `Step 1 — Platform server syncs earned ★ to the contract.\n` +
-          `Step 2 — MetaMask opens to withdraw your total ledger balance.\n`
-        : `MetaMask will open to withdraw your ledger balance.\n`;
-
-    const confirmed = confirm(
-        `Settle Balance to Wallet\n\n` +
-        `Est. Receipt: ~${previewAptm.toFixed(6)} APTM\n\n` +
-        syncLine +
-        `Proceed?`
-    );
-    if (!confirmed) return;
-
-    // ── STEP A: CLOUD FUNCTION LEDGER SYNC ────────────────────────────────
-    if (liveCreatorStars > 0) {
-        showToast("Step 1/2 — Syncing earned stars via platform server…");
+        // ── 3. Read BOTH star pools live from Firestore (client-side preview) ──
+        //    The Cloud Function re-reads these server-side and never trusts
+        //    what the browser sends — this is only for the confirm dialog.
+        let livePurchased    = 0;
+        let liveCreatorStars = 0;
         try {
-            const resp = await fetch(SYNC_FUNCTION_URL, {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({
-                    userAddress:  addr,
-                    aptmPriceUsd: currentAptmPriceUsd 
-                })
-            });
-
-            const payload = await resp.json();
-            if (!resp.ok || !payload.success) {
-                return alert("Sync Failed: " + (payload.error || "Server Error"));
+            const userSnap = await window.fs.getDoc(
+                window.fs.doc(window.db, "user_balances", addr)
+            );
+            if (userSnap.exists()) {
+                livePurchased    = parseFloat(userSnap.data().stars        || 0);
+                liveCreatorStars = parseFloat(userSnap.data().creatorStars || 0);
             }
-            showToast(`Ledger synced ✓ — opening MetaMask…`);
-        } catch (networkErr) {
-            return alert("Could not reach the settlement server.");
-        }
-    }
-
-    // ── STEP B: USER WITHDRAWAL via MetaMask (NO MORE GUESSTIMATING) ───────
-    try {
-        showToast("Step 2/2 — Fetching final ledger balance...");
-        
-        // We fetch the EXACT value the contract holds for you right now
-        const finalLedgerWei = await hubContract.aptmBalances(addr);
-        
-        if (finalLedgerWei.eq(0)) {
-            return alert("The blockchain ledger shows 0 APTM. If you just synced, wait a few seconds and try again.");
+        } catch (e) {
+            return alert("Could not read your balance from Firebase: " + e.message);
         }
 
-        const withdrawAptmStr = ethers.utils.formatEther(finalLedgerWei);
-
-        showToast(`Requesting ${parseFloat(withdrawAptmStr).toFixed(6)} APTM...`);
-        
-        // We pass the exact number the contract just told us it has. 
-        // This makes CALL_EXCEPTION impossible.
-        const withdrawTx = await hubContract.userWithdraw(finalLedgerWei, { gasLimit: 500000 });
-        
-        showToast("Withdrawal submitted — waiting for confirmation…");
-        await withdrawTx.wait();
-
-        // ── Zero Firebase ONLY after on-chain confirmation ─────────────────
-        if (window.db) {
-            await window.fs.setDoc(
-                window.fs.doc(window.db, "user_balances", addr),
-                { stars: 0, creatorStars: 0, lastWithdraw: Date.now() },
-                { merge: true }
+        // ── 4. Total = purchased + earned (zero-safe) ──────────────────────────
+        const totalStars = (livePurchased || 0) + (liveCreatorStars || 0);
+        if (totalStars <= 0) {
+            return alert(
+                "Nothing to settle.\n\n" +
+                "Your total balance (purchased + earned) is 0 ★.\n" +
+                "Deposit APTM or earn stars through interactions first."
             );
         }
 
-        showToast(`✓ Settlement complete! ${parseFloat(withdrawAptmStr).toFixed(6)} APTM → wallet`);
-        if (typeof updateUI === "function") updateUI();
+        // ── 5. Convert total stars → APTM → Wei ────────────────────────────────
+        //    Formula (exact inverse of deposit):
+        //      APTM = stars × $0.01/star ÷ live APTM price
+        const totalAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
+        const totalWei  = ethers.utils.parseEther(totalAptm.toFixed(18));
 
-    } catch (e) {
-        console.error("userWithdraw failed:", e);
-        alert("Withdrawal failed: " + (e.reason || e.message || "Unknown error"));
+        // ── 6. Single confirm dialog — user sees exactly what will happen ───────
+        const syncLine = liveCreatorStars > 0
+            ? `Step 1 — Platform server syncs ${liveCreatorStars.toFixed(2)} earned ★ to the contract (silent, no MetaMask).\n` +
+              `Step 2 — MetaMask opens once to withdraw your full balance.\n`
+            : `MetaMask will open once to withdraw your balance.\n`;
+
+        const confirmed = confirm(
+            `Settle Total Balance to Wallet\n\n` +
+            `Purchased Stars:   ${livePurchased.toFixed(2)} ★\n` +
+            `Earned Stars:      ${liveCreatorStars.toFixed(2)} ★\n` +
+            `───────────────────────────────\n` +
+            `Total Stars:       ${totalStars.toFixed(2)} ★\n` +
+            `Live APTM Price:   $${currentAptmPriceUsd.toFixed(4)}\n` +
+            `Will Receive:      ${totalAptm.toFixed(6)} APTM\n\n` +
+            syncLine +
+            `Both balances will be zeroed after the withdrawal confirms.\n` +
+            `Proceed?`
+        );
+        if (!confirmed) return;
+
+        // ══════════════════════════════════════════════════════════════════════
+        // STEP A — CLOUD FUNCTION LEDGER SYNC
+        //
+        // POST to syncStarsToBlockchain with the user's address and current
+        // live price.  The server:
+        //   1. Re-reads creatorStars from Firestore (authoritative figure)
+        //   2. Computes earnedWei using the same STAR_USD formula
+        //   3. Calls backendInteract(ADMIN, addr, earnedWei) — admin key is
+        //      in Firebase Secret Manager, never in the browser
+        //   4. Waits for on-chain confirmation
+        //   5. Returns { success: true, txHash, synced } on success
+        //
+        // If creatorStars == 0 the server returns { synced: false } immediately
+        // (no on-chain call) and we skip straight to Step B.
+        //
+        // Abort with a clear message on any non-200 response — no funds move
+        // until Step B, so the user can safely retry.
+        // ══════════════════════════════════════════════════════════════════════
+        if (liveCreatorStars > 0) {
+            showToast("Step 1/2 — Syncing earned stars via platform server…");
+            let syncResult;
+            try {
+                const resp = await fetch(SYNC_FUNCTION_URL, {
+                    method:  "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body:    JSON.stringify({
+                        userAddress:  addr,
+                        aptmPriceUsd: currentAptmPriceUsd   // server validates & may override
+                    })
+                });
+
+                // Parse JSON regardless of status so we can surface server error messages
+                let payload;
+                try { payload = await resp.json(); } catch (_) { payload = {}; }
+
+                if (!resp.ok || !payload.success) {
+                    console.error("syncStarsToBlockchain error response:", payload);
+                    return alert(
+                        "Ledger sync failed — settlement aborted.\n\n" +
+                        (payload.error || payload.detail || `HTTP ${resp.status}`) +
+                        "\n\nNo funds have been moved. Your balances are unchanged.\n" +
+                        "Please try again or contact support."
+                    );
+                }
+
+                syncResult = payload;
+                if (syncResult.synced) {
+                    console.log(`[Settlement] Ledger sync tx: ${syncResult.txHash}`);
+                    showToast(`Ledger synced ✓ (tx: ${syncResult.txHash.slice(0, 10)}…) — opening MetaMask…`);
+                } else {
+                    // Server confirmed creatorStars is 0 — no sync needed
+                    showToast("No earned stars to sync — opening MetaMask for withdrawal…");
+                }
+
+            } catch (networkErr) {
+                console.error("Network error reaching syncStarsToBlockchain:", networkErr);
+                return alert(
+                    "Could not reach the settlement server.\n\n" +
+                    "Check your internet connection and try again.\n" +
+                    "No funds have been moved."
+                );
+            }
+        } else {
+            // No earned stars: purchased balance is already fully credited
+            // in aptmBalances from the original depositAPTM tx — go straight to withdraw
+            showToast("No earned stars to sync — opening MetaMask for withdrawal…");
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // STEP B — USER WITHDRAWAL via MetaMask (one popup)
+        //
+        // userWithdraw(totalWei) reads msg.sender's aptmBalances slot — now
+        // fully credited after Step A — and transfers totalWei of APTM to
+        // the user's wallet.
+        //
+        // totalWei is computed from totalStars (purchased + earned), which is
+        // the full amount the user is owed.  Firebase is zeroed ONLY after
+        // this transaction confirms so the user can always retry on failure.
+        // ══════════════════════════════════════════════════════════════════════
+        try {
+            showToast("Step 2/2 — Opening MetaMask for withdrawal…");
+            const withdrawTx = await hubContract.userWithdraw(totalWei, { gasLimit: 500000 });
+            showToast("Withdrawal submitted — waiting for confirmation…");
+            await withdrawTx.wait();
+
+            // ── Zero Firebase ONLY after on-chain confirmation ─────────────────
+            if (window.db) {
+                try {
+                    await window.fs.setDoc(
+                        window.fs.doc(window.db, "user_balances", addr),
+                        {
+                            stars:        0,
+                            creatorStars: 0,
+                            lastWithdraw: Date.now(),
+                            lastUpdated:  Date.now()
+                        },
+                        { merge: true }
+                    );
+                } catch (e) { console.warn("Firebase balance reset failed:", e); }
+            }
+
+            // Sync in-memory cache so the UI reflects 0 immediately
+            purchasedStars  = 0;
+            creatorEarnings = 0;
+
+            logTransaction(
+                addr, "settle", totalAptm,
+                `Settled ${totalStars.toFixed(2)} ★ ` +
+                `(${livePurchased.toFixed(2)} purch + ${liveCreatorStars.toFixed(2)} earned) ` +
+                `→ ${totalAptm.toFixed(6)} $APTM at $${currentAptmPriceUsd.toFixed(4)}/APTM`
+            );
+
+            showToast(`✓ Settlement complete! ${totalAptm.toFixed(6)} APTM → wallet`);
+            updateUI();
+            updateDrawerUI();
+            syncData();
+
+        } catch (e) {
+            console.error("userWithdraw failed:", e);
+            // Step A already confirmed on-chain — ledger is correct.
+            // The user can click Settle again; Step A will be skipped
+            // (server sees creatorStars still > 0 in Firebase and will
+            // re-sync, but the contract already has the right balance,
+            // so backendInteract will simply be a no-op or the server
+            // will detect no change is needed).
+            alert(
+                "Withdrawal failed.\n\n" +
+                (e.reason || e.message || String(e)).slice(0, 200) +
+                "\n\nThe ledger sync completed successfully. Your Firebase balances " +
+                "have NOT been zeroed. Click Settle again to retry the withdrawal."
+            );
+        }
     }
-}
 
 
     // ═══════════════════════════════════════════════════════════════════
@@ -4393,10 +4446,66 @@ async function settleStarsToWallet() {
         });
         feedContainer.innerHTML = '';   // clear exactly once on (re-)load, never again
 
+        // ── Firestore query — fetch by timestamp desc (the stable original field).
+        // Sorting for display is done client-side using a priority key so that
+        // boosted posts never permanently displace newer broadcasts.
         const q = window.fs.query(
             window.fs.collection(window.db, 'posts'),
             window.fs.orderBy('timestamp', 'desc')
         );
+
+        // ── Priority sort key ─────────────────────────────────────────────────────
+        // Rules (highest number = top of feed):
+        //   • A boosted post uses its boostedAt time as its sort key.
+        //   • A normal post uses its timestamp as its sort key.
+        //
+        // Effect:
+        //   • A new broadcast (timestamp = now) always beats any boost that
+        //     happened in the past because its sort key (now) is larger.
+        //   • A fresh boost (boostedAt = now) instantly jumps above all older
+        //     content — boosted or not — because its key is also "now".
+        //   • Two posts boosted at different times sort by their respective
+        //     boostedAt values, so the most-recently-boosted stays on top.
+        //   • Hypes and comments never touch timestamp or boostedAt, so they
+        //     cause zero position changes in the feed.
+        function sortKey(post) {
+            if (post.isBoosted && post.boostedAt) {
+                return Math.max(Number(post.boostedAt), Number(post.timestamp) || 0);
+            }
+            return Number(post.timestamp) || 0;
+        }
+
+        // Re-sort all cards in feedContainer according to current sortKey values.
+        // Called after every 'added' and 'modified' change so the DOM always
+        // reflects the correct priority order.
+        function reorderFeed(snapshot) {
+            // Build a map of postId → current sortKey from the live snapshot
+            const keyMap = {};
+            snapshot.docs.forEach(d => { keyMap[d.id] = sortKey(d.data()); });
+
+            // Get all cards currently in the DOM
+            const cards = Array.from(feedContainer.children);
+            if (cards.length < 2) return;
+
+            // Sort desc by sortKey (highest = first)
+            cards.sort((a, b) => {
+                const ka = keyMap[a.getAttribute('data-id')] || 0;
+                const kb = keyMap[b.getAttribute('data-id')] || 0;
+                return kb - ka;
+            });
+
+            // Re-attach in sorted order only if the order actually changed,
+            // using a DocumentFragment to avoid reflow on every tick.
+            let needsReorder = false;
+            cards.forEach((card, i) => {
+                if (feedContainer.children[i] !== card) needsReorder = true;
+            });
+            if (needsReorder) {
+                const frag = document.createDocumentFragment();
+                cards.forEach(c => frag.appendChild(c));
+                feedContainer.appendChild(frag);
+            }
+        }
 
         // ── Helper: build a single post card element ──────────────────────────────
         function buildPostCard(postId, post) {
@@ -4502,33 +4611,20 @@ async function settleStarsToWallet() {
                     return;
                 }
 
-                // ── ADDED: build card and insert at correct sorted position ───────
+                // ── ADDED: build card and append; reorderFeed will place it correctly ──
                 if (change.type === 'added') {
                     // Guard: if a card for this ID somehow already exists, skip
                     if (feedContainer.querySelector(`[data-id="${postId}"]`)) return;
 
-                    const card   = buildPostCard(postId, post);
-
-                    // snapshot.docs is ordered desc by timestamp (matches the query).
-                    // Find the card that should immediately follow this one in the DOM
-                    // so we can insertBefore it to maintain correct order.
-                    const docIds   = snapshot.docs.map(d => d.id);
-                    const myIndex  = docIds.indexOf(postId);
-                    const afterId  = docIds[myIndex + 1];
-                    const afterEl  = afterId ? feedContainer.querySelector(`[data-id="${afterId}"]`) : null;
-
-                    if (afterEl) {
-                        feedContainer.insertBefore(card, afterEl);
-                    } else {
-                        feedContainer.appendChild(card);
-                    }
+                    const card = buildPostCard(postId, post);
+                    feedContainer.appendChild(card);   // position corrected by reorderFeed()
 
                     viewObserver.observe(card);
                     subscribeCommentCount(postId);
                     return;
                 }
 
-                // ── MODIFIED: patch fields in-place, then re-sort to match server order ─
+                // ── MODIFIED: patch counters/badges in-place; reorderFeed handles position ─
                 if (change.type === 'modified') {
                     const existing = feedContainer.querySelector(`[data-id="${postId}"]`);
                     if (!existing) return;  // card not in DOM (filtered), nothing to do
@@ -4547,34 +4643,14 @@ async function settleStarsToWallet() {
                     if (authorDiv && post.isBoosted && !authorDiv.querySelector('.boosted-badge')) {
                         authorDiv.innerHTML = authorDiv.innerHTML + ' <span class="boosted-badge">🚀 BOOSTED</span>';
                     }
-
-                    // ── RE-SORT: mirror the card's position to its index in snapshot.docs ──
-                    // snapshot.docs is always ordered by timestamp desc (the Firestore query).
-                    // This is the ground truth — a boost updates the timestamp so the post
-                    // moves to whichever slot Firestore says it belongs.  A like/view does NOT
-                    // change the timestamp, so the post stays exactly where it is.
-                    // This replaces the old "always move to #1 on isBoosted" logic that caused
-                    // the alternating/jumping bug whenever a boosted post received a like.
-                    const docIds  = snapshot.docs.map(d => d.id);
-                    const myIndex = docIds.indexOf(postId);
-                    if (myIndex !== -1) {
-                        // Find the card that should sit immediately after this one
-                        const afterId = docIds[myIndex + 1];
-                        const afterEl = afterId ? feedContainer.querySelector(`[data-id="${afterId}"]`) : null;
-
-                        // Only move the card if its current DOM position is wrong
-                        const currentNext = existing.nextElementSibling;
-                        const correctNext = afterEl || null;
-                        if (currentNext !== correctNext) {
-                            if (correctNext) {
-                                feedContainer.insertBefore(existing, correctNext);
-                            } else {
-                                feedContainer.appendChild(existing);
-                            }
-                        }
-                    }
+                    // Position is corrected by reorderFeed() called after all changes are processed
                 }
             });
+
+            // Re-sort the entire feed by priority key after processing all changes.
+            // This is a single stable sort call — it only moves DOM nodes if the
+            // order actually changed, so hype/view increments cause zero reflow.
+            reorderFeed(snapshot);
 
             if (typeof refreshFeedVisibility === 'function') refreshFeedVisibility();
         }, (err) => {
