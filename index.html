@@ -4366,8 +4366,24 @@
     const SYNC_FUNCTION_URL =
         "https://us-central1-socialhub-33014.cloudfunctions.net/syncStarsToBlockchain";
 
+    // ── Client-side re-entrancy guard ─────────────────────────────────────────
+    // Prevents a second Settle click while one is already in flight.
+    // Every exit path (cancel, Step A fail, Step B fail, success) must reset
+    // this to false, either directly or via _unlockSettle().
+    let _settleInProgress = false;
+
     async function settleStarsToWallet() {
         if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
+
+        // ── Re-entrancy gate ───────────────────────────────────────────────────
+        if (_settleInProgress) {
+            return alert(
+                "Settlement already in progress.
+
+" +
+                "Please wait for the current step to complete or fail before trying again."
+            );
+        }
 
         // ── 1. Verified connected wallet address ──────────────────────────────
         const addr = (await signer.getAddress()).toLowerCase();
@@ -4401,59 +4417,87 @@
         const totalStars = (livePurchased || 0) + (liveCreatorStars || 0);
         if (totalStars <= 0) {
             return alert(
-                "Nothing to settle.\n\n" +
-                "Your total balance (purchased + earned) is 0 ★.\n" +
+                "Nothing to settle.
+
+" +
+                "Your total balance (purchased + earned) is 0 ★.
+" +
                 "Deposit APTM or earn stars through interactions first."
             );
         }
 
-        // ── 5. Convert total stars → APTM → Wei ────────────────────────────────
+        // ── 5. Convert total stars → APTM → Wei ────────────────────────────────────
         //    Formula (exact inverse of deposit):
         //      APTM = stars × $0.01/star ÷ live APTM price
         const totalAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
         const totalWei  = ethers.utils.parseEther(totalAptm.toFixed(18));
 
-        // ── 6. Single confirm dialog — user sees exactly what will happen ───────
+        // ── 6. Single confirm dialog ───────────────────────────────────────────
         const syncLine = liveCreatorStars > 0
-            ? `Step 1 — Platform server syncs ${liveCreatorStars.toFixed(2)} earned ★ to the contract (silent, no MetaMask).\n` +
-              `Step 2 — MetaMask opens once to withdraw your full balance.\n`
-            : `MetaMask will open once to withdraw your balance.\n`;
+            ? `Step 1 — Platform server syncs ${liveCreatorStars.toFixed(2)} earned ★ to the contract (silent, no MetaMask).
+` +
+              `Step 2 — MetaMask opens once to withdraw your full balance.
+`
+            : `MetaMask will open once to withdraw your balance.
+`;
 
         const confirmed = confirm(
-            `Settle Total Balance to Wallet\n\n` +
-            `Purchased Stars:   ${livePurchased.toFixed(2)} ★\n` +
-            `Earned Stars:      ${liveCreatorStars.toFixed(2)} ★\n` +
-            `───────────────────────────────\n` +
-            `Total Stars:       ${totalStars.toFixed(2)} ★\n` +
-            `Live APTM Price:   $${currentAptmPriceUsd.toFixed(4)}\n` +
-            `Will Receive:      ${totalAptm.toFixed(6)} APTM\n\n` +
+            `Settle Total Balance to Wallet
+
+` +
+            `Purchased Stars:   ${livePurchased.toFixed(2)} ★
+` +
+            `Earned Stars:      ${liveCreatorStars.toFixed(2)} ★
+` +
+            `───────────────────────────────
+` +
+            `Total Stars:       ${totalStars.toFixed(2)} ★
+` +
+            `Live APTM Price:   $${currentAptmPriceUsd.toFixed(4)}
+` +
+            `Will Receive:      ${totalAptm.toFixed(6)} APTM
+
+` +
             syncLine +
-            `Both balances will be zeroed after the withdrawal confirms.\n` +
+            `Both balances will be zeroed after the withdrawal confirms.
+` +
             `Proceed?`
         );
+        // User cancelled — _settleInProgress is still false, nothing to unlock
         if (!confirmed) return;
+
+        // ── Acquire client-side lock ───────────────────────────────────────────
+        // Set AFTER the confirm() so a cancel never locks the button.
+        _settleInProgress = true;
+        document.querySelectorAll('button[onclick*="settleStarsToWallet"]').forEach(b => {
+            b.disabled    = true;
+            b.textContent = "Settlement in progress…";
+        });
+
+        // _unlockSettle() MUST be called from every exit path after this point.
+        // Pass a custom label to override the default button text on retry.
+        function _unlockSettle(label) {
+            _settleInProgress = false;
+            document.querySelectorAll('button[onclick*="settleStarsToWallet"]').forEach(b => {
+                b.disabled    = false;
+                b.textContent = label || "Settle Total Balance to Wallet →";
+            });
+        }
 
         // ══════════════════════════════════════════════════════════════════════
         // STEP A — CLOUD FUNCTION LEDGER SYNC
         //
-        // POST to syncStarsToBlockchain with the user's address and current
-        // live price.  The server:
-        //   1. Re-reads creatorStars from Firestore (authoritative figure)
-        //   2. Computes earnedWei using the same STAR_USD formula
-        //   3. Calls backendInteract(ADMIN, addr, earnedWei) — admin key is
-        //      in Firebase Secret Manager, never in the browser
-        //   4. Waits for on-chain confirmation
-        //   5. Returns { success: true, txHash, synced } on success
+        // The fetch() call is fully awaited before anything else happens.
+        // Step B does not begin until this block exits with a confirmed
+        // { success: true } payload.  Every failure path calls _unlockSettle()
+        // so the user can retry immediately with no "sync in progress" block.
         //
-        // If creatorStars == 0 the server returns { synced: false } immediately
-        // (no on-chain call) and we skip straight to Step B.
-        //
-        // Abort with a clear message on any non-200 response — no funds move
-        // until Step B, so the user can safely retry.
+        // The Cloud Function’s own finally-block deletes the Firestore
+        // settlement_locks doc, so the server-side lock is also cleared on
+        // any failure before control returns here.
         // ══════════════════════════════════════════════════════════════════════
         if (liveCreatorStars > 0) {
             showToast("Step 1/2 — Syncing earned stars via platform server…");
-            let syncResult;
             try {
                 const resp = await fetch(SYNC_FUNCTION_URL, {
                     method:  "POST",
@@ -4464,61 +4508,149 @@
                     })
                 });
 
-                // Parse JSON regardless of status so we can surface server error messages
+                // Parse JSON regardless of HTTP status so server error text is visible
                 let payload;
                 try { payload = await resp.json(); } catch (_) { payload = {}; }
 
                 if (!resp.ok || !payload.success) {
-                    console.error("syncStarsToBlockchain error response:", payload);
+                    console.error("[Settlement] syncStarsToBlockchain error:", payload);
+                    _unlockSettle();
                     return alert(
-                        "Ledger sync failed — settlement aborted.\n\n" +
+                        "Ledger sync failed — settlement aborted.
+
+" +
                         (payload.error || payload.detail || `HTTP ${resp.status}`) +
-                        "\n\nNo funds have been moved. Your balances are unchanged.\n" +
+                        "
+
+No funds have been moved. Your balances are unchanged.
+" +
                         "Please try again or contact support."
                     );
                 }
 
-                syncResult = payload;
-                if (syncResult.synced) {
-                    console.log(`[Settlement] Ledger sync tx: ${syncResult.txHash}`);
-                    showToast(`Ledger synced ✓ (tx: ${syncResult.txHash.slice(0, 10)}…) — opening MetaMask…`);
+                // Step A is fully confirmed on-chain (Cloud Function awaited tx.wait()
+                // before returning). Safe to proceed to Step B.
+                if (payload.synced) {
+                    console.log(`[Settlement] Step A confirmed. Ledger sync tx: ${payload.txHash}`);
+                    showToast(`Ledger synced ✓ (tx: ${payload.txHash.slice(0, 10)}…) — opening MetaMask…`);
                 } else {
-                    // Server confirmed creatorStars is 0 — no sync needed
                     showToast("No earned stars to sync — opening MetaMask for withdrawal…");
                 }
 
             } catch (networkErr) {
-                console.error("Network error reaching syncStarsToBlockchain:", networkErr);
+                console.error("[Settlement] Network error:", networkErr);
+                _unlockSettle();
                 return alert(
-                    "Could not reach the settlement server.\n\n" +
-                    "Check your internet connection and try again.\n" +
+                    "Could not reach the settlement server.
+
+" +
+                    "Check your internet connection and try again.
+" +
                     "No funds have been moved."
                 );
             }
+
         } else {
-            // No earned stars: purchased balance is already fully credited
-            // in aptmBalances from the original depositAPTM tx — go straight to withdraw
+            // No earned stars: aptmBalances already correct from the original deposit.
             showToast("No earned stars to sync — opening MetaMask for withdrawal…");
         }
 
         // ══════════════════════════════════════════════════════════════════════
         // STEP B — USER WITHDRAWAL via MetaMask (one popup)
         //
-        // userWithdraw(totalWei) reads msg.sender's aptmBalances slot — now
-        // fully credited after Step A — and transfers totalWei of APTM to
-        // the user's wallet.
+        // Only reached after Step A returned { success: true } and was fully
+        // awaited above. The sequence is strictly serial:
+        //   fetch() resolves → payload verified → gas estimated → userWithdraw signed
         //
-        // totalWei is computed from totalStars (purchased + earned), which is
-        // the full amount the user is owed.  Firebase is zeroed ONLY after
-        // this transaction confirms so the user can always retry on failure.
+        // GAS LIMIT
+        // ─────────
+        // The failed receipt showed gasUsed 0x5e79 (~24 k), which means the tx
+        // either ran out of gas or the RPC’s estimateGas returned too low a value.
+        // Fix: call estimateGas() first, apply a 40 % safety buffer, enforce a
+        // hard floor of 150 000 and a ceiling of 500 000.
+        //   • If estimateGas itself throws, the contract would revert anyway —
+        //     surface the reason before opening MetaMask so the user gets a
+        //     readable error instead of a silent CALL_EXCEPTION.
+        //
+        // RECEIPT STATUS CHECK
+        // ────────────────────
+        // Ethers v5 normally throws on status=0, but Apertum’s RPC has been
+        // observed returning a receipt object without throwing. We check
+        // receipt.status === 1 explicitly to catch silent on-chain reverts.
+        //
+        // Firebase is zeroed ONLY after receipt.status === 1 is confirmed.
+        // _unlockSettle() is called from every failure path so the user is
+        // never left stuck.
         // ══════════════════════════════════════════════════════════════════════
         try {
-            showToast("Step 2/2 — Opening MetaMask for withdrawal…");
-            const withdrawTx = await hubContract.userWithdraw(totalWei, { gasLimit: 500000 });
-            showToast("Withdrawal submitted — waiting for confirmation…");
-            await withdrawTx.wait();
+            showToast("Step 2/2 — Estimating gas…");
 
-            // ── Zero Firebase ONLY after on-chain confirmation ─────────────────
+            // ── Gas estimation with safety buffer ─────────────────────────────
+            let gasLimit;
+            try {
+                const estimated = await hubContract.estimateGas.userWithdraw(totalWei);
+                // +40 % buffer, floor 150 000, ceiling 500 000
+                const buffered = estimated.mul(140).div(100);
+                const floor    = ethers.BigNumber.from(150000);
+                const ceiling  = ethers.BigNumber.from(500000);
+                gasLimit = buffered.lt(floor)   ? floor
+                         : buffered.gt(ceiling) ? ceiling
+                         : buffered;
+                console.log(`[Settlement] estimateGas: ${estimated.toString()} → using: ${gasLimit.toString()}`);
+            } catch (gasErr) {
+                // estimateGas threw — the contract would revert at this amount.
+                // Most common cause: on-chain aptmBalances < totalWei (ledger not
+                // yet synced, or a previous partial withdrawal left a shortfall).
+                console.error("[Settlement] estimateGas failed:", gasErr);
+                _unlockSettle();
+                return alert(
+                    "Gas estimation failed — withdrawal aborted.
+
+" +
+                    (gasErr.reason || gasErr.message || String(gasErr)).slice(0, 240) +
+                    "
+
+The contract rejected the transaction before it reached the chain.
+" +
+                    "Your Firebase balances have NOT been changed.
+" +
+                    "Common cause: on-chain balance too low. Please contact support."
+                );
+            }
+
+            showToast("Step 2/2 — Opening MetaMask for withdrawal…");
+            const withdrawTx = await hubContract.userWithdraw(totalWei, { gasLimit });
+            showToast("Withdrawal submitted — waiting for on-chain confirmation…");
+
+            // ── Await receipt and check status explicitly ──────────────────────
+            const receipt = await withdrawTx.wait();
+            if (!receipt || receipt.status !== 1) {
+                // Mined but reverted (CALL_EXCEPTION / status 0).
+                // APTM has NOT left the contract. Firebase must NOT be zeroed.
+                const detail = receipt
+                    ? `Block: ${receipt.blockNumber} | Gas used: ${receipt.gasUsed.toString()}`
+                    : "No receipt returned by RPC.";
+                console.error("[Settlement] userWithdraw reverted on-chain.", detail);
+                _unlockSettle();
+                return alert(
+                    "Withdrawal reverted on-chain (CALL_EXCEPTION, status 0).
+
+" +
+                    detail + "
+
+" +
+                    "Your APTM has NOT left the contract vault.
+" +
+                    "Your Firebase balances are unchanged — click Settle to try again.
+" +
+                    "If this repeats, contact support with the block number above."
+                );
+            }
+
+            // ── Receipt status === 1 confirmed – transaction succeeded ─────────
+            console.log(`[Settlement] Withdrawal confirmed. Block: ${receipt.blockNumber}, Gas used: ${receipt.gasUsed.toString()}`);
+
+            // ── Zero Firebase NOW — ONLY after on-chain success is confirmed ───
             if (window.db) {
                 try {
                     await window.fs.setDoc(
@@ -4531,10 +4663,35 @@
                         },
                         { merge: true }
                     );
-                } catch (e) { console.warn("Firebase balance reset failed:", e); }
+                } catch (fbErr) {
+                    // On-chain tx succeeded but Firebase write failed.
+                    // Funds are already in the user’s wallet. Do NOT ask them to
+                    // settle again (there is nothing left on-chain to withdraw).
+                    // Show a clear message and refresh the UI from the chain.
+                    console.error("[Settlement] CRITICAL: on-chain OK but Firebase zero failed:", fbErr);
+                    purchasedStars  = 0;
+                    creatorEarnings = 0;
+                    _unlockSettle();
+                    updateUI();
+                    updateDrawerUI();
+                    syncData();
+                    return alert(
+                        `Withdrawal succeeded! ✓
+
+` +
+                        `${totalAptm.toFixed(6)} APTM was sent to your wallet.
+
+` +
+                        "The platform balance display could not be updated (Firebase error).
+" +
+                        "Your Stars will show a stale value until you reconnect your wallet.
+" +
+                        "You do NOT need to settle again — the funds are already in your wallet."
+                    );
+                }
             }
 
-            // Sync in-memory cache so the UI reflects 0 immediately
+            // ── Everything confirmed. Sync local cache and update UI ───────────
             purchasedStars  = 0;
             creatorEarnings = 0;
 
@@ -4545,24 +4702,28 @@
                 `→ ${totalAptm.toFixed(6)} $APTM at $${currentAptmPriceUsd.toFixed(4)}/APTM`
             );
 
+            _unlockSettle("Settle Total Balance to Wallet →");
             showToast(`✓ Settlement complete! ${totalAptm.toFixed(6)} APTM → wallet`);
             updateUI();
             updateDrawerUI();
             syncData();
 
         } catch (e) {
-            console.error("userWithdraw failed:", e);
-            // Step A already confirmed on-chain — ledger is correct.
-            // The user can click Settle again; Step A will be skipped
-            // (server sees creatorStars still > 0 in Firebase and will
-            // re-sync, but the contract already has the right balance,
-            // so backendInteract will simply be a no-op or the server
-            // will detect no change is needed).
+            // Catches: user rejected MetaMask popup, network drop, unexpected throw.
+            // On-chain reverts are caught by the receipt.status check above and
+            // never reach here.
+            console.error("[Settlement] userWithdraw threw:", e);
+            _unlockSettle();
             alert(
-                "Withdrawal failed.\n\n" +
+                "Withdrawal failed.
+
+" +
                 (e.reason || e.message || String(e)).slice(0, 200) +
-                "\n\nThe ledger sync completed successfully. Your Firebase balances " +
-                "have NOT been zeroed. Click Settle again to retry the withdrawal."
+                "
+
+Your Firebase balances have NOT been zeroed.
+" +
+                "Click Settle again to retry."
             );
         }
     }
