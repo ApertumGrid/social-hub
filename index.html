@@ -1914,6 +1914,74 @@
             .hiw-step-title { font-size: 0.82rem; }
             .hiw-step-desc  { font-size: 0.74rem; }
         }
+
+        /* ── LIKE MICRO-INTERACTIONS ────────────────────────────────────────
+           Tactile pop: .pact (post like) and .cbtn (comment like) shrink
+           on :active and spring back.  The transition is additive — it sits
+           on top of the existing transition:all 0.13s already on .pact and
+           transition:all 0.12s on .cbtn, so we just extend those values.
+           ─────────────────────────────────────────────────────────────────── */
+
+        /* Post Like button — pops red on click, springs back */
+        .pact.like-active {
+            color: #ff4d6d !important;
+            border-color: rgba(255,77,109,0.35) !important;
+            background: rgba(255,77,109,0.08) !important;
+        }
+        .pact:active {
+            transform: scale(0.88);
+            transition: transform 0.07s ease-in;
+        }
+        /* Spring-back is handled by the existing transition:all 0.13s when
+           :active is released — no extra rule needed. */
+
+        /* Comment Like button — same tactile pop, tighter scale */
+        .cbtn:active {
+            transform: scale(0.82);
+            transition: transform 0.07s ease-in;
+        }
+        .cbtn.like-active {
+            color: #ff4d6d !important;
+            border-color: rgba(255,77,109,0.35) !important;
+            background: rgba(255,77,109,0.08) !important;
+        }
+
+        /* ── FLOATING STAR BURST ────────────────────────────────────────────
+           Three gold ★ glyphs are absolutely positioned at the click point
+           and animated upward on individual paths, then fade out.
+           Each star gets one of three trajectory keyframe animations so they
+           spread naturally rather than rising in a single column.
+           ─────────────────────────────────────────────────────────────────── */
+        .like-star {
+            position: fixed;          /* fixed so it escapes any overflow:hidden parent */
+            pointer-events: none;
+            user-select: none;
+            font-size: 1rem;
+            line-height: 1;
+            color: #f0b429;           /* --gold */
+            text-shadow: 0 0 6px rgba(240,180,41,0.7);
+            z-index: 99999;
+            will-change: transform, opacity;
+        }
+
+        @keyframes like-star-left {
+            0%   { transform: translate(0, 0)      scale(1);    opacity: 1; }
+            30%  { transform: translate(-14px, -22px) scale(1.2); opacity: 1; }
+            100% { transform: translate(-22px, -68px) scale(0.6); opacity: 0; }
+        }
+        @keyframes like-star-center {
+            0%   { transform: translate(0, 0)     scale(1);    opacity: 1; }
+            30%  { transform: translate(0, -28px) scale(1.3);  opacity: 1; }
+            100% { transform: translate(0, -80px) scale(0.5);  opacity: 0; }
+        }
+        @keyframes like-star-right {
+            0%   { transform: translate(0, 0)       scale(1);    opacity: 1; }
+            30%  { transform: translate(14px, -22px)  scale(1.2); opacity: 1; }
+            100% { transform: translate(22px, -68px)  scale(0.6); opacity: 0; }
+        }
+        .like-star.s0 { animation: like-star-left   0.72s cubic-bezier(0.22,1,0.36,1) forwards; }
+        .like-star.s1 { animation: like-star-center 0.72s cubic-bezier(0.22,1,0.36,1) forwards; animation-delay: 0.04s; }
+        .like-star.s2 { animation: like-star-right  0.72s cubic-bezier(0.22,1,0.36,1) forwards; animation-delay: 0.08s; }
     </style>
 </head>
 <body>
@@ -4088,7 +4156,7 @@
                     const meta = document.createElement('div');
                     meta.className = "cmt-meta";
                     meta.innerHTML =
-                        '<span class="cbtn" onclick="likeComment(\'' + cId + '\',\'' + authorAddr + '\')">' +
+                        '<span class="cbtn" onclick="triggerLikeAnimation(event); likeComment(\'' + cId + '\',\'' + authorAddr + '\')">' +
                             '❤ <span id="hc-' + cId + '">' + likeCount + '</span>' +
                         '</span>' +
                         '<span class="cbtn reply" onclick="toggleReplyInput(\'' + cId + '\')">↩ Reply</span>';
@@ -4807,7 +4875,7 @@
                 ${mediaHtml}
                 <div class="post-body">${linkify(post.text)}</div>
                 <div class="post-actions">
-                    <div class="pact" onclick="hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span> Like</div>
+                    <div class="pact" onclick="triggerLikeAnimation(event); hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span> Like</div>
                     <div class="pact" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comment<span class="pact-num" id="cc-${postId}" style="color:var(--teal);"></span></div>
                     <div class="pact boost" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
                     <div class="pact views" title="Impressions">👁 <span class="pact-num" id="views-${postId}">${(post.views || 0).toLocaleString()}</span></div>
@@ -5863,7 +5931,68 @@
         if (e.target === document.getElementById('hiw-overlay')) closeHIW();
     }
 
-    // Close on Escape key
+    // ═══════════════════════════════════════════════════════════════════
+    // triggerLikeAnimation(event)
+    //
+    // Bursts 3 gold ★ characters from the clicked button, floating upward
+    // on diverging paths and fading out — similar to Facebook/Instagram
+    // reaction animations.
+    //
+    // USAGE  — pass the native click Event from any like/hype handler:
+    //   triggerLikeAnimation(event);
+    //
+    // HOW IT WORKS
+    //   1. Reads event.currentTarget.getBoundingClientRect() to find the
+    //      button's centre on screen.
+    //   2. Creates 3 <span class="like-star s0|s1|s2"> elements, positions
+    //      them at the button centre with position:fixed (escapes all
+    //      overflow:hidden parents), and appends them to document.body.
+    //   3. Each span runs one of three CSS keyframe animations (left/center/
+    //      right trajectories) with a small stagger so they feel organic.
+    //   4. After the longest animation duration (0.72s + 0.08s delay + 20ms
+    //      buffer = 820ms) the spans are removed from the DOM.
+    //   5. Adds the .like-active class to the button for a 600ms red tint,
+    //      then removes it so the button reverts cleanly.
+    //
+    // WHAT IS NEVER TOUCHED
+    //   Firebase, MetaMask, Settle/Withdraw, layout, existing CSS variables.
+    // ═══════════════════════════════════════════════════════════════════
+    function triggerLikeAnimation(event) {
+        var btn = event.currentTarget;
+        if (!btn) return;
+
+        // ── Tactile red-tint feedback on the button ────────────────────
+        btn.classList.add('like-active');
+        setTimeout(function() { btn.classList.remove('like-active'); }, 600);
+
+        // ── Position burst at the button's centre ─────────────────────
+        var rect = btn.getBoundingClientRect();
+        var cx = rect.left + rect.width  / 2;
+        var cy = rect.top  + rect.height / 2;
+
+        // ── Spawn 3 stars ──────────────────────────────────────────────
+        for (var i = 0; i < 3; i++) {
+            var star = document.createElement('span');
+            star.className  = 'like-star s' + i;
+            star.textContent = '\u2605';        // ★
+            // Centre the glyph on the button's midpoint
+            // (offsetting by ~half the glyph size so origin is centred)
+            star.style.left = (cx - 8) + 'px';
+            star.style.top  = (cy - 8) + 'px';
+            document.body.appendChild(star);
+        }
+
+        // ── Remove DOM nodes after animations complete ─────────────────
+        // Longest path: 0.72s duration + 0.08s delay + 20ms buffer
+        setTimeout(function() {
+            var stale = document.querySelectorAll('.like-star');
+            for (var j = 0; j < stale.length; j++) {
+                if (stale[j].parentNode) stale[j].parentNode.removeChild(stale[j]);
+            }
+        }, 820);
+    }
+
+    // Close HIW on Escape key
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') closeHIW();
     });
