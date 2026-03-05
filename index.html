@@ -3667,12 +3667,10 @@
             logTransaction(userAddress, "spend", boostCost,
                 `Post Boosted — ${boostCost}★ fee (100% platform) · Post ID: ${postId.slice(0, 8)}…`);
 
-            // Update post: mark as boosted WITHOUT touching the original timestamp.
-            // The feed sorts by priority key: max(boostedAt, timestamp) desc, so
-            // any new broadcast with a newer timestamp always appears above older
-            // boosted posts, while boosted posts float above pre-boost content.
+            // Update post: serverTimestamp() pushes it to top of desc-ordered feed
             const postRef = window.fs.doc(window.db, "posts", postId);
             await window.fs.updateDoc(postRef, {
+                timestamp: window.fs.serverTimestamp(),
                 isBoosted: true,
                 boostedAt: Date.now(),
                 boostedBy: userAddress.toLowerCase()
@@ -4446,66 +4444,10 @@
         });
         feedContainer.innerHTML = '';   // clear exactly once on (re-)load, never again
 
-        // ── Firestore query — fetch by timestamp desc (the stable original field).
-        // Sorting for display is done client-side using a priority key so that
-        // boosted posts never permanently displace newer broadcasts.
         const q = window.fs.query(
             window.fs.collection(window.db, 'posts'),
             window.fs.orderBy('timestamp', 'desc')
         );
-
-        // ── Priority sort key ─────────────────────────────────────────────────────
-        // Rules (highest number = top of feed):
-        //   • A boosted post uses its boostedAt time as its sort key.
-        //   • A normal post uses its timestamp as its sort key.
-        //
-        // Effect:
-        //   • A new broadcast (timestamp = now) always beats any boost that
-        //     happened in the past because its sort key (now) is larger.
-        //   • A fresh boost (boostedAt = now) instantly jumps above all older
-        //     content — boosted or not — because its key is also "now".
-        //   • Two posts boosted at different times sort by their respective
-        //     boostedAt values, so the most-recently-boosted stays on top.
-        //   • Hypes and comments never touch timestamp or boostedAt, so they
-        //     cause zero position changes in the feed.
-        function sortKey(post) {
-            if (post.isBoosted && post.boostedAt) {
-                return Math.max(Number(post.boostedAt), Number(post.timestamp) || 0);
-            }
-            return Number(post.timestamp) || 0;
-        }
-
-        // Re-sort all cards in feedContainer according to current sortKey values.
-        // Called after every 'added' and 'modified' change so the DOM always
-        // reflects the correct priority order.
-        function reorderFeed(snapshot) {
-            // Build a map of postId → current sortKey from the live snapshot
-            const keyMap = {};
-            snapshot.docs.forEach(d => { keyMap[d.id] = sortKey(d.data()); });
-
-            // Get all cards currently in the DOM
-            const cards = Array.from(feedContainer.children);
-            if (cards.length < 2) return;
-
-            // Sort desc by sortKey (highest = first)
-            cards.sort((a, b) => {
-                const ka = keyMap[a.getAttribute('data-id')] || 0;
-                const kb = keyMap[b.getAttribute('data-id')] || 0;
-                return kb - ka;
-            });
-
-            // Re-attach in sorted order only if the order actually changed,
-            // using a DocumentFragment to avoid reflow on every tick.
-            let needsReorder = false;
-            cards.forEach((card, i) => {
-                if (feedContainer.children[i] !== card) needsReorder = true;
-            });
-            if (needsReorder) {
-                const frag = document.createDocumentFragment();
-                cards.forEach(c => frag.appendChild(c));
-                feedContainer.appendChild(frag);
-            }
-        }
 
         // ── Helper: build a single post card element ──────────────────────────────
         function buildPostCard(postId, post) {
@@ -4611,20 +4553,33 @@
                     return;
                 }
 
-                // ── ADDED: build card and append; reorderFeed will place it correctly ──
+                // ── ADDED: build card and insert at correct sorted position ───────
                 if (change.type === 'added') {
                     // Guard: if a card for this ID somehow already exists, skip
                     if (feedContainer.querySelector(`[data-id="${postId}"]`)) return;
 
-                    const card = buildPostCard(postId, post);
-                    feedContainer.appendChild(card);   // position corrected by reorderFeed()
+                    const card   = buildPostCard(postId, post);
+
+                    // snapshot.docs is ordered desc by timestamp (matches the query).
+                    // Find the card that should immediately follow this one in the DOM
+                    // so we can insertBefore it to maintain correct order.
+                    const docIds   = snapshot.docs.map(d => d.id);
+                    const myIndex  = docIds.indexOf(postId);
+                    const afterId  = docIds[myIndex + 1];
+                    const afterEl  = afterId ? feedContainer.querySelector(`[data-id="${afterId}"]`) : null;
+
+                    if (afterEl) {
+                        feedContainer.insertBefore(card, afterEl);
+                    } else {
+                        feedContainer.appendChild(card);
+                    }
 
                     viewObserver.observe(card);
                     subscribeCommentCount(postId);
                     return;
                 }
 
-                // ── MODIFIED: patch counters/badges in-place; reorderFeed handles position ─
+                // ── MODIFIED: patch fields in-place, then re-sort to match server order ─
                 if (change.type === 'modified') {
                     const existing = feedContainer.querySelector(`[data-id="${postId}"]`);
                     if (!existing) return;  // card not in DOM (filtered), nothing to do
@@ -4643,14 +4598,34 @@
                     if (authorDiv && post.isBoosted && !authorDiv.querySelector('.boosted-badge')) {
                         authorDiv.innerHTML = authorDiv.innerHTML + ' <span class="boosted-badge">🚀 BOOSTED</span>';
                     }
-                    // Position is corrected by reorderFeed() called after all changes are processed
+
+                    // ── RE-SORT: mirror the card's position to its index in snapshot.docs ──
+                    // snapshot.docs is always ordered by timestamp desc (the Firestore query).
+                    // This is the ground truth — a boost updates the timestamp so the post
+                    // moves to whichever slot Firestore says it belongs.  A like/view does NOT
+                    // change the timestamp, so the post stays exactly where it is.
+                    // This replaces the old "always move to #1 on isBoosted" logic that caused
+                    // the alternating/jumping bug whenever a boosted post received a like.
+                    const docIds  = snapshot.docs.map(d => d.id);
+                    const myIndex = docIds.indexOf(postId);
+                    if (myIndex !== -1) {
+                        // Find the card that should sit immediately after this one
+                        const afterId = docIds[myIndex + 1];
+                        const afterEl = afterId ? feedContainer.querySelector(`[data-id="${afterId}"]`) : null;
+
+                        // Only move the card if its current DOM position is wrong
+                        const currentNext = existing.nextElementSibling;
+                        const correctNext = afterEl || null;
+                        if (currentNext !== correctNext) {
+                            if (correctNext) {
+                                feedContainer.insertBefore(existing, correctNext);
+                            } else {
+                                feedContainer.appendChild(existing);
+                            }
+                        }
+                    }
                 }
             });
-
-            // Re-sort the entire feed by priority key after processing all changes.
-            // This is a single stable sort call — it only moves DOM nodes if the
-            // order actually changed, so hype/view increments cause zero reflow.
-            reorderFeed(snapshot);
 
             if (typeof refreshFeedVisibility === 'function') refreshFeedVisibility();
         }, (err) => {
