@@ -2716,16 +2716,17 @@
             s('rp-rate',            fmt);
             s('drawer-price',       'APTM @ ' + fmt);
 
-            // Price changed — APTM balance is LOCKED (on-chain source of truth).
-            // We only update the USD-denominated displays and the drawer price label.
-            // Do NOT recalculate equityAptm from stars — that's what caused the drift bug.
-            const aptmBal  = parseFloat(currentAptmBalance) || 0;
-            const aptmStr  = aptmBal.toFixed(4) + ' APTM';
+            // Price changed — recalculate displayed APTM from stars (Dual-Calculation System).
+            // Stars are the anchor; APTM = (totalStars * $0.01) / newPrice.
+            // Price up → more APTM shown. Price down → less APTM shown. Instantly.
+            const totalStars  = getTotalSpendableStars();
+            const displayAptm = (price > 0) ? (totalStars * CONFIG.STAR_USD) / price : 0;
+            const aptmStr     = displayAptm.toFixed(4) + ' APTM';
             s('sidebar-equity-value', aptmStr);
             s('earnings-aptm-value',  aptmStr);
-            s('rp-aptm',              aptmBal.toFixed(4));
+            s('rp-aptm',              displayAptm.toFixed(4));
             s('drawer-aptm-val',      aptmStr);
-            s('drawer-vault-aptm',    aptmBal.toFixed(4));
+            s('drawer-vault-aptm',    displayAptm.toFixed(4));
 
             const inp = document.getElementById('drawer-deposit-input');
             if (inp && inp.value) updateDepositEstimate(parseFloat(inp.value));
@@ -2803,24 +2804,26 @@
         const fmt        = parseFloat(currentAptmPriceUsd).toFixed(4);
         const totalStars = getTotalSpendableStars();
 
-        // SOURCE OF TRUTH: display the locked on-chain APTM balance — never derived from stars / price
-        const aptmBal  = parseFloat(currentAptmBalance) || 0;
-        const aptmStr  = aptmBal.toFixed(4) + " APTM";
+        // Dual-Calculation System: APTM displayed = (totalStars * $0.01) / livePrice
+        const displayAptm = (currentAptmPriceUsd > 0)
+            ? (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd
+            : 0;
+        const aptmStr = displayAptm.toFixed(4) + " APTM";
 
         // Big balance + price
         s('drawer-stars',           totalStars.toFixed(1) + " ★");
         s('drawer-price',           `APTM @ $${fmt}`);
 
-        // "My APTM Balance" — locked to on-chain value
+        // Live APTM value derived from stars
         s('drawer-aptm-val',        aptmStr);
 
-        // Breakdown tiles
+        // Breakdown tiles — Purchased = receipt of what was paid for; Earned = creator cuts
         s('drawer-purchased-stars', purchasedStars.toFixed(1) + " ★");
         s('drawer-earned-display',  creatorEarnings.toFixed(1) + " ★");
 
-        // Creator Studio section — earned stars + My APTM Balance
+        // Creator Studio section
         s('drawer-earned-stars',    creatorEarnings.toFixed(1) + " ★");
-        s('drawer-vault-aptm',      aptmBal.toFixed(4));  // "My APTM Balance" tile
+        s('drawer-vault-aptm',      displayAptm.toFixed(4));
 
         // Show/hide connect prompt
         const prompt = document.getElementById('drawer-connect-prompt');
@@ -3043,17 +3046,19 @@
             const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
             const fmt         = `$${parseFloat(currentAptmPriceUsd).toFixed(4)}`;
 
-            // ── SOURCE OF TRUTH: currentAptmBalance is the real on-chain APTM balance.
-            // It never changes due to price moves — only Deposit/Withdraw/Settle mutates it.
-            // Stars displayed = (APTM balance × live price) / $0.01 per star
-            const aptmBal    = parseFloat(currentAptmBalance) || 0;
-            const totalStars = getTotalSpendableStars();
-            const totalStr   = totalStars.toFixed(1) + " ★";
+            // ── DUAL-CALCULATION SYSTEM ──
+            // Stars (purchasedStars + creatorEarnings) are the anchor / source of truth.
+            // Displayed APTM = (Total_Stars * $0.01) / livePrice  — recalculated on every call.
+            // This means: price up → more APTM shown. Price down → less APTM shown.
+            // Spending a star → Firebase star count drops → next updateUI shows less APTM.
+            const totalStars  = getTotalSpendableStars();
+            const totalStr    = totalStars.toFixed(1) + " ★";
+            const displayAptm = (currentAptmPriceUsd > 0)
+                ? (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd
+                : 0;
+            const aptmStr     = displayAptm.toFixed(4) + " APTM";
 
-            // APTM balance is locked to the on-chain value — price changes do NOT affect it
-            const aptmStr    = aptmBal.toFixed(4) + " APTM";
-
-            // Sidebar — Total Spendable ★, My APTM Balance, Live Price
+            // Sidebar — Purchased ★ = what user paid for; Spendable = Purchased + Earned
             s('user-stars',              totalStr);
             s('sidebar-purchased-stars', purchasedStars.toFixed(1));
             s('sidebar-earned-stars',    creatorEarnings.toFixed(1));
@@ -3065,7 +3070,7 @@
 
             // Right panel
             s('rp-stars',                totalStr);
-            s('rp-aptm',                 aptmBal.toFixed(4));   // "My APTM Balance" — on-chain value
+            s('rp-aptm',                 displayAptm.toFixed(4));
             s('rp-rate',                 fmt);
             s('total-anchors-display',   totalAnchors);
             s('rp-anchors',              totalAnchors);
@@ -3074,7 +3079,7 @@
             s('creator-revenue-display', totalStr);
             s('studio-purchased-stars',  purchasedStars.toFixed(1));
             s('studio-earned-stars',     creatorEarnings.toFixed(1));
-            s('earnings-aptm-value',     aptmStr);  // "My APTM Balance" tile
+            s('earnings-aptm-value',     aptmStr);
 
             const pbAv = document.getElementById('pb-avatar'); if (pbAv) pbAv.src = userAvatar;
             const nvAv = document.getElementById('nav-avatar'); if (nvAv) nvAv.src = userAvatar;
@@ -3203,14 +3208,16 @@
         const addr = walletAddr.toLowerCase();
         const ref  = window.fs.doc(window.db, "user_balances", addr);
 
-        // ── If this deduction is for the current user AND was NOT already handled
-        // by deductStars (which sets a flag), subtract APTM equivalent from the
-        // local balance so all spend paths (boost, signal, post fee) stay in sync.
+        // If called directly (boost, signal, post fee — NOT via deductStars), do an
+        // optimistic local star deduction so the UI updates immediately for those paths too.
         const isCurrentUser = userAddress && addr === userAddress.toLowerCase();
-        if (isCurrentUser && !deductSpendableStars._calledFromDeductStars && currentAptmPriceUsd > 0) {
-            const aptmCost     = (amount * 0.01) / currentAptmPriceUsd;
-            currentAptmBalance = Math.max(0, (parseFloat(currentAptmBalance) || 0) - aptmCost);
-            updateUI();
+        if (isCurrentUser && !deductSpendableStars._calledFromDeductStars) {
+            let rem = amount;
+            const fromP     = Math.min(parseFloat(purchasedStars  || 0), rem);
+            purchasedStars  = Math.max(0, purchasedStars  - fromP); rem -= fromP;
+            const fromE     = Math.min(parseFloat(creatorEarnings || 0), rem);
+            creatorEarnings = Math.max(0, creatorEarnings - fromE);
+            updateUI();   // APTM display drops immediately via star-anchor formula
         }
 
         await window.fs.runTransaction(window.db, async (txn) => {
@@ -4336,21 +4343,24 @@
     async function deductStars(amount) {
         if (!userAddress || !window.db) return;
 
-        // ── Subtract APTM equivalent BEFORE awaiting Firebase ──
-        // This gives the user instant visual feedback on the balance drop.
-        // Formula: APTM_to_subtract = (Stars_spent × $0.01) / currentAptmPriceUsd
-        if (currentAptmPriceUsd > 0) {
-            const aptmCost      = (amount * 0.01) / currentAptmPriceUsd;
-            currentAptmBalance  = Math.max(0, (parseFloat(currentAptmBalance) || 0) - aptmCost);
-        }
-        updateUI();   // immediate display update — user sees APTM drop the instant they click
+        // ── Optimistic local deduction for instant UI feedback ──
+        // Mirrors the Firebase waterfall: drain purchasedStars first, then creatorEarnings.
+        // updateUI() will recompute displayedAptm = (newTotalStars * $0.01) / livePrice,
+        // so the user sees their APTM balance drop the instant they click Like / Hype / Comment.
+        let rem = amount;
+        const fromPurchased  = Math.min(parseFloat(purchasedStars  || 0), rem);
+        purchasedStars       = Math.max(0, purchasedStars  - fromPurchased);
+        rem                 -= fromPurchased;
+        const fromEarned     = Math.min(parseFloat(creatorEarnings || 0), rem);
+        creatorEarnings      = Math.max(0, creatorEarnings - fromEarned);
+        updateUI();   // instant display — APTM drops immediately on click
 
-        // Flag so deductSpendableStars doesn't double-deduct the APTM we already subtracted above
+        // Flag so deductSpendableStars skips its own star manipulation (already done above)
         deductSpendableStars._calledFromDeductStars = true;
         await deductSpendableStars(userAddress, amount);
         deductSpendableStars._calledFromDeductStars = false;
 
-        // Refresh local star cache from Firebase after deduction
+        // Refresh local star cache from Firebase to confirm authoritative state
         try {
             const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", userAddress.toLowerCase()));
             if (snap.exists()) {
@@ -4358,7 +4368,7 @@
                 creatorEarnings = snap.data().creatorStars  || 0;
             }
         } catch (_) {}
-        updateUI();   // second refresh confirms final Firebase state
+        updateUI();   // final confirmed update from Firebase
     }
 
     // ═══════════════════════════════════════════════════════════════════
