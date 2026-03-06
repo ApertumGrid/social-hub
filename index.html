@@ -2600,7 +2600,7 @@
     // ═══════════════════════════════════════════════════════════════════
     // GLOBAL STATE
     // ═══════════════════════════════════════════════════════════════════
-    let currentAptmBalance    = "0.0000";
+    let currentAptmBalance    = 0;       // SOURCE OF TRUTH: actual on-chain APTM balance (float)
     let purchasedStars        = 0;   // Stars from APTM deposits (user_balances.stars)
     let creatorEarnings       = 0;   // Stars earned from hypes/comments (user_balances.creatorStars)
     let currentAptmPriceUsd   = 0.3391;
@@ -2716,16 +2716,16 @@
             s('rp-rate',            fmt);
             s('drawer-price',       'APTM @ ' + fmt);
 
-            // Equity = totalStars × $0.01 ÷ livePrice
-            const totalStars = getTotalSpendableStars();
-            const equityAptm = (totalStars > 0 && price > 0)
-                ? (totalStars * CONFIG.STAR_USD) / price : 0;
-            const equityStr = equityAptm.toFixed(4) + ' APTM';
-            s('sidebar-equity-value', equityStr);
-            s('earnings-aptm-value',  equityStr);
-            s('rp-aptm',              equityAptm.toFixed(4));
-            s('drawer-aptm-val',      equityStr);
-            s('drawer-vault-aptm',    equityAptm.toFixed(4));
+            // Price changed — APTM balance is LOCKED (on-chain source of truth).
+            // We only update the USD-denominated displays and the drawer price label.
+            // Do NOT recalculate equityAptm from stars — that's what caused the drift bug.
+            const aptmBal  = parseFloat(currentAptmBalance) || 0;
+            const aptmStr  = aptmBal.toFixed(4) + ' APTM';
+            s('sidebar-equity-value', aptmStr);
+            s('earnings-aptm-value',  aptmStr);
+            s('rp-aptm',              aptmBal.toFixed(4));
+            s('drawer-aptm-val',      aptmStr);
+            s('drawer-vault-aptm',    aptmBal.toFixed(4));
 
             const inp = document.getElementById('drawer-deposit-input');
             if (inp && inp.value) updateDepositEstimate(parseFloat(inp.value));
@@ -2803,26 +2803,24 @@
         const fmt        = parseFloat(currentAptmPriceUsd).toFixed(4);
         const totalStars = getTotalSpendableStars();
 
-        // V19: Personal equity — what the user's stars are worth in APTM
-        const equityAptm = (currentAptmPriceUsd > 0)
-            ? (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd
-            : 0;
-        const equityStr  = equityAptm.toFixed(4) + " APTM";
+        // SOURCE OF TRUTH: display the locked on-chain APTM balance — never derived from stars / price
+        const aptmBal  = parseFloat(currentAptmBalance) || 0;
+        const aptmStr  = aptmBal.toFixed(4) + " APTM";
 
         // Big balance + price
         s('drawer-stars',           totalStars.toFixed(1) + " ★");
         s('drawer-price',           `APTM @ $${fmt}`);
 
-        // "My APTM Value" line in the balance card (replaces vault total)
-        s('drawer-aptm-val',        equityStr);
+        // "My APTM Balance" — locked to on-chain value
+        s('drawer-aptm-val',        aptmStr);
 
         // Breakdown tiles
         s('drawer-purchased-stars', purchasedStars.toFixed(1) + " ★");
         s('drawer-earned-display',  creatorEarnings.toFixed(1) + " ★");
 
-        // Creator Studio section — earned stars + My APTM Value
+        // Creator Studio section — earned stars + My APTM Balance
         s('drawer-earned-stars',    creatorEarnings.toFixed(1) + " ★");
-        s('drawer-vault-aptm',      equityAptm.toFixed(4));  // "My APTM Value" tile
+        s('drawer-vault-aptm',      aptmBal.toFixed(4));  // "My APTM Balance" tile
 
         // Show/hide connect prompt
         const prompt = document.getElementById('drawer-connect-prompt');
@@ -3021,7 +3019,7 @@
                 hubContract.totalAnchors()
             ]);
             const humanBalance  = ethers.utils.formatEther(balRaw);
-            currentAptmBalance  = humanBalance;
+            currentAptmBalance  = parseFloat(humanBalance) || 0;   // SOURCE OF TRUTH — never recalculate from price
             totalAnchors        = anchors.toNumber();
 
             if (window.db) {
@@ -3044,22 +3042,22 @@
         try {
             const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
             const fmt         = `$${parseFloat(currentAptmPriceUsd).toFixed(4)}`;
-            const totalStars  = getTotalSpendableStars();
-            const totalStr    = totalStars.toFixed(1) + " ★";
 
-            // ── V19: Personal equity = (stars + creatorStars) × $0.01 ÷ livePrice ──
-            // This shows what the user's star balance is worth in APTM at the live rate.
-            // Never exposes the master vault total.
-            const equityAptm = (currentAptmPriceUsd > 0)
-                ? (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd
-                : 0;
-            const equityStr  = equityAptm.toFixed(4) + " APTM";
+            // ── SOURCE OF TRUTH: currentAptmBalance is the real on-chain APTM balance.
+            // It never changes due to price moves — only Deposit/Withdraw/Settle mutates it.
+            // Stars displayed = (APTM balance × live price) / $0.01 per star
+            const aptmBal    = parseFloat(currentAptmBalance) || 0;
+            const totalStars = getTotalSpendableStars();
+            const totalStr   = totalStars.toFixed(1) + " ★";
 
-            // Sidebar — Total Spendable ★, My APTM Value, Live Price
+            // APTM balance is locked to the on-chain value — price changes do NOT affect it
+            const aptmStr    = aptmBal.toFixed(4) + " APTM";
+
+            // Sidebar — Total Spendable ★, My APTM Balance, Live Price
             s('user-stars',              totalStr);
             s('sidebar-purchased-stars', purchasedStars.toFixed(1));
             s('sidebar-earned-stars',    creatorEarnings.toFixed(1));
-            s('sidebar-equity-value',    equityStr);
+            s('sidebar-equity-value',    aptmStr);
             s('live-price-display',      fmt + ' / APTM');
 
             // Studio nav badge
@@ -3067,7 +3065,7 @@
 
             // Right panel
             s('rp-stars',                totalStr);
-            s('rp-aptm',                 equityAptm.toFixed(4));   // "My APTM Value"
+            s('rp-aptm',                 aptmBal.toFixed(4));   // "My APTM Balance" — on-chain value
             s('rp-rate',                 fmt);
             s('total-anchors-display',   totalAnchors);
             s('rp-anchors',              totalAnchors);
@@ -3076,7 +3074,7 @@
             s('creator-revenue-display', totalStr);
             s('studio-purchased-stars',  purchasedStars.toFixed(1));
             s('studio-earned-stars',     creatorEarnings.toFixed(1));
-            s('earnings-aptm-value',     equityStr);  // "My APTM Value" tile
+            s('earnings-aptm-value',     aptmStr);  // "My APTM Balance" tile
 
             const pbAv = document.getElementById('pb-avatar'); if (pbAv) pbAv.src = userAvatar;
             const nvAv = document.getElementById('nav-avatar'); if (nvAv) nvAv.src = userAvatar;
