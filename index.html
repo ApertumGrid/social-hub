@@ -2157,7 +2157,7 @@
                 <div class="nav-item" id="nav-info" onclick="switchPage('info', this)"><span class="nav-icon">◎</span> Tokenomics</div>
             </div>
             <div class="sidebar-vault">
-                <div class="vault-label">Total Spendable ★</div>
+                <div class="vault-label">Available Stars ★</div>
                 <div class="vault-stars" id="user-stars">0 ★</div>
                 <div style="font-size:0.58rem; color:var(--text-muted); margin-bottom:10px; line-height:1.6;">
                     Purchased: <span style="color:var(--gold); font-family:var(--font-mono);" id="sidebar-purchased-stars">0</span> ★ &nbsp;|&nbsp;
@@ -2315,7 +2315,7 @@
                 <div class="card">
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
                         <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px;">
-                            <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">Total Spendable Stars</div>
+                            <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">Available Stars</div>
                             <div style="font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--gold);" id="creator-revenue-display">0 ★</div>
                             <div class="balance-note" style="margin-top:4px;">
                                 <span style="color:var(--gold);" id="studio-purchased-stars">0</span> purchased &nbsp;+&nbsp;
@@ -2325,7 +2325,7 @@
                         <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px;">
                             <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">My APTM Value</div>
                             <div style="font-family:var(--font-mono); font-size:0.95rem; font-weight:700; color:var(--teal); margin-top:6px;" id="earnings-aptm-value">0.0000 APTM</div>
-                            <div class="balance-note">≈ stars × live price</div>
+                            <div class="balance-note">= APTM × live price ÷ $0.01</div>
                         </div>
                     </div>
                     <div class="info-box">
@@ -2499,12 +2499,12 @@
 
             <!-- STAR BALANCE + PRICE -->
             <div class="rp-card">
-                <div class="drawer-section-label">Total Spendable Stars</div>
+                <div class="drawer-section-label">Available Stars to Settle</div>
                 <div class="drawer-stars-display" id="drawer-stars">0 ★</div>
                 <div class="drawer-price-display" id="drawer-price">APTM @ $0.3391</div>
                 <div style="margin-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:8px;">
                     <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 10px;">
-                        <div style="font-size:0.56rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:2px;">Purchased</div>
+                        <div style="font-size:0.56rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:2px;">Available</div>
                         <div style="font-family:var(--font-mono); font-size:1rem; font-weight:700; color:var(--gold);" id="drawer-purchased-stars">0 ★</div>
                     </div>
                     <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 10px;">
@@ -2710,23 +2710,15 @@
         } else {
             currentAptmPriceUsd = price;
             window.aptmPriceUSD = price;
-            const fmt = '$' + price.toFixed(4);
 
-            s('live-price-display', fmt + ' / APTM');
-            s('rp-rate',            fmt);
-            s('drawer-price',       'APTM @ ' + fmt);
+            // Price updated — call updateUI() so Available Stars reprice instantly.
+            // Available_Stars = (currentAptmBalance * newPrice) / $0.01
+            // Price doubles overnight → stars shown double. Price halves → stars halve.
+            updateUI();
+            updateDrawerUI();
 
-            // Price changed — recalculate displayed APTM from stars (Dual-Calculation System).
-            // Stars are the anchor; APTM = (totalStars * $0.01) / newPrice.
-            // Price up → more APTM shown. Price down → less APTM shown. Instantly.
-            const totalStars  = getTotalSpendableStars();
-            const displayAptm = (price > 0) ? (totalStars * CONFIG.STAR_USD) / price : 0;
-            const aptmStr     = displayAptm.toFixed(4) + ' APTM';
-            s('sidebar-equity-value', aptmStr);
-            s('earnings-aptm-value',  aptmStr);
-            s('rp-aptm',              displayAptm.toFixed(4));
-            s('drawer-aptm-val',      aptmStr);
-            s('drawer-vault-aptm',    displayAptm.toFixed(4));
+            // Update drawer price label (updateDrawerUI covers the rest)
+            s('drawer-price', 'APTM @ $' + price.toFixed(4));
 
             const inp = document.getElementById('drawer-deposit-input');
             if (inp && inp.value) updateDepositEstimate(parseFloat(inp.value));
@@ -2801,29 +2793,29 @@
 
     function updateDrawerUI() {
         const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-        const fmt        = parseFloat(currentAptmPriceUsd).toFixed(4);
-        const totalStars = getTotalSpendableStars();
+        const fmt      = parseFloat(currentAptmPriceUsd).toFixed(4);
+        const aptmBal  = parseFloat(currentAptmBalance) || 0;
 
-        // Dual-Calculation System: APTM displayed = (totalStars * $0.01) / livePrice
-        const displayAptm = (currentAptmPriceUsd > 0)
-            ? (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd
+        // Available Stars = (APTM balance * live price) / $0.01
+        const availStars = (currentAptmPriceUsd > 0)
+            ? (aptmBal * currentAptmPriceUsd) / CONFIG.STAR_USD
             : 0;
-        const aptmStr = displayAptm.toFixed(4) + " APTM";
+        const aptmStr  = aptmBal.toFixed(4) + " APTM";
 
-        // Big balance + price
-        s('drawer-stars',           totalStars.toFixed(1) + " ★");
+        // Big balance display: Available Stars (live, market-responsive)
+        s('drawer-stars',           availStars.toFixed(1) + " ★");
         s('drawer-price',           `APTM @ $${fmt}`);
 
-        // Live APTM value derived from stars
+        // APTM value (source of truth)
         s('drawer-aptm-val',        aptmStr);
 
-        // Breakdown tiles — Purchased = receipt of what was paid for; Earned = creator cuts
+        // Receipt tiles — Purchased is static (initial deposit record); Earned accumulates
         s('drawer-purchased-stars', purchasedStars.toFixed(1) + " ★");
         s('drawer-earned-display',  creatorEarnings.toFixed(1) + " ★");
 
         // Creator Studio section
         s('drawer-earned-stars',    creatorEarnings.toFixed(1) + " ★");
-        s('drawer-vault-aptm',      displayAptm.toFixed(4));
+        s('drawer-vault-aptm',      aptmBal.toFixed(4));
 
         // Show/hide connect prompt
         const prompt = document.getElementById('drawer-connect-prompt');
@@ -3046,38 +3038,38 @@
             const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
             const fmt         = `$${parseFloat(currentAptmPriceUsd).toFixed(4)}`;
 
-            // ── DUAL-CALCULATION SYSTEM ──
-            // Stars (purchasedStars + creatorEarnings) are the anchor / source of truth.
-            // Displayed APTM = (Total_Stars * $0.01) / livePrice  — recalculated on every call.
-            // This means: price up → more APTM shown. Price down → less APTM shown.
-            // Spending a star → Firebase star count drops → next updateUI shows less APTM.
-            const totalStars  = getTotalSpendableStars();
-            const totalStr    = totalStars.toFixed(1) + " ★";
-            const displayAptm = (currentAptmPriceUsd > 0)
-                ? (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd
+            // ── APTM IS THE SOURCE OF TRUTH ──
+            // Available Stars are derived live on every UI refresh:
+            //   Available_Stars = (currentAptmBalance * currentAptmPriceUsd) / 0.01
+            // This means: price doubles overnight → stars shown double automatically.
+            // Spending reduces currentAptmBalance → stars shown drop immediately.
+            const aptmBal      = parseFloat(currentAptmBalance) || 0;
+            const availStars   = (currentAptmPriceUsd > 0)
+                ? (aptmBal * currentAptmPriceUsd) / CONFIG.STAR_USD
                 : 0;
-            const aptmStr     = displayAptm.toFixed(4) + " APTM";
+            const availStr     = availStars.toFixed(1) + " ★";
+            const aptmStr      = aptmBal.toFixed(4) + " APTM";
 
-            // Sidebar — Purchased ★ = what user paid for; Spendable = Purchased + Earned
-            s('user-stars',              totalStr);
-            s('sidebar-purchased-stars', purchasedStars.toFixed(1));
+            // Sidebar
+            s('user-stars',              availStr);
+            s('sidebar-purchased-stars', purchasedStars.toFixed(1));   // static receipt — initial deposit
             s('sidebar-earned-stars',    creatorEarnings.toFixed(1));
             s('sidebar-equity-value',    aptmStr);
             s('live-price-display',      fmt + ' / APTM');
 
             // Studio nav badge
-            s('sidebar-stars-badge',     totalStars.toFixed(1) + " ★");
+            s('sidebar-stars-badge',     availStr);
 
             // Right panel
-            s('rp-stars',                totalStr);
-            s('rp-aptm',                 displayAptm.toFixed(4));
+            s('rp-stars',                availStr);
+            s('rp-aptm',                 aptmBal.toFixed(4));
             s('rp-rate',                 fmt);
             s('total-anchors-display',   totalAnchors);
             s('rp-anchors',              totalAnchors);
 
             // Creator Studio page
-            s('creator-revenue-display', totalStr);
-            s('studio-purchased-stars',  purchasedStars.toFixed(1));
+            s('creator-revenue-display', availStr);
+            s('studio-purchased-stars',  purchasedStars.toFixed(1));   // receipt only
             s('studio-earned-stars',     creatorEarnings.toFixed(1));
             s('earnings-aptm-value',     aptmStr);
 
@@ -3208,16 +3200,13 @@
         const addr = walletAddr.toLowerCase();
         const ref  = window.fs.doc(window.db, "user_balances", addr);
 
-        // If called directly (boost, signal, post fee — NOT via deductStars), do an
-        // optimistic local star deduction so the UI updates immediately for those paths too.
+        // For direct-call spend paths (boost, signal, post fee) that bypass deductStars,
+        // deduct the APTM equivalent immediately so the star display drops on click.
         const isCurrentUser = userAddress && addr === userAddress.toLowerCase();
-        if (isCurrentUser && !deductSpendableStars._calledFromDeductStars) {
-            let rem = amount;
-            const fromP     = Math.min(parseFloat(purchasedStars  || 0), rem);
-            purchasedStars  = Math.max(0, purchasedStars  - fromP); rem -= fromP;
-            const fromE     = Math.min(parseFloat(creatorEarnings || 0), rem);
-            creatorEarnings = Math.max(0, creatorEarnings - fromE);
-            updateUI();   // APTM display drops immediately via star-anchor formula
+        if (isCurrentUser && !deductSpendableStars._calledFromDeductStars && currentAptmPriceUsd > 0) {
+            const aptmCost     = (amount * CONFIG.STAR_USD) / currentAptmPriceUsd;
+            currentAptmBalance = Math.max(0, (parseFloat(currentAptmBalance) || 0) - aptmCost);
+            updateUI();
         }
 
         await window.fs.runTransaction(window.db, async (txn) => {
@@ -4343,24 +4332,22 @@
     async function deductStars(amount) {
         if (!userAddress || !window.db) return;
 
-        // ── Optimistic local deduction for instant UI feedback ──
-        // Mirrors the Firebase waterfall: drain purchasedStars first, then creatorEarnings.
-        // updateUI() will recompute displayedAptm = (newTotalStars * $0.01) / livePrice,
-        // so the user sees their APTM balance drop the instant they click Like / Hype / Comment.
-        let rem = amount;
-        const fromPurchased  = Math.min(parseFloat(purchasedStars  || 0), rem);
-        purchasedStars       = Math.max(0, purchasedStars  - fromPurchased);
-        rem                 -= fromPurchased;
-        const fromEarned     = Math.min(parseFloat(creatorEarnings || 0), rem);
-        creatorEarnings      = Math.max(0, creatorEarnings - fromEarned);
-        updateUI();   // instant display — APTM drops immediately on click
+        // ── Deduct APTM from the source-of-truth balance for instant UI feedback ──
+        // APTM cost of `amount` stars = (stars * $0.01) / livePrice
+        // updateUI() then recomputes Available_Stars = (newAptmBalance * price) / $0.01
+        // so the star count drops immediately the moment the user clicks Like / Hype / Comment.
+        if (currentAptmPriceUsd > 0) {
+            const aptmCost     = (amount * CONFIG.STAR_USD) / currentAptmPriceUsd;
+            currentAptmBalance = Math.max(0, (parseFloat(currentAptmBalance) || 0) - aptmCost);
+        }
+        updateUI();   // instant display — stars drop immediately on click
 
-        // Flag so deductSpendableStars skips its own star manipulation (already done above)
+        // Flag so deductSpendableStars skips its own optimistic star manipulation
         deductSpendableStars._calledFromDeductStars = true;
         await deductSpendableStars(userAddress, amount);
         deductSpendableStars._calledFromDeductStars = false;
 
-        // Refresh local star cache from Firebase to confirm authoritative state
+        // Refresh authoritative state from Firebase + on-chain
         try {
             const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", userAddress.toLowerCase()));
             if (snap.exists()) {
@@ -4368,7 +4355,7 @@
                 creatorEarnings = snap.data().creatorStars  || 0;
             }
         } catch (_) {}
-        updateUI();   // final confirmed update from Firebase
+        updateUI();   // final confirmed refresh
     }
 
     // ═══════════════════════════════════════════════════════════════════
