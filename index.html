@@ -3202,6 +3202,17 @@
         if (!walletAddr || walletAddr === "unknown" || !window.db) return;
         const addr = walletAddr.toLowerCase();
         const ref  = window.fs.doc(window.db, "user_balances", addr);
+
+        // ── If this deduction is for the current user AND was NOT already handled
+        // by deductStars (which sets a flag), subtract APTM equivalent from the
+        // local balance so all spend paths (boost, signal, post fee) stay in sync.
+        const isCurrentUser = userAddress && addr === userAddress.toLowerCase();
+        if (isCurrentUser && !deductSpendableStars._calledFromDeductStars && currentAptmPriceUsd > 0) {
+            const aptmCost     = (amount * 0.01) / currentAptmPriceUsd;
+            currentAptmBalance = Math.max(0, (parseFloat(currentAptmBalance) || 0) - aptmCost);
+            updateUI();
+        }
+
         await window.fs.runTransaction(window.db, async (txn) => {
             const snap          = await txn.get(ref);
             let purchased       = snap.exists() ? (snap.data().stars        || 0) : 0;
@@ -4324,8 +4335,22 @@
     // ═══════════════════════════════════════════════════════════════════
     async function deductStars(amount) {
         if (!userAddress || !window.db) return;
+
+        // ── Subtract APTM equivalent BEFORE awaiting Firebase ──
+        // This gives the user instant visual feedback on the balance drop.
+        // Formula: APTM_to_subtract = (Stars_spent × $0.01) / currentAptmPriceUsd
+        if (currentAptmPriceUsd > 0) {
+            const aptmCost      = (amount * 0.01) / currentAptmPriceUsd;
+            currentAptmBalance  = Math.max(0, (parseFloat(currentAptmBalance) || 0) - aptmCost);
+        }
+        updateUI();   // immediate display update — user sees APTM drop the instant they click
+
+        // Flag so deductSpendableStars doesn't double-deduct the APTM we already subtracted above
+        deductSpendableStars._calledFromDeductStars = true;
         await deductSpendableStars(userAddress, amount);
-        // Refresh local cache from Firebase after deduction
+        deductSpendableStars._calledFromDeductStars = false;
+
+        // Refresh local star cache from Firebase after deduction
         try {
             const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", userAddress.toLowerCase()));
             if (snap.exists()) {
@@ -4333,6 +4358,7 @@
                 creatorEarnings = snap.data().creatorStars  || 0;
             }
         } catch (_) {}
+        updateUI();   // second refresh confirms final Firebase state
     }
 
     // ═══════════════════════════════════════════════════════════════════
