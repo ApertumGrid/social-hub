@@ -2160,7 +2160,7 @@
                 <div class="vault-label">Available Stars ★</div>
                 <div class="vault-stars" id="user-stars">0 ★</div>
                 <div style="font-size:0.58rem; color:var(--text-muted); margin-bottom:10px; line-height:1.6;">
-                    Purchased: <span style="color:var(--gold); font-family:var(--font-mono);" id="sidebar-purchased-stars">0</span> ★ &nbsp;|&nbsp;
+                    Initial Deposit: <span style="color:var(--gold); font-family:var(--font-mono);" id="sidebar-purchased-stars">0.0000</span> APTM &nbsp;|&nbsp;
                     Earned: <span style="color:var(--green); font-family:var(--font-mono);" id="sidebar-earned-stars">0</span> ★
                 </div>
                 <div class="vault-label">My APTM Value</div>
@@ -2318,7 +2318,7 @@
                             <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">Available Stars</div>
                             <div style="font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--gold);" id="creator-revenue-display">0 ★</div>
                             <div class="balance-note" style="margin-top:4px;">
-                                <span style="color:var(--gold);" id="studio-purchased-stars">0</span> purchased &nbsp;+&nbsp;
+                                <span style="color:var(--gold);" id="studio-purchased-stars">0</span> initial deposit &nbsp;+&nbsp;
                                 <span style="color:var(--green);" id="studio-earned-stars">0</span> earned
                             </div>
                         </div>
@@ -2600,9 +2600,15 @@
     // ═══════════════════════════════════════════════════════════════════
     // GLOBAL STATE
     // ═══════════════════════════════════════════════════════════════════
-    let currentAptmBalance    = 0;       // SOURCE OF TRUTH: actual on-chain APTM balance (float)
+    let currentAptmBalance    = 0;       // SOURCE OF TRUTH: live spendable APTM (decreases on spend)
+    let initialDepositAptm    = 0;       // RECEIPT: on-chain balance at last sync — static anchor display
     let purchasedStars        = 0;   // Stars from APTM deposits (user_balances.stars)
     let creatorEarnings       = 0;   // Stars earned from hypes/comments (user_balances.creatorStars)
+
+    // Spend-lock: blocks syncData/onSnapshot from overwriting currentAptmBalance
+    // for SPEND_LOCK_MS milliseconds after any deduction — prevents the rubber-band snap-back.
+    const SPEND_LOCK_MS = 10000;   // 10 seconds — enough for Firebase write + heartbeat cycle
+    let _lastSpendTime  = 0;       // timestamp of last deduction; 0 = no recent spend
     let currentAptmPriceUsd   = 0.3391;
     let totalAnchors          = 0;
     let provider, signer, hubContract;
@@ -2703,10 +2709,15 @@
         const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
         if (price === null) {
+            // DEX unreachable — keep the existing price (fallback $0.3391 or last known live value)
+            // and still refresh the UI so stars are calculated with whatever price we have.
             const statusStr = 'Network: Connected | System: Online';
             s('live-price-display', statusStr);
             s('rp-rate',            statusStr);
             s('drawer-price',       statusStr);
+            // Still call updateUI so stars render correctly using the fallback price
+            updateUI();
+            updateDrawerUI();
         } else {
             currentAptmPriceUsd = price;
             window.aptmPriceUSD = price;
@@ -2725,12 +2736,32 @@
         }
     }
 
-    // ─── Unconditional heartbeat — fires immediately on load, then every 30 s ────
+    // ─── Unconditional heartbeat — fires immediately on script load, then every 30s ────
     async function runPriceHeartbeat() {
+        // On first call, immediately render the UI with the fallback price ($0.3391)
+        // so stars are never shown as 0 while waiting for the DEX fetch to resolve.
+        // This ensures: if the user has 5.0 APTM and price = $0.3391, they see ~169 stars
+        // right away rather than a blank 0.
+        updateUI();
+
         const price = await getLiveAptmPrice();
-        applyPriceUpdate(price);
+
+        if (price === null) {
+            // DEX unreachable — log and retry once after 5 seconds before giving up
+            console.warn('[Heartbeat] Live price fetch failed — retrying in 5s with fallback $' + currentAptmPriceUsd.toFixed(4));
+            setTimeout(async () => {
+                const retry = await getLiveAptmPrice();
+                applyPriceUpdate(retry);   // applyPriceUpdate handles null gracefully
+            }, 5000);
+        } else {
+            applyPriceUpdate(price);
+        }
+
+        // Sync on-chain APTM balance after price is settled
         if (provider && hubContract) {
-            try { await syncData(); } catch (_) {}
+            try {
+                await syncData();
+            } catch (_) {}
         }
     }
 
@@ -2989,6 +3020,12 @@
             if (walletDot) { walletDot.className = 'wallet-online-dot'; }
 
             await syncData();
+            // Fetch live price immediately on connect so Available Stars are accurate
+            const freshPrice = await getLiveAptmPrice();
+            if (freshPrice !== null) {
+                currentAptmPriceUsd = freshPrice;
+                window.aptmPriceUSD = freshPrice;
+            }
             updateUI();
             subscribeToEarnings(userAddress);
             subscribeLedger(userAddress);
@@ -3013,8 +3050,19 @@
                 hubContract.aptmBalances(addr),
                 hubContract.totalAnchors()
             ]);
-            const humanBalance  = ethers.utils.formatEther(balRaw);
-            currentAptmBalance  = parseFloat(humanBalance) || 0;   // SOURCE OF TRUTH — never recalculate from price
+            const humanBalance  = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
+
+            // Always update the receipt (initial deposit anchor — shown as static label)
+            initialDepositAptm  = humanBalance;
+
+            // Only update the live spendable balance if no spend happened recently.
+            // If a spend just occurred, the on-chain balance hasn't settled yet —
+            // overwriting currentAptmBalance here is what causes the rubber-band snap-back.
+            const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
+            if (!spendLockActive) {
+                currentAptmBalance = humanBalance;
+            }
+
             totalAnchors        = anchors.toNumber();
 
             if (window.db) {
@@ -3023,7 +3071,6 @@
                 if (!snap.exists()) {
                     await window.fs.setDoc(userRef, { stars: 0, creatorStars: 0, lastSync: Date.now(), address: addr.toLowerCase() });
                 } else {
-                    // Read both star pools from Firebase
                     purchasedStars  = snap.data().stars        || 0;
                     creatorEarnings = snap.data().creatorStars  || 0;
                     await window.fs.updateDoc(userRef, { lastSync: Date.now() });
@@ -3052,7 +3099,7 @@
 
             // Sidebar
             s('user-stars',              availStr);
-            s('sidebar-purchased-stars', purchasedStars.toFixed(1));   // static receipt — initial deposit
+            s('sidebar-purchased-stars', initialDepositAptm.toFixed(4));   // static receipt — on-chain anchor
             s('sidebar-earned-stars',    creatorEarnings.toFixed(1));
             s('sidebar-equity-value',    aptmStr);
             s('live-price-display',      fmt + ' / APTM');
@@ -3201,11 +3248,16 @@
         const ref  = window.fs.doc(window.db, "user_balances", addr);
 
         // For direct-call spend paths (boost, signal, post fee) that bypass deductStars,
-        // deduct the APTM equivalent immediately so the star display drops on click.
+        // deduct APTM immediately and arm the spend lock so the heartbeat can't snap back.
         const isCurrentUser = userAddress && addr === userAddress.toLowerCase();
         if (isCurrentUser && !deductSpendableStars._calledFromDeductStars && currentAptmPriceUsd > 0) {
             const aptmCost     = (amount * CONFIG.STAR_USD) / currentAptmPriceUsd;
             currentAptmBalance = Math.max(0, (parseFloat(currentAptmBalance) || 0) - aptmCost);
+            _lastSpendTime     = Date.now();   // arm spend lock
+            // Persist to Firebase
+            try {
+                await window.fs.updateDoc(ref, { aptmBalance: currentAptmBalance, lastUpdated: Date.now() });
+            } catch (_) {}
             updateUI();
         }
 
@@ -3281,7 +3333,14 @@
                 purchasedStars  = 0;
                 creatorEarnings = 0;
             }
-            // creator-revenue-display always shows TOTAL (purchased + earned) — synced via updateUI()
+            // Spend lock: if a deduction just happened, this snapshot fired because WE
+            // wrote the star deduction. Do NOT let it overwrite currentAptmBalance —
+            // that would snap the UI back to the pre-spend value (the rubber-band bug).
+            // currentAptmBalance was already correctly reduced in deductStars/deductSpendableStars.
+            const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
+            if (!spendLockActive && snap.exists() && snap.data().aptmBalance !== undefined) {
+                currentAptmBalance = parseFloat(snap.data().aptmBalance) || currentAptmBalance;
+            }
             updateUI();
         });
     }
@@ -4332,22 +4391,29 @@
     async function deductStars(amount) {
         if (!userAddress || !window.db) return;
 
-        // ── Deduct APTM from the source-of-truth balance for instant UI feedback ──
-        // APTM cost of `amount` stars = (stars * $0.01) / livePrice
-        // updateUI() then recomputes Available_Stars = (newAptmBalance * price) / $0.01
-        // so the star count drops immediately the moment the user clicks Like / Hype / Comment.
+        // ── Deduct APTM and set spend lock ──
+        // The spend lock (SPEND_LOCK_MS) prevents syncData and onSnapshot from
+        // overwriting currentAptmBalance with the stale on-chain value before the
+        // transaction settles — this is what was causing the rubber-band snap-back.
         if (currentAptmPriceUsd > 0) {
             const aptmCost     = (amount * CONFIG.STAR_USD) / currentAptmPriceUsd;
             currentAptmBalance = Math.max(0, (parseFloat(currentAptmBalance) || 0) - aptmCost);
         }
+        _lastSpendTime = Date.now();   // arm the spend lock
         updateUI();   // instant display — stars drop immediately on click
 
-        // Flag so deductSpendableStars skips its own optimistic star manipulation
+        // Persist updated aptmBalance to Firebase so onSnapshot stays in sync
+        try {
+            const userRef = window.fs.doc(window.db, "user_balances", userAddress.toLowerCase());
+            await window.fs.updateDoc(userRef, { aptmBalance: currentAptmBalance, lastUpdated: Date.now() });
+        } catch (_) {}
+
+        // Flag so deductSpendableStars skips its own APTM deduction (already done above)
         deductSpendableStars._calledFromDeductStars = true;
         await deductSpendableStars(userAddress, amount);
         deductSpendableStars._calledFromDeductStars = false;
 
-        // Refresh authoritative state from Firebase + on-chain
+        // Refresh star counts from Firebase (purchased/earned pools)
         try {
             const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", userAddress.toLowerCase()));
             if (snap.exists()) {
@@ -4355,7 +4421,7 @@
                 creatorEarnings = snap.data().creatorStars  || 0;
             }
         } catch (_) {}
-        updateUI();   // final confirmed refresh
+        updateUI();   // final confirmed refresh — lock still active so balance won't snap back
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -5097,6 +5163,10 @@
     // DEPOSIT ESTIMATE LIVE UPDATE (drawer)
     // ═══════════════════════════════════════════════════════════════════
     document.addEventListener('DOMContentLoaded', () => {
+        // ── Render UI immediately with fallback price ($0.3391) so stars are never 0
+        // while waiting for the DEX price fetch. The heartbeat will overwrite with live price.
+        updateUI();
+
         // ── Drawer deposit estimate ──
         const inp = document.getElementById('drawer-deposit-input');
         if (inp) {
