@@ -2317,10 +2317,6 @@
                         <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px;">
                             <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">Available Stars</div>
                             <div style="font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--gold);" id="creator-revenue-display">0 ★</div>
-                            <div class="balance-note" style="margin-top:4px;">
-                                <span style="color:var(--gold);" id="studio-purchased-stars">0</span> initial deposit &nbsp;+&nbsp;
-                                <span style="color:var(--green);" id="studio-earned-stars">0</span> earned
-                            </div>
                         </div>
                         <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px;">
                             <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">My APTM Value</div>
@@ -2828,10 +2824,12 @@
         const fmt      = parseFloat(currentAptmPriceUsd).toFixed(4);
         const aptmBal  = parseFloat(currentAptmBalance) || 0;
 
-        // Available Stars = (APTM balance * live price) / $0.01
-        const availStars = (currentAptmPriceUsd > 0)
+        // Available Stars — identical formula to updateUI: floor1((APTM*price/0.01) + earned)
+        const earnedDr   = parseFloat(creatorEarnings) || 0;
+        const aptmStarsDr = (currentAptmPriceUsd > 0)
             ? (aptmBal * currentAptmPriceUsd) / CONFIG.STAR_USD
             : 0;
+        const availStars = Math.floor((aptmStarsDr + earnedDr) * 10) / 10;
         const aptmStr  = aptmBal.toFixed(4) + " APTM";
 
         // Big balance display: Available Stars (live, market-responsive)
@@ -3085,16 +3083,15 @@
             const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
             const fmt         = `$${parseFloat(currentAptmPriceUsd).toFixed(4)}`;
 
-            // ── APTM IS THE SOURCE OF TRUTH ──
-            // Available Stars = ((currentAptmBalance * livePrice) / $0.01) + earnedStars
-            // If APTM = 0 and earnedStars = 0 → shows 0 Stars (no phantom balance)
-            // Price doubles → aptmStars doubles for every user automatically
+            // ── SINGLE AUTHORITATIVE FORMULA — used everywhere ──────────────
+            // Available Stars = floor1( (currentAptmBalance × livePrice / $0.01) + creatorEarnings )
+            // floor1 = Math.floor(x * 10) / 10  →  truncates, never rounds up
             const aptmBal      = parseFloat(currentAptmBalance) || 0;
             const earnedStars  = parseFloat(creatorEarnings) || 0;
             const aptmStars    = (currentAptmPriceUsd > 0)
                 ? (aptmBal * currentAptmPriceUsd) / CONFIG.STAR_USD
                 : 0;
-            const availStars   = aptmStars + earnedStars;
+            const availStars   = Math.floor((aptmStars + earnedStars) * 10) / 10;
             const availStr     = availStars.toFixed(1) + " ★";
             const aptmStr      = aptmBal.toFixed(4) + " APTM";
 
@@ -3330,9 +3327,8 @@
             if (snap.exists()) {
                 purchasedStars  = snap.data().stars        || 0;
                 creatorEarnings = snap.data().creatorStars  || 0;
-                // Keep lifetime receipt current — only accept increases, never decreases
-                const snapDeposit = parseFloat(snap.data().initial_deposit) || 0;
-                if (snapDeposit > totalDepositedAptm) totalDepositedAptm = snapDeposit;
+                // Sync lifetime receipt from Firebase — accept any value, including 0 after a settle
+                totalDepositedAptm = parseFloat(snap.data().initial_deposit) || 0;
             } else {
                 purchasedStars  = 0;
                 creatorEarnings = 0;
@@ -3525,6 +3521,11 @@
 
         if (revenueStars <= 0) {
             return alert("No accumulated platform revenue to withdraw (admin_revenue/global = 0 ★).");
+        }
+
+        // ── Minimum balance gate — below 10★ the gas cost exceeds the value ──
+        if (revenueStars < 10) {
+            return alert("Insufficient balance for Gas fees.\n\nAccumulated: " + revenueStars.toFixed(2) + " ★\nMinimum required: 10 ★");
         }
 
         // ── Step 3: Convert stars → APTM using live price ─────────────────────
@@ -4862,28 +4863,44 @@
                         ", Gas used: " + receipt.gasUsed.toString() +
                         ", Withdrew: " + contractBalAptm.toFixed(8) + " APTM");
 
+            // ── Zero local state BEFORE writing to Firebase ───────────────────
+            // Set _lastSpendTime so the SPEND_LOCK is active when Step C fires.
+            // The onSnapshot triggered by our own setDoc will then be blocked from
+            // reading any stale aptmBalance field and ghost-restoring currentAptmBalance.
+            purchasedStars     = 0;
+            creatorEarnings    = 0;
+            currentAptmBalance = 0;
+            totalDepositedAptm = 0;
+            _lastSpendTime     = Date.now();   // ← arms spend lock for SPEND_LOCK_MS
+            console.log("[Settlement] Local balances zeroed and spend lock armed before Firebase write");
+
             // ── STEP C: Zero Firebase ONLY after on-chain status === 1 ─────────
+            // aptmBalance and currentAptmBalance MUST be zeroed here. Without them
+            // the subscribeToEarnings onSnapshot fires on this write, reads the
+            // stale aptmBalance field, and immediately restores the ghost balance.
+            // initial_deposit is zeroed so the sidebar receipt wipes clean too.
             if (window.db) {
                 try {
                     await window.fs.setDoc(
                         window.fs.doc(window.db, "user_balances", addr),
                         {
-                            stars:        0,
-                            creatorStars: 0,
-                            lastWithdraw: Date.now(),
-                            lastUpdated:  Date.now()
+                            stars:              0,
+                            creatorStars:       0,
+                            aptmBalance:        0,
+                            currentAptmBalance: 0,
+                            initial_deposit:    0,
+                            lastWithdraw:       Date.now(),
+                            lastUpdated:        Date.now()
                         },
                         { merge: true }
                     );
+                    console.log("[Settlement] Step C: Firebase zeroed — stars, creatorStars, aptmBalance, initial_deposit all → 0");
                 } catch (fbErr) {
                     // On-chain succeeded but Firebase write failed.
-                    // Funds are already in wallet. Do NOT ask user to settle again.
+                    // Local state was already zeroed before this write — funds are in wallet.
                     console.error("[Settlement] CRITICAL: on-chain OK, Firebase zero failed:", fbErr);
-                    purchasedStars     = 0;
-                    creatorEarnings    = 0;
-                    currentAptmBalance = 0;   // kill ghost money even on Firebase error
                     _unlockSettle();
-                    updateUI(); updateDrawerUI(); syncData();
+                    updateUI(); updateDrawerUI();
                     return alert(
                         "Withdrawal succeeded! \u2713\n\n" +
                         contractBalAptm.toFixed(6) + " APTM sent to your wallet.\n\n" +
@@ -4894,11 +4911,9 @@
                 }
             }
 
-            // ── All steps confirmed — zero ALL balance state to kill ghost money ──
-            purchasedStars     = 0;
-            creatorEarnings    = 0;
-            currentAptmBalance = 0;   // ← kills ghost money: APTM display drops to 0 immediately
-            console.log("[Settlement] All balances zeroed locally after confirmed withdrawal of " + contractBalAptm.toFixed(8) + " APTM");
+            // ── All steps confirmed ───────────────────────────────────────────
+            // (local state zeroed + spend lock armed before Step C — no repeat needed)
+            console.log("[Settlement] All balances confirmed zero after withdrawal of " + contractBalAptm.toFixed(8) + " APTM");
             logTransaction(
                 addr, "settle", contractBalAptm,
                 "Settled " + totalStars.toFixed(2) + " \u2605 (" +
