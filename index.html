@@ -3291,7 +3291,9 @@
             await window.fs.runTransaction(window.db, async (txn) => {
                 const snap    = await txn.get(ref);
                 const current = snap.exists() ? (snap.data().creatorStars || 0) : 0;
-                txn.set(ref, { creatorStars: current + amount, lastUpdated: Date.now() }, { merge: true });
+                const updated = current + amount;
+                console.log(`[creditCreatorStars] ${addr.slice(0,8)}… +${amount}★ creatorStars: ${current.toFixed(4)} → ${updated.toFixed(4)}`);
+                txn.set(ref, { creatorStars: updated, lastUpdated: Date.now() }, { merge: true });
             });
         } catch (e) { console.error("creditCreatorStars failed:", e); }
     }
@@ -3730,16 +3732,27 @@
             const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
             await tx.wait();
 
-            // Zero out Firebase star balances after successful on-chain withdrawal
+            // Zero out all Firebase balance fields after successful on-chain withdrawal
             if (window.db) {
                 try {
                     await window.fs.setDoc(
                         window.fs.doc(window.db, "user_balances", addr.toLowerCase()),
-                        { stars: 0, creatorStars: 0, lastUpdated: Date.now() },
+                        {
+                            stars:              0,
+                            creatorStars:       0,
+                            aptmBalance:        0,
+                            currentAptmBalance: 0,
+                            initial_deposit:    0,
+                            lastWithdraw:       Date.now(),
+                            lastUpdated:        Date.now()
+                        },
                         { merge: true }
                     );
-                    purchasedStars  = 0;
-                    creatorEarnings = 0;
+                    purchasedStars     = 0;
+                    creatorEarnings    = 0;
+                    currentAptmBalance = 0;
+                    totalDepositedAptm = 0;
+                    _lastSpendTime     = Date.now();
                 } catch (e) { console.warn("Could not zero Firebase balances:", e); }
             }
 
@@ -4445,6 +4458,7 @@
         if (currentAptmPriceUsd > 0) {
             const aptmCost     = (amount * CONFIG.STAR_USD) / currentAptmPriceUsd;
             currentAptmBalance = Math.max(0, (parseFloat(currentAptmBalance) || 0) - aptmCost);
+            console.log(`[deductStars] -${amount}★ | aptmCost=${aptmCost.toFixed(8)} APTM @ $${currentAptmPriceUsd.toFixed(4)} | remaining=${currentAptmBalance.toFixed(8)} APTM`);
         }
         _lastSpendTime = Date.now();   // arm the spend lock
         updateUI();   // instant display — stars drop immediately on click
@@ -4692,8 +4706,17 @@
             return alert("Wallet mismatch. Please reconnect your wallet and try again.");
         }
 
-        // ── 2. Read Firebase star pools (for confirm dialog preview only) ─────
-        //    Actual withdraw amount comes from the contract in Step B, not here.
+        // ── 2. Compute available balance using the SAME live formula as the header ──
+        // Header shows: floor1( (currentAptmBalance × price / 0.01) + creatorEarnings )
+        // The modal MUST show the same number — no Firebase star counts, no static values.
+        const liveAptmBal   = parseFloat(currentAptmBalance) || 0;
+        const liveEarned    = parseFloat(creatorEarnings)    || 0;
+        const liveAptmStars = (currentAptmPriceUsd > 0)
+            ? (liveAptmBal * currentAptmPriceUsd) / CONFIG.STAR_USD
+            : 0;
+        const liveAvailStars = Math.floor((liveAptmStars + liveEarned) * 10) / 10;
+
+        // Also read Firebase so we can label the breakdown in the confirm dialog
         let livePurchased = 0, liveCreatorStars = 0;
         try {
             const userSnap = await window.fs.getDoc(
@@ -4707,7 +4730,8 @@
             return alert("Could not read your balance from Firebase: " + e.message);
         }
 
-        const totalStars = (livePurchased || 0) + (liveCreatorStars || 0);
+        // Guard: use liveAvailStars (matches header) as the authoritative zero-check
+        const totalStars = liveAvailStars;
         if (totalStars <= 0) {
             return alert(
                 "Nothing to settle.\n\n" +
@@ -4716,19 +4740,23 @@
             );
         }
 
-        // ── 3. Confirm dialog ─────────────────────────────────────────────────
+        // APTM value shown in dialog — exact same math as header, 4 d.p.
+        const dialogAptmValue = liveAptmBal.toFixed(4);
+
+        // ── 3. Confirm dialog — all numbers derived from live formula ─────────
         const syncLine = liveCreatorStars > 0
             ? ("Step 1 \u2014 Server syncs " + liveCreatorStars.toFixed(2) + " earned \u2605 to the contract (silent).\nStep 2 \u2014 MetaMask opens to withdraw the exact on-chain balance.\n")
             : "MetaMask will open to withdraw your on-chain balance.\n";
 
         const confirmed = confirm(
             "Settle Total Balance to Wallet\n\n" +
-            "Purchased Stars:   " + livePurchased.toFixed(2)    + " \u2605\n" +
+            "Available Stars:   " + totalStars.toFixed(1)    + " \u2605  (matches header)\n" +
+            "APTM Balance:      " + dialogAptmValue           + " APTM\n" +
             "Earned Stars:      " + liveCreatorStars.toFixed(2) + " \u2605\n" +
             "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n" +
-            "Total Stars:       " + totalStars.toFixed(2) + " \u2605\n\n" +
+            "Live Price:        $" + currentAptmPriceUsd.toFixed(4) + " / APTM\n\n" +
             syncLine +
-            "Firebase stars will be zeroed after the withdrawal confirms.\nProceed?"
+            "Firebase balances will be zeroed after the withdrawal confirms.\nProceed?"
         );
         if (!confirmed) return;
 
