@@ -3690,49 +3690,63 @@
             const totalStars = livePurchased + liveEarned;
             if (totalStars <= 0) return alert("No stars to settle. Earn or deposit some first.");
 
-            // Convert total stars → APTM
-            // Formula: APTM = (totalStars × STAR_USD) / currentAptmPriceUsd
+            // Convert total stars → APTM at the live price.
+            // This is the FULL payout: deposit value + all earned stars combined.
+            // Formula: APTM = (totalStars × $0.01) / livePrice
             const starsToAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
 
-            // Read user's deposited balance in the contract (their personal slot)
-            const onChainRaw  = await hubContract.aptmBalances(addr);
-            const onChainAptm = parseFloat(ethers.utils.formatEther(onChainRaw));
-
-            // Also read the total contract balance as a fallback reference
-            const contractBalRaw  = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
-            const contractBalAptm = parseFloat(ethers.utils.formatEther(contractBalRaw));
-
-            // Withdraw the lesser of stars-value vs what is actually in the contract
-            const availableAptm = Math.max(onChainAptm, 0);
-            const withdrawAptm  = Math.min(starsToAptm, Math.max(availableAptm, contractBalAptm));
+            // FIX 1 & 2: withdrawAptm = starsToAptm directly — NO Math.min cap.
+            // The old Math.min(starsToAptm, Math.max(availableAptm, contractBalAptm))
+            // was capping withdrawals at the deposit slot, trapping earned stars.
+            // Users must be able to withdraw the full value of their stars.
+            const withdrawAptm = starsToAptm;
 
             if (withdrawAptm <= 0) {
-                return alert(
-                    `Settle failed — vault is empty.\n\n` +
-                    `Your Stars:          ${totalStars.toFixed(1)} ★\n` +
-                    `Stars Value (APTM):  ${starsToAptm.toFixed(6)}\n` +
-                    `Your Deposit Slot:   ${onChainAptm.toFixed(6)} APTM\n` +
-                    `Contract Balance:    ${contractBalAptm.toFixed(6)} APTM\n\n` +
-                    `Deposit APTM first to fund the vault.`
-                );
+                return alert("Settle failed — nothing to withdraw.\n\nYour star balance converted to 0 APTM at the current price.");
             }
+
+            console.log(`[settleToWallet] totalStars=${totalStars.toFixed(4)} withdrawAptm=${withdrawAptm.toFixed(8)} @ $${currentAptmPriceUsd.toFixed(4)}`);
 
             const confirmed = confirm(
                 `Settle Stars to Wallet\n\n` +
                 `Total Stars:    ${totalStars.toFixed(1)} ★\n` +
-                `Stars Value:    ${starsToAptm.toFixed(6)} APTM\n` +
-                `Your vault:     ${onChainAptm.toFixed(6)} APTM\n` +
+                `Live Price:     $${currentAptmPriceUsd.toFixed(4)} / APTM\n` +
                 `Will Withdraw:  ${withdrawAptm.toFixed(6)} APTM\n\n` +
-                `Proceed?`
+                `(Deposit + earned stars — full balance)\nProceed?`
             );
             if (!confirmed) return;
 
             showToast("Opening MetaMask…");
             const withdrawWei = ethers.utils.parseEther(withdrawAptm.toFixed(18));
             const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
-            await tx.wait();
+            showToast("Withdrawal submitted — waiting for confirmation…");
 
-            // Zero out all Firebase balance fields after successful on-chain withdrawal
+            // FIX 3: check receipt.status explicitly before zeroing Firebase.
+            // Apertum RPC can return a receipt without throwing on a revert.
+            const receipt = await tx.wait();
+            if (!receipt || receipt.status !== 1) {
+                const detail = receipt
+                    ? ("Block: " + receipt.blockNumber + " | Gas: " + receipt.gasUsed.toString())
+                    : "No receipt returned.";
+                console.error("[settleToWallet] Tx reverted.", detail);
+                return alert(
+                    "Withdrawal reverted on-chain.\n\n" + detail +
+                    "\n\nYour APTM has NOT left the contract.\nYour Firebase stars are unchanged — try again."
+                );
+            }
+
+            console.log(`[settleToWallet] Confirmed. Block: ${receipt.blockNumber}, Withdrew: ${withdrawAptm.toFixed(8)} APTM`);
+
+            // FIX 3: arm spend lock BEFORE writing to Firebase so the onSnapshot
+            // triggered by our setDoc cannot read stale aptmBalance and ghost-restore.
+            purchasedStars     = 0;
+            creatorEarnings    = 0;
+            currentAptmBalance = 0;
+            totalDepositedAptm = 0;
+            _lastSpendTime     = Date.now();   // arms spend lock for SPEND_LOCK_MS
+
+            // Zero all balance fields in Firebase after confirmed on-chain success.
+            // currentAptmBalance MUST be zeroed — without it onSnapshot restores ghost stars.
             if (window.db) {
                 try {
                     await window.fs.setDoc(
@@ -3748,12 +3762,8 @@
                         },
                         { merge: true }
                     );
-                    purchasedStars     = 0;
-                    creatorEarnings    = 0;
-                    currentAptmBalance = 0;
-                    totalDepositedAptm = 0;
-                    _lastSpendTime     = Date.now();
-                } catch (e) { console.warn("Could not zero Firebase balances:", e); }
+                    console.log("[settleToWallet] Firebase zeroed — stars, creatorStars, aptmBalance, initial_deposit all → 0");
+                } catch (e) { console.warn("[settleToWallet] Firebase zero failed:", e); }
             }
 
             logTransaction(addr, "settle", withdrawAptm, `Settled ${totalStars.toFixed(1)}★ → ${withdrawAptm.toFixed(4)} $APTM to wallet`);
@@ -3761,7 +3771,7 @@
             updateUI();
             updateDrawerUI();
             syncData();
-        } catch (e) { console.error(e); alert("Settle failed: " + (e.reason || e.message || String(e)).slice(0, 160)); }
+        } catch (e) { console.error("[settleToWallet] threw:", e); alert("Settle failed: " + (e.reason || e.message || String(e)).slice(0, 160)); }
     }
 
     // ═══════════════════════════════════════════════════════════════════
