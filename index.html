@@ -2719,6 +2719,7 @@
     const pageSize   = 10;
     let _wallFilter      = null;   // null = global feed; string = filter to this wallet address
     let _categoryFilter  = null;   // null = all categories; string = e.g. 'Crypto', 'Creative'…
+    let isActionPending  = false;  // global transaction lock — prevents double-spend on any async action
 
     // V13: Total spendable = purchased + earned. Used everywhere for balance checks.
     function getTotalSpendableStars() {
@@ -4288,7 +4289,17 @@
     // HYPE — Firebase only, NO MetaMask (80/20 split)
     // ═══════════════════════════════════════════════════════════════════
     async function hypeElement(recipientAddress, displayId) {
-        if (!userAddress) return showToast("Connect wallet first!");
+        // Global transaction lock - prevents double-spend on rapid/duplicate clicks
+        if (isActionPending) return;
+        isActionPending = true;
+        const feedEl = document.getElementById('feed-items');
+        if (feedEl) feedEl.style.pointerEvents = 'none';
+
+        if (!userAddress) {
+            isActionPending = false;
+            if (feedEl) feedEl.style.pointerEvents = '';
+            return showToast("Connect wallet first!");
+        }
 
         // V14: Check combined total spendable balance
         let livePurchased = 0, liveEarned = 0;
@@ -4302,7 +4313,11 @@
                 }
             } catch (_) { livePurchased = purchasedStars; liveEarned = creatorEarnings; }
         }
-        if ((livePurchased + liveEarned) < 1) return showToast("Not enough Stars! Deposit APTM.");
+        if ((livePurchased + liveEarned) < 1) {
+            isActionPending = false;
+            if (feedEl) feedEl.style.pointerEvents = '';
+            return showToast("Not enough Stars! Deposit APTM.");
+        }
 
         try {
             const isComment = displayId.startsWith('hc-');
@@ -4337,7 +4352,14 @@
             // The loadGlobalFeed onSnapshot 'modified' handler will receive the
             // Firestore write and patch #hp-{postId} atomically — no jump, no race.
             showToast("Hyped! Creator +0.8★");
-        } catch (e) { console.error(e); showToast("Hype failed."); }
+        } catch (e) {
+            console.error(e);
+            showToast("Hype failed.");
+        } finally {
+            // Release lock and restore pointer events after DB confirms
+            isActionPending = false;
+            if (feedEl) feedEl.style.pointerEvents = '';
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -4350,7 +4372,17 @@
     }
 
     async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
-        if (!userAddress) return showToast("Connect wallet first!");
+        // Global transaction lock - prevents double-submit on rapid/duplicate clicks
+        if (isActionPending) return;
+        isActionPending = true;
+        const feedEl = document.getElementById('feed-items');
+        if (feedEl) feedEl.style.pointerEvents = 'none';
+
+        if (!userAddress) {
+            isActionPending = false;
+            if (feedEl) feedEl.style.pointerEvents = '';
+            return showToast("Connect wallet first!");
+        }
 
         // V14: Check combined total spendable balance
         let livePurchased = 0, liveEarned = 0;
@@ -4364,12 +4396,20 @@
                 }
             } catch (_) { livePurchased = purchasedStars; liveEarned = creatorEarnings; }
         }
-        if ((livePurchased + liveEarned) < 1) return showToast("Not enough Stars! Deposit APTM.");
+        if ((livePurchased + liveEarned) < 1) {
+            isActionPending = false;
+            if (feedEl) feedEl.style.pointerEvents = '';
+            return showToast("Not enough Stars! Deposit APTM.");
+        }
 
         const inputId     = isReply ? `reply-in-${parentId}` : `input-${postId}`;
         const input       = document.getElementById(inputId);
         const commentText = input ? input.value.trim() : "";
-        if (!commentText) return;
+        if (!commentText) {
+            isActionPending = false;
+            if (feedEl) feedEl.style.pointerEvents = '';
+            return;
+        }
 
         try {
             const authorName = localStorage.getItem('hub_userName') || userHandle;
@@ -4404,7 +4444,14 @@
             const tray = document.getElementById(`tray-${postId}`);
             if (tray) tray.style.display = 'block';
             showToast("Comment Live! Creator +0.8★");
-        } catch (e) { console.error(e); showToast("Failed."); }
+        } catch (e) {
+            console.error(e);
+            showToast("Failed.");
+        } finally {
+            // Release lock and restore pointer events after DB confirms
+            isActionPending = false;
+            if (feedEl) feedEl.style.pointerEvents = '';
+        }
     }
 
     const _commentCountListeners = {};   // keyed by postId, stores unsub fns
@@ -6339,7 +6386,17 @@
     // appears in the existing signals-bar and respects the 24h expiry.
     // ═══════════════════════════════════════════════════════════════════
     async function promoteToSignal(postId) {
-        if (!userAddress) return showToast('Connect your wallet first!');
+        // Global transaction lock - prevents double-spend on rapid/duplicate clicks
+        if (isActionPending) return;
+        isActionPending = true;
+        const feedEl = document.getElementById('feed-items');
+        if (feedEl) feedEl.style.pointerEvents = 'none';
+
+        if (!userAddress) {
+            isActionPending = false;
+            if (feedEl) feedEl.style.pointerEvents = '';
+            return showToast('Connect your wallet first!');
+        }
 
         const SIGNAL_FEE = 1.0;
 
@@ -6358,6 +6415,8 @@
         }
 
         if ((livePurchased + liveEarned) < SIGNAL_FEE) {
+            isActionPending = false;
+            if (feedEl) feedEl.style.pointerEvents = '';
             return showToast(`Need ${SIGNAL_FEE}★ to promote. Current: ${(livePurchased + liveEarned).toFixed(1)}★`);
         }
 
@@ -6365,17 +6424,27 @@
         let postData = null;
         try {
             const postSnap = await window.fs.getDoc(window.fs.doc(window.db, 'posts', postId));
-            if (!postSnap.exists()) return showToast('Post not found.');
+            if (!postSnap.exists()) {
+                isActionPending = false;
+                if (feedEl) feedEl.style.pointerEvents = '';
+                return showToast('Post not found.');
+            }
             postData = postSnap.data();
         } catch (e) {
             console.error('[promoteToSignal] Post read failed:', e);
+            isActionPending = false;
+            if (feedEl) feedEl.style.pointerEvents = '';
             return showToast('Could not read post data. Try again.');
         }
 
         const confirmed = confirm(
             'Promote this post to the Daily Signals at the top? (Cost: 1 Star) \uD83D\uDCE1'
         );
-        if (!confirmed) return;
+        if (!confirmed) {
+            isActionPending = false;
+            if (feedEl) feedEl.style.pointerEvents = '';
+            return;
+        }
 
         try {
             showToast('Promoting to Signal…');
@@ -6408,6 +6477,10 @@
         } catch (e) {
             console.error('[promoteToSignal] failed:', e);
             showToast('Promotion failed. Try again.');
+        } finally {
+            // Release lock and restore pointer events after DB confirms
+            isActionPending = false;
+            if (feedEl) feedEl.style.pointerEvents = '';
         }
     }
     window.promoteToSignal = promoteToSignal;
