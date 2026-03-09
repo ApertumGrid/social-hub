@@ -822,7 +822,88 @@
         .pact.boost:hover { color: var(--gold); border-color: rgba(240,180,41,0.3); background: rgba(240,180,41,0.06); }
         .pact.views { cursor: default; opacity: 0.6; margin-left: auto; }
         .pact.views:hover { background: transparent; color: var(--text-secondary); border-color: transparent; }
+        .pact.signal:hover { color: var(--teal); border-color: rgba(45,212,191,0.3); background: rgba(45,212,191,0.06); }
         .pact-num { font-family: var(--font-mono); font-size: 0.7rem; }
+
+        /* ── CATEGORY FILTER BAR ─────────────────────────────────────── */
+        #category-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--bg-card2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            overflow-x: auto;
+            flex-shrink: 0;
+            scrollbar-width: none;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        #category-bar::-webkit-scrollbar { display: none; }
+        .cat-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 14px;
+            border-radius: 50px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            background: transparent;
+            transition: all 0.15s;
+            min-height: 32px;
+        }
+        .cat-pill:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border); }
+        .cat-pill.active {
+            background: var(--purple-dim);
+            color: var(--purple-lt);
+            border-color: var(--purple);
+        }
+        /* ── CATEGORY BADGE on post cards ────────────────────────────── */
+        .cat-badge {
+            display: inline-block;
+            font-size: 0.58rem;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 50px;
+            background: var(--purple-dim);
+            color: var(--purple-lt);
+            border: 1px solid rgba(124,92,191,0.25);
+            margin-bottom: 5px;
+        }
+        /* ── CATEGORY DROPDOWN in composer ───────────────────────────── */
+        .composer-cat-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .composer-cat-row label {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            font-weight: 600;
+        }
+        #post-category {
+            flex: 1;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 0.78rem;
+            padding: 7px 10px;
+            outline: none;
+            cursor: pointer;
+        }
+        #post-category:focus { border-color: var(--purple); }
 
         /* ── V17 COMMENT SYSTEM ─────────────────────────────────────── */
         .comment-tray { display: none; padding-top: 14px; border-top: 1px dashed rgba(255,255,255,0.05); margin-top: 12px; }
@@ -2233,6 +2314,17 @@
                         <div class="progress-status" id="progress-status">Preparing…</div>
                     </div>
 
+                    <div class="composer-cat-row">
+                        <label for="post-category">📂 Community</label>
+                        <select id="post-category">
+                            <option value="Global">🌐 Global</option>
+                            <option value="Alpha">⚡ Alpha</option>
+                            <option value="Creative">🎨 Creative</option>
+                            <option value="News">📰 News</option>
+                            <option value="Lifestyle">🌿 Lifestyle</option>
+                        </select>
+                    </div>
+
                     <div class="signal-toggle-row" id="signal-toggle" onclick="toggleSignalMode()">
                         <div class="signal-toggle-check" id="signal-toggle-check"></div>
                         <span class="signal-toggle-label">⚡ Post as Daily Signal (24h) — featured in Stories bar</span>
@@ -2302,6 +2394,16 @@
                 <!-- SIGNALS BAR (Daily Signals — 24h Stories) -->
                 <div id="signals-bar">
                     <span class="signal-empty-msg">⚡ Daily Signals loading…</span>
+                </div>
+
+                <!-- CATEGORY FILTER BAR -->
+                <div id="category-bar">
+                    <div class="cat-pill active" data-cat="All" onclick="setCategoryFilter('All')">🌐 All</div>
+                    <div class="cat-pill" data-cat="Global" onclick="setCategoryFilter('Global')">🌐 Global</div>
+                    <div class="cat-pill" data-cat="Alpha" onclick="setCategoryFilter('Alpha')">⚡ Alpha</div>
+                    <div class="cat-pill" data-cat="Creative" onclick="setCategoryFilter('Creative')">🎨 Creative</div>
+                    <div class="cat-pill" data-cat="News" onclick="setCategoryFilter('News')">📰 News</div>
+                    <div class="cat-pill" data-cat="Lifestyle" onclick="setCategoryFilter('Lifestyle')">🌿 Lifestyle</div>
                 </div>
 
                 <div id="feed-items"></div>
@@ -2614,7 +2716,8 @@
     let userAvatar   = localStorage.getItem('hub_userPic')  || "https://api.dicebear.com/7.x/identicon/svg?seed=Hub";
     let visibleCount = 10;
     const pageSize   = 10;
-    let _wallFilter  = null;   // null = global feed; string = filter to this wallet address
+    let _wallFilter      = null;   // null = global feed; string = filter to this wallet address
+    let _categoryFilter  = null;   // null = all categories; string = e.g. 'Alpha', 'Creative'…
 
     // V13: Total spendable = purchased + earned. Used everywhere for balance checks.
     function getTotalSpendableStars() {
@@ -5187,10 +5290,12 @@
                     <span class="post-more">···</span>
                 </div>
                 ${mediaHtml}
+                ${post.category && post.category !== 'Global' ? `<span class="cat-badge">${post.category}</span>` : ''}
                 <div class="post-body">${linkify(post.text)}</div>
                 <div class="post-actions">
                     <div class="pact" onclick="triggerLikeAnimation(event); hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span> Like</div>
                     <div class="pact" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comment<span class="pact-num" id="cc-${postId}" style="color:var(--teal);"></span></div>
+                    <div class="pact signal" onclick="promoteToSignal('${postId}')" title="Promote to Signal (1★ — 100% platform)">📡 Signal (1★)</div>
                     <div class="pact boost" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
                     <div class="pact views" title="Impressions">👁 <span class="pact-num" id="views-${postId}">${(post.views || 0).toLocaleString()}</span></div>
                 </div>
@@ -5219,11 +5324,13 @@
                 const postId = change.doc.id;
                 const post   = change.doc.data();
 
-                // ── Wall filter ──────────────────────────────────────────────────
-                const passesFilter = !_wallFilter || (
+                // ── Wall filter + category filter ───────────────────────────────
+                const passesWall = !_wallFilter || (
                     post.authorAddr &&
                     post.authorAddr.toLowerCase() === _wallFilter.toLowerCase()
                 );
+                const passesCat  = !_categoryFilter || (post.category || 'Global') === _categoryFilter;
+                const passesFilter = passesWall && passesCat;
 
                 // ── REMOVED or filtered out: delete the card if it exists ────────
                 if (change.type === 'removed' || !passesFilter) {
@@ -5465,8 +5572,9 @@
 
     function clearWall() {
         // 1. Reset filter state
-        _wallFilter  = null;
-        visibleCount = 10;
+        _wallFilter      = null;
+        _categoryFilter  = null;
+        visibleCount     = 10;
 
         // 2. Tear down the live identity listener (INDEX 27)
         if (_heroUnsub) { try { _heroUnsub(); } catch(_) {} _heroUnsub = null; }
@@ -6188,6 +6296,7 @@
         try {
             const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
             const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
+            const postCategory = (document.getElementById('post-category')?.value) || 'Global';
             await window.fs.addDoc(window.fs.collection(window.db, 'posts'), {
                 text:       txt,
                 media:      mediaUrl,
@@ -6199,7 +6308,8 @@
                 hypes:      0,
                 type:       postType,
                 feePaid:    feeAmount,
-                isBoosted:  false
+                isBoosted:  false,
+                category:   postCategory
             });
 
             // Reset composer
@@ -6218,6 +6328,111 @@
             alert('Post failed: ' + e.message);
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PROMOTE TO SIGNAL — costs 1★, 100% admin, writes to `signals`
+    //
+    // Reads the post document live from Firestore so we always have fresh
+    // data regardless of what the DOM card was built with. The resulting
+    // signal entry is identical in shape to a Daily Signal post, so it
+    // appears in the existing signals-bar and respects the 24h expiry.
+    // ═══════════════════════════════════════════════════════════════════
+    async function promoteToSignal(postId) {
+        if (!userAddress) return showToast('Connect your wallet first!');
+
+        const SIGNAL_FEE = 1.0;
+
+        // Read live balance
+        let livePurchased = 0, liveEarned = 0;
+        if (window.db) {
+            try {
+                const snap = await window.fs.getDoc(
+                    window.fs.doc(window.db, 'user_balances', userAddress.toLowerCase())
+                );
+                if (snap.exists()) {
+                    livePurchased = snap.data().stars        || 0;
+                    liveEarned    = snap.data().creatorStars || 0;
+                }
+            } catch (e) { console.warn('[promoteToSignal] Balance read failed:', e); }
+        }
+
+        if ((livePurchased + liveEarned) < SIGNAL_FEE) {
+            return showToast(`Need ${SIGNAL_FEE}★ to promote. Current: ${(livePurchased + liveEarned).toFixed(1)}★`);
+        }
+
+        // Read post data live from Firestore
+        let postData = null;
+        try {
+            const postSnap = await window.fs.getDoc(window.fs.doc(window.db, 'posts', postId));
+            if (!postSnap.exists()) return showToast('Post not found.');
+            postData = postSnap.data();
+        } catch (e) {
+            console.error('[promoteToSignal] Post read failed:', e);
+            return showToast('Could not read post data. Try again.');
+        }
+
+        const confirmed = confirm(
+            'Promote to Signal\n\n' +
+            'This will add the post to the Signal Circles bar for 24 hours.\n' +
+            'Cost: 1\u2605 (100% platform)\n\n' +
+            'Proceed?'
+        );
+        if (!confirmed) return;
+
+        try {
+            showToast('Promoting to Signal…');
+
+            // Deduct 1★ (waterfall: purchased first)
+            await deductSpendableStars(userAddress, SIGNAL_FEE);
+
+            // 100% → admin revenue. No creator split for this action.
+            logAdminRevenue(userAddress, 'promote_to_signal', SIGNAL_FEE);
+            logTransaction(userAddress, 'spend', SIGNAL_FEE,
+                `Promoted post to Signal — ${SIGNAL_FEE.toFixed(1)}★ (100% platform) · Post: ${postId.slice(0,8)}…`);
+
+            // Write to `signals` collection — same shape as a Daily Signal post
+            await window.fs.addDoc(window.fs.collection(window.db, 'signals'), {
+                text:       postData.text       || '',
+                media:      postData.media      || '',
+                type:       postData.type       || 1,
+                firebase:   postData.firebase   || false,
+                author:     postData.author     || 'Anonymous',
+                authorAddr: (postData.authorAddr || '').toLowerCase(),
+                avatar:     postData.avatar     || '',
+                timestamp:  Date.now(),       // fresh 24h window from NOW
+                hypes:      0,
+                promotedFrom: postId           // audit trail
+            });
+
+            updateUI();
+            loadSignals();   // refresh the signals bar immediately
+            showToast('📡 Post promoted to Signal! Live for 24h.');
+        } catch (e) {
+            console.error('[promoteToSignal] failed:', e);
+            showToast('Promotion failed. Try again.');
+        }
+    }
+    window.promoteToSignal = promoteToSignal;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // CATEGORY FILTER — sets _categoryFilter and restarts the feed listener
+    //
+    // Calling setCategoryFilter('All') clears the filter back to global.
+    // The pill UI updates immediately; feed reloads via loadGlobalFeed()
+    // which tears down the old onSnapshot and opens a new one.
+    // ═══════════════════════════════════════════════════════════════════
+    function setCategoryFilter(cat) {
+        _categoryFilter = (cat === 'All') ? null : cat;
+
+        // Update pill active state
+        document.querySelectorAll('.cat-pill').forEach(function(pill) {
+            pill.classList.toggle('active', pill.getAttribute('data-cat') === cat);
+        });
+
+        // Reload the feed — loadGlobalFeed tears down the old listener cleanly
+        loadGlobalFeed();
+    }
+    window.setCategoryFilter = setCategoryFilter;
 
     // Replace global handleBroadcast with the unified Index 25 version
     window.handleBroadcast = handleBroadcastWithSignal;
