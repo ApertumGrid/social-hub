@@ -5252,16 +5252,13 @@
         });
         feedContainer.innerHTML = '';   // clear exactly once on (re-)load, never again
 
-        // ── Firestore query — fetch by timestamp desc (the stable original field).
-        // Sorting for display is done client-side using a priority key so that
-        // boosted posts never permanently displace newer broadcasts.
-        // where isVisible != false keeps legacy posts (field absent) visible;
-        // only docs explicitly set to false are excluded.
-        // Firestore rule: inequality field must be first in orderBy chain.
+        // ── Firestore query — simple timestamp sort; no compound index required.
+        // Visibility filtering is done entirely in JS (see passesVisible below)
+        // so old posts that lack the isVisible field remain visible, and no
+        // Firebase index needs to be built. Only posts explicitly set to
+        // isVisible:false (via the Hide button) are excluded.
         const q = window.fs.query(
             window.fs.collection(window.db, 'posts'),
-            window.fs.where('isVisible', '!=', false),
-            window.fs.orderBy('isVisible', 'desc'),
             window.fs.orderBy('timestamp', 'desc')
         );
 
@@ -5415,7 +5412,7 @@
                     post.authorAddr.toLowerCase() === _wallFilter.toLowerCase()
                 );
                 const passesCat     = !_categoryFilter || (post.category || 'Global') === _categoryFilter;
-                const passesVisible = post.isVisible !== false;   // client-side safety; server query already filters
+                const passesVisible = post.isVisible !== false;   // JS filter: missing field = visible, only explicit false hides
                 const passesFilter  = passesWall && passesCat && passesVisible;
 
                 // ── REMOVED or filtered out: delete the card if it exists ────────
