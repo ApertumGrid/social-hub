@@ -4160,6 +4160,24 @@
             if (feedCol) feedCol.scrollTop = 0;
             window.scrollTo({ top: 0, behavior: 'smooth' });
 
+            // ── Reset category filter to All and reload the global feed ──────────
+            // This runs whenever any Home entry point is used (nav-home, bnav-home,
+            // mdash-home, hero-back-btn, wall-back-btn, jumpToPost).
+            // Without this, the feed stays filtered to the last wall/category even
+            // after _wallFilter has been cleared above.
+            const hadWallOrCat = (_wallFilter === null && _categoryFilter !== null);
+            // _wallFilter was already nulled above if it was set; check if we need
+            // a feed reload. We always reload on home-return to guarantee a clean state.
+            _categoryFilter = null;
+            // Sync the category-bar pill UI back to "All"
+            document.querySelectorAll('.cat-pill').forEach(function(pill) {
+                pill.classList.toggle('active', pill.getAttribute('data-cat') === 'All');
+            });
+            // Reload the feed — loadGlobalFeed tears down the stale listener and
+            // opens a fresh unfiltered onSnapshot. Guard with typeof so this is
+            // safe even if the function hasn't been defined yet on first paint.
+            if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
+
         } else {
             // All non-home tabs: hide the feed content so the page panel shows
             if (composerCard) composerCard.style.display = 'none';
@@ -5715,6 +5733,11 @@
         const feedHead = document.querySelector('.feed-heading');
         if (composer) composer.style.display = '';
         if (feedHead) feedHead.style.display = '';
+
+        // 6b. Sync category-bar pill back to "All" so the UI matches _categoryFilter = null
+        document.querySelectorAll('.cat-pill').forEach(function(pill) {
+            pill.classList.toggle('active', pill.getAttribute('data-cat') === 'All');
+        });
 
         // 7. Reload the global (unfiltered) feed
         loadGlobalFeed();
