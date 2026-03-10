@@ -481,6 +481,28 @@
         .post-more   { color: var(--text-muted); cursor: pointer; font-size: 1rem; padding: 4px 8px; border-radius: 6px; }
         .post-more:hover { background: var(--bg-hover); color: var(--text-primary); }
 
+        /* ── OWNER ACTIONS (Edit / Hide) — only visible on own posts ── */
+        .post-owner-actions { display:inline-flex; align-items:center; gap:4px; }
+        .post-own-btn {
+            font-size:0.66rem; font-weight:600; padding:3px 9px;
+            border-radius:50px; border:1px solid var(--border);
+            cursor:pointer; background:transparent; line-height:1.5;
+            color:var(--text-muted); transition:background 0.13s, color 0.13s, border-color 0.13s;
+        }
+        .post-own-btn.edit-btn:hover  { background:var(--teal-dim); color:var(--teal); border-color:rgba(45,212,191,0.4); }
+        .post-own-btn.hide-btn:hover  { background:rgba(224,62,62,0.10); color:var(--red); border-color:rgba(224,62,62,0.35); }
+
+        /* ── (edited) label beside address ─────────────────────────── */
+        .edited-badge { font-size:0.56rem; font-style:italic; color:var(--text-muted); margin-left:5px; }
+
+        /* ── Edit-mode banner inside composer ───────────────────────── */
+        #edit-mode-banner {
+            display:none; margin-bottom:8px; padding:7px 12px;
+            background:rgba(45,212,191,0.10); border:1px solid rgba(45,212,191,0.3);
+            border-radius:var(--radius-sm); font-size:0.74rem;
+            color:var(--teal); font-weight:600; letter-spacing:0.01em;
+        }
+
         /* ── USER WALL ─────────────────────────────────────────────── */
         /* Clickable avatar + name wrapper */
         .wall-identity {
@@ -2273,6 +2295,7 @@
                         </div>
                     </div>
 
+                    <div id="edit-mode-banner">✎ Editing your post &mdash; hit &ldquo;Update Post&rdquo; to save, or <span style="cursor:pointer;text-decoration:underline;" onclick="cancelEditPost()">Cancel</span> to discard.</div>
                     <textarea id="post-text" class="field" placeholder="What's your signal?"></textarea>
 
                     <div class="media-tabs">
@@ -5232,8 +5255,13 @@
         // ── Firestore query — fetch by timestamp desc (the stable original field).
         // Sorting for display is done client-side using a priority key so that
         // boosted posts never permanently displace newer broadcasts.
+        // where isVisible != false keeps legacy posts (field absent) visible;
+        // only docs explicitly set to false are excluded.
+        // Firestore rule: inequality field must be first in orderBy chain.
         const q = window.fs.query(
             window.fs.collection(window.db, 'posts'),
+            window.fs.where('isVisible', '!=', false),
+            window.fs.orderBy('isVisible', 'desc'),
             window.fs.orderBy('timestamp', 'desc')
         );
 
@@ -5332,10 +5360,19 @@
                         <img src="${displayPic}" class="av" crossorigin="anonymous">
                         <div class="post-meta">
                             <div class="post-author">${displayName} ${post.isBoosted ? '<span class="boosted-badge">🚀 BOOSTED</span>' : ''}</div>
-                            <div class="post-addr">${post.authorAddr ? post.authorAddr.slice(0,6)+'…'+post.authorAddr.slice(-4) : 'anon'}</div>
+                            <div class="post-addr">
+                                ${post.authorAddr ? post.authorAddr.slice(0,6)+'…'+post.authorAddr.slice(-4) : 'anon'}
+                                ${post.isEdited ? '<span class="edited-badge">(edited)</span>' : ''}
+                            </div>
                         </div>
                     </div>
-                    <span class="post-more">···</span>
+                    ${isMe
+                        ? `<div class="post-owner-actions">
+                               <button class="post-own-btn edit-btn" onclick="openEditPost('${postId}',event)" title="Edit your post">✎ Edit</button>
+                               <button class="post-own-btn hide-btn" onclick="deletePost('${postId}',event)" title="Hide this post">✕ Hide</button>
+                           </div>`
+                        : '<span class="post-more">···</span>'
+                    }
                 </div>
                 ${mediaHtml}
                 ${post.category && post.category !== 'Global' ? `<span class="cat-badge">${post.category}</span>` : ''}
@@ -5377,8 +5414,9 @@
                     post.authorAddr &&
                     post.authorAddr.toLowerCase() === _wallFilter.toLowerCase()
                 );
-                const passesCat  = !_categoryFilter || (post.category || 'Global') === _categoryFilter;
-                const passesFilter = passesWall && passesCat;
+                const passesCat     = !_categoryFilter || (post.category || 'Global') === _categoryFilter;
+                const passesVisible = post.isVisible !== false;   // client-side safety; server query already filters
+                const passesFilter  = passesWall && passesCat && passesVisible;
 
                 // ── REMOVED or filtered out: delete the card if it exists ────────
                 if (change.type === 'removed' || !passesFilter) {
@@ -5429,6 +5467,30 @@
                     const authorDiv = existing.querySelector('.post-author');
                     if (authorDiv && post.isBoosted && !authorDiv.querySelector('.boosted-badge')) {
                         authorDiv.innerHTML = authorDiv.innerHTML + ' <span class="boosted-badge">🚀 BOOSTED</span>';
+                    }
+
+                    // Patch post body text if edited
+                    const bodyDiv = existing.querySelector('.post-body');
+                    if (bodyDiv) bodyDiv.innerHTML = linkify(post.text);
+
+                    // Show/hide (edited) badge
+                    const addrDiv = existing.querySelector('.post-addr');
+                    if (addrDiv) {
+                        const existingBadge = addrDiv.querySelector('.edited-badge');
+                        if (post.isEdited && !existingBadge) {
+                            addrDiv.insertAdjacentHTML('beforeend', '<span class="edited-badge">(edited)</span>');
+                        } else if (!post.isEdited && existingBadge) {
+                            existingBadge.remove();
+                        }
+                    }
+
+                    // If post becomes invisible, remove from feed
+                    if (post.isVisible === false) {
+                        if (typeof _commentListeners[postId]      === 'function') { _commentListeners[postId](); delete _commentListeners[postId]; }
+                        if (typeof _commentCountListeners[postId] === 'function') { _commentCountListeners[postId](); delete _commentCountListeners[postId]; }
+                        viewObserver.unobserve(existing);
+                        existing.remove();
+                        return;
                     }
                     // Position is corrected by reorderFeed() called after all changes are processed
                 }
@@ -5675,7 +5737,8 @@
     // ═══════════════════════════════════════════════════════════════════
     // INDEX 24 — DAILY SIGNALS (STORIES)
     // ═══════════════════════════════════════════════════════════════════
-    let _signalMode = false;          // composer toggle state
+    let _signalMode  = false;          // composer toggle state
+    let _editPostId  = null;           // postId being edited; null = normal broadcast mode
     let _currentSignalId = null;      // signal being viewed in lightbox
     let _signalAutoCloseTimer = null; // 15s auto-close timer (INDEX 26)
     let _signalUnsub = null;          // live feed unsubscribe
@@ -6168,6 +6231,34 @@
         if (!txt) return showToast('Write something first!');
         if (!userAddress) return showToast('Connect your wallet first!');
 
+        // ══════════════════════════════════════════════════════════════════════════
+        // PATH E — EDIT MODE (free, no star deduction, updates existing post doc)
+        // Activated when openEditPost() has set _editPostId to a postId string.
+        // ══════════════════════════════════════════════════════════════════════════
+        if (_editPostId) {
+            const targetId = _editPostId;
+            try {
+                await window.fs.updateDoc(
+                    window.fs.doc(window.db, 'posts', targetId),
+                    { text: txt, isEdited: true, editedAt: Date.now() }
+                );
+                showToast('Post updated ✓');
+            } catch (e) {
+                console.error('[editPost] updateDoc failed:', e);
+                return showToast('Update failed — try again.');
+            } finally {
+                // Always reset edit mode regardless of success/failure
+                _editPostId = null;
+                const banner = document.getElementById('edit-mode-banner');
+                if (banner) banner.style.display = 'none';
+                const broadcastBtn = document.getElementById('broadcast-btn');
+                if (broadcastBtn) broadcastBtn.textContent = '◈ Broadcast Signal';
+                document.getElementById('post-text').value  = '';
+                document.getElementById('post-media').value = '';
+            }
+            return;
+        }
+
         // ── Read live balance once, shared by both paths ──────────────────────────
         let livePurchased = 0, liveEarned = 0;
         if (window.db) {
@@ -6376,6 +6467,86 @@
             alert('Post failed: ' + e.message);
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // EDIT POST — opens composer pre-filled with the post's current text.
+    // Free action: no star cost. Saves via handleBroadcastWithSignal PATH E.
+    // ═══════════════════════════════════════════════════════════════════
+    function openEditPost(postId, event) {
+        if (event) event.stopPropagation();
+        if (!userAddress || !window.db) return showToast('Connect your wallet first!');
+
+        // Fetch fresh text from Firestore so we edit the true saved value
+        window.fs.getDoc(window.fs.doc(window.db, 'posts', postId))
+            .then((snap) => {
+                if (!snap.exists()) return showToast('Post not found.');
+                const postData = snap.data();
+
+                // ── Pre-fill composer ────────────────────────────────────────
+                const textEl = document.getElementById('post-text');
+                if (textEl) { textEl.value = postData.text || ''; textEl.focus(); }
+
+                // ── Set edit state ────────────────────────────────────────────
+                _editPostId = postId;
+
+                // ── Show banner + swap button label ──────────────────────────
+                const banner = document.getElementById('edit-mode-banner');
+                if (banner) banner.style.display = 'block';
+                const broadcastBtn = document.getElementById('broadcast-btn');
+                if (broadcastBtn) broadcastBtn.textContent = '✓ Update Post';
+
+                // ── Scroll to composer ───────────────────────────────────────
+                const composerCard = document.getElementById('composer-card');
+                if (composerCard) composerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            })
+            .catch((e) => {
+                console.error('[openEditPost] read failed:', e);
+                showToast('Could not load post for editing.');
+            });
+    }
+    window.openEditPost = openEditPost;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // CANCEL EDIT — exposed so the banner (or user) can abort edit mode
+    // ═══════════════════════════════════════════════════════════════════
+    function cancelEditPost() {
+        _editPostId = null;
+        const banner = document.getElementById('edit-mode-banner');
+        if (banner) banner.style.display = 'none';
+        const broadcastBtn = document.getElementById('broadcast-btn');
+        if (broadcastBtn) broadcastBtn.textContent = '◈ Broadcast Signal';
+        document.getElementById('post-text').value  = '';
+        document.getElementById('post-media').value = '';
+        showToast('Edit cancelled.');
+    }
+    window.cancelEditPost = cancelEditPost;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // DELETE (HIDE) POST — soft-delete: sets isVisible:false.
+    // Only the post author can call this (isMe guard in buildPostCard).
+    // The feed query excludes isVisible:false, so the card vanishes
+    // instantly from the onSnapshot MODIFIED handler.
+    // ═══════════════════════════════════════════════════════════════════
+    async function deletePost(postId, event) {
+        if (event) event.stopPropagation();
+        if (!userAddress || !window.db) return showToast('Connect your wallet first!');
+
+        const confirmed = confirm('Hide this post? It will be removed from the feed. (You can restore it from the Firebase console if needed.)');
+        if (!confirmed) return;
+
+        try {
+            await window.fs.updateDoc(
+                window.fs.doc(window.db, 'posts', postId),
+                { isVisible: false }
+            );
+            showToast('Post hidden ✓');
+            // The onSnapshot MODIFIED handler removes the card automatically
+        } catch (e) {
+            console.error('[deletePost] failed:', e);
+            showToast('Failed to hide post — try again.');
+        }
+    }
+    window.deletePost = deletePost;
 
     // ═══════════════════════════════════════════════════════════════════
     // PROMOTE TO SIGNAL — costs 1★, 100% admin, writes to `signals`
