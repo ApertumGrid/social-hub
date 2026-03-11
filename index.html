@@ -3720,10 +3720,11 @@
     // ═══════════════════════════════════════════════════════════════════
     // TRANSACTION LEDGER
     // ═══════════════════════════════════════════════════════════════════
-    function logTransaction(address, type, amount, description, postId) {
+    function logTransaction(address, type, amount, description, postId, communityId) {
         if (!address || !window.db) return;
         const data = { address: address.toLowerCase(), type, amount, description, timestamp: Date.now() };
-        if (postId) data.postId = String(postId);
+        if (postId)      data.postId      = String(postId);
+        if (communityId) data.communityId = String(communityId);
         window.fs.addDoc(window.fs.collection(window.db, "user_transactions"), data)
             .catch(e => console.warn("logTransaction:", e));
     }
@@ -3777,8 +3778,11 @@
             const date   = new Date(tx.timestamp).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
             const row    = document.createElement('div');
             row.className = 'ledger-row';
+            // Build jump hint — indicate whether the post lives in a Hub or the global feed
             const jumpHint = tx.postId
-                ? `<span style="font-size:0.55rem;color:var(--teal);margin-left:4px;opacity:0.75;">↗ view post</span>`
+                ? (tx.communityId
+                    ? `<span style="font-size:0.55rem;color:var(--teal);margin-left:4px;opacity:0.75;">↗ view in Hub</span>`
+                    : `<span style="font-size:0.55rem;color:var(--teal);margin-left:4px;opacity:0.75;">↗ view post</span>`)
                 : '';
             row.innerHTML = `
                 <div class="ledger-desc">${tx.description}${jumpHint}<small>${date}</small></div>
@@ -3786,7 +3790,8 @@
                 <div class="ledger-amount ${amtCls}">${amtStr}</div>`;
             if (tx.postId) {
                 row.setAttribute('data-post-id', tx.postId);
-                row.addEventListener('click', () => jumpToPost(tx.postId));
+                // Pass both postId AND communityId so jumpToPost can route correctly
+                row.addEventListener('click', () => jumpToPost(tx.postId, tx.communityId || null));
             }
             el.appendChild(row);
         });
@@ -4446,28 +4451,86 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // JUMP TO POST — switches to Feed, scrolls to the post, flashes it.
-    // Called when a ledger row with a linked postId is clicked.
+    // JUMP TO POST — destination-aware navigation from the Ledger.
+    //
+    // postId     : Firestore document ID of the post to highlight.
+    // communityId: If set, the post lives inside a Community Hub.
+    //              The function fetches that Hub doc and opens the feed
+    //              before scrolling.  If null/undefined the post is in
+    //              the Global Feed.
+    //
+    // Steps executed in every case:
+    //   A. Check communityId to determine destination.
+    //   B. If Hub  → switch to Communities tab, open the specific Hub feed.
+    //      If Global → switch to Home Feed (_activateTab clears wall/cat filters).
+    //   C. Wait for the DOM to settle, then scrollIntoView + flash the card.
     // ═══════════════════════════════════════════════════════════════════
-    function jumpToPost(postId) {
-        // 1. Switch to the Home Feed tab using the single source-of-truth switcher.
-        //    This clears any wall filter, restores feed-items/composer visibility,
-        //    and syncs BOTH desktop nav and mobile tab buttons in one call.
-        _activateTab('home', document.getElementById('nav-home'));
-        setBnav('home');
+    async function jumpToPost(postId, communityId) {
+        if (!postId) return;
 
-        // 2. Scroll and flash — allow a frame for display:contents to settle
+        if (communityId && window.db) {
+            // ── Step B (Hub path) ────────────────────────────────────────────
+            // 1. Clear wall/category filters so nothing hides the post
+            _wallFilter     = null;
+            _categoryFilter = null;
+
+            // 2. Switch to the Communities tab (this shows #page-communities)
+            _activateTab('communities', document.getElementById('nav-communities'));
+            setBnav('communities');
+
+            try {
+                // 3. Fetch the community document so we can call openCommunityFeed(comm)
+                //    which loads the Hub's posts and sets _activeCommunity.
+                const commSnap = await window.fs.getDoc(
+                    window.fs.doc(window.db, 'communities', communityId)
+                );
+                if (commSnap.exists()) {
+                    const comm = { id: commSnap.id, ...commSnap.data() };
+                    // 4. Open the Hub feed — this hides the browser grid and
+                    //    renders the Hub's post list (including the target card).
+                    await openCommunityFeed(comm);
+                } else {
+                    // Community no longer exists — fall back to global feed
+                    _activateTab('home', document.getElementById('nav-home'));
+                    setBnav('home');
+                }
+            } catch (e) {
+                console.warn('[jumpToPost] community fetch failed:', e);
+                _activateTab('home', document.getElementById('nav-home'));
+                setBnav('home');
+            }
+
+        } else {
+            // ── Step C (Global feed path) ────────────────────────────────────
+            // _activateTab('home') already clears _wallFilter, _categoryFilter,
+            // resets category pills, and calls loadGlobalFeed().
+            _activateTab('home', document.getElementById('nav-home'));
+            setBnav('home');
+        }
+
+        // ── Step D+E: Scroll + Flash ─────────────────────────────────────────
+        // Give the DOM 350 ms to render the post cards (Hub feed is async,
+        // global feed fires onSnapshot almost immediately).
+        // If the card isn't present after the first wait, retry once more
+        // at 700 ms so slower connections still land on the right card.
+        function scrollAndFlash() {
+            const card = document.querySelector('[data-id="' + postId + '"]');
+            if (!card) return false;
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.classList.remove('post-flash');
+            void card.offsetWidth;                        // force reflow so animation restarts
+            card.classList.add('post-flash');
+            setTimeout(() => card.classList.remove('post-flash'), 2400);
+            return true;
+        }
+
         requestAnimationFrame(() => {
             setTimeout(() => {
-                const card = document.querySelector('[data-id="' + postId + '"]');
-                if (!card) return;
-                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                // 3. Flash the card with teal glow animation
-                card.classList.remove('post-flash');   // reset if already animating
-                void card.offsetWidth;                  // force reflow to restart
-                card.classList.add('post-flash');
-                setTimeout(() => card.classList.remove('post-flash'), 2400);
-            }, 120);
+                if (!scrollAndFlash()) {
+                    // Retry once for slow async Hub feeds
+                    setTimeout(scrollAndFlash, 600);
+                }
+            }, 350);
         });
     }
     window.jumpToPost = jumpToPost;   // expose for any onclick= attribute
@@ -4624,17 +4687,17 @@
                 if (recipientAddress && recipientAddress !== "unknown") {
                     await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
                     logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
-                        "Earnings from Global Feed", null);
+                        "Earnings from Global Feed", null, null);
                 }
             } else if (_activeCommunity && recipientAddress &&
                        recipientAddress.toLowerCase() !== _activeCommunity.ownerId.toLowerCase()) {
                 // Community guest post: 40% guest + 40% owner
                 await creditCreatorStars(recipientAddress, 0.4);
                 logTransaction(recipientAddress, "earn", 0.4,
-                    "Earnings from " + _activeCommunity.name + " Hub (guest post)", entityId);
+                    "Earnings from " + _activeCommunity.name + " Hub (guest post)", entityId, _activeCommunity.id);
                 await creditCreatorStars(_activeCommunity.ownerId, 0.4);
                 logTransaction(_activeCommunity.ownerId, "earn", 0.4,
-                    "Earnings from " + _activeCommunity.name + " Hub (landlord split)", entityId);
+                    "Earnings from " + _activeCommunity.name + " Hub (landlord split)", entityId, _activeCommunity.id);
             } else {
                 // Global feed OR community owner post: 80% to creator
                 if (recipientAddress && recipientAddress !== "unknown") {
@@ -4642,7 +4705,8 @@
                         ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
                         : "Earnings from Global Feed";
                     await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
-                    logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, lbl, entityId);
+                    logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, lbl, entityId,
+                        _activeCommunity ? _activeCommunity.id : null);
                 }
             }
 
@@ -4738,17 +4802,17 @@
                 if (recipientAddress && recipientAddress !== "unknown") {
                     await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
                     logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
-                        "Earnings from Global Feed", postId);
+                        "Earnings from Global Feed", postId, null);
                 }
             } else if (_activeCommunity && recipientAddress &&
                        recipientAddress.toLowerCase() !== _activeCommunity.ownerId.toLowerCase()) {
                 // Community guest post: 40% guest + 40% owner
                 await creditCreatorStars(recipientAddress, 0.4);
                 logTransaction(recipientAddress, "earn", 0.4,
-                    "Earnings from " + _activeCommunity.name + " Hub (guest post)", postId);
+                    "Earnings from " + _activeCommunity.name + " Hub (guest post)", postId, _activeCommunity.id);
                 await creditCreatorStars(_activeCommunity.ownerId, 0.4);
                 logTransaction(_activeCommunity.ownerId, "earn", 0.4,
-                    "Earnings from " + _activeCommunity.name + " Hub (landlord split)", postId);
+                    "Earnings from " + _activeCommunity.name + " Hub (landlord split)", postId, _activeCommunity.id);
             } else {
                 // Global feed OR community owner post: 80% to creator
                 if (recipientAddress && recipientAddress !== "unknown") {
@@ -4756,7 +4820,8 @@
                         ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
                         : "Earnings from Global Feed";
                     await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
-                    logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, lbl, postId);
+                    logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, lbl, postId,
+                        _activeCommunity ? _activeCommunity.id : null);
                 }
             }
 
