@@ -4747,25 +4747,43 @@
                 await window.fs.updateDoc(window.fs.doc(window.db, "posts", entityId), { hypes: window.fs.increment(1) });
             }
 
-            // ── Revenue split: comment hype always 80% to commenter;
-            // community guest post: 40/40/20; otherwise 80/20 global.
+            // ── Revenue split ─────────────────────────────────────────────────────
+            // Comment hype (isComment = true):
+            //   • Global feed  → 80% commenter / 20% platform  (strict 80/20)
+            //   • Inside a Hub → 40% commenter / 40% Hub owner (Landlord Earnings) / 20% platform
+            // Post hype (isComment = false):
+            //   • Global feed or Hub owner's own post → 80% creator / 20% platform
+            //   • Hub guest post → 40% guest / 40% Hub owner (Landlord Earnings) / 20% platform
             if (isComment) {
                 if (recipientAddress && recipientAddress !== "unknown") {
-                    await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
-                    logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
-                        "Earnings from Global Feed", null, null);
+                    if (_activeCommunity) {
+                        // Hub comment hype: 40% commenter + 40% Hub owner + 20% platform
+                        await creditCreatorStars(recipientAddress, 0.4);
+                        logTransaction(recipientAddress, "earn", 0.4,
+                            "Earnings from " + _activeCommunity.name + " Hub (comment hype)",
+                            null, _activeCommunity.id);
+                        await creditCreatorStars(_activeCommunity.ownerId, 0.4);
+                        logTransaction(_activeCommunity.ownerId, "earn", 0.4,
+                            "Landlord Earnings from " + _activeCommunity.name + " Hub (comment hype)",
+                            null, _activeCommunity.id);
+                    } else {
+                        // Global feed comment hype: strict 80/20
+                        await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
+                        logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
+                            "Earnings from Global Feed", null, null);
+                    }
                 }
             } else if (_activeCommunity && recipientAddress &&
                        recipientAddress.toLowerCase() !== _activeCommunity.ownerId.toLowerCase()) {
-                // Community guest post: 40% guest + 40% owner
+                // Hub guest post hype: 40% guest + 40% Hub owner + 20% platform
                 await creditCreatorStars(recipientAddress, 0.4);
                 logTransaction(recipientAddress, "earn", 0.4,
                     "Earnings from " + _activeCommunity.name + " Hub (guest post)", entityId, _activeCommunity.id);
                 await creditCreatorStars(_activeCommunity.ownerId, 0.4);
                 logTransaction(_activeCommunity.ownerId, "earn", 0.4,
-                    "Earnings from " + _activeCommunity.name + " Hub (landlord split)", entityId, _activeCommunity.id);
+                    "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)", entityId, _activeCommunity.id);
             } else {
-                // Global feed OR community owner post: 80% to creator
+                // Global feed OR Hub owner's own post: strict 80/20
                 if (recipientAddress && recipientAddress !== "unknown") {
                     const lbl = _activeCommunity
                         ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
@@ -4862,8 +4880,10 @@
 
             await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
 
-            // ── Revenue split: reply always 80% to commenter;
-            // community guest post comment: 40/40/20; otherwise 80/20.
+            // ── Revenue split ─────────────────────────────────────────────────────
+            // Reply (isReply = true): always 80% to the commenter being replied to / 20% platform.
+            // Comment on Hub guest post: 40% post author / 40% Hub owner (Landlord Earnings) / 20% platform.
+            // Comment on global or Hub owner post: strict 80% creator / 20% platform.
             if (isReply) {
                 if (recipientAddress && recipientAddress !== "unknown") {
                     await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
@@ -4872,15 +4892,15 @@
                 }
             } else if (_activeCommunity && recipientAddress &&
                        recipientAddress.toLowerCase() !== _activeCommunity.ownerId.toLowerCase()) {
-                // Community guest post: 40% guest + 40% owner
+                // Hub guest post comment: 40% guest + 40% Hub owner + 20% platform
                 await creditCreatorStars(recipientAddress, 0.4);
                 logTransaction(recipientAddress, "earn", 0.4,
                     "Earnings from " + _activeCommunity.name + " Hub (guest post)", postId, _activeCommunity.id);
                 await creditCreatorStars(_activeCommunity.ownerId, 0.4);
                 logTransaction(_activeCommunity.ownerId, "earn", 0.4,
-                    "Earnings from " + _activeCommunity.name + " Hub (landlord split)", postId, _activeCommunity.id);
+                    "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)", postId, _activeCommunity.id);
             } else {
-                // Global feed OR community owner post: 80% to creator
+                // Global feed OR Hub owner's own post: strict 80/20
                 if (recipientAddress && recipientAddress !== "unknown") {
                     const lbl = _activeCommunity
                         ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
@@ -7846,7 +7866,7 @@
 
         <div class="comm-hiw-modal-header">
             <h2 id="comm-hiw-title">&#x2B21; How Community Hubs Work</h2>
-            <p>Own a slice of SocialHub. Launch a themed Hub, attract creators, and earn from every interaction inside your community.</p>
+            <p>Own a piece of SocialHub. Launch a themed Hub, attract creators, and earn from every interaction inside your community.</p>
         </div>
 
         <div class="comm-hiw-modal-step">
@@ -7857,7 +7877,7 @@
                     Launch your own themed Hub for a one-time cost of
                     <span class="comm-hiw-modal-tag">1,000 &#9733;</span>.
                     Choose a name, write a description, and provide a header image URL.
-                    Your Hub is listed in the global Communities directory the moment it is created.
+                    Your Hub is listed in the global Communities directory the moment it goes live.
                 </p>
             </div>
         </div>
@@ -7867,12 +7887,13 @@
             <div class="comm-hiw-modal-body">
                 <div class="comm-hiw-modal-title">Broadcasting Inside a Hub</div>
                 <p class="comm-hiw-modal-desc">
-                    Broadcast costs are identical to the global feed:
+                    Broadcast costs inside a Hub are identical to the global feed:
                     <span class="comm-hiw-modal-tag">Text 1.2 &#9733;</span>
                     <span class="comm-hiw-modal-tag">Image 3 &#9733;</span>
                     <span class="comm-hiw-modal-tag">Video 10 &#9733;</span>.
-                    100% of the broadcast cost goes to the platform. Posts are tagged with your
-                    Hub name and appear in both the Hub feed and the global feed.
+                    100% of the broadcast fee goes to the platform.
+                    Posts made inside a Hub appear <strong>only</strong> in that Hub&#8217;s feed &#8212;
+                    they do not appear in the Global Feed.
                 </p>
             </div>
         </div>
@@ -7880,11 +7901,11 @@
         <div class="comm-hiw-modal-step">
             <div class="comm-hiw-modal-num">3</div>
             <div class="comm-hiw-modal-body">
-                <div class="comm-hiw-modal-title">Owner Hosting &mdash; 80% on Your Own Posts</div>
+                <div class="comm-hiw-modal-title">Owner Hosting &#8212; 80% on Your Own Posts</div>
                 <p class="comm-hiw-modal-desc">
                     When <strong>you</strong> post inside your own Hub and someone likes or comments,
-                    you earn <strong>80% (0.8 &#9733;)</strong> directly into your earned-star balance —
-                    exactly the same as the global feed. The platform keeps 20% (0.2 &#9733;).
+                    you earn <strong>80% (0.8 &#9733;)</strong> directly into your earned-star balance &#8212;
+                    exactly the same as the Global Feed. The platform keeps 20% (0.2 &#9733;).
                 </p>
             </div>
         </div>
@@ -7892,14 +7913,14 @@
         <div class="comm-hiw-modal-step">
             <div class="comm-hiw-modal-num">4</div>
             <div class="comm-hiw-modal-body">
-                <div class="comm-hiw-modal-title">Landlord Split &mdash; 40% on Guest Posts</div>
+                <div class="comm-hiw-modal-title">Landlord Split &#8212; 40% on Guest Posts &amp; Comments</div>
                 <p class="comm-hiw-modal-desc">
-                    When a <strong>guest</strong> posts in your Hub and receives a like or comment,
+                    When a <strong>guest</strong> posts in your Hub and receives a like or a comment,
                     the split is three-way: the guest creator earns <strong>40% (0.4 &#9733;)</strong>,
-                    you (the Hub owner) earn <strong>40% (0.4 &#9733;)</strong> as the landlord,
-                    and the platform keeps <strong>20% (0.2 &#9733;)</strong>.
-                    Every earn event is logged to the ledger as
-                    <em>"Earnings from [Hub Name]"</em>.
+                    you (the Hub owner) earn <strong>40% (0.4 &#9733;)</strong> as
+                    <em>Landlord Earnings</em>, and the platform keeps <strong>20% (0.2 &#9733;)</strong>.
+                    Every landlord earn event is labelled
+                    <em>&#8220;Landlord Earnings from [Hub Name]&#8221;</em> in your Ledger.
                 </p>
             </div>
         </div>
@@ -7907,11 +7928,14 @@
         <div class="comm-hiw-modal-step">
             <div class="comm-hiw-modal-num">5</div>
             <div class="comm-hiw-modal-body">
-                <div class="comm-hiw-modal-title">Comment Hypes &mdash; Always 80% to the Commenter</div>
+                <div class="comm-hiw-modal-title">Comment Hypes Inside a Hub &#8212; 40 / 40 / 20</div>
                 <p class="comm-hiw-modal-desc">
-                    Hyping a <em>comment</em> — regardless of whether you are in a Hub or the global
-                    feed — always credits <strong>80% (0.8 &#9733;)</strong> to the commenter directly.
-                    Community ownership and the landlord split do <strong>not</strong> apply to comment hypes.
+                    When User B likes User A&#8217;s <em>comment</em> inside your Hub, the split is:
+                    <strong>40% (0.4 &#9733;)</strong> to User A (the commenter),
+                    <strong>40% (0.4 &#9733;)</strong> to you as <em>Landlord Earnings</em>,
+                    and <strong>20% (0.2 &#9733;)</strong> to the platform.
+                    On the Global Feed, comment hypes always remain a strict 80 / 20 split
+                    with no landlord cut.
                 </p>
             </div>
         </div>
@@ -7931,18 +7955,18 @@
 
         <div class="hiw-header">
             <h2 id="hiw-title">◈ How SocialHub Works</h2>
-            <p>A decentralised social platform where every interaction has real value. Here is everything you need to know to get started.</p>
+            <p>A decentralised social platform where every interaction has real value. Five things to know before you broadcast.</p>
         </div>
 
         <div class="hiw-step">
             <div class="hiw-num">1</div>
             <div class="hiw-step-body">
-                <div class="hiw-step-title">Set Your Identity</div>
+                <div class="hiw-step-title">Connect &amp; Set Your Identity</div>
                 <p class="hiw-step-desc">
-                    Click <strong>Connect Wallet</strong> in the top-right to link your MetaMask wallet.
-                    Then open the <strong>Profile</strong> tab in the left sidebar, enter a display name,
-                    and paste any image URL as your avatar. Hit <strong>Sync Identity</strong> to save
-                    your profile across devices.
+                    Click <strong>Connect Wallet</strong> in the top-right to link your Web3 wallet.
+                    Open the <strong>Profile</strong> tab, enter a display name and paste an avatar image URL,
+                    then save your identity. Your profile is tied to your wallet address and is visible
+                    across all devices automatically.
                 </p>
             </div>
         </div>
@@ -7950,12 +7974,13 @@
         <div class="hiw-step">
             <div class="hiw-num">2</div>
             <div class="hiw-step-body">
-                <div class="hiw-step-title">The Star Peg — Buy Stars with APTM</div>
+                <div class="hiw-step-title">Stars ★ — Your On-Platform Currency</div>
                 <p class="hiw-step-desc">
                     Every action on SocialHub costs <strong>Stars ★</strong>.
-                    <strong>1 Star = $0.01 USD</strong>, always pegged to the live APTM price shown in the top bar.
-                    Deposit <strong>$APTM</strong> via the Wallet drawer to receive Stars instantly.
-                    Stars are your on-platform spending power.
+                    <strong>1 Star = $0.01 USD</strong>, always pegged to the live
+                    <strong>$APTM</strong> token price shown in the top bar.
+                    Deposit $APTM via the Wallet panel to receive Stars instantly.
+                    Stars are your spending power — use them to post, like, comment, and boost.
                 </p>
             </div>
         </div>
@@ -7967,11 +7992,13 @@
                 <p class="hiw-step-desc">
                     Every broadcast deducts Stars from your balance:
                     <br><span class="cost-tag">Text Post</span> 1.2 ★
-                    <span class="cost-tag">Picture</span> 3 ★
+                    <span class="cost-tag">Image</span> 3 ★
                     <span class="cost-tag">Video</span> 10 ★
                     <span class="cost-tag">Boost to Top</span> 10 ★
-                    <br><br>Media files are stored on Firebase — no MetaMask popup required for uploads.
-                    <br><br><strong>Promote to Signal:</strong> Any user can feature a post in the Daily Signals at the top of the Hub for 24 hours for 1 Star.
+                    <br><br>Media files are stored securely in the cloud —
+                    no wallet popup required for uploads.
+                    <br><br><strong>Daily Signals:</strong> Feature any post at the top of the feed
+                    for 24 hours for just <strong>1 ★</strong>. Any user can promote any post.
                 </p>
             </div>
         </div>
@@ -7979,13 +8006,15 @@
         <div class="hiw-step">
             <div class="hiw-num">4</div>
             <div class="hiw-step-body">
-                <div class="hiw-step-title">The 80% Creator Cut</div>
+                <div class="hiw-step-title">The 80 / 20 Creator Split — Global Feed</div>
                 <p class="hiw-step-desc">
-                    Hyping a post or leaving a comment costs <strong>1 Star</strong>.
-                    The <strong>creator receives 80% (0.8 ★)</strong> directly into their earned-star balance.
-                    The platform keeps 20% (0.2 ★).
-                    When someone hypes a <em>comment</em>, the 80% goes to that <strong>commenter</strong>, not the original poster.
-                    Interactions are completely gas-free — no MetaMask popup, ever.
+                    Liking a post or leaving a comment costs <strong>1 Star</strong>.
+                    On the <strong>Global Feed</strong>, the creator or commenter always receives
+                    a strict <strong>80% (0.8 ★)</strong> directly into their earned-star balance.
+                    The platform keeps <strong>20% (0.2 ★)</strong>.
+                    All interactions are completely gas-free — no wallet popup, ever.
+                    <br><br><em>Inside a Community Hub, a different split applies —
+                    tap the &#x2139; info button on any Hub for the full breakdown.</em>
                 </p>
             </div>
         </div>
@@ -7993,13 +8022,13 @@
         <div class="hiw-step">
             <div class="hiw-num">5</div>
             <div class="hiw-step-body">
-                <div class="hiw-step-title">Settle — Withdraw Your Stars</div>
+                <div class="hiw-step-title">Settle — Withdraw Your Stars to Your Wallet</div>
                 <p class="hiw-step-desc">
-                    Open the <strong>Creator Studio</strong> tab or the Wallet drawer and click
+                    Open the <strong>Creator Studio</strong> tab and click
                     <strong>Settle Total Balance to Wallet</strong>.
                     Your full balance — purchased Stars plus earned Stars — is converted back to
-                    <strong>$APTM at the live price</strong> and sent directly to your MetaMask wallet.
-                    No lock-up. Withdraw any time.
+                    <strong>$APTM at the live price</strong> and sent directly to your wallet.
+                    No lock-up period. Withdraw any time.
                 </p>
             </div>
         </div>
