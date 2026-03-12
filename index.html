@@ -5243,108 +5243,70 @@
 
     // Cloud Function endpoint
 const SYNC_FUNCTION_URL = "https://us-central1-socialhub-33014.cloudfunctions.net/syncStarsToBlockchain";
-
 let _settleInProgress = false;
 
 async function settleStarsToWallet(event) {
     const _clickedBtn = (event && event.target) ? event.target : null;
     
     if (_settleInProgress) return;
-    if (!hubContract || !signer || !provider) {
+    if (!hubContract || !signer) {
         return alert("Connect Wallet First");
     }
 
-    // Capture the address from the signer
-    const addr = (await signer.getAddress()).toLowerCase();
-
-    // 1. Read Firebase Balance
-    let liveCreatorStars = 0;
     try {
+        const addr = (await signer.getAddress()).toLowerCase();
+
+        // 1. Get Firebase Stars
+        let liveStars = 0;
         const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr));
         if (snap.exists()) {
-            liveCreatorStars = parseFloat(snap.data().creatorStars || 0);
+            liveStars = parseFloat(snap.data().creatorStars || 0);
         }
-    } catch (e) {
-        console.error("Firebase Error:", e);
-        return alert("Could not read Firebase balance.");
-    }
 
-    // 2. Read On-Chain Balance (starBalances matches your ABI)
-    let exactBalWei;
-    try {
-        exactBalWei = await hubContract.starBalances(addr);
-    } catch (e) {
-        console.error("Blockchain Error:", e);
-        return alert("Could not read on-chain balance.");
-    }
+        // 2. Get On-chain Balance
+        let exactWei = await hubContract.starBalances(addr);
 
-    if (exactBalWei.isZero() && liveCreatorStars <= 0) {
-        return alert("Nothing to settle. Earn stars or deposit APTM first.");
-    }
+        if (exactWei.isZero() && liveStars <= 0) {
+            return alert("Nothing to settle.");
+        }
 
-    const exactAptmHuman = parseFloat(ethers.utils.formatEther(exactBalWei));
-    const confirmed = confirm(
-        "Settle Balance to Wallet\n\n" +
-        "On-chain APTM:   " + exactAptmHuman.toFixed(6) + " APTM\n" +
-        "Earned Stars:    " + liveCreatorStars.toFixed(2) + " ★\n" +
-        "──────────────────────────────\n\n" +
-        (liveCreatorStars > 0 ? "Step 1: Syncing stars to Ledger.\nStep 2: MetaMask withdrawal.\n" : "MetaMask will open to withdraw balance.\n") +
-        "\nProceed?"
-    );
+        if (!confirm("Proceed to Settle?")) return;
 
-    if (!confirmed) return;
+        _settleInProgress = true;
+        if (_clickedBtn) {
+            _clickedBtn.disabled = true;
+            _clickedBtn.innerText = "Processing...";
+        }
 
-    // LOCK UI
-    _settleInProgress = true;
-    if (_clickedBtn) {
-        _clickedBtn.disabled = true;
-        _clickedBtn.innerText = "Processing...";
-    }
-
-    try {
-        // Step 1: Sync Firebase to Blockchain
-        if (liveCreatorStars > 0) {
-            if (typeof showToast === "function") showToast("Syncing Firebase to Ledger...");
-            
+        // 3. Step 1: Cloud Sync
+        if (liveStars > 0) {
+            if (typeof showToast === "function") showToast("Syncing stars...");
             const response = await fetch(SYNC_FUNCTION_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ address: addr, amount: liveCreatorStars })
+                body: JSON.stringify({ address: addr, amount: liveStars })
             });
 
-            if (!response.ok) throw new Error("Cloud Function failed to sync.");
+            if (!response.ok) throw new Error("Cloud Function Error");
 
-            // POLLING: Wait for the ledger to update
-            if (typeof showToast === "function") showToast("Waiting for Ledger update...");
-            let synced = false;
-            for (let i = 0; i < 10; i++) { 
-                await new Promise(r => setTimeout(r, 3000));
-                const updatedBal = await hubContract.starBalances(addr);
-                if (!updatedBal.eq(exactBalWei)) {
-                    exactBalWei = updatedBal;
-                    synced = true;
-                    break;
-                }
-            }
-            if (!synced && exactBalWei.isZero()) throw new Error("Sync timeout. Try again in 1 minute.");
+            // Wait for ledger update
+            await new Promise(r => setTimeout(r, 5000));
+            exactWei = await hubContract.starBalances(addr);
         }
 
-        // Step 2: Blockchain Withdrawal
+        // 4. Step 2: MetaMask Withdrawal
         if (typeof showToast === "function") showToast("Opening MetaMask...");
+        const tx = await hubContract.withdrawStars(exactWei, { gasLimit: 500000 });
         
-        const tx = await hubContract.withdrawStars(exactBalWei, {
-            gasLimit: 500000 
-        });
-
-        if (typeof showToast === "function") showToast("Transaction Pending...");
         await tx.wait();
         if (typeof showToast === "function") showToast("Success!");
         
-        if(typeof syncData === 'function') syncData();
+        if (typeof syncData === "function") await syncData();
+        alert("Settlement Successful!");
 
     } catch (e) {
         console.error("Settle Error:", e);
-        alert("Settlement Failed: " + (e.reason || e.message || "Unknown error"));
+        alert("Settlement Failed: " + (e.message || "Unknown Error"));
     } finally {
         _settleInProgress = false;
         if (_clickedBtn) {
