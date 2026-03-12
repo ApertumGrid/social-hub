@@ -2716,6 +2716,67 @@
                     <img id="comm-feed-banner-img" class="comm-feed-banner" src="" alt="" crossorigin="anonymous" style="display:none;">
                     <div class="comm-feed-name" id="comm-feed-name"></div>
                     <div class="comm-feed-desc" id="comm-feed-desc"></div>
+
+                    <!-- ── Community Composer (cloned from global, unique IDs) ── -->
+                    <div class="card" id="comm-composer-card" style="border-color:rgba(45,212,191,0.28); margin-bottom:16px;">
+                        <div class="composer-row">
+                            <img id="comm-pb-avatar" class="av" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub">
+                            <div>
+                                <div class="composer-name" id="comm-pb-handle">Anonymous_Creator</div>
+                                <div class="composer-sub" id="comm-composer-sub">Broadcasting to the Hub</div>
+                            </div>
+                        </div>
+
+                        <textarea id="comm-post-text" class="field"
+                                  placeholder="What's your signal to this Hub?"
+                                  style="white-space:pre-wrap;"></textarea>
+
+                        <div class="media-tabs">
+                            <div class="mtab active" id="comm-tab-url"  onclick="setCommMediaTab('url')">🔗 URL</div>
+                            <div class="mtab"        id="comm-tab-file" onclick="setCommMediaTab('file')">☁ Firebase Upload</div>
+                        </div>
+
+                        <div id="comm-url-input-wrap">
+                            <input type="text" id="comm-post-media" class="field"
+                                   placeholder="Video URL (10★) · Image URL (3★) — YouTube, Vimeo, or .mp4"
+                                   oninput="commUpdatePreview(this.value)">
+                            <div id="comm-media-preview-container">
+                                <img    id="comm-preview-img"    src="" style="max-width:100%;max-height:200px;display:none;margin:0 auto;">
+                                <iframe id="comm-preview-iframe" src="" frameborder="0" allowfullscreen style="width:100%;height:200px;display:none;"></iframe>
+                                <video  id="comm-preview-video"  src="" controls style="width:100%;max-height:200px;display:none;"></video>
+                            </div>
+                        </div>
+
+                        <div id="comm-file-input-wrap" style="display:none;">
+                            <div class="upload-zone">
+                                <input type="file" id="comm-media-file-input" accept="image/*,video/*" onchange="handleCommFileSelect(this)">
+                                <div class="upload-zone-text">
+                                    <strong>↑ Click or drop to upload</strong>
+                                    Stored on <span style="color:#ffb300;">Firebase Storage</span>.<br>
+                                    <span style="font-size:0.68rem;color:var(--text-muted);">No MetaMask required.</span>
+                                </div>
+                            </div>
+                            <div id="comm-file-preview-wrap" style="display:none;margin-top:10px;">
+                                <img   id="comm-file-preview-img" style="max-width:100%;border-radius:10px;display:none;">
+                                <video id="comm-file-preview-vid" controls style="max-width:100%;border-radius:10px;display:none;"></video>
+                                <div id="comm-file-info" style="font-size:0.7rem;color:var(--text-muted);margin-top:5px;"></div>
+                            </div>
+                        </div>
+
+                        <div id="comm-upload-progress-wrap" style="display:none;">
+                            <div class="progress-label">
+                                <span id="comm-progress-label-text">Uploading…</span>
+                                <span id="comm-progress-pct">0%</span>
+                            </div>
+                            <div class="progress-track"><div class="progress-bar" id="comm-progress-bar"></div></div>
+                            <div class="progress-status" id="comm-progress-status">Preparing…</div>
+                        </div>
+
+                        <div class="fee-display" id="comm-post-fee-display"></div>
+                        <button class="btn btn-teal" id="comm-broadcast-btn" onclick="handleCommBroadcast()">◈ Broadcast to Hub</button>
+                    </div>
+                    <!-- ── End Community Composer ── -->
+
                     <div id="comm-feed-items"></div>
                 </div>
                 <!-- Communities browser (default view) -->
@@ -7072,6 +7133,251 @@
 
     const COMMUNITY_STARTUP_COST = 1000;   // Stars — one-time Hub creation cost
 
+    // ═══════════════════════════════════════════════════════════════════
+    // COMMUNITY COMPOSER — dedicated broadcast handler for Hub feeds.
+    //
+    // Uses separate state and separate DOM IDs (all prefixed "comm-")
+    // so it never clashes with the global composer.
+    // communityId is always taken from _activeCommunity.id (set by
+    // openCommunityFeed before the composer is ever visible).
+    // Admin fee waiver: CONFIG.ADMIN_ADDRESS pays 0★ for any broadcast.
+    // ═══════════════════════════════════════════════════════════════════
+    let commMediaTabMode = 'url';
+    let commSelectedFile = null;
+
+    function setCommMediaTab(mode) {
+        commMediaTabMode = mode;
+        const urlWrap  = document.getElementById('comm-url-input-wrap');
+        const fileWrap = document.getElementById('comm-file-input-wrap');
+        const tabUrl   = document.getElementById('comm-tab-url');
+        const tabFile  = document.getElementById('comm-tab-file');
+        if (urlWrap)  urlWrap.style.display  = mode === 'url'  ? '' : 'none';
+        if (fileWrap) fileWrap.style.display = mode === 'file' ? '' : 'none';
+        if (tabUrl)   tabUrl.classList.toggle('active',  mode === 'url');
+        if (tabFile)  tabFile.classList.toggle('active', mode === 'file');
+        commUpdateFeeDisplay();
+    }
+    window.setCommMediaTab = setCommMediaTab;
+
+    function commUpdatePreview(url) {
+        const img    = document.getElementById('comm-preview-img');
+        const iframe = document.getElementById('comm-preview-iframe');
+        const video  = document.getElementById('comm-preview-video');
+        if (!img || !iframe || !video) return;
+        if (!url) {
+            img.style.display = iframe.style.display = video.style.display = 'none';
+            commUpdateFeeDisplay();
+            return;
+        }
+        const ytId = typeof getYoutubeId === 'function' ? getYoutubeId(url) : null;
+        const vmId = typeof getVimeoId   === 'function' ? getVimeoId(url)   : null;
+        img.style.display = iframe.style.display = video.style.display = 'none';
+        if (ytId) {
+            iframe.src = 'https://www.youtube.com/embed/' + ytId;
+            iframe.style.display = 'block';
+        } else if (vmId) {
+            iframe.src = 'https://player.vimeo.com/video/' + vmId;
+            iframe.style.display = 'block';
+        } else if (isVideoUrl(url)) {
+            video.src = url; video.style.display = 'block';
+        } else {
+            img.src = url; img.style.display = 'block';
+        }
+        commUpdateFeeDisplay();
+    }
+    window.commUpdatePreview = commUpdatePreview;
+
+    function handleCommFileSelect(input) {
+        commSelectedFile = input.files[0];
+        if (!commSelectedFile) return;
+        const prevWrap = document.getElementById('comm-file-preview-wrap');
+        const prevImg  = document.getElementById('comm-file-preview-img');
+        const prevVid  = document.getElementById('comm-file-preview-vid');
+        const info     = document.getElementById('comm-file-info');
+        if (!prevWrap) return;
+        prevWrap.style.display = 'block';
+        prevImg.style.display = prevVid.style.display = 'none';
+        const objUrl = URL.createObjectURL(commSelectedFile);
+        if (commSelectedFile.type.startsWith('image/')) {
+            prevImg.src = objUrl; prevImg.style.display = 'block';
+        } else {
+            prevVid.src = objUrl; prevVid.style.display = 'block';
+        }
+        const kb = (commSelectedFile.size / 1024).toFixed(1);
+        if (info) info.innerHTML = `<span style="color:#ffb300;">◈ ${escHtml(commSelectedFile.name)}</span> · ${kb} KB · Will upload to Firebase Storage`;
+        commUpdateFeeDisplay();
+    }
+    window.handleCommFileSelect = handleCommFileSelect;
+
+    function commUpdateFeeDisplay() {
+        const el = document.getElementById('comm-post-fee-display');
+        if (!el) return;
+        const isAdmin = userAddress && userAddress.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase();
+        if (isAdmin) { el.textContent = 'Admin bypass — 0★ broadcast fee'; return; }
+        let fee = CONFIG.FEES.TEXT;
+        if (commMediaTabMode === 'file' && commSelectedFile) {
+            fee = commSelectedFile.type.startsWith('video/') ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
+        } else {
+            const url = (document.getElementById('comm-post-media')?.value || '').trim();
+            if (url) fee = isVideoUrl(url) ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
+        }
+        el.textContent = `Broadcast cost: ${fee.toFixed(1)}★ (100% platform)`;
+    }
+    window.commUpdateFeeDisplay = commUpdateFeeDisplay;
+
+    // Update the community composer avatar/handle whenever the wallet changes
+    function syncCommComposerIdentity() {
+        const avatarEl = document.getElementById('comm-pb-avatar');
+        const handleEl = document.getElementById('comm-pb-handle');
+        const subEl    = document.getElementById('comm-composer-sub');
+        if (avatarEl) avatarEl.src = userAvatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=Hub';
+        if (handleEl) handleEl.textContent = userHandle || 'Anonymous_Creator';
+        if (subEl && _activeCommunity) subEl.textContent = 'Broadcasting to ' + (_activeCommunity.name || 'Hub');
+    }
+    window.syncCommComposerIdentity = syncCommComposerIdentity;
+
+    async function handleCommBroadcast() {
+        const txt = document.getElementById('comm-post-text')?.value.trim();
+        if (!txt)         return showToast('Write something first!');
+        if (!userAddress) return showToast('Connect your wallet first!');
+        if (!_activeCommunity) return showToast('No active community. Please open a Hub first.');
+
+        // ── Determine fee — admin gets a full waiver ──────────────────────────
+        const isAdmin = userAddress.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase();
+        let mediaUrl   = '';
+        let feeAmount  = CONFIG.FEES.TEXT;
+        let postType   = 1;
+        let isFirebase = false;
+        let postTypeLabel = 'Text';
+
+        if (commMediaTabMode === 'file' && commSelectedFile) {
+            const isVid  = commSelectedFile.type.startsWith('video/');
+            feeAmount    = isVid ? CONFIG.FEES.VIDEO : CONFIG.FEES.PHOTO;
+            postType     = isVid ? 3 : 2;
+            postTypeLabel = isVid ? 'Video' : 'Photo';
+            isFirebase   = true;
+        } else {
+            const url = (document.getElementById('comm-post-media')?.value || '').trim();
+            if (url) {
+                if (isVideoUrl(url)) {
+                    feeAmount = CONFIG.FEES.VIDEO; postType = 3; postTypeLabel = 'Video';
+                } else {
+                    feeAmount = CONFIG.FEES.PHOTO; postType = 2; postTypeLabel = 'Photo';
+                }
+                mediaUrl = url;
+            }
+        }
+
+        // ── Balance check (skipped for admin) ────────────────────────────────
+        if (!isAdmin) {
+            let livePurchased = 0, liveEarned = 0;
+            if (window.db) {
+                try {
+                    const snap = await window.fs.getDoc(
+                        window.fs.doc(window.db, 'user_balances', userAddress.toLowerCase())
+                    );
+                    if (snap.exists()) {
+                        livePurchased = snap.data().stars        || 0;
+                        liveEarned    = snap.data().creatorStars || 0;
+                    }
+                } catch (e) { console.warn('[handleCommBroadcast] balance check failed:', e); }
+            }
+            if ((livePurchased + liveEarned) < feeAmount) {
+                return alert(
+                    `Insufficient Stars!\n` +
+                    `Post Type:       ${postTypeLabel}\n` +
+                    `Required:        ${feeAmount.toFixed(1)}★\n` +
+                    `Total Available: ${(livePurchased + liveEarned).toFixed(1)}★\n\n` +
+                    `Deposit more APTM to increase your balance.`
+                );
+            }
+        }
+
+        // ── Firebase Storage upload ───────────────────────────────────────────
+        if (isFirebase && commSelectedFile) {
+            const progWrap = document.getElementById('comm-upload-progress-wrap');
+            if (progWrap) progWrap.style.display = 'block';
+            showToast('Uploading to Firebase Storage…');
+            try {
+                mediaUrl = await uploadToFirebaseStorage(commSelectedFile);
+                showToast('Upload complete! Writing post…');
+            } catch (e) {
+                console.error('[handleCommBroadcast] upload failed:', e);
+                if (progWrap) progWrap.style.display = 'none';
+                return alert('Upload failed: ' + e.message);
+            }
+        }
+
+        // ── Deduct stars (skipped for admin) ─────────────────────────────────
+        if (!isAdmin) {
+            try {
+                await deductSpendableStars(userAddress, feeAmount);
+            } catch (e) {
+                console.error('[handleCommBroadcast] deduction failed:', e);
+                return alert('Failed to deduct stars. Please try again.');
+            }
+        }
+
+        // ── Log revenue & ledger ──────────────────────────────────────────────
+        const firestoreLabel = postType === 1 ? 'text_post' : postType === 2 ? 'photo_post' : 'video_post';
+        if (!isAdmin) {
+            logAdminRevenue(userAddress, firestoreLabel, feeAmount);
+            logTransaction(userAddress, 'spend', feeAmount,
+                `${postTypeLabel} Broadcast in ${_activeCommunity.name} Hub — ${feeAmount.toFixed(1)}★ (100% platform)`);
+        }
+
+        // ── Write post to Firestore with communityId ─────────────────────────
+        try {
+            const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
+            const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
+            await window.fs.addDoc(window.fs.collection(window.db, 'posts'), {
+                text:          txt,
+                media:         mediaUrl,
+                firebase:      isFirebase,
+                author:        postAuthorName,
+                authorAddr:    userAddress,
+                avatar:        postAuthorPic,
+                timestamp:     Date.now(),
+                hypes:         0,
+                type:          postType,
+                feePaid:       isAdmin ? 0 : feeAmount,
+                isBoosted:     false,
+                category:      'Global',
+                communityId:   _activeCommunity.id,
+                communityName: _activeCommunity.name,
+                isVisible:     true
+            });
+
+            // ── Reset composer ────────────────────────────────────────────────
+            const textEl   = document.getElementById('comm-post-text');
+            const mediaEl  = document.getElementById('comm-post-media');
+            const progWrap = document.getElementById('comm-upload-progress-wrap');
+            const fPrev    = document.getElementById('comm-file-preview-wrap');
+            if (textEl)   textEl.value  = '';
+            if (mediaEl)  mediaEl.value = '';
+            if (progWrap) progWrap.style.display = 'none';
+            if (fPrev)    fPrev.style.display    = 'none';
+            commSelectedFile = null;
+
+            // Reset preview
+            ['comm-preview-img','comm-preview-iframe','comm-preview-video'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) { el.src = ''; el.style.display = 'none'; }
+            });
+
+            updateUI();
+            showToast('Signal Live in ' + _activeCommunity.name + ' Hub! ◈');
+
+            // Refresh the community feed to show the new post
+            await openCommunityFeed(_activeCommunity);
+
+        } catch (e) {
+            console.error('[handleCommBroadcast] write failed:', e);
+            alert('Post failed: ' + e.message);
+        }
+    }
+    window.handleCommBroadcast = handleCommBroadcast;
+
     // ─── escHtml helper — prevents XSS in community names/descriptions ──────────
     function escHtml(str) {
         return String(str || '')
@@ -7164,6 +7470,10 @@
     // ─── Open a specific Community Hub feed ───────────────────────────────────────
     async function openCommunityFeed(comm) {
         _activeCommunity = comm;
+
+        // Sync the community composer identity and fee display
+        if (typeof syncCommComposerIdentity === 'function') syncCommComposerIdentity();
+        if (typeof commUpdateFeeDisplay     === 'function') commUpdateFeeDisplay();
 
         // Toggle browser/feed views
         var browser  = document.getElementById('community-browser');
@@ -7271,6 +7581,13 @@
         if (feedView) feedView.style.display  = 'none';
         var container = document.getElementById('comm-feed-items');
         if (container) container.innerHTML = '';
+        // Reset community composer
+        var ct = document.getElementById('comm-post-text');
+        var cm = document.getElementById('comm-post-media');
+        if (ct) ct.value = '';
+        if (cm) cm.value = '';
+        commSelectedFile = null;
+        commMediaTabMode = 'url';
     }
     window.closeCommunityFeed = closeCommunityFeed;
 
