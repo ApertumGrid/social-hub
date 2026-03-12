@@ -5402,49 +5402,40 @@
             showToast("No earned stars to sync \u2014 proceeding to withdrawal\u2026");
         }
         // ══════════════════════════════════════════════════════════════════════
-        // STEP B — Call settleBalance(exactBalWei) with the EXACT on-chain Wei.
-        //
-        // We pass the BigNumber returned by aptmBalances() directly — no float
-        // conversion, no price math, no rounding. The contract receives the
-        // identical value it reported, so "insufficient funds" is impossible.
-        //
-        // Firebase is zeroed ONLY after receipt.status === 1 is confirmed.
+        // ══════════════════════════════════════════════════════════════════════
+        // STEP B — Final Withdrawal (NO HARDCODED GAS + FRESH BALANCE)
         // ══════════════════════════════════════════════════════════════════════
         try {
-            if (exactBalWei.isZero()) {
+            // Re-fetch the real balance from the contract to ensure we don't overdraft
+            const finalWei = await hubContract.aptmBalances(addr);
+
+            if (finalWei.isZero()) {
                 _unlockSettle();
-                return alert("Your on-chain balance is 0 APTM after sync. Nothing to withdraw.");
+                return alert("The blockchain hasn't updated your balance yet. Wait 10s and try again.");
             }
 
-            const settleAptm = parseFloat(ethers.utils.formatEther(exactBalWei));
-            showToast("Step 2/2 \u2014 Opening MetaMask\u2026");
-            console.log("[Settlement] Calling settleBalance(" + exactBalWei.toString() + ")");
+            const settleAptm = parseFloat(ethers.utils.formatEther(finalWei));
+            showToast("Step 2/2 \u2014 Opening MetaMask for " + settleAptm.toFixed(4) + " APTM\u2026");
 
-            const tx = await hubContract.settleBalance(exactBalWei, { gasLimit: 300000 });
-            showToast("Transaction submitted \u2014 waiting for on-chain confirmation\u2026");
+            // REMOVED { gasLimit }: Letting MetaMask calculate the correct gas automatically
+            const tx = await hubContract.settleBalance(finalWei); 
+            
+            showToast("Transaction submitted \u2014 waiting for confirmation\u2026");
 
             const receipt = await tx.wait();
             if (!receipt || receipt.status !== 1) {
-                const detail = receipt
-                    ? ("Block: " + receipt.blockNumber + " | Gas: " + receipt.gasUsed.toString())
-                    : "No receipt returned by RPC.";
-                console.error("[Settlement] settleBalance reverted.", detail);
                 _unlockSettle();
-                return alert(
-                    "Withdrawal reverted on-chain.\n\n" + detail + "\n\n" +
-                    "Your APTM has NOT left the contract.\n" +
-                    "Your Firebase stars are unchanged \u2014 click Settle to try again."
-                );
+                return alert("Withdrawal reverted on-chain. The sync might still be pending.");
             }
 
-            console.log("[Settlement] Confirmed. Block:", receipt.blockNumber, "| Withdrew:", settleAptm.toFixed(8), "APTM");
+            console.log("[Settlement] Success! Withdrew:", settleAptm.toFixed(8), "APTM");
 
-            // ── Zero local state + arm spend lock BEFORE writing to Firebase ──
+            // ── Zero local state ──
             purchasedStars     = 0;
             creatorEarnings    = 0;
             currentAptmBalance = 0;
             totalDepositedAptm = 0;
-            _lastSpendTime     = Date.now();
+            _lastSpendTime      = Date.now();
 
             // ── STEP C: Zero Firebase ONLY after on-chain status === 1 ─────────
             if (window.db) {
