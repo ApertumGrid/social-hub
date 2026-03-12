@@ -2657,7 +2657,7 @@
                     <div style="font-size:0.68rem; color:var(--text-secondary); margin-bottom:2px;">Total Platform Revenue</div>
                     <div style="font-family:var(--font-mono); font-size:2rem; font-weight:700; color:var(--teal);" id="admin-revenue-display">0 ★</div>
                     <div style="font-size:0.62rem; color:var(--text-muted); margin-top:4px;" id="admin-revenue-count">0 fee events</div>
-                    <button id="admin-withdraw-btn" onclick="adminWithdraw(event)">⬇ Withdraw to Admin Wallet</button>
+                    <button id="admin-withdraw-btn" onclick="adminWithdraw()">⬇ Withdraw to Admin Wallet</button>
                 </div>
             </div>
 
@@ -2984,7 +2984,7 @@
                 <div style="font-size:0.68rem; color:var(--text-secondary); margin-bottom:6px;">Total Platform Revenue</div>
                 <div class="drawer-revenue-num" id="drawer-admin-revenue">0 ★</div>
                 <div style="font-size:0.62rem; color:var(--text-muted); margin-bottom:14px;" id="drawer-admin-count">0 fee events</div>
-                <button class="btn btn-gold btn-sm" style="width:100%; margin-top:0;" onclick="adminWithdraw(event); closeWalletDrawer();">⬇ Admin Withdraw</button>
+                <button class="btn btn-gold btn-sm" style="width:100%; margin-top:0;" onclick="adminWithdraw(); closeWalletDrawer();">⬇ Admin Withdraw</button>
             </div>
 
             <!-- Connect prompt if no wallet -->
@@ -3465,6 +3465,7 @@
             subscribeToEarnings(userAddress);
             subscribeLedger(userAddress);
             subscribeAdminRevenue(userAddress);
+            startChainRefresh();  // Poll aptmBalances() every 30s — keeps UI in sync with chain
 
             // ── Load Firebase profile (name + avatar) for this wallet ──
             await loadProfileFromFirebase(userAddress);
@@ -3485,15 +3486,14 @@
                 hubContract.aptmBalances(addr),
                 hubContract.totalAnchors()
             ]);
+            // BLOCKCHAIN IS THE TRUTH — always update currentAptmBalance from the
+            // contract's aptmBalances() value. Never read it from Firebase.
+            // Firebase's aptmBalance field may be stale (it lags the contract)
+            // and was causing the "4.43 APTM shown / 3.48 APTM on-chain" mismatch
+            // that triggers CALL_EXCEPTION on every settlement.
             const humanBalance  = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
-
             initialDepositAptm  = humanBalance;
-
-            // Only update the live spendable balance if no spend happened recently.
-            const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
-            if (!spendLockActive) {
-                currentAptmBalance = humanBalance;
-            }
+            currentAptmBalance  = humanBalance;
 
             totalAnchors = anchors.toNumber();
 
@@ -3505,13 +3505,36 @@
                 } else {
                     purchasedStars     = snap.data().stars        || 0;
                     creatorEarnings    = snap.data().creatorStars  || 0;
-                    // Pull the lifetime deposit receipt for THIS user — never hard-code
                     totalDepositedAptm = parseFloat(snap.data().initial_deposit) || 0;
                     await window.fs.updateDoc(userRef, { lastSync: Date.now() });
                 }
             }
             updateUI();
         } catch (e) { console.error("Sync Failed:", e); }
+    }
+
+    // Refresh the on-chain APTM balance every 30 s while a wallet is connected.
+    // This keeps the UI in sync with the contract without requiring a page reload.
+    let _chainRefreshTimer = null;
+    function startChainRefresh() {
+        stopChainRefresh();
+        _chainRefreshTimer = setInterval(async function() {
+            if (!hubContract || !signer) return;
+            try {
+                const addr   = await signer.getAddress();
+                const balRaw = await hubContract.aptmBalances(addr);
+                const bal    = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
+                // Only update if we're outside the post-spend lock window
+                const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
+                if (!spendLockActive) {
+                    currentAptmBalance = bal;
+                    updateUI();
+                }
+            } catch (e) { console.warn("[ChainRefresh] aptmBalances poll failed:", e); }
+        }, 30000);
+    }
+    function stopChainRefresh() {
+        if (_chainRefreshTimer) { clearInterval(_chainRefreshTimer); _chainRefreshTimer = null; }
     }
 
     function updateUI() {
@@ -3763,19 +3786,20 @@
         const ref = window.fs.doc(window.db, "user_balances", walletAddr.toLowerCase());
         window.fs.onSnapshot(ref, (snap) => {
             if (snap.exists()) {
-                purchasedStars  = snap.data().stars        || 0;
-                creatorEarnings = snap.data().creatorStars  || 0;
-                // Sync lifetime receipt from Firebase — accept any value, including 0 after a settle
+                purchasedStars     = snap.data().stars        || 0;
+                creatorEarnings    = snap.data().creatorStars  || 0;
+                // Sync lifetime deposit receipt from Firebase
                 totalDepositedAptm = parseFloat(snap.data().initial_deposit) || 0;
             } else {
                 purchasedStars  = 0;
                 creatorEarnings = 0;
             }
-            // Spend lock: prevents rubber-band snap-back on currentAptmBalance
-            const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
-            if (!spendLockActive && snap.exists() && snap.data().aptmBalance !== undefined) {
-                currentAptmBalance = parseFloat(snap.data().aptmBalance) || currentAptmBalance;
-            }
+            // NOTE: currentAptmBalance is intentionally NOT updated here.
+            // It is set exclusively by syncData() which reads aptmBalances()
+            // directly from the blockchain. Reading it from Firebase's
+            // stale aptmBalance field caused the UI to show a higher value
+            // than what the contract actually holds, triggering CALL_EXCEPTION
+            // on every settlement attempt.
             updateUI();
         });
     }
@@ -3930,24 +3954,9 @@
         });
     }
 
-    async function adminWithdraw(event) {
-        // ── Immediately disable the clicked button to block double-clicks ────
-        const _adminBtn = event && event.target ? event.target : null;
-        if (_adminBtn) _adminBtn.disabled = true;
-
-        function _reEnableAdmin() {
-            if (_adminBtn) _adminBtn.disabled = false;
-            // Also re-enable by ID in case the drawer button was clicked
-            const byId = document.getElementById("admin-withdraw-btn");
-            if (byId) byId.disabled = false;
-        }
-
-        if (!hubContract || !signer || !provider) {
-            _reEnableAdmin();
-            return alert("Connect Wallet First");
-        }
+    async function adminWithdraw() {
+        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
         if (!userAddress || userAddress.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) {
-            _reEnableAdmin();
             return alert("Admin only.");
         }
 
@@ -3974,21 +3983,20 @@
             if (globalSnap.exists()) revenueStars = globalSnap.data().total || 0;
             console.log(`[AdminWithdraw] Revenue from Firebase: ${revenueStars.toFixed(4)} ★`);
         } catch (e) {
-            _reEnableAdmin();
             return alert("Could not read admin_revenue/global: " + e.message);
         }
 
         if (revenueStars <= 0) {
-            _reEnableAdmin();
             return alert("No accumulated platform revenue to withdraw (admin_revenue/global = 0 ★).");
         }
 
+        // ── Minimum balance gate — below 10★ the gas cost exceeds the value ──
         if (revenueStars < 10) {
-            _reEnableAdmin();
             return alert("Insufficient balance for Gas fees.\n\nAccumulated: " + revenueStars.toFixed(2) + " ★\nMinimum required: 10 ★");
         }
 
         // ── Step 3: Convert stars → APTM using live price ─────────────────────
+        // Formula: APTM = (stars × $0.01) / livePrice
         let revenueAptm = (revenueStars * CONFIG.STAR_USD) / livePrice;
         console.log(`[AdminWithdraw] Stars→APTM: (${revenueStars} × $0.01) / $${livePrice.toFixed(4)} = ${revenueAptm.toFixed(8)} APTM`);
 
@@ -4000,21 +4008,20 @@
             console.log(`[AdminWithdraw] Contract balance: ${contractBalAptm.toFixed(8)} APTM`);
         } catch (e) {
             console.error("[AdminWithdraw] Could not read contract balance:", e);
-            _reEnableAdmin();
             return alert("Could not read contract balance: " + e.message);
         }
 
         if (contractBalAptm <= 0) {
-            _reEnableAdmin();
             return alert("Contract balance is 0. No APTM available to withdraw.");
         }
 
+        // Cap to contract balance — prevents revert if revenue calc exceeds vault
         if (revenueAptm > contractBalAptm) {
             console.warn(`[AdminWithdraw] Revenue (${revenueAptm.toFixed(8)}) > contract (${contractBalAptm.toFixed(8)}) — capping to contract balance`);
             revenueAptm = contractBalAptm;
         }
 
-        // ── Step 5: Build Wei value ─────────────────────────────────────────────
+        // ── Step 5: Build Wei value — parseEther on a safe fixed string ─────────
         const revenueWei = ethers.utils.parseEther(revenueAptm.toFixed(18));
         console.log(`[AdminWithdraw] Will withdraw: ${revenueAptm.toFixed(8)} APTM = ${revenueWei.toString()} Wei`);
 
@@ -4029,11 +4036,7 @@
             `User deposits are NOT touched. Firebase counter resets to 0.\n\n` +
             `Proceed?`
         );
-        if (!confirmed) {
-            console.log("[AdminWithdraw] Cancelled by user");
-            _reEnableAdmin();
-            return;
-        }
+        if (!confirmed) { console.log("[AdminWithdraw] Cancelled by user"); return; }
 
         showToast("Calling userWithdraw() for revenue amount…");
 
@@ -4047,12 +4050,11 @@
             const receipt = await tx.wait();
             if (!receipt || receipt.status !== 1) {
                 console.error("[AdminWithdraw] Tx reverted. Receipt:", receipt);
-                _reEnableAdmin();
                 return alert("Admin withdraw reverted on-chain.\nBlock: " + (receipt ? receipt.blockNumber : "unknown") + "\nNo funds moved.");
             }
             console.log(`[AdminWithdraw] Confirmed. Block: ${receipt.blockNumber}, Gas: ${receipt.gasUsed.toString()}`);
 
-            // ── Step 7: Reset admin_revenue/global to 0 ONLY after confirmed ──
+            // ── Step 7: Reset admin_revenue/global to 0 in Firebase ───────────
             if (window.db) {
                 try {
                     await window.fs.setDoc(
@@ -4078,14 +4080,12 @@
 
             console.log(`[AdminWithdraw] ── Complete. Withdrew ${revenueAptm.toFixed(6)} APTM ──`);
             showToast(`✓ Withdrawn ${revenueAptm.toFixed(6)} APTM to admin wallet`);
-            _reEnableAdmin();
             updateUI();
             updateDrawerUI();
             syncData();
 
         } catch (e) {
             console.error("[AdminWithdraw] Threw:", e);
-            _reEnableAdmin();
             alert("Admin withdraw failed: " + (e.reason || e.message || String(e)).slice(0, 300));
         }
     }
@@ -5376,18 +5376,15 @@
 
     async function settleStarsToWallet(event) {
         // ── Immediately disable the clicked button to block double-clicks ────
-        // _unlockSettle() re-enables ALL settle buttons on every exit path.
-        const _clickedBtn = event && event.target ? event.target : null;
-        if (_clickedBtn) { _clickedBtn.disabled = true; }
+        const _clickedBtn = (event && event.target) ? event.target : null;
+        if (_clickedBtn) _clickedBtn.disabled = true;
 
         if (!hubContract || !signer || !provider) {
             if (_clickedBtn) _clickedBtn.disabled = false;
             return alert("Connect Wallet First");
         }
 
-        // ── Dismiss HIW modal if open ────────────────────────────────────────
-        // openHIW() sets body.overflow=hidden; on Chrome this can suppress
-        // confirm() dialogs, silently killing the settle flow before it starts.
+        // ── Dismiss HIW modal if open — prevents confirm() being suppressed ──
         var _hiwOv = document.getElementById("hiw-overlay");
         if (_hiwOv && _hiwOv.classList.contains("open")) {
             _hiwOv.classList.remove("open");
@@ -5400,77 +5397,67 @@
             return alert("Settlement already in progress.\n\nWait for the current step to complete or fail before trying again.");
         }
 
-        // ── 1. Verify connected wallet ────────────────────────────────────────
+        // ── Verify connected wallet ───────────────────────────────────────────
         const addr = (await signer.getAddress()).toLowerCase();
         if (!userAddress || userAddress.toLowerCase() !== addr) {
             if (_clickedBtn) _clickedBtn.disabled = false;
             return alert("Wallet mismatch. Please reconnect your wallet and try again.");
         }
 
-        // ── 2. Compute display balance for the confirm dialog ─────────────────
-        // (matches header formula — for UI labelling only, NOT used for payout)
-        const liveAptmBal   = parseFloat(currentAptmBalance) || 0;
-        const liveEarned    = parseFloat(creatorEarnings)    || 0;
-        const liveAptmStars = (currentAptmPriceUsd > 0)
-            ? (liveAptmBal * currentAptmPriceUsd) / CONFIG.STAR_USD
-            : 0;
-        const liveAvailStars = Math.floor((liveAptmStars + liveEarned) * 10) / 10;
-
-        // Also read Firebase for breakdown labelling in the confirm dialog
-        let livePurchased = 0, liveCreatorStars = 0;
+        // ── Read EXACT on-chain balance — this is the only number that matters ──
+        // We do NOT use (stars × 0.01 / price). That formula produced 4.43 APTM
+        // while the contract held 3.48 APTM, causing every settle to revert.
+        // aptmBalances(addr) returns the precise Wei the contract will release.
+        let exactBalWei;
         try {
-            const userSnap = await window.fs.getDoc(
-                window.fs.doc(window.db, "user_balances", addr)
-            );
-            if (userSnap.exists()) {
-                livePurchased    = parseFloat(userSnap.data().stars        || 0);
-                liveCreatorStars = parseFloat(userSnap.data().creatorStars || 0);
-            }
+            exactBalWei = await hubContract.aptmBalances(addr);
+            console.log("[Settlement] aptmBalances =", exactBalWei.toString(), "Wei =", ethers.utils.formatEther(exactBalWei), "APTM");
         } catch (e) {
             if (_clickedBtn) _clickedBtn.disabled = false;
-            return alert("Could not read your balance from Firebase: " + e.message);
+            return alert("Could not read your on-chain balance:\n" + (e.reason || e.message || String(e)).slice(0, 200));
         }
 
-        const totalStars = liveAvailStars;
-        if (totalStars <= 0) {
+        if (exactBalWei.isZero()) {
             if (_clickedBtn) _clickedBtn.disabled = false;
             return alert(
-                "Nothing to settle.\n\n" +
-                "Your total balance (purchased + earned) is 0 \u2605.\n" +
-                "Deposit APTM or earn stars through interactions first."
+                "Your on-chain balance is 0 APTM.\n\n" +
+                "If you have earned stars, they need to be synced to the contract first.\n" +
+                "Contact support if you believe this is incorrect."
             );
         }
 
-        const dialogAptmValue = liveAptmBal.toFixed(4);
+        // Also read Firebase for the confirm dialog breakdown (display only)
+        let liveCreatorStars = 0;
+        try {
+            const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr));
+            if (snap.exists()) liveCreatorStars = parseFloat(snap.data().creatorStars || 0);
+        } catch (_) { /* non-critical — display only */ }
 
-        // ── 3. Confirm dialog ─────────────────────────────────────────────────
+        const exactAptmHuman = parseFloat(ethers.utils.formatEther(exactBalWei));
         const syncLine = liveCreatorStars > 0
             ? ("Step 1 \u2014 Server syncs " + liveCreatorStars.toFixed(2) + " earned \u2605 to the contract (silent).\nStep 2 \u2014 MetaMask opens to withdraw the exact on-chain balance.\n")
             : "MetaMask will open to withdraw your exact on-chain balance.\n";
 
         const confirmed = confirm(
-            "Settle Total Balance to Wallet\n\n" +
-            "Available Stars:   " + totalStars.toFixed(1)        + " \u2605  (matches header)\n" +
-            "APTM Balance:      " + dialogAptmValue               + " APTM\n" +
-            "Earned Stars:      " + liveCreatorStars.toFixed(2)   + " \u2605\n" +
-            "\u2500".repeat(30) + "\n" +
-            "Live Price:        $" + currentAptmPriceUsd.toFixed(4) + " / APTM\n\n" +
+            "Settle Balance to Wallet\n\n" +
+            "On-chain APTM (exact):  " + exactAptmHuman.toFixed(6) + " APTM\n" +
+            "Earned Stars (Firebase): " + liveCreatorStars.toFixed(2) + " \u2605\n" +
+            "\u2500".repeat(30) + "\n\n" +
             syncLine +
-            "Firebase balances will be zeroed after the withdrawal confirms.\nProceed?"
+            "Firebase balances will be zeroed only after the transaction confirms.\nProceed?"
         );
         if (!confirmed) {
             if (_clickedBtn) _clickedBtn.disabled = false;
             return;
         }
 
-        // ── Acquire lock AFTER confirm — a cancel never locks the button ──────
+        // ── Acquire re-entrancy lock AFTER confirm ────────────────────────────
         _settleInProgress = true;
         document.querySelectorAll('button[onclick*="settleStarsToWallet"]').forEach(function(b) {
             b.disabled    = true;
             b.textContent = "Settlement in progress\u2026";
         });
 
-        // _unlockSettle() MUST be called from every exit path below this line.
         function _unlockSettle(label) {
             _settleInProgress = false;
             document.querySelectorAll('button[onclick*="settleStarsToWallet"]').forEach(function(b) {
@@ -5480,7 +5467,8 @@
         }
 
         // ══════════════════════════════════════════════════════════════════════
-        // STEP A ── FIREBASE SYNC via Cloud Function
+        // STEP A — Sync earned stars to the contract via Cloud Function
+        // Only runs when creatorStars > 0. Skipped automatically otherwise.
         // ══════════════════════════════════════════════════════════════════════
         if (liveCreatorStars > 0) {
             showToast("Step 1/2 \u2014 Syncing earned stars via platform server\u2026");
@@ -5490,7 +5478,6 @@
                     headers: { "Content-Type": "application/json" },
                     body:    JSON.stringify({ userAddress: addr })
                 });
-
                 let payload;
                 try { payload = await resp.json(); } catch (_) { payload = {}; }
 
@@ -5500,109 +5487,77 @@
                     return alert(
                         "Ledger sync failed \u2014 settlement aborted.\n\n" +
                         (payload.error || payload.detail || ("HTTP " + resp.status)) +
-                        "\n\nNo funds moved. Your balances are unchanged.\nPlease try again or contact support."
+                        "\n\nNo funds moved. Your balances are unchanged.\nPlease try again."
                     );
                 }
 
                 if (payload.synced) {
-                    console.log("[Settlement] Step A confirmed. Sync tx: " + payload.txHash);
-                    showToast("Ledger synced \u2713 (tx: " + payload.txHash.slice(0, 10) + "\u2026) \u2014 reading exact on-chain balance\u2026");
+                    console.log("[Settlement] Step A confirmed. Sync tx:", payload.txHash);
+                    showToast("Ledger synced \u2713 \u2014 re-reading exact on-chain balance\u2026");
+                    // Re-read the balance after the sync tx confirmed — earned stars are now on-chain
+                    try {
+                        exactBalWei = await hubContract.aptmBalances(addr);
+                        console.log("[Settlement] Post-sync aptmBalances =", ethers.utils.formatEther(exactBalWei), "APTM");
+                    } catch (rereadErr) {
+                        console.warn("[Settlement] Re-read after sync failed:", rereadErr);
+                        // Continue with the pre-sync balance — still valid
+                    }
                 } else {
-                    showToast("No earned stars to sync \u2014 reading exact on-chain balance\u2026");
+                    showToast("No earned stars to sync \u2014 proceeding to withdrawal\u2026");
                 }
-
             } catch (networkErr) {
                 console.error("[Settlement] Network error:", networkErr);
                 _unlockSettle();
-                return alert(
-                    "Could not reach the settlement server.\n\n" +
-                    "Check your internet connection and try again.\n" +
-                    "No funds have been moved."
-                );
+                return alert("Could not reach the settlement server.\n\nCheck your internet connection and try again.\nNo funds have been moved.");
             }
         } else {
-            showToast("No earned stars to sync \u2014 reading exact on-chain balance\u2026");
+            showToast("No earned stars to sync \u2014 proceeding to withdrawal\u2026");
         }
 
         // ══════════════════════════════════════════════════════════════════════
-        // STEP B ── READ EXACT ON-CHAIN BALANCE, THEN CALL settleBalance()
+        // STEP B — Call settleBalance(exactBalWei) with the EXACT on-chain Wei.
         //
-        // WHY aptmBalances() instead of computed math:
-        //   The USD-price formula ((stars × 0.01) / price) is a floating-point
-        //   approximation that never exactly matches the Wei stored in the
-        //   contract. Any rounding difference causes CALL_EXCEPTION / "insufficient
-        //   funds" on-chain. Calling aptmBalances(addr) returns the EXACT BigNumber
-        //   the contract holds, so settleBalance(exactBalance) can never revert
-        //   due to a math mismatch.
+        // We pass the BigNumber returned by aptmBalances() directly — no float
+        // conversion, no price math, no rounding. The contract receives the
+        // identical value it reported, so "insufficient funds" is impossible.
         //
-        // settleBalance(uint256 _exactWei) — settles the caller's full balance.
-        // Firebase is zeroed ONLY after receipt.status === 1.
+        // Firebase is zeroed ONLY after receipt.status === 1 is confirmed.
         // ══════════════════════════════════════════════════════════════════════
         try {
-            showToast("Step 2/2 \u2014 Reading exact on-chain balance\u2026");
-
-            // ── Read EXACT balance BigNumber from the contract ────────────────
-            let exactBalance;
-            try {
-                exactBalance = await hubContract.aptmBalances(addr);
-                console.log("[Settlement] aptmBalances(" + addr + ") = " + exactBalance.toString() + " Wei (" + ethers.utils.formatEther(exactBalance) + " APTM)");
-            } catch (readErr) {
-                console.error("[Settlement] aptmBalances read failed:", readErr);
+            if (exactBalWei.isZero()) {
                 _unlockSettle();
-                return alert(
-                    "Could not read your on-chain balance.\n\n" +
-                    (readErr.reason || readErr.message || String(readErr)).slice(0, 200) +
-                    "\n\nNo funds moved. Try again."
-                );
+                return alert("Your on-chain balance is 0 APTM after sync. Nothing to withdraw.");
             }
 
-            if (exactBalance.isZero()) {
-                _unlockSettle();
-                return alert(
-                    "Your on-chain balance is 0 APTM.\n\n" +
-                    "If you have earned stars, ensure Step 1 (ledger sync) completed successfully.\n" +
-                    "Contact support if this persists."
-                );
-            }
-
+            const settleAptm = parseFloat(ethers.utils.formatEther(exactBalWei));
             showToast("Step 2/2 \u2014 Opening MetaMask\u2026");
-            console.log("[Settlement] Calling settleBalance(" + exactBalance.toString() + ")");
+            console.log("[Settlement] Calling settleBalance(" + exactBalWei.toString() + ")");
 
-            // ── Submit settleBalance with the EXACT on-chain BigNumber ─────────
-            const withdrawTx = await hubContract.settleBalance(exactBalance, { gasLimit: 300000 });
-            showToast("Withdrawal submitted \u2014 waiting for on-chain confirmation\u2026");
+            const tx = await hubContract.settleBalance(exactBalWei, { gasLimit: 300000 });
+            showToast("Transaction submitted \u2014 waiting for on-chain confirmation\u2026");
 
-            // ── Await receipt and check status explicitly ──────────────────────
-            // Apertum RPC can return a receipt without throwing on a revert.
-            const receipt = await withdrawTx.wait();
+            const receipt = await tx.wait();
             if (!receipt || receipt.status !== 1) {
-                var detail = receipt
-                    ? ("Block: " + receipt.blockNumber + " | Gas used: " + receipt.gasUsed.toString())
+                const detail = receipt
+                    ? ("Block: " + receipt.blockNumber + " | Gas: " + receipt.gasUsed.toString())
                     : "No receipt returned by RPC.";
                 console.error("[Settlement] settleBalance reverted.", detail);
                 _unlockSettle();
                 return alert(
-                    "Withdrawal reverted on-chain (CALL_EXCEPTION).\n\n" +
-                    detail + "\n\n" +
+                    "Withdrawal reverted on-chain.\n\n" + detail + "\n\n" +
                     "Your APTM has NOT left the contract.\n" +
-                    "Your Firebase stars are unchanged \u2014 click Settle to try again.\n" +
-                    "Contact support with the block number above if this repeats."
+                    "Your Firebase stars are unchanged \u2014 click Settle to try again."
                 );
             }
 
-            console.log(
-                "[Settlement] Confirmed. Block: " + receipt.blockNumber +
-                ", Gas: " + receipt.gasUsed.toString() +
-                ", Withdrew: " + ethers.utils.formatEther(exactBalance) + " APTM"
-            );
+            console.log("[Settlement] Confirmed. Block:", receipt.blockNumber, "| Withdrew:", settleAptm.toFixed(8), "APTM");
 
-            // ── Zero local state BEFORE writing to Firebase ───────────────────
+            // ── Zero local state + arm spend lock BEFORE writing to Firebase ──
             purchasedStars     = 0;
             creatorEarnings    = 0;
             currentAptmBalance = 0;
             totalDepositedAptm = 0;
-            _lastSpendTime     = Date.now();   // arms spend lock for SPEND_LOCK_MS
-            console.log("[Settlement] Local balances zeroed and spend lock armed before Firebase write");
+            _lastSpendTime     = Date.now();
 
             // ── STEP C: Zero Firebase ONLY after on-chain status === 1 ─────────
             if (window.db) {
@@ -5620,35 +5575,26 @@
                         },
                         { merge: true }
                     );
-                    console.log("[Settlement] Step C: Firebase zeroed — stars, creatorStars, aptmBalance, initial_deposit all → 0");
+                    console.log("[Settlement] Firebase zeroed after confirmed withdrawal.");
                 } catch (fbErr) {
-                    // On-chain succeeded but Firebase write failed — funds are in wallet.
                     console.error("[Settlement] CRITICAL: on-chain OK, Firebase zero failed:", fbErr);
                     _unlockSettle();
                     updateUI(); updateDrawerUI();
                     return alert(
                         "Withdrawal succeeded! \u2713\n\n" +
-                        ethers.utils.formatEther(exactBalance) + " APTM sent to your wallet.\n\n" +
-                        "The platform balance display could not be updated (Firebase error).\n" +
-                        "Stars will show a stale value until you reconnect your wallet.\n" +
+                        settleAptm.toFixed(6) + " APTM sent to your wallet.\n\n" +
+                        "Balance display could not be updated (Firebase error).\n" +
                         "You do NOT need to settle again \u2014 funds are in your wallet."
                     );
                 }
             }
 
-            // ── All steps confirmed ───────────────────────────────────────────
-            const settledAptm = ethers.utils.formatEther(exactBalance);
-            console.log("[Settlement] All balances confirmed zero after withdrawal of " + settledAptm + " APTM");
-            logTransaction(
-                addr, "settle", parseFloat(settledAptm),
-                "Settled (exact on-chain balance) \u2192 " + parseFloat(settledAptm).toFixed(6) + " $APTM"
-            );
+            logTransaction(addr, "settle", settleAptm, "Settled (exact on-chain) \u2192 " + settleAptm.toFixed(6) + " $APTM");
             _unlockSettle("Settle Total Balance to Wallet \u2192");
-            showToast("\u2713 Settlement complete! " + parseFloat(settledAptm).toFixed(6) + " APTM \u2192 wallet");
+            showToast("\u2713 Settlement complete! " + settleAptm.toFixed(6) + " APTM \u2192 wallet");
             updateUI(); updateDrawerUI(); syncData();
 
         } catch (e) {
-            // User rejected MetaMask, network drop, or unexpected throw.
             console.error("[Settlement] Step B threw:", e);
             _unlockSettle();
             alert(
