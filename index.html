@@ -5459,8 +5459,7 @@
 
         // ══════════════════════════════════════════════════════════════════════
         // STEP A — Sync earned stars to the contract via Cloud Function.
-        // We pass creatorStars directly so the CF uses this known value and
-        // never needs to query posts, signals, or any collection to find it.
+        // Only runs when the user has earned stars to credit on-chain.
         // ══════════════════════════════════════════════════════════════════════
         if (liveCreatorStars > 0) {
             showToast("Step 1/2 \u2014 Syncing " + liveCreatorStars.toFixed(2) + " earned \u2605 to the contract\u2026");
@@ -5473,6 +5472,7 @@
                         amount:      liveCreatorStars
                     })
                 });
+                // Wait 5 seconds for the blockchain to see the new stars
                 await new Promise(r => setTimeout(r, 5000));
                 let payload;
                 try { payload = await resp.json(); } catch (_) { payload = {}; }
@@ -5486,21 +5486,8 @@
                         "\n\nNo funds moved. Your balances are unchanged.\nPlease try again."
                     );
                 }
-
-                if (payload.synced) {
-                    console.log("[Settlement] Step A confirmed. Sync tx:", payload.txHash);
-                    showToast("Ledger synced \u2713 \u2014 re-reading exact on-chain balance\u2026");
-                    // Re-read the balance after the sync tx confirmed — earned stars are now on-chain
-                    try {
-                        exactBalWei = await hubContract.starBalances(addr);
-                        console.log("[Settlement] Post-sync aptmBalances =", ethers.utils.formatEther(exactBalWei), "APTM");
-                    } catch (rereadErr) {
-                        console.warn("[Settlement] Re-read after sync failed:", rereadErr);
-                        // Continue with the pre-sync balance — still valid
-                    }
-                } else {
-                    showToast("No earned stars to sync \u2014 proceeding to withdrawal\u2026");
-                }
+                console.log("[Settlement] Step A confirmed. Sync tx:", payload.txHash);
+                showToast("Ledger synced \u2713 \u2014 reading exact on-chain balance\u2026");
             } catch (networkErr) {
                 console.error("[Settlement] Network error:", networkErr);
                 _unlockSettle();
@@ -5511,32 +5498,25 @@
         }
 
         // ══════════════════════════════════════════════════════════════════════
-        // STEP B — Fetch the EXACT on-chain Wei from the ledger after sync,
-        // then call withdrawStars(contractWei). Using the live ledger value
-        // eliminates any rounding mismatch between the UI and the contract.
-        //
+        // STEP B — Read the live ledger balance fresh after the sync delay,
+        // then withdraw exactly what the contract holds. This eliminates any
+        // rounding mismatch between UI variables and the on-chain value.
         // Firebase is zeroed ONLY after receipt.status === 1 is confirmed.
         // ══════════════════════════════════════════════════════════════════════
-        let contractWei;
         try {
-            contractWei = await hubContract.starBalances(finalAddr);
-            console.log("[Settlement] Live contractWei =", contractWei.toString(), "Wei =", ethers.utils.formatEther(contractWei), "APTM");
-        } catch (e) {
-            _unlockSettle();
-            return alert("Could not read live on-chain balance before withdrawal:\n" + (e.reason || e.message || String(e)).slice(0, 200));
-        }
+            const activeBalanceWei = await hubContract.starBalances(finalAddr);
+            console.log("[Settlement] activeBalanceWei =", activeBalanceWei.toString(), "=", ethers.utils.formatEther(activeBalanceWei), "APTM");
 
-        try {
-            if (contractWei.isZero()) {
+            if (activeBalanceWei.isZero()) {
                 _unlockSettle();
-                return alert("Your on-chain balance is still 0 APTM.\n\nThe sync may still be processing. Please wait a moment and try again.");
+                return alert("Ledger not updated yet.\n\nYour on-chain balance is still 0 APTM. Please wait a moment and try again.");
             }
 
-            const settleAptm = parseFloat(ethers.utils.formatEther(contractWei));
+            const settleAptm = parseFloat(ethers.utils.formatEther(activeBalanceWei));
             showToast("Step 2/2 \u2014 Opening MetaMask\u2026");
-            console.log("[Settlement] Calling withdrawStars(" + contractWei.toString() + ")");
+            console.log("[Settlement] Calling withdrawStars(" + activeBalanceWei.toString() + ")");
 
-            const tx = await hubContract.withdrawStars(contractWei, { gasLimit: 500000 });
+            const tx = await hubContract.withdrawStars(activeBalanceWei, { gasLimit: 500000 });
             showToast("Transaction submitted \u2014 waiting for on-chain confirmation\u2026");
 
             const receipt = await tx.wait();
@@ -5544,7 +5524,7 @@
                 const detail = receipt
                     ? ("Block: " + receipt.blockNumber + " | Gas: " + receipt.gasUsed.toString())
                     : "No receipt returned by RPC.";
-                console.error("[Settlement] settleBalance reverted.", detail);
+                console.error("[Settlement] withdrawStars reverted.", detail);
                 _unlockSettle();
                 return alert(
                     "Withdrawal reverted on-chain.\n\n" + detail + "\n\n" +
@@ -5562,7 +5542,7 @@
             totalDepositedAptm = 0;
             _lastSpendTime     = Date.now();
 
-            // ── STEP C: Zero Firebase ONLY after on-chain status === 1 ─────────
+            // ── Zero Firebase ONLY after on-chain status === 1 ───────────────
             if (window.db) {
                 try {
                     await window.fs.setDoc(
