@@ -3100,13 +3100,8 @@
         return rpcProvider;
     }
 
-    // Returns price as a JS number on success, null on any failure.
-    // Uses BigNumber integer math to avoid JS float precision loss:
-    //   priceScaled = (reserves[1] * 1e18) / reserves[0]   (integer, no rounding)
-    //   price       = formatUnits(priceScaled, 18)          (exact decimal string)
-    // reserve0 = wAPTM (18 dec), reserve1 = wUSDT (18 dec)
-    // Price = wUSDT / wAPTM  (e.g. 252517 / 1137426 = $0.22201...)
-    // Never throws. Never uses a hardcoded fallback. Never calls getAptmPrice().
+    // Returns a positive number on success, null on any failure.
+    // Never throws. Never uses a hardcoded fallback.
     async function getLiveAptmPrice() {
         try {
             const rpc  = getRpcProvider();
@@ -3117,22 +3112,18 @@
                 new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
             ]);
 
-            const r0 = reserves[0];  // wAPTM
-            const r1 = reserves[1];  // wUSDT
+            // reserve0 = wAPTM (18 dec), reserve1 = wUSDT (18 dec)
+            const waptm = parseFloat(ethers.utils.formatUnits(reserves[0], 18));
+            const wusdt = parseFloat(ethers.utils.formatUnits(reserves[1], 18));
 
-            if (r0.isZero()) throw new Error('wAPTM reserve is zero');
+            if (!waptm || waptm <= 0) throw new Error('wAPTM reserve is zero');
 
-            // Scale r1 by 1e18 before integer-dividing by r0 to preserve decimals
-            const SCALE       = ethers.BigNumber.from('1000000000000000000');
-            const priceScaled = r1.mul(SCALE).div(r0);
-            const priceStr    = ethers.utils.formatUnits(priceScaled, 18);
-            const price       = parseFloat(priceStr);
+            const price = wusdt / waptm;
+            if (!isFinite(price) || price <= 0) throw new Error('price out of range: ' + price);
 
-            if (!isFinite(price) || price <= 0) throw new Error('price out of range: ' + priceStr);
-
-            console.log('[Heartbeat] wAPTM:', ethers.utils.formatEther(r0),
-                        '| wUSDT:', ethers.utils.formatEther(r1),
-                        '| Price: $' + price.toFixed(8));
+            console.log('[Heartbeat] wAPTM:', waptm.toFixed(2),
+                        '| wUSDT:', wusdt.toFixed(2),
+                        '| Price: $' + price.toFixed(6));
             return price;
         } catch (err) {
             console.warn('[Heartbeat] getReserves failed —', err.message || err);
@@ -3156,9 +3147,9 @@
         } else {
             currentAptmPriceUsd = price;
             window.aptmPriceUSD = price;
-            s('live-price-display', '$' + price.toFixed(6) + ' / APTM');
-            s('rp-rate',            '$' + price.toFixed(6));
-            s('drawer-price',       'APTM @ $' + price.toFixed(6));
+            s('live-price-display', '$' + price.toFixed(4) + ' / APTM');
+            s('rp-rate',            '$' + price.toFixed(4));
+            s('drawer-price',       'APTM @ $' + price.toFixed(4));
             updateUI();
             updateDrawerUI();
             const inp = document.getElementById('drawer-deposit-input');
@@ -3169,23 +3160,20 @@
     // Fires immediately on page load then every 30 s via setInterval in STARTUP block.
     // currentAptmPriceUsd starts at 0; UI shows "--" until first fetch resolves.
     async function runPriceHeartbeat() {
-        console.log("[Heartbeat] Updating Price & Balances...");
-        
-        // 1. Get the 18/18 price
         const price = await getLiveAptmPrice();
         applyPriceUpdate(price);
 
-        // 2. Sync balances (This replaces what startChainRefresh used to do)
-        if (provider && hubContract) {
-            try { 
-                await syncData(); 
-            } catch (err) {
-                console.warn("[Heartbeat] Sync failed:", err);
-            }
+        if (price === null) {
+            // Retry once after 5 s on first-load failure
+            setTimeout(async () => {
+                const retry = await getLiveAptmPrice();
+                applyPriceUpdate(retry);
+            }, 5000);
         }
 
-        // 3. Keep the loop going every 30 seconds
-        setTimeout(runPriceHeartbeat, 30000); 
+        if (provider && hubContract) {
+            try { await syncData(); } catch (_) {}
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -3256,7 +3244,7 @@
             ? (aptmBal * currentAptmPriceUsd) / CONFIG.STAR_USD
             : 0;
         const availStars = Math.floor((aptmStarsDr + earnedDr) * 10) / 10;
-        const aptmStr  = aptmBal.toFixed(6) + " APTM";
+        const aptmStr  = aptmBal.toFixed(4) + " APTM";
 
         // Big balance display: Available Stars (live, market-responsive)
         s('drawer-stars',           availStars.toFixed(1) + " ★");
@@ -3271,7 +3259,7 @@
 
         // Creator Studio section
         s('drawer-earned-stars',    creatorEarnings.toFixed(1) + " ★");
-        s('drawer-vault-aptm',      aptmBal.toFixed(6));
+        s('drawer-vault-aptm',      aptmBal.toFixed(4));
 
         // Show/hide connect prompt
         const prompt = document.getElementById('drawer-connect-prompt');
@@ -3539,7 +3527,7 @@
                 : 0;
             const availStars   = Math.floor((aptmStars + earnedStars) * 10) / 10;
             const availStr     = availStars.toFixed(1) + " ★";
-            const aptmStr      = aptmBal.toFixed(6) + " APTM";
+            const aptmStr      = aptmBal.toFixed(4) + " APTM";
 
             // Sidebar — Available Stars (live), Total Deposited (from Firebase, user-specific)
             s('user-stars',              availStr);
@@ -3553,7 +3541,7 @@
 
             // Right panel
             s('rp-stars',                availStr);
-            s('rp-aptm',                 aptmBal.toFixed(6));
+            s('rp-aptm',                 aptmBal.toFixed(4));
             s('rp-rate',                 fmt);
             s('total-anchors-display',   totalAnchors);
             s('rp-anchors',              totalAnchors);
@@ -5241,93 +5229,111 @@
     //   receipt.status === 1 confirms on-chain.
     // ═══════════════════════════════════════════════════════════════════
 
-   // --- START SETTLEMENT ---
-const SYNC_FUNCTION_URL = "https://us-central1-socialhub-33014.cloudfunctions.net/syncStarsToBlockchain";
-let _settleInProgress = false;
+    // Cloud Function endpoint
+    const SYNC_FUNCTION_URL =
+        "https://us-central1-socialhub-33014.cloudfunctions.net/syncStarsToBlockchain";
 
-window.settleStarsToWallet = async function(event) {
-    const _clickedBtn = (event && event.target) ? event.target : null;
-    
-    if (_settleInProgress) return;
-    if (!window.hubContract || !window.signer) {
-        return alert("Connect Wallet First");
-    }
+    // ── Client-side re-entrancy guard ────────────────────────────────────────────
+    // Prevents a second Settle click while a flow is already in flight.
+    // Set AFTER user confirms. Reset in every exit path via _unlockSettle().
+    let _settleInProgress = false;
 
-    try {
-        const addr = (await window.signer.getAddress()).toLowerCase();
+    async function settleStarsToWallet(event) {
+        // ── Immediately disable the clicked button to block double-clicks ────
+        const _clickedBtn = (event && event.target) ? event.target : null;
+        if (_clickedBtn) _clickedBtn.disabled = true;
 
-        // 1. Firebase Check
-        let liveStars = 0;
-        const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr));
-        if (snap.exists()) {
-            liveStars = parseFloat(snap.data().creatorStars || 0);
+        if (!hubContract || !signer || !provider) {
+            if (_clickedBtn) _clickedBtn.disabled = false;
+            return alert("Connect Wallet First");
         }
 
-        // 2. Ledger Check
-        let exactWei = await window.hubContract.starBalances(addr);
-
-        if (exactWei.isZero() && liveStars <= 0) {
-            return alert("Nothing to settle.");
+        // ── Dismiss HIW modal if open — prevents confirm() being suppressed ──
+        var _hiwOv = document.getElementById("hiw-overlay");
+        if (_hiwOv && _hiwOv.classList.contains("open")) {
+            _hiwOv.classList.remove("open");
+            document.body.style.overflow = "";
         }
 
-        if (!confirm("Proceed to Settle?")) return;
+        // ── Re-entrancy gate ──────────────────────────────────────────────────
+        if (_settleInProgress) {
+            if (_clickedBtn) _clickedBtn.disabled = false;
+            return alert("Settlement already in progress.\n\nWait for the current step to complete or fail before trying again.");
+        }
 
+        // ── Verify connected wallet ───────────────────────────────────────────
+        const addr = (await signer.getAddress()).toLowerCase();
+        if (!userAddress || userAddress.toLowerCase() !== addr) {
+            if (_clickedBtn) _clickedBtn.disabled = false;
+            return alert("Wallet mismatch. Please reconnect your wallet and try again.");
+        }
+
+        // ── Read creatorStars from user_balances — the CF needs this value ──
+        // We read it here so we can (a) show it in the confirm dialog and
+        // (b) pass it directly to the Cloud Function so it never needs to
+        // query posts or signals to work out what to sync.
+        let liveCreatorStars = 0;
+        try {
+            const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr));
+            if (snap.exists()) liveCreatorStars = parseFloat(snap.data().creatorStars || 0);
+        } catch (e) {
+            if (_clickedBtn) _clickedBtn.disabled = false;
+            return alert("Could not read your balance from Firebase:\n" + (e.message || String(e)));
+        }
+
+        // ── Read EXACT on-chain balance ───────────────────────────────────────
+        let exactBalWei;
+        try {
+            exactBalWei = await hubContract.aptmBalances(addr);
+            console.log("[Settlement] aptmBalances =", exactBalWei.toString(), "Wei =", ethers.utils.formatEther(exactBalWei), "APTM");
+        } catch (e) {
+            if (_clickedBtn) _clickedBtn.disabled = false;
+            return alert("Could not read your on-chain balance:\n" + (e.reason || e.message || String(e)).slice(0, 200));
+        }
+
+        // Nothing to settle if both on-chain balance and earned stars are zero
+        if (exactBalWei.isZero() && liveCreatorStars <= 0) {
+            if (_clickedBtn) _clickedBtn.disabled = false;
+            return alert(
+                "Nothing to settle.\n\n" +
+                "On-chain balance: 0 APTM\n" +
+                "Earned stars (Firebase): 0 ★\n\n" +
+                "Deposit APTM or earn stars through interactions first."
+            );
+        }
+
+        const exactAptmHuman = parseFloat(ethers.utils.formatEther(exactBalWei));
+        const syncLine = liveCreatorStars > 0
+            ? ("Step 1 \u2014 " + liveCreatorStars.toFixed(2) + " earned \u2605 will be synced to the contract.\nStep 2 \u2014 MetaMask opens to withdraw the full on-chain balance.\n")
+            : "MetaMask will open to withdraw your on-chain balance.\n";
+
+        const confirmed = confirm(
+            "Settle Balance to Wallet\n\n" +
+            "On-chain APTM:   " + exactAptmHuman.toFixed(6) + " APTM\n" +
+            "Earned Stars:    " + liveCreatorStars.toFixed(2) + " \u2605\n" +
+            "\u2500".repeat(30) + "\n\n" +
+            syncLine +
+            "Firebase balances will be zeroed only after the transaction confirms.\nProceed?"
+        );
+        if (!confirmed) {
+            if (_clickedBtn) _clickedBtn.disabled = false;
+            return;
+        }
+
+        // ── Acquire re-entrancy lock AFTER confirm ────────────────────────────
         _settleInProgress = true;
-        if (_clickedBtn) {
-            _clickedBtn.disabled = true;
-            _clickedBtn.innerText = "Processing...";
-        }
+        document.querySelectorAll('button[onclick*="settleStarsToWallet"]').forEach(function(b) {
+            b.disabled    = true;
+            b.textContent = "Settlement in progress\u2026";
+        });
 
-        // 3. Step 1: Sync
-        if (liveStars > 0) {
-            if (typeof showToast === "function") showToast("Syncing stars...");
-            const response = await fetch(SYNC_FUNCTION_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ address: addr, amount: liveStars })
+        function _unlockSettle(label) {
+            _settleInProgress = false;
+            document.querySelectorAll('button[onclick*="settleStarsToWallet"]').forEach(function(b) {
+                b.disabled    = false;
+                b.textContent = label || "Settle Total Balance to Wallet \u2192";
             });
-
-            if (!response.ok) throw new Error("Cloud Function Error");
-            await new Promise(r => setTimeout(r, 5000));
-            exactWei = await window.hubContract.starBalances(addr);
         }
-
-        // 4. Step 2: Withdrawal
-        if (typeof showToast === "function") showToast("Opening MetaMask...");
-        const tx = await window.hubContract.withdrawStars(exactWei, { gasLimit: 500000 });
-        
-        await tx.wait();
-        if (typeof showToast === "function") showToast("Success!");
-        
-        if (typeof syncData === "function") await syncData();
-        alert("Settlement Successful!");
-
-    } catch (e) {
-        console.error("Settle Error:", e);
-        alert("Settlement Failed: " + (e.message || "Unknown Error"));
-    } finally {
-        _settleInProgress = false;
-        if (_clickedBtn) {
-            _clickedBtn.disabled = false;
-            _clickedBtn.innerText = "Settle Total Balance to Wallet →";
-        }
-    }
-};
-// --- END SETTLEMENT ---
-
-// Helper to manage button states globally
-function updateSettleButtons(disabled, text) {
-    document.querySelectorAll('button[onclick*="settleStarsToWallet"]').forEach(b => {
-        b.disabled = disabled;
-        if (disabled && text) b.textContent = text;
-        else if (!disabled) b.textContent = "Settle Total Balance to Wallet →";
-    });
-}
-
-function _unlockSettle(label) {
-    _settleInProgress = false;
-    updateSettleButtons(false, label);
-}
 
         // ══════════════════════════════════════════════════════════════════════
         // STEP A — Sync earned stars to the contract via Cloud Function.
@@ -5360,17 +5366,14 @@ function _unlockSettle(label) {
 
                 if (payload.synced) {
                     console.log("[Settlement] Step A confirmed. Sync tx:", payload.txHash);
-                    
-                    // --- THE SAFETY FIX ---
-                    showToast("Ledger synced \u2713 \u2014 Waiting 5s for blockchain to update\u2026");
-                    await new Promise(r => setTimeout(r, 5000)); 
-                    // ----------------------
-
+                    showToast("Ledger synced \u2713 \u2014 re-reading exact on-chain balance\u2026");
+                    // Re-read the balance after the sync tx confirmed — earned stars are now on-chain
                     try {
                         exactBalWei = await hubContract.aptmBalances(addr);
                         console.log("[Settlement] Post-sync aptmBalances =", ethers.utils.formatEther(exactBalWei), "APTM");
                     } catch (rereadErr) {
                         console.warn("[Settlement] Re-read after sync failed:", rereadErr);
+                        // Continue with the pre-sync balance — still valid
                     }
                 } else {
                     showToast("No earned stars to sync \u2014 proceeding to withdrawal\u2026");
@@ -5383,41 +5386,51 @@ function _unlockSettle(label) {
         } else {
             showToast("No earned stars to sync \u2014 proceeding to withdrawal\u2026");
         }
+
         // ══════════════════════════════════════════════════════════════════════
-        // ══════════════════════════════════════════════════════════════════════
-        // STEP B — Final Withdrawal (NO HARDCODED GAS + FRESH BALANCE)
+        // STEP B — Call settleBalance(exactBalWei) with the EXACT on-chain Wei.
+        //
+        // We pass the BigNumber returned by aptmBalances() directly — no float
+        // conversion, no price math, no rounding. The contract receives the
+        // identical value it reported, so "insufficient funds" is impossible.
+        //
+        // Firebase is zeroed ONLY after receipt.status === 1 is confirmed.
         // ══════════════════════════════════════════════════════════════════════
         try {
-            // Re-fetch the real balance from the contract to ensure we don't overdraft
-            const finalWei = await hubContract.aptmBalances(addr);
-
-            if (finalWei.isZero()) {
+            if (exactBalWei.isZero()) {
                 _unlockSettle();
-                return alert("The blockchain hasn't updated your balance yet. Wait 10s and try again.");
+                return alert("Your on-chain balance is 0 APTM after sync. Nothing to withdraw.");
             }
 
-            const settleAptm = parseFloat(ethers.utils.formatEther(finalWei));
-            showToast("Step 2/2 \u2014 Opening MetaMask for " + settleAptm.toFixed(4) + " APTM\u2026");
+            const settleAptm = parseFloat(ethers.utils.formatEther(exactBalWei));
+            showToast("Step 2/2 \u2014 Opening MetaMask\u2026");
+            console.log("[Settlement] Calling settleBalance(" + exactBalWei.toString() + ")");
 
-            // REMOVED { gasLimit }: Letting MetaMask calculate the correct gas automatically
-            const tx = await hubContract.settleBalance(finalWei); 
-            
-            showToast("Transaction submitted \u2014 waiting for confirmation\u2026");
+            const tx = await hubContract.settleBalance(exactBalWei, { gasLimit: 300000 });
+            showToast("Transaction submitted \u2014 waiting for on-chain confirmation\u2026");
 
             const receipt = await tx.wait();
             if (!receipt || receipt.status !== 1) {
+                const detail = receipt
+                    ? ("Block: " + receipt.blockNumber + " | Gas: " + receipt.gasUsed.toString())
+                    : "No receipt returned by RPC.";
+                console.error("[Settlement] settleBalance reverted.", detail);
                 _unlockSettle();
-                return alert("Withdrawal reverted on-chain. The sync might still be pending.");
+                return alert(
+                    "Withdrawal reverted on-chain.\n\n" + detail + "\n\n" +
+                    "Your APTM has NOT left the contract.\n" +
+                    "Your Firebase stars are unchanged \u2014 click Settle to try again."
+                );
             }
 
-            console.log("[Settlement] Success! Withdrew:", settleAptm.toFixed(8), "APTM");
+            console.log("[Settlement] Confirmed. Block:", receipt.blockNumber, "| Withdrew:", settleAptm.toFixed(8), "APTM");
 
-            // ── Zero local state ──
+            // ── Zero local state + arm spend lock BEFORE writing to Firebase ──
             purchasedStars     = 0;
             creatorEarnings    = 0;
             currentAptmBalance = 0;
             totalDepositedAptm = 0;
-            _lastSpendTime      = Date.now();
+            _lastSpendTime     = Date.now();
 
             // ── STEP C: Zero Firebase ONLY after on-chain status === 1 ─────────
             if (window.db) {
@@ -6029,7 +6042,8 @@ function _unlockSettle(label) {
     window.viewUserWall = viewUserWall;
     window.clearWall    = clearWall;
 
-   runPriceHeartbeat();
+    runPriceHeartbeat();                          // immediate on script load
+    setInterval(runPriceHeartbeat, 30_000);       // every 30 seconds unconditionally
 
     // ═══════════════════════════════════════════════════════════════════
     // INDEX 24 — DAILY SIGNALS (STORIES)
@@ -6059,19 +6073,23 @@ function _unlockSettle(label) {
 
         const cutoff = Date.now() - 24 * 60 * 60 * 1000;
 
-        // Single-where queries only — no composite index required.
-        // Client-side filter (timestamp > cutoff) and sort (desc) applied in renderBar.
-        const q = filterAddr
-            ? window.fs.query(window.fs.collection(window.db, 'signals'), window.fs.where('authorAddr', '==', filterAddr.toLowerCase()))
-            : window.fs.collection(window.db, 'signals');
+        let q;
+        if (filterAddr) {
+            q = window.fs.query(
+                window.fs.collection(window.db, 'signals'),
+                window.fs.where('authorAddr', '==', filterAddr.toLowerCase()),
+                window.fs.where('timestamp', '>', cutoff),
+                window.fs.orderBy('timestamp', 'desc')
+            );
+        } else {
+            q = window.fs.query(
+                window.fs.collection(window.db, 'signals'),
+                window.fs.where('timestamp', '>', cutoff),
+                window.fs.orderBy('timestamp', 'desc')
+            );
+        }
 
-        const renderBar = (rawSnap) => {
-            // Apply cutoff filter and sort client-side — no index needed
-            const cutoffNow = Date.now() - 24 * 60 * 60 * 1000;
-            const docs = [];
-            rawSnap.forEach(d => { if ((d.data().timestamp || 0) > cutoffNow) docs.push(d); });
-            docs.sort((a, b) => (b.data().timestamp || 0) - (a.data().timestamp || 0));
-            const snap = { empty: docs.length === 0, forEach: (fn) => docs.forEach(fn) };
+        const renderBar = (snap) => {
             const bar = document.getElementById('signals-bar');
             if (!bar) return;
             bar.innerHTML = '';
@@ -6119,9 +6137,25 @@ function _unlockSettle(label) {
             });
         };
 
-        // Simple onSnapshot — no fallback needed since query has no composite index
         _signalUnsub = window.fs.onSnapshot(q, renderBar, (err) => {
-            console.warn('[Signals] onSnapshot error:', err.message);
+            // Fallback without ordering if index missing
+            console.warn('[Signals] Index missing, falling back:', err.message);
+            const fq = filterAddr
+                ? window.fs.query(window.fs.collection(window.db, 'signals'), window.fs.where('authorAddr', '==', filterAddr.toLowerCase()))
+                : window.fs.collection(window.db, 'signals');
+            _signalUnsub = window.fs.onSnapshot(fq, (snap2) => {
+                const cutoffNow = Date.now() - 24 * 60 * 60 * 1000;
+                const filtered = { docs: [], empty: true };
+                snap2.forEach(d => {
+                    const data = d.data();
+                    if ((data.timestamp || 0) > cutoffNow) { filtered.docs.push(d); filtered.empty = false; }
+                });
+                const fakeSnap = {
+                    empty: filtered.empty,
+                    forEach: (fn) => filtered.docs.forEach(fn)
+                };
+                renderBar(fakeSnap);
+            });
         });
     }
     window.loadSignals = loadSignals;
@@ -6429,16 +6463,12 @@ function _unlockSettle(label) {
         // ── Step 5: Active signals → hero row + teal avatar glow ─────────────────
         const cutoff = Date.now() - 24 * 60 * 60 * 1000;
         try {
-            // Single where — no composite index needed; filter by cutoff client-side
             const sigQuery = window.fs.query(
                 window.fs.collection(window.db, 'signals'),
-                window.fs.where('authorAddr', '==', addrLower)
+                window.fs.where('authorAddr', '==', addrLower),
+                window.fs.where('timestamp', '>', cutoff)
             );
-            const sigSnapRaw = await window.fs.getDocs(sigQuery);
-            // Apply timestamp cutoff client-side
-            const sigDocs = [];
-            sigSnapRaw.forEach(d => { if ((d.data().timestamp || 0) > cutoff) sigDocs.push(d); });
-            const sigSnap = { empty: sigDocs.length === 0, forEach: (fn) => sigDocs.forEach(fn) };
+            const sigSnap  = await window.fs.getDocs(sigQuery);
             const section  = document.getElementById('hero-signals-section');
             const row      = document.getElementById('hero-signals-row');
             const avatarEl = document.getElementById('hero-avatar');
@@ -6463,7 +6493,40 @@ function _unlockSettle(label) {
                 if (section)  section.style.display = 'none';
             }
         } catch (e) {
-            console.warn('[WallSignals] query error:', e.message);
+            // Composite index missing — client-side filter fallback
+            try {
+                const fallbackQ    = window.fs.query(
+                    window.fs.collection(window.db, 'signals'),
+                    window.fs.where('authorAddr', '==', addrLower)
+                );
+                const fallbackSnap = await window.fs.getDocs(fallbackQ);
+                const activeSigs   = [];
+                fallbackSnap.forEach(d => {
+                    if ((d.data().timestamp || 0) > cutoff) activeSigs.push(d);
+                });
+                const section  = document.getElementById('hero-signals-section');
+                const row      = document.getElementById('hero-signals-row');
+                const avatarEl = document.getElementById('hero-avatar');
+                if (activeSigs.length > 0) {
+                    if (avatarEl) avatarEl.classList.add('has-signal');
+                    if (section)  section.style.display = '';
+                    if (row) {
+                        row.innerHTML = '';
+                        activeSigs.forEach(docRef => {
+                            const s   = docRef.data();
+                            const pic = s.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${addrLower}`;
+                            const bubble = document.createElement('div');
+                            bubble.className = 'signal-bubble';
+                            bubble.innerHTML = `<div class="signal-ring"><img src="${pic}" crossorigin="anonymous"><div class="signal-ring-dot"></div></div><span class="signal-name">Signal</span>`;
+                            bubble.onclick = () => openSignalLightbox(docRef.id, s);
+                            row.appendChild(bubble);
+                        });
+                    }
+                } else {
+                    if (avatarEl) avatarEl.classList.remove('has-signal');
+                    if (section)  section.style.display = 'none';
+                }
+            } catch (_) {}
         }
     }
 
