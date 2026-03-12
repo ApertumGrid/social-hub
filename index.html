@@ -3049,6 +3049,7 @@
     let isActionPending    = false;  // global transaction lock — prevents double-spend on any async action
     let _activeCommunity   = null;   // null = no community context; object = { id, name, ownerId, ... } of active Hub
     let _allCommunities    = [];     // in-memory cache of community docs for client-side search
+    let _commUnsub         = null;   // teardown fn for the communities onSnapshot listener
 
     // V13: Total spendable = purchased + earned. Used everywhere for balance checks.
     function getTotalSpendableStars() {
@@ -4477,6 +4478,9 @@
             // Prevents global broadcasts from inheriting a communityId if the user
             // navigated home via the nav bar without explicitly closing the Hub feed.
             _activeCommunity = null;
+            // Tear down the live communities listener — it will restart next time the
+            // Communities tab is opened via loadCommunities().
+            if (_commUnsub) { try { _commUnsub(); } catch (_) {} _commUnsub = null; }
 
             // ── Reset category filter to All and reload the global feed ──────────
             // This runs whenever any Home entry point is used (nav-home, bnav-home,
@@ -7528,17 +7532,27 @@
         if (!window.db) return;
         const grid = document.getElementById('comm-grid');
         if (!grid) return;
+
+        // Tear down any previous listener before opening a new one
+        if (_commUnsub) { try { _commUnsub(); } catch (_) {} _commUnsub = null; }
+
         grid.innerHTML = '<div style="font-size:0.78rem;color:var(--text-muted);padding:20px 0;text-align:center;">Loading&#x2026;</div>';
+
         try {
-            const snap = await window.fs.getDocs(
-                window.fs.query(
-                    window.fs.collection(window.db, 'communities'),
-                    window.fs.orderBy('createdAt', 'desc')
-                )
+            const q = window.fs.query(
+                window.fs.collection(window.db, 'communities'),
+                window.fs.orderBy('createdAt', 'desc')
             );
-            _allCommunities = [];
-            snap.forEach(function(d) { _allCommunities.push(Object.assign({ id: d.id }, d.data())); });
-            renderCommunityGrid(_allCommunities);
+            // onSnapshot keeps the grid live — any postCount change (increment on broadcast,
+            // decrement on hide) is reflected immediately without a page refresh.
+            _commUnsub = window.fs.onSnapshot(q, function(snap) {
+                _allCommunities = [];
+                snap.forEach(function(d) { _allCommunities.push(Object.assign({ id: d.id }, d.data())); });
+                renderCommunityGrid(_allCommunities);
+            }, function(e) {
+                console.error('[loadCommunities] snapshot error:', e);
+                grid.innerHTML = '<div style="font-size:0.78rem;color:var(--red);padding:16px;">Could not load communities. Check Firestore rules or create the collection.</div>';
+            });
         } catch (e) {
             console.error('[loadCommunities]', e);
             grid.innerHTML = '<div style="font-size:0.78rem;color:var(--red);padding:16px;">Could not load communities. Check Firestore rules or create the collection.</div>';
