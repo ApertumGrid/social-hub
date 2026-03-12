@@ -2450,7 +2450,7 @@
                 <div class="vault-label">My APTM Value</div>
                 <div class="vault-aptm" id="sidebar-equity-value">0.0000 APTM</div>
                 <div class="vault-label" style="margin-top:8px;">Live APTM Price</div>
-                <div class="vault-rate" id="live-price-display">$0.3391 / APTM</div>
+                <div class="vault-rate" id="live-price-display">-- / APTM</div>
                 <button class="btn btn-purple btn-sm" style="margin-top:12px; width:100%; font-size:0.72rem;" onclick="convertAPTM()">DEPOSIT $APTM</button>
             </div>
             <div style="padding: 10px 0 4px; border-top: 1px solid var(--border); margin-top: 12px;">
@@ -2847,7 +2847,7 @@
                 </div>
                 <div class="stat-row">
                     <div class="stat-label">Live APTM Rate<span>USD peg</span></div>
-                    <div class="stat-val gold" id="rp-rate">$0.3391</div>
+                    <div class="stat-val gold" id="rp-rate">--</div>
                 </div>
                 <div class="stat-row" style="border:none;">
                     <div class="stat-label">Total Anchors<span>All time</span></div>
@@ -2927,7 +2927,7 @@
             <div class="rp-card">
                 <div class="drawer-section-label">Available Stars to Settle</div>
                 <div class="drawer-stars-display" id="drawer-stars">0 ★</div>
-                <div class="drawer-price-display" id="drawer-price">APTM @ $0.3391</div>
+                <div class="drawer-price-display" id="drawer-price">APTM @ --</div>
                 <div style="margin-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:8px;">
                     <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 10px;">
                         <div style="font-size:0.56rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:2px;">Available</div>
@@ -3036,7 +3036,7 @@
     // for SPEND_LOCK_MS milliseconds after any deduction — prevents the rubber-band snap-back.
     const SPEND_LOCK_MS = 10000;   // 10 seconds — enough for Firebase write + heartbeat cycle
     let _lastSpendTime  = 0;       // timestamp of last deduction; 0 = no recent spend
-    let currentAptmPriceUsd   = 0.3391;
+    let currentAptmPriceUsd   = 0;     // 0 until first DEX read; UI shows "--" until then
     let totalAnchors          = 0;
     let provider, signer, hubContract;
     let userAddress  = "";
@@ -3076,40 +3076,32 @@
 
 
     // ═══════════════════════════════════════════════════════════════════
-    // PRICE HEARTBEAT  (V24 — BOTH TOKENS 18 DECIMALS, CONFIRMED)
+    // ═══════════════════════════════════════════════════════════════
+    // PRICE HEARTBEAT — pure DEX reserve read, zero hardcoded fallbacks
     //
-    // Pair:    0x38acbfa5108d3c76d6cea4d380182e832a289b57
-    // RPC:     Apertum (read-only, fires for ALL visitors)
+    // Formula: price = wUSDT_reserves / wAPTM_reserves
+    //   reserve0 → wAPTM (18 dec)   reserve1 → wUSDT (18 dec)
+    // Pair: 0x38acbfa5108d3c76d6cea4d380182e832a289b57
     //
-    // Token decimals — VERIFIED from Apertum block explorer:
-    //   reserve0 → wAPTM  0x110Ac02Ba3384Bc055c13A87766049a74517BedA  → 18 dec
-    //   reserve1 → wUSDT  0x1487Db421F6B58e77bfefc905fDc1EDE5Fb85C7F  → 18 dec
-    //
-    // All previous versions used 6 dec for wUSDT.  Because the raw reserve
-    // is a BigInt scaled to 10^18, dividing by 10^6 instead of 10^18 left
-    // a factor of 10^12 in the numerator → price appeared in the billions.
-    // Using 18 for both tokens gives the correct ~$0.34 result.
-    //
-    // Price = formatUnits(reserve1, 18) / formatUnits(reserve0, 18)
-    //       = wUSDT_human / wAPTM_human  →  e.g. $0.3452
-    // ═══════════════════════════════════════════════════════════════════
+    // On any failure: currentAptmPriceUsd stays 0, UI shows "Price Error".
+    // NO fallback price. NO offsets. NO getAptmPrice() contract call.
+    // ═══════════════════════════════════════════════════════════════
 
     const APERTUM_RPC  = "https://rpc.apertum.io/ext/bc/YDJ1r9RMkewATmA7B35q1bdV18aywzmdiXwd9zGBq3uQjsCnn/rpc";
     const DEX_PAIR_V24 = "0x38acbfa5108d3c76d6cea4d380182e832a289b57";
 
-    // Minimal pair ABI — getReserves only
     const PAIR_ABI_V24 = [
         "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)"
     ];
 
-    // Singleton read-only RPC provider — separate from MetaMask signer
     let rpcProvider = null;
     function getRpcProvider() {
         if (!rpcProvider) rpcProvider = new ethers.providers.JsonRpcProvider(APERTUM_RPC);
         return rpcProvider;
     }
 
-    // ─── Pull exact price from DEX pair reserves ─────────────────────────────────
+    // Returns a positive number on success, null on any failure.
+    // Never throws. Never uses a hardcoded fallback.
     async function getLiveAptmPrice() {
         try {
             const rpc  = getRpcProvider();
@@ -3120,87 +3112,73 @@
                 new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
             ]);
 
-            // Both wAPTM and wUSDT use 18 decimals on Apertum (confirmed block explorer)
-            const waptmAmount = parseFloat(ethers.utils.formatUnits(reserves[0], 18)); // wAPTM
-            const wusdtAmount = parseFloat(ethers.utils.formatUnits(reserves[1], 18)); // wUSDT
+            // reserve0 = wAPTM (18 dec), reserve1 = wUSDT (18 dec)
+            const waptm = parseFloat(ethers.utils.formatUnits(reserves[0], 18));
+            const wusdt = parseFloat(ethers.utils.formatUnits(reserves[1], 18));
 
-            const price = wusdtAmount / waptmAmount;
+            if (!waptm || waptm <= 0) throw new Error('wAPTM reserve is zero');
 
-            console.log('[V24 Heartbeat] wAPTM:', waptmAmount.toFixed(4),
-                        '| wUSDT:', wusdtAmount.toFixed(4),
+            const price = wusdt / waptm;
+            if (!isFinite(price) || price <= 0) throw new Error('price out of range: ' + price);
+
+            console.log('[Heartbeat] wAPTM:', waptm.toFixed(2),
+                        '| wUSDT:', wusdt.toFixed(2),
                         '| Price: $' + price.toFixed(6));
-
             return price;
         } catch (err) {
-            console.warn('[V24 Heartbeat] DEX pair unreachable —', err.message || err);
+            console.warn('[Heartbeat] getReserves failed —', err.message || err);
             return null;
         }
     }
 
-    // ─── Push price + equity to every UI element that displays them ──────────────
+    // Pushes a confirmed live price (or error state) to every display element.
+    // price === null means DEX fetch failed — show "Price Error", never a fake number.
     function applyPriceUpdate(price) {
         const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
-        if (price === null) {
-            // DEX unreachable — keep the existing price (fallback $0.3391 or last known live value)
-            // and still refresh the UI so stars are calculated with whatever price we have.
-            const statusStr = 'Network: Connected | System: Online';
-            s('live-price-display', statusStr);
-            s('rp-rate',            statusStr);
-            s('drawer-price',       statusStr);
-            // Still call updateUI so stars render correctly using the fallback price
+        if (!price || price <= 0) {
+            currentAptmPriceUsd = 0;
+            window.aptmPriceUSD = 0;
+            s('live-price-display', 'Price Error');
+            s('rp-rate',            'Price Error');
+            s('drawer-price',       'APTM @ Price Error');
             updateUI();
             updateDrawerUI();
         } else {
             currentAptmPriceUsd = price;
             window.aptmPriceUSD = price;
-
-            // Price updated — call updateUI() so Available Stars reprice instantly.
-            // Available_Stars = (currentAptmBalance * newPrice) / $0.01
-            // Price doubles overnight → stars shown double. Price halves → stars halve.
+            s('live-price-display', '$' + price.toFixed(4) + ' / APTM');
+            s('rp-rate',            '$' + price.toFixed(4));
+            s('drawer-price',       'APTM @ $' + price.toFixed(4));
             updateUI();
             updateDrawerUI();
-
-            // Update drawer price label (updateDrawerUI covers the rest)
-            s('drawer-price', 'APTM @ $' + price.toFixed(4));
-
             const inp = document.getElementById('drawer-deposit-input');
             if (inp && inp.value) updateDepositEstimate(parseFloat(inp.value));
         }
     }
 
-    // ─── Unconditional heartbeat — fires immediately on script load, then every 30s ────
+    // Fires immediately on page load then every 30 s via setInterval in STARTUP block.
+    // currentAptmPriceUsd starts at 0; UI shows "--" until first fetch resolves.
     async function runPriceHeartbeat() {
-        // On first call, immediately render the UI with the fallback price ($0.3391)
-        // so stars are never shown as 0 while waiting for the DEX fetch to resolve.
-        // This ensures: if the user has 5.0 APTM and price = $0.3391, they see ~169 stars
-        // right away rather than a blank 0.
-        updateUI();
-
         const price = await getLiveAptmPrice();
+        applyPriceUpdate(price);
 
         if (price === null) {
-            // DEX unreachable — log and retry once after 5 seconds before giving up
-            console.warn('[Heartbeat] Live price fetch failed — retrying in 5s with fallback $' + currentAptmPriceUsd.toFixed(4));
+            // Retry once after 5 s on first-load failure
             setTimeout(async () => {
                 const retry = await getLiveAptmPrice();
-                applyPriceUpdate(retry);   // applyPriceUpdate handles null gracefully
+                applyPriceUpdate(retry);
             }, 5000);
-        } else {
-            applyPriceUpdate(price);
         }
 
-        // Sync on-chain APTM balance after price is settled
         if (provider && hubContract) {
-            try {
-                await syncData();
-            } catch (_) {}
+            try { await syncData(); } catch (_) {}
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
     // MOBILE BOTTOM NAV
-    // ═══════════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
     function setBnav(active) {
         document.querySelectorAll('.bnav-item').forEach(b => b.classList.remove('active'));
         const el = document.getElementById('bnav-' + active);
@@ -3257,7 +3235,7 @@
 
     function updateDrawerUI() {
         const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-        const fmt      = parseFloat(currentAptmPriceUsd).toFixed(4);
+        const fmt      = currentAptmPriceUsd > 0 ? parseFloat(currentAptmPriceUsd).toFixed(4) : '--';
         const aptmBal  = parseFloat(currentAptmBalance) || 0;
 
         // Available Stars — identical formula to updateUI: floor1((APTM*price/0.01) + earned)
@@ -3457,10 +3435,7 @@
             await syncData();
             // Fetch live price immediately on connect so Available Stars are accurate
             const freshPrice = await getLiveAptmPrice();
-            if (freshPrice !== null) {
-                currentAptmPriceUsd = freshPrice;
-                window.aptmPriceUSD = freshPrice;
-            }
+            applyPriceUpdate(freshPrice);   // handles null → "Price Error", never a fake number
             updateUI();
             subscribeToEarnings(userAddress);
             subscribeLedger(userAddress);
@@ -3540,7 +3515,7 @@
     function updateUI() {
         try {
             const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-            const fmt         = `$${parseFloat(currentAptmPriceUsd).toFixed(4)}`;
+            const fmt         = currentAptmPriceUsd > 0 ? `$${parseFloat(currentAptmPriceUsd).toFixed(4)}` : '--';
 
             // ── SINGLE AUTHORITATIVE FORMULA — used everywhere ──────────────
             // Available Stars = floor1( (currentAptmBalance × livePrice / $0.01) + creatorEarnings )
@@ -3962,14 +3937,17 @@
 
         console.log("[AdminWithdraw] ── Starting admin withdrawal ──");
 
-        // ── Step 1: Ensure live price is valid — use $0.3391 fallback if zero ────
+        // ── Step 1: Ensure live price is valid — abort if DEX is unreachable ────
         let livePrice = currentAptmPriceUsd;
         if (!livePrice || livePrice <= 0) {
             console.warn("[AdminWithdraw] Price is $0.00 — fetching fresh price");
             const freshPrice = await getLiveAptmPrice();
-            livePrice = (freshPrice && freshPrice > 0) ? freshPrice : 0.3391;
+            if (!freshPrice || freshPrice <= 0) {
+                return alert("Cannot withdraw: live price unavailable.\n\nThe DEX price feed is unreachable. Wait for the price to load (check the price display — it should show a $ value, not 'Price Error') then try again.");
+            }
+            livePrice = freshPrice;
             currentAptmPriceUsd = livePrice;
-            console.log(`[AdminWithdraw] Using price: $${livePrice.toFixed(4)} (${freshPrice ? 'live' : 'fallback'})`);
+            console.log(`[AdminWithdraw] Using fresh live price: $${livePrice.toFixed(4)}`);
         } else {
             console.log(`[AdminWithdraw] Current price: $${livePrice.toFixed(4)}`);
         }
@@ -4137,106 +4115,9 @@
     }
 
     async function settleToWallet() {
-        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
-        try {
-            const addr = await signer.getAddress();
-
-            // Read BOTH star pools live from Firebase
-            let livePurchased = 0, liveEarned = 0;
-            if (window.db) {
-                try {
-                    const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr.toLowerCase()));
-                    if (snap.exists()) {
-                        livePurchased = snap.data().stars        || 0;
-                        liveEarned    = snap.data().creatorStars  || 0;
-                    }
-                } catch (_) { livePurchased = purchasedStars; liveEarned = creatorEarnings; }
-            }
-            const totalStars = livePurchased + liveEarned;
-            if (totalStars <= 0) return alert("No stars to settle. Earn or deposit some first.");
-
-            // Convert total stars → APTM at the live price.
-            // This is the FULL payout: deposit value + all earned stars combined.
-            // Formula: APTM = (totalStars × $0.01) / livePrice
-            const starsToAptm = (totalStars * CONFIG.STAR_USD) / currentAptmPriceUsd;
-
-            // FIX 1 & 2: withdrawAptm = starsToAptm directly — NO Math.min cap.
-            // The old Math.min(starsToAptm, Math.max(availableAptm, contractBalAptm))
-            // was capping withdrawals at the deposit slot, trapping earned stars.
-            // Users must be able to withdraw the full value of their stars.
-            const withdrawAptm = starsToAptm;
-
-            if (withdrawAptm <= 0) {
-                return alert("Settle failed — nothing to withdraw.\n\nYour star balance converted to 0 APTM at the current price.");
-            }
-
-            console.log(`[settleToWallet] totalStars=${totalStars.toFixed(4)} withdrawAptm=${withdrawAptm.toFixed(8)} @ $${currentAptmPriceUsd.toFixed(4)}`);
-
-            const confirmed = confirm(
-                `Settle Stars to Wallet\n\n` +
-                `Total Stars:    ${totalStars.toFixed(1)} ★\n` +
-                `Live Price:     $${currentAptmPriceUsd.toFixed(4)} / APTM\n` +
-                `Will Withdraw:  ${withdrawAptm.toFixed(6)} APTM\n\n` +
-                `(Deposit + earned stars — full balance)\nProceed?`
-            );
-            if (!confirmed) return;
-
-            showToast("Opening MetaMask…");
-            const withdrawWei = ethers.utils.parseEther(withdrawAptm.toFixed(18));
-            const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
-            showToast("Withdrawal submitted — waiting for confirmation…");
-
-            // FIX 3: check receipt.status explicitly before zeroing Firebase.
-            // Apertum RPC can return a receipt without throwing on a revert.
-            const receipt = await tx.wait();
-            if (!receipt || receipt.status !== 1) {
-                const detail = receipt
-                    ? ("Block: " + receipt.blockNumber + " | Gas: " + receipt.gasUsed.toString())
-                    : "No receipt returned.";
-                console.error("[settleToWallet] Tx reverted.", detail);
-                return alert(
-                    "Withdrawal reverted on-chain.\n\n" + detail +
-                    "\n\nYour APTM has NOT left the contract.\nYour Firebase stars are unchanged — try again."
-                );
-            }
-
-            console.log(`[settleToWallet] Confirmed. Block: ${receipt.blockNumber}, Withdrew: ${withdrawAptm.toFixed(8)} APTM`);
-
-            // FIX 3: arm spend lock BEFORE writing to Firebase so the onSnapshot
-            // triggered by our setDoc cannot read stale aptmBalance and ghost-restore.
-            purchasedStars     = 0;
-            creatorEarnings    = 0;
-            currentAptmBalance = 0;
-            totalDepositedAptm = 0;
-            _lastSpendTime     = Date.now();   // arms spend lock for SPEND_LOCK_MS
-
-            // Zero all balance fields in Firebase after confirmed on-chain success.
-            // currentAptmBalance MUST be zeroed — without it onSnapshot restores ghost stars.
-            if (window.db) {
-                try {
-                    await window.fs.setDoc(
-                        window.fs.doc(window.db, "user_balances", addr.toLowerCase()),
-                        {
-                            stars:              0,
-                            creatorStars:       0,
-                            aptmBalance:        0,
-                            currentAptmBalance: 0,
-                            initial_deposit:    0,
-                            lastWithdraw:       Date.now(),
-                            lastUpdated:        Date.now()
-                        },
-                        { merge: true }
-                    );
-                    console.log("[settleToWallet] Firebase zeroed — stars, creatorStars, aptmBalance, initial_deposit all → 0");
-                } catch (e) { console.warn("[settleToWallet] Firebase zero failed:", e); }
-            }
-
-            logTransaction(addr, "settle", withdrawAptm, `Settled ${totalStars.toFixed(1)}★ → ${withdrawAptm.toFixed(4)} $APTM to wallet`);
-            showToast(`Settled! ${withdrawAptm.toFixed(4)} APTM → wallet ✓`);
-            updateUI();
-            updateDrawerUI();
-            syncData();
-        } catch (e) { console.error("[settleToWallet] threw:", e); alert("Settle failed: " + (e.reason || e.message || String(e)).slice(0, 160)); }
+        // Legacy entry point — delegates entirely to the main settle flow
+        // which uses aptmBalances() → settleBalance() with no price math.
+        return settleStarsToWallet(null);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -5937,8 +5818,7 @@
     // DEPOSIT ESTIMATE LIVE UPDATE (drawer)
     // ═══════════════════════════════════════════════════════════════════
     document.addEventListener('DOMContentLoaded', () => {
-        // ── Render UI immediately with fallback price ($0.3391) so stars are never 0
-        // while waiting for the DEX price fetch. The heartbeat will overwrite with live price.
+        // ── Render initial UI (price shows "--" until first DEX fetch resolves) ──
         updateUI();
 
         // ── Drawer deposit estimate ──
