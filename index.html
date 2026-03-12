@@ -4805,9 +4805,19 @@
 
             updateUI();
             updateDrawerUI();
-            // ── Fix 2A: Do NOT manually update the counter span here.
-            // The loadGlobalFeed onSnapshot 'modified' handler will receive the
-            // Firestore write and patch #hp-{postId} atomically — no jump, no race.
+            // ── Counter update ────────────────────────────────────────────────────
+            // Global feed: the loadGlobalFeed onSnapshot 'modified' handler patches
+            // #hp-{postId} atomically — do NOT also update it here or the count jumps.
+            // Community feed: openCommunityFeed uses getDocs (one-time query), so
+            // there is no live listener. Optimistically increment the span here after
+            // the Firestore write succeeds so the UI reflects the hype immediately
+            // without requiring a page refresh.
+            if (_activeCommunity && !isComment) {
+                const hypeSpan = document.getElementById('hp-' + entityId);
+                if (hypeSpan) {
+                    hypeSpan.textContent = String((parseInt(hypeSpan.textContent, 10) || 0) + 1);
+                }
+            }
             showToast("Hyped! Creator +0.8★");
         } catch (e) {
             console.error(e);
@@ -7551,8 +7561,6 @@
                 var shortAddr  = post.authorAddr
                     ? post.authorAddr.slice(0,6) + '\u2026' + post.authorAddr.slice(-4)
                     : 'anon';
-                // Determine split label for this card
-                var splitLabel = isOwner ? '80% to owner' : '40% guest + 40% owner';
 
                 var card = document.createElement('div');
                 card.className = 'card post-card';
@@ -7578,14 +7586,12 @@
                             '\ud83d\udcac Comment' +
                         '</div>' +
                         '<div class="pact views">\ud83d\udc41 <span class="pact-num">' + ((post.views || 0).toLocaleString()) + '</span></div>' +
-                        '<span class="split-label">' + splitLabel + '</span>' +
                     '</div>' +
                     '<div class="comment-tray" id="tray-' + postId + '" style="display:none;">' +
                         '<div class="comment-list" id="list-' + postId + '"></div>' +
                         '<div class="cmt-input-row" style="flex-direction:column;gap:6px;">' +
                             '<textarea class="cmt-persistent-box" placeholder="Add a comment (1&#9733;)\u2026" id="input-' + postId + '" rows="2"></textarea>' +
                             '<div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">' +
-                                '<span class="split-label">1&#9733; \u00b7 ' + splitLabel + '</span>' +
                                 '<button class="btn btn-purple btn-sm" onclick="addComment(\'' + (post.authorAddr||'') + '\',\'' + postId + '\')">Send</button>' +
                             '</div>' +
                         '</div>' +
