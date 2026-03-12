@@ -5493,7 +5493,7 @@
             showToast("No earned stars to sync \u2014 proceeding to withdrawal\u2026");
         }
 
-        // ══════════════════════════════════════════════════════════════════════
+       // ══════════════════════════════════════════════════════════════════════
         // STEP B — Withdrawal
         // ══════════════════════════════════════════════════════════════════════
         try {
@@ -5505,9 +5505,12 @@
                 return alert("Ledger not updated yet.\n\nYour on-chain balance is still 0 APTM. Please wait a moment and try again.");
             }
 
+            // ADDED ONLY THIS LINE: Define safeAmountWei (with a 1000 wei safety buffer)
+            const safeAmountWei = activeBalanceWei.gt(1000) ? activeBalanceWei.sub(1000) : activeBalanceWei;
+
             const settleAptm = parseFloat(ethers.utils.formatEther(activeBalanceWei));
             showToast("Step 2/2 \u2014 Opening MetaMask\u2026");
-            console.log("[Settlement] Calling withdrawStars(" + activeBalanceWei.toString() + ")");
+            console.log("[Settlement] Calling userWithdraw(" + safeAmountWei.toString() + ")");
 
             const tx = await hubContract.userWithdraw(safeAmountWei, { gasLimit: 500000 });
             showToast("Transaction submitted \u2014 waiting for on-chain confirmation\u2026");
@@ -5559,8 +5562,6 @@
             _unlockSettle();
             alert("Withdrawal failed: " + (err.reason || err.message));
         }
-}
-
 
     // ═══════════════════════════════════════════════════════════════════
     // VIEW COUNTER — Intersection Observer (Index 18)
