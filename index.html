@@ -5244,43 +5244,44 @@
     // Cloud Function endpoint
 const SYNC_FUNCTION_URL = "https://us-central1-socialhub-33014.cloudfunctions.net/syncStarsToBlockchain";
 
-// ── Client-side re-entrancy guard ────────────────────────────────────────────
 let _settleInProgress = false;
 
 async function settleStarsToWallet(event) {
     const _clickedBtn = (event && event.target) ? event.target : null;
     
-    // 1. Initial Checks & Guard
     if (_settleInProgress) return;
     if (!hubContract || !signer || !provider) {
         return alert("Connect Wallet First");
     }
 
+    // Capture the address from the signer
     const addr = (await signer.getAddress()).toLowerCase();
 
-    // 2. Read Firebase Balance (Stars earned but not yet on-chain)
+    // 1. Read Firebase Balance
     let liveCreatorStars = 0;
     try {
         const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr));
-        if (snap.exists()) liveCreatorStars = parseFloat(snap.data().creatorStars || 0);
+        if (snap.exists()) {
+            liveCreatorStars = parseFloat(snap.data().creatorStars || 0);
+        }
     } catch (e) {
-        return alert("Firebase Read Error: " + e.message);
+        console.error("Firebase Error:", e);
+        return alert("Could not read Firebase balance.");
     }
 
-    // 3. Read On-Chain Balance (APTM already in the contract)
+    // 2. Read On-Chain Balance (starBalances matches your ABI)
     let exactBalWei;
     try {
-        // FIXED: Using 'starBalances' to match your contract ABI
         exactBalWei = await hubContract.starBalances(addr);
     } catch (e) {
-        return alert("Blockchain Read Error: " + (e.reason || e.message));
+        console.error("Blockchain Error:", e);
+        return alert("Could not read on-chain balance.");
     }
 
     if (exactBalWei.isZero() && liveCreatorStars <= 0) {
         return alert("Nothing to settle. Earn stars or deposit APTM first.");
     }
 
-    // 4. Confirmation Dialog
     const exactAptmHuman = parseFloat(ethers.utils.formatEther(exactBalWei));
     const confirmed = confirm(
         "Settle Balance to Wallet\n\n" +
@@ -5293,26 +5294,30 @@ async function settleStarsToWallet(event) {
 
     if (!confirmed) return;
 
-    // 5. Lock UI
+    // LOCK UI
     _settleInProgress = true;
-    updateSettleButtons(true, "Processing...");
+    if (_clickedBtn) {
+        _clickedBtn.disabled = true;
+        _clickedBtn.innerText = "Processing...";
+    }
 
     try {
-        // 6. Step 1: Sync Firebase to Blockchain (If there are stars to sync)
+        // Step 1: Sync Firebase to Blockchain
         if (liveCreatorStars > 0) {
-            showToast("Syncing Firebase to Ledger...");
+            if (typeof showToast === "function") showToast("Syncing Firebase to Ledger...");
+            
             const response = await fetch(SYNC_FUNCTION_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ address: addr, amount: liveCreatorStars })
             });
 
-            if (!response.ok) throw new Error("Cloud Function failed to sync stars.");
+            if (!response.ok) throw new Error("Cloud Function failed to sync.");
 
-            // POLLING: Wait for the blockchain to actually show the new balance
-            showToast("Waiting for Ledger to update...");
+            // POLLING: Wait for the ledger to update
+            if (typeof showToast === "function") showToast("Waiting for Ledger update...");
             let synced = false;
-            for (let i = 0; i < 12; i++) { // Poll for 36 seconds max
+            for (let i = 0; i < 10; i++) { 
                 await new Promise(r => setTimeout(r, 3000));
                 const updatedBal = await hubContract.starBalances(addr);
                 if (!updatedBal.eq(exactBalWei)) {
@@ -5321,27 +5326,31 @@ async function settleStarsToWallet(event) {
                     break;
                 }
             }
-            if (!synced) throw new Error("Sync timeout. Ledger is slow. Try again in 1 minute.");
+            if (!synced && exactBalWei.isZero()) throw new Error("Sync timeout. Try again in 1 minute.");
         }
 
-        // 7. Step 2: Blockchain Withdrawal
-        showToast("Opening MetaMask...");
-        // FIXED: Using 'withdrawStars' from your ABI
+        // Step 2: Blockchain Withdrawal
+        if (typeof showToast === "function") showToast("Opening MetaMask...");
+        
         const tx = await hubContract.withdrawStars(exactBalWei, {
             gasLimit: 500000 
         });
 
-        showToast("Transaction Pending...");
+        if (typeof showToast === "function") showToast("Transaction Pending...");
         await tx.wait();
-        showToast("Settlement Successful!");
+        if (typeof showToast === "function") showToast("Success!");
+        
         if(typeof syncData === 'function') syncData();
 
     } catch (e) {
-        console.error(e);
-        alert("Settlement Failed: " + (e.reason || e.message || "Internal Error"));
+        console.error("Settle Error:", e);
+        alert("Settlement Failed: " + (e.reason || e.message || "Unknown error"));
     } finally {
         _settleInProgress = false;
-        updateSettleButtons(false);
+        if (_clickedBtn) {
+            _clickedBtn.disabled = false;
+            _clickedBtn.innerText = "Settle Total Balance to Wallet →";
+        }
     }
 }
 
