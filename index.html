@@ -3169,20 +3169,23 @@
     // Fires immediately on page load then every 30 s via setInterval in STARTUP block.
     // currentAptmPriceUsd starts at 0; UI shows "--" until first fetch resolves.
     async function runPriceHeartbeat() {
+        console.log("[Heartbeat] Updating Price & Balances...");
+        
+        // 1. Get the 18/18 price
         const price = await getLiveAptmPrice();
         applyPriceUpdate(price);
 
-        if (price === null) {
-            // Retry once after 5 s on first-load failure
-            setTimeout(async () => {
-                const retry = await getLiveAptmPrice();
-                applyPriceUpdate(retry);
-            }, 5000);
+        // 2. Sync balances (This replaces what startChainRefresh used to do)
+        if (provider && hubContract) {
+            try { 
+                await syncData(); 
+            } catch (err) {
+                console.warn("[Heartbeat] Sync failed:", err);
+            }
         }
 
-        if (provider && hubContract) {
-            try { await syncData(); } catch (_) {}
-        }
+        // 3. Keep the loop going every 30 seconds
+        setTimeout(runPriceHeartbeat, 30000); 
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -5375,14 +5378,17 @@
 
                 if (payload.synced) {
                     console.log("[Settlement] Step A confirmed. Sync tx:", payload.txHash);
-                    showToast("Ledger synced \u2713 \u2014 re-reading exact on-chain balance\u2026");
-                    // Re-read the balance after the sync tx confirmed — earned stars are now on-chain
+                    
+                    // --- THE SAFETY FIX ---
+                    showToast("Ledger synced \u2713 \u2014 Waiting 5s for blockchain to update\u2026");
+                    await new Promise(r => setTimeout(r, 5000)); 
+                    // ----------------------
+
                     try {
                         exactBalWei = await hubContract.aptmBalances(addr);
                         console.log("[Settlement] Post-sync aptmBalances =", ethers.utils.formatEther(exactBalWei), "APTM");
                     } catch (rereadErr) {
                         console.warn("[Settlement] Re-read after sync failed:", rereadErr);
-                        // Continue with the pre-sync balance — still valid
                     }
                 } else {
                     showToast("No earned stars to sync \u2014 proceeding to withdrawal\u2026");
@@ -5395,7 +5401,6 @@
         } else {
             showToast("No earned stars to sync \u2014 proceeding to withdrawal\u2026");
         }
-
         // ══════════════════════════════════════════════════════════════════════
         // STEP B — Call settleBalance(exactBalWei) with the EXACT on-chain Wei.
         //
@@ -6051,8 +6056,7 @@
     window.viewUserWall = viewUserWall;
     window.clearWall    = clearWall;
 
-    runPriceHeartbeat();                          // immediate on script load
-    setInterval(runPriceHeartbeat, 30_000);       // every 30 seconds unconditionally
+   runPriceHeartbeat();
 
     // ═══════════════════════════════════════════════════════════════════
     // INDEX 24 — DAILY SIGNALS (STORIES)
