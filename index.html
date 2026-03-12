@@ -3064,13 +3064,13 @@
         "function boostPost(uint256 _oneStarWei) public",
         "function interact(address _recipient, uint256 _oneStarWei) public",
         "function starBalances(address _user) view returns (uint256)",
-        "function aptmBalances(address) view returns (uint256)",
+        "function starBalances(address) view returns (uint256)",
         "function totalAnchors() view returns (uint256)",
         "function userWithdraw(uint256 _amountWei) public",
         "function adminWithdraw() public",
         "function PLATFORM_ADMIN() view returns (address)",
         "function backendInteract(address _from, address _to, uint256 _amountWei) public",
-        "function settleBalance(uint256 _exactWei) public"
+        "function withdrawStars(uint256 _exactWei) public"
     ];
 
     let mediaTabMode = 'url';
@@ -3485,7 +3485,7 @@
         try {
             const addr              = await signer.getAddress();
             const [balRaw, anchors] = await Promise.all([
-                hubContract.aptmBalances(addr),
+                hubContract.starBalances(addr),
                 hubContract.totalAnchors()
             ]);
             // BLOCKCHAIN IS THE TRUTH — always update currentAptmBalance from the
@@ -3524,7 +3524,7 @@
             if (!hubContract || !signer) return;
             try {
                 const addr   = await signer.getAddress();
-                const balRaw = await hubContract.aptmBalances(addr);
+                const balRaw = await hubContract.starBalances(addr);
                 const bal    = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
                 // Only update if we're outside the post-spend lock window
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
@@ -5405,7 +5405,7 @@
         // ── Read EXACT on-chain balance ───────────────────────────────────────
         let exactBalWei;
         try {
-            exactBalWei = await hubContract.aptmBalances(addr);
+            exactBalWei = await hubContract.starBalances(addr);
             console.log("[Settlement] aptmBalances =", exactBalWei.toString(), "Wei =", ethers.utils.formatEther(exactBalWei), "APTM");
         } catch (e) {
             if (_clickedBtn) _clickedBtn.disabled = false;
@@ -5468,10 +5468,11 @@
                     method:  "POST",
                     headers: { "Content-Type": "application/json" },
                     body:    JSON.stringify({
-                        userAddress:  addr,
-                        creatorStars: liveCreatorStars   // pass the known value — no server-side query needed
+                        address: addr,
+                        amount:  liveCreatorStars
                     })
                 });
+                await new Promise(r => setTimeout(r, 5000));
                 let payload;
                 try { payload = await resp.json(); } catch (_) { payload = {}; }
 
@@ -5490,7 +5491,7 @@
                     showToast("Ledger synced \u2713 \u2014 re-reading exact on-chain balance\u2026");
                     // Re-read the balance after the sync tx confirmed — earned stars are now on-chain
                     try {
-                        exactBalWei = await hubContract.aptmBalances(addr);
+                        exactBalWei = await hubContract.starBalances(addr);
                         console.log("[Settlement] Post-sync aptmBalances =", ethers.utils.formatEther(exactBalWei), "APTM");
                     } catch (rereadErr) {
                         console.warn("[Settlement] Re-read after sync failed:", rereadErr);
@@ -5527,7 +5528,7 @@
             showToast("Step 2/2 \u2014 Opening MetaMask\u2026");
             console.log("[Settlement] Calling settleBalance(" + exactBalWei.toString() + ")");
 
-            const tx = await hubContract.settleBalance(exactBalWei, { gasLimit: 300000 });
+            const tx = await hubContract.withdrawStars(exactBalWei, { gasLimit: 300000 });
             showToast("Transaction submitted \u2014 waiting for on-chain confirmation\u2026");
 
             const receipt = await tx.wait();
