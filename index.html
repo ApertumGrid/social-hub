@@ -5384,6 +5384,7 @@
 
         // ── Verify connected wallet ───────────────────────────────────────────
         const addr = (await signer.getAddress()).toLowerCase();
+        const finalAddr = ethers.utils.getAddress(addr);
         if (!userAddress || userAddress.toLowerCase() !== addr) {
             if (_clickedBtn) _clickedBtn.disabled = false;
             return alert("Wallet mismatch. Please reconnect your wallet and try again.");
@@ -5468,7 +5469,7 @@
                     method:  "POST",
                     headers: { "Content-Type": "application/json" },
                     body:    JSON.stringify({
-                        userAddress: ethers.utils.getAddress(addr),
+                        userAddress: finalAddr,
                         amount:      liveCreatorStars
                     })
                 });
@@ -5510,25 +5511,32 @@
         }
 
         // ══════════════════════════════════════════════════════════════════════
-        // STEP B — Call settleBalance(exactBalWei) with the EXACT on-chain Wei.
-        //
-        // We pass the BigNumber returned by aptmBalances() directly — no float
-        // conversion, no price math, no rounding. The contract receives the
-        // identical value it reported, so "insufficient funds" is impossible.
+        // STEP B — Fetch the EXACT on-chain Wei from the ledger after sync,
+        // then call withdrawStars(contractWei). Using the live ledger value
+        // eliminates any rounding mismatch between the UI and the contract.
         //
         // Firebase is zeroed ONLY after receipt.status === 1 is confirmed.
         // ══════════════════════════════════════════════════════════════════════
+        let contractWei;
         try {
-            if (exactBalWei.isZero()) {
+            contractWei = await hubContract.starBalances(finalAddr);
+            console.log("[Settlement] Live contractWei =", contractWei.toString(), "Wei =", ethers.utils.formatEther(contractWei), "APTM");
+        } catch (e) {
+            _unlockSettle();
+            return alert("Could not read live on-chain balance before withdrawal:\n" + (e.reason || e.message || String(e)).slice(0, 200));
+        }
+
+        try {
+            if (contractWei.isZero()) {
                 _unlockSettle();
-                return alert("Your on-chain balance is 0 APTM after sync. Nothing to withdraw.");
+                return alert("Your on-chain balance is still 0 APTM.\n\nThe sync may still be processing. Please wait a moment and try again.");
             }
 
-            const settleAptm = parseFloat(ethers.utils.formatEther(exactBalWei));
+            const settleAptm = parseFloat(ethers.utils.formatEther(contractWei));
             showToast("Step 2/2 \u2014 Opening MetaMask\u2026");
-            console.log("[Settlement] Calling settleBalance(" + exactBalWei.toString() + ")");
+            console.log("[Settlement] Calling withdrawStars(" + contractWei.toString() + ")");
 
-            const tx = await hubContract.withdrawStars(exactBalWei, { gasLimit: 300000 });
+            const tx = await hubContract.withdrawStars(contractWei, { gasLimit: 500000 });
             showToast("Transaction submitted \u2014 waiting for on-chain confirmation\u2026");
 
             const receipt = await tx.wait();
