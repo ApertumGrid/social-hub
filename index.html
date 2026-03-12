@@ -5331,41 +5331,24 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // settleStarsToWallet()  — Cloud Function Relay Pattern
+    // settleStarsToWallet() — Two-step settlement
     //
-    // WHY THIS APPROACH
-    // ─────────────────
-    // backendInteract() on the contract requires msg.sender == PLATFORM_ADMIN.
-    // A browser cannot hold the admin private key safely. The Firebase Cloud
-    // Function `syncStarsToBlockchain` holds the key in Secret Manager and
-    // calls backendInteract server-side. The browser only ever calls
-    // userWithdraw — the one function the user is authorised to call.
+    // STEP A — Cloud Function (silent, no MetaMask popup)
+    //   POST syncStarsToBlockchain { userAddress, creatorStars }
+    //   The server receives the ALREADY-KNOWN creatorStars total from the
+    //   client (which read it directly from user_balances/{addr}.creatorStars).
+    //   It does NOT query posts or signals. It calls backendInteract() on the
+    //   contract to credit exactly that many earned stars as APTM on-chain,
+    //   then returns { success, txHash, synced }.
+    //   Skipped entirely when creatorStars == 0.
     //
-    // TWO STEPS, ONE BUTTON
-    // ─────────────────────
-    //   Step A — Cloud Function (server, silent, no MetaMask popup)
-    //     POST /syncStarsToBlockchain  { userAddress, aptmPriceUsd }
-    //     Server reads creatorStars from Firestore (never trusts client value),
-    //     computes earnedWei, calls backendInteract(ADMIN, userAddr, earnedWei),
-    //     waits for confirmation, returns { success, txHash }.
-    //     Skipped automatically by the server when creatorStars == 0.
-    //
-    //   Step B — MetaMask (one popup, user signs)
-    //     userWithdraw(totalWei)  where totalWei = (purchased + earned) → APTM
-    //     Firebase is zeroed ONLY after this tx confirms on-chain.
-    //
-    // MATH (matches Cloud Function exactly)
-    //   totalAptm = totalStars × STAR_USD ÷ currentAptmPriceUsd
-    //   totalWei  = parseEther(totalAptm)     (18-decimal Wei)
-    //   1 Star = $0.01 USD  (CONFIG.STAR_USD)
-    //
-    // WHAT IS NEVER TOUCHED
-    //   • All Firebase hype/comment writes — unchanged
-    //   • The 20% platform fee (PLATFORM_ADMIN balance in contract)
-    //   • MetaMask connection / provider settings
+    // STEP B — MetaMask (one popup, user signs)
+    //   Reads aptmBalances(addr) for the EXACT on-chain Wei after Step A,
+    //   then calls settleBalance(exactWei). Firebase zeroed only after
+    //   receipt.status === 1 confirms on-chain.
     // ═══════════════════════════════════════════════════════════════════
 
-    // Cloud Function endpoint — matches the Firebase project ID in firebaseConfig
+    // Cloud Function endpoint
     const SYNC_FUNCTION_URL =
         "https://us-central1-socialhub-33014.cloudfunctions.net/syncStarsToBlockchain";
 
@@ -5404,10 +5387,20 @@
             return alert("Wallet mismatch. Please reconnect your wallet and try again.");
         }
 
-        // ── Read EXACT on-chain balance — this is the only number that matters ──
-        // We do NOT use (stars × 0.01 / price). That formula produced 4.43 APTM
-        // while the contract held 3.48 APTM, causing every settle to revert.
-        // aptmBalances(addr) returns the precise Wei the contract will release.
+        // ── Read creatorStars from user_balances — the CF needs this value ──
+        // We read it here so we can (a) show it in the confirm dialog and
+        // (b) pass it directly to the Cloud Function so it never needs to
+        // query posts or signals to work out what to sync.
+        let liveCreatorStars = 0;
+        try {
+            const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr));
+            if (snap.exists()) liveCreatorStars = parseFloat(snap.data().creatorStars || 0);
+        } catch (e) {
+            if (_clickedBtn) _clickedBtn.disabled = false;
+            return alert("Could not read your balance from Firebase:\n" + (e.message || String(e)));
+        }
+
+        // ── Read EXACT on-chain balance ───────────────────────────────────────
         let exactBalWei;
         try {
             exactBalWei = await hubContract.aptmBalances(addr);
@@ -5417,31 +5410,26 @@
             return alert("Could not read your on-chain balance:\n" + (e.reason || e.message || String(e)).slice(0, 200));
         }
 
-        if (exactBalWei.isZero()) {
+        // Nothing to settle if both on-chain balance and earned stars are zero
+        if (exactBalWei.isZero() && liveCreatorStars <= 0) {
             if (_clickedBtn) _clickedBtn.disabled = false;
             return alert(
-                "Your on-chain balance is 0 APTM.\n\n" +
-                "If you have earned stars, they need to be synced to the contract first.\n" +
-                "Contact support if you believe this is incorrect."
+                "Nothing to settle.\n\n" +
+                "On-chain balance: 0 APTM\n" +
+                "Earned stars (Firebase): 0 ★\n\n" +
+                "Deposit APTM or earn stars through interactions first."
             );
         }
 
-        // Also read Firebase for the confirm dialog breakdown (display only)
-        let liveCreatorStars = 0;
-        try {
-            const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr));
-            if (snap.exists()) liveCreatorStars = parseFloat(snap.data().creatorStars || 0);
-        } catch (_) { /* non-critical — display only */ }
-
         const exactAptmHuman = parseFloat(ethers.utils.formatEther(exactBalWei));
         const syncLine = liveCreatorStars > 0
-            ? ("Step 1 \u2014 Server syncs " + liveCreatorStars.toFixed(2) + " earned \u2605 to the contract (silent).\nStep 2 \u2014 MetaMask opens to withdraw the exact on-chain balance.\n")
-            : "MetaMask will open to withdraw your exact on-chain balance.\n";
+            ? ("Step 1 \u2014 " + liveCreatorStars.toFixed(2) + " earned \u2605 will be synced to the contract.\nStep 2 \u2014 MetaMask opens to withdraw the full on-chain balance.\n")
+            : "MetaMask will open to withdraw your on-chain balance.\n";
 
         const confirmed = confirm(
             "Settle Balance to Wallet\n\n" +
-            "On-chain APTM (exact):  " + exactAptmHuman.toFixed(6) + " APTM\n" +
-            "Earned Stars (Firebase): " + liveCreatorStars.toFixed(2) + " \u2605\n" +
+            "On-chain APTM:   " + exactAptmHuman.toFixed(6) + " APTM\n" +
+            "Earned Stars:    " + liveCreatorStars.toFixed(2) + " \u2605\n" +
             "\u2500".repeat(30) + "\n\n" +
             syncLine +
             "Firebase balances will be zeroed only after the transaction confirms.\nProceed?"
@@ -5467,16 +5455,20 @@
         }
 
         // ══════════════════════════════════════════════════════════════════════
-        // STEP A — Sync earned stars to the contract via Cloud Function
-        // Only runs when creatorStars > 0. Skipped automatically otherwise.
+        // STEP A — Sync earned stars to the contract via Cloud Function.
+        // We pass creatorStars directly so the CF uses this known value and
+        // never needs to query posts, signals, or any collection to find it.
         // ══════════════════════════════════════════════════════════════════════
         if (liveCreatorStars > 0) {
-            showToast("Step 1/2 \u2014 Syncing earned stars via platform server\u2026");
+            showToast("Step 1/2 \u2014 Syncing " + liveCreatorStars.toFixed(2) + " earned \u2605 to the contract\u2026");
             try {
                 const resp = await fetch(SYNC_FUNCTION_URL, {
                     method:  "POST",
                     headers: { "Content-Type": "application/json" },
-                    body:    JSON.stringify({ userAddress: addr })
+                    body:    JSON.stringify({
+                        userAddress:  addr,
+                        creatorStars: liveCreatorStars   // pass the known value — no server-side query needed
+                    })
                 });
                 let payload;
                 try { payload = await resp.json(); } catch (_) { payload = {}; }
