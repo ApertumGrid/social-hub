@@ -5009,9 +5009,14 @@
             } else {
                 // Recursive row builder
                 function buildRow(comment, depth) {
+                    // Skip comments hidden by admin or the commenter
+                    if (comment.isVisible === false) return null;
+
                     const cId        = comment._id;
                     const authorAddr = comment.authorAddr || "unknown";
                     const likeCount  = comment.likes || comment.hypes || 0;
+                    const isAdminViewer = !!(userAddress &&
+                        userAddress.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase());
 
                     const row = document.createElement('div');
                     row.className = "cmt-row" + (depth > 0 ? " nested" : "");
@@ -5031,7 +5036,10 @@
                         '<span class="cbtn" onclick="triggerLikeAnimation(event); likeComment(\'' + cId + '\',\'' + authorAddr + '\')">' +
                             '❤ <span id="hc-' + cId + '">' + likeCount + '</span>' +
                         '</span>' +
-                        '<span class="cbtn reply" onclick="toggleReplyInput(\'' + cId + '\')">↩ Reply</span>';
+                        '<span class="cbtn reply" onclick="toggleReplyInput(\'' + cId + '\')">↩ Reply</span>' +
+                        (isAdminViewer
+                            ? '<span class="cbtn" onclick="hideComment(\'' + cId + '\',event)" title="Admin: hide comment" style="color:var(--red);margin-left:6px;">✕ Hide</span>'
+                            : '');
 
                     // Inline reply box — white-bordered, hidden until Reply clicked
                     const replyArea = document.createElement('div');
@@ -5050,15 +5058,17 @@
 
                     const children = repliesMap[cId] || [];
                     children.forEach(function(child) {
-                        row.appendChild(buildRow(child, depth + 1));
+                        const childRow = buildRow(child, depth + 1);
+                        if (childRow) row.appendChild(childRow);
                     });
 
                     return row;
                 }
 
                 topLevel.forEach(function(c) {
-                    list.appendChild(buildRow(c, 0));
-                });
+                        const topRow = buildRow(c, 0);
+                        if (topRow) list.appendChild(topRow);
+                    });
             }
         };
 
@@ -5787,6 +5797,8 @@
         function buildPostCard(postId, post) {
             const isMe        = (post.authorAddr && userAddress &&
                                   post.authorAddr.toLowerCase() === userAddress.toLowerCase());
+            const isAdmin     = !!(userAddress &&
+                                  userAddress.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase());
             const localName   = localStorage.getItem('hub_userName');
             const localPic    = localStorage.getItem('hub_userPic');
             const displayPic  = (isMe && localPic)  ? localPic
@@ -5836,7 +5848,11 @@
                                <button class="post-own-btn edit-btn" onclick="openEditPost('${postId}',event)" title="Edit your post">✎ Edit</button>
                                <button class="post-own-btn hide-btn" onclick="deletePost('${postId}',event)" title="Hide this post">✕ Hide</button>
                            </div>`
-                        : '<span class="post-more">···</span>'
+                        : isAdmin
+                            ? `<div class="post-owner-actions">
+                                   <button class="post-own-btn hide-btn" onclick="deletePost('${postId}',event)" title="Admin: hide this post">✕ Hide</button>
+                               </div>`
+                            : '<span class="post-more">···</span>'
                     }
                 </div>
                 ${mediaHtml}
@@ -7014,18 +7030,77 @@
         if (!confirmed) return;
 
         try {
+            // Read the post first so we can get communityId for postCount decrement
+            const postSnap = await window.fs.getDoc(window.fs.doc(window.db, 'posts', postId));
+            const postData = postSnap.exists() ? postSnap.data() : null;
+            const commId   = postData ? (postData.communityId || null) : null;
+
+            // Authorisation: must be post author OR admin
+            const isAdmin = userAddress.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase();
+            if (!isAdmin && postData && postData.authorAddr &&
+                postData.authorAddr.toLowerCase() !== userAddress.toLowerCase()) {
+                return showToast('You can only hide your own posts.');
+            }
+
+            // Soft-delete: set isVisible:false
             await window.fs.updateDoc(
                 window.fs.doc(window.db, 'posts', postId),
                 { isVisible: false }
             );
+
+            // Decrement community postCount when a Hub post is hidden
+            if (commId) {
+                try {
+                    await window.fs.updateDoc(
+                        window.fs.doc(window.db, 'communities', commId),
+                        { postCount: window.fs.increment(-1) }
+                    );
+                } catch (e) {
+                    console.warn('[deletePost] postCount decrement failed:', e);
+                }
+                // Community feed has no live listener — remove card from DOM directly
+                const card = document.querySelector('[data-id="' + postId + '"]');
+                if (card) card.remove();
+            }
+            // Global feed: onSnapshot MODIFIED handler removes the card automatically
+
             showToast('Post hidden ✓');
-            // The onSnapshot MODIFIED handler removes the card automatically
         } catch (e) {
             console.error('[deletePost] failed:', e);
             showToast('Failed to hide post — try again.');
         }
     }
     window.deletePost = deletePost;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // HIDE COMMENT — Master Admin only.
+    // Sets isVisible:false on a comment doc. renderComments filters these
+    // out on next snapshot tick so they disappear without a page refresh.
+    // ═══════════════════════════════════════════════════════════════════
+    async function hideComment(commentId, event) {
+        if (event) event.stopPropagation();
+        if (!userAddress || !window.db) return showToast('Connect your wallet first!');
+        if (userAddress.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) {
+            return showToast('Only the admin can hide comments.');
+        }
+        const confirmed = confirm('Hide this comment? It will be removed from view. (Reversible from the Firebase console.)');
+        if (!confirmed) return;
+        try {
+            await window.fs.updateDoc(
+                window.fs.doc(window.db, 'comments', commentId),
+                { isVisible: false }
+            );
+            // Remove the row from DOM immediately — the next onSnapshot tick will
+            // also handle it, but this gives instant feedback.
+            const row = document.getElementById('hc-' + commentId)?.closest('.cmt-row');
+            if (row) row.remove();
+            showToast('Comment hidden ✓');
+        } catch (e) {
+            console.error('[hideComment] failed:', e);
+            showToast('Failed to hide comment — try again.');
+        }
+    }
+    window.hideComment = hideComment;
 
     // ═══════════════════════════════════════════════════════════════════
     // PROMOTE TO SIGNAL — costs 1★, 100% admin, writes to `signals`
@@ -7407,6 +7482,16 @@
             updateUI();
             showToast('Signal Live in ' + _activeCommunity.name + ' Hub! ◈');
 
+            // Increment postCount on the community doc
+            try {
+                await window.fs.updateDoc(
+                    window.fs.doc(window.db, 'communities', _activeCommunity.id),
+                    { postCount: window.fs.increment(1) }
+                );
+            } catch (e) {
+                console.warn('[handleCommBroadcast] postCount increment failed:', e);
+            }
+
             // Refresh the community feed to show the new post
             await openCommunityFeed(_activeCommunity);
 
@@ -7555,12 +7640,33 @@
                 var postId = d.id;
                 var isOwner = post.authorAddr &&
                               post.authorAddr.toLowerCase() === comm.ownerId.toLowerCase();
+                var isAuthor = post.authorAddr && userAddress &&
+                               post.authorAddr.toLowerCase() === userAddress.toLowerCase();
+                var isAdminUser = !!(userAddress &&
+                               userAddress.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase());
                 var ownerBadge = isOwner ? '<span class="mod-badge">OWNER</span>' : '';
                 var mediaHtml  = buildCommunityMediaHtml(post);
                 var safeAddr   = (post.authorAddr || '').replace(/'/g, '');
                 var shortAddr  = post.authorAddr
                     ? post.authorAddr.slice(0,6) + '\u2026' + post.authorAddr.slice(-4)
                     : 'anon';
+
+                // Header action buttons: author = Edit+Hide, admin (non-author) = Hide only, others = ···
+                var headerActions;
+                if (isAuthor) {
+                    headerActions =
+                        '<div class="post-owner-actions">' +
+                            '<button class="post-own-btn edit-btn" onclick="openEditPost(\'' + postId + '\',event)" title="Edit your post">\u270e Edit</button>' +
+                            '<button class="post-own-btn hide-btn" onclick="deletePost(\'' + postId + '\',event)" title="Hide this post">\u2715 Hide</button>' +
+                        '</div>';
+                } else if (isAdminUser) {
+                    headerActions =
+                        '<div class="post-owner-actions">' +
+                            '<button class="post-own-btn hide-btn" onclick="deletePost(\'' + postId + '\',event)" title="Admin: hide this post">\u2715 Hide</button>' +
+                        '</div>';
+                } else {
+                    headerActions = '<span class="post-more">\u00b7\u00b7\u00b7</span>';
+                }
 
                 var card = document.createElement('div');
                 card.className = 'card post-card';
@@ -7574,7 +7680,7 @@
                                 '<div class="post-addr">' + shortAddr + (post.isEdited ? '<span class="edited-badge">(edited)</span>' : '') + '</div>' +
                             '</div>' +
                         '</div>' +
-                        '<span class="post-more">\u00b7\u00b7\u00b7</span>' +
+                        headerActions +
                     '</div>' +
                     mediaHtml +
                     '<div class="post-body">' + (typeof linkify === 'function' ? linkify(post.text) : escHtml(post.text)) + '</div>' +
