@@ -5241,30 +5241,30 @@
     //   receipt.status === 1 confirms on-chain.
     // ═══════════════════════════════════════════════════════════════════
 
-    // Cloud Function endpoint
+   // --- START SETTLEMENT ---
 const SYNC_FUNCTION_URL = "https://us-central1-socialhub-33014.cloudfunctions.net/syncStarsToBlockchain";
 let _settleInProgress = false;
 
-async function settleStarsToWallet(event) {
+window.settleStarsToWallet = async function(event) {
     const _clickedBtn = (event && event.target) ? event.target : null;
     
     if (_settleInProgress) return;
-    if (!hubContract || !signer) {
+    if (!window.hubContract || !window.signer) {
         return alert("Connect Wallet First");
     }
 
     try {
-        const addr = (await signer.getAddress()).toLowerCase();
+        const addr = (await window.signer.getAddress()).toLowerCase();
 
-        // 1. Get Firebase Stars
+        // 1. Firebase Check
         let liveStars = 0;
         const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr));
         if (snap.exists()) {
             liveStars = parseFloat(snap.data().creatorStars || 0);
         }
 
-        // 2. Get On-chain Balance
-        let exactWei = await hubContract.starBalances(addr);
+        // 2. Ledger Check
+        let exactWei = await window.hubContract.starBalances(addr);
 
         if (exactWei.isZero() && liveStars <= 0) {
             return alert("Nothing to settle.");
@@ -5278,7 +5278,7 @@ async function settleStarsToWallet(event) {
             _clickedBtn.innerText = "Processing...";
         }
 
-        // 3. Step 1: Cloud Sync
+        // 3. Step 1: Sync
         if (liveStars > 0) {
             if (typeof showToast === "function") showToast("Syncing stars...");
             const response = await fetch(SYNC_FUNCTION_URL, {
@@ -5288,15 +5288,13 @@ async function settleStarsToWallet(event) {
             });
 
             if (!response.ok) throw new Error("Cloud Function Error");
-
-            // Wait for ledger update
             await new Promise(r => setTimeout(r, 5000));
-            exactWei = await hubContract.starBalances(addr);
+            exactWei = await window.hubContract.starBalances(addr);
         }
 
-        // 4. Step 2: MetaMask Withdrawal
+        // 4. Step 2: Withdrawal
         if (typeof showToast === "function") showToast("Opening MetaMask...");
-        const tx = await hubContract.withdrawStars(exactWei, { gasLimit: 500000 });
+        const tx = await window.hubContract.withdrawStars(exactWei, { gasLimit: 500000 });
         
         await tx.wait();
         if (typeof showToast === "function") showToast("Success!");
@@ -5314,7 +5312,8 @@ async function settleStarsToWallet(event) {
             _clickedBtn.innerText = "Settle Total Balance to Wallet →";
         }
     }
-}
+};
+// --- END SETTLEMENT ---
 
 // Helper to manage button states globally
 function updateSettleButtons(disabled, text) {
