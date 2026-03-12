@@ -4473,6 +4473,11 @@
             if (feedCol) feedCol.scrollTop = 0;
             window.scrollTo({ top: 0, behavior: 'smooth' });
 
+            // ── Always clear community context when returning to Home ─────────────
+            // Prevents global broadcasts from inheriting a communityId if the user
+            // navigated home via the nav bar without explicitly closing the Hub feed.
+            _activeCommunity = null;
+
             // ── Reset category filter to All and reload the global feed ──────────
             // This runs whenever any Home entry point is used (nav-home, bnav-home,
             // mdash-home, hero-back-btn, wall-back-btn, jumpToPost).
@@ -5846,7 +5851,11 @@
                 );
                 const passesCat     = !_categoryFilter || (post.category || 'Global') === _categoryFilter;
                 const passesVisible = post.isVisible !== false;   // JS filter: missing field = visible, only explicit false hides
-                const passesFilter  = passesWall && passesCat && passesVisible;
+                // ── Community isolation: global feed ONLY shows posts with no communityId.
+                // Posts written to a Hub have communityId set to a Firestore doc ID string.
+                // Old posts that pre-date the community system have no field → undefined → falsy → pass.
+                const passesGlobal  = !post.communityId;
+                const passesFilter  = passesWall && passesCat && passesVisible && passesGlobal;
 
                 // ── REMOVED or filtered out: delete the card if it exists ────────
                 if (change.type === 'removed' || !passesFilter) {
