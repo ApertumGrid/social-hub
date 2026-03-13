@@ -2698,9 +2698,73 @@
             .comm-header-v2 { gap: 10px; }
             .comm-follow-btn { min-height: 44px; padding: 8px 14px; font-size: 0.72rem; }
         }
+        /* ═══════════════════════════════════════════════════════════════
+           DEEP-LINK LOADING OVERLAY
+        ═══════════════════════════════════════════════════════════════ */
+        #deeplink-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: var(--bg-base, #0d0f18);
+            z-index: 99998;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 16px;
+        }
+        #deeplink-overlay.visible { display: flex; }
+        .deeplink-spinner {
+            width: 36px; height: 36px;
+            border: 3px solid rgba(45,212,191,0.2);
+            border-top-color: var(--teal, #2dd4bf);
+            border-radius: 50%;
+            animation: dlspin 0.7s linear infinite;
+        }
+        @keyframes dlspin { to { transform: rotate(360deg); } }
+        .deeplink-label {
+            font-size: 0.8rem;
+            color: var(--text-muted, #7a8099);
+            font-family: var(--font-mono, monospace);
+            letter-spacing: 0.5px;
+        }
+
+        /* Share Hub button sits inline with Back button */
+        .comm-back-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+        }
+        .comm-share-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 7px 14px;
+            border-radius: 50px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.13s;
+            -webkit-tap-highlight-color: transparent;
+            min-height: 36px;
+        }
+        .comm-share-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--teal); }
+        @media (max-width: 600px) {
+            .comm-share-btn { min-height: 44px; }
+        }
     </style>
 </head>
 <body>
+
+<!-- DEEP-LINK LOADING OVERLAY — shown briefly when ?hub= param is detected -->
+<div id="deeplink-overlay" role="status" aria-live="polite">
+    <div class="deeplink-spinner"></div>
+    <div class="deeplink-label" id="deeplink-label">Loading Hub…</div>
+</div>
 
 <!-- INDEX 28: COMMUNITY HYPE TICKER — above everything, live from admin_revenue/global -->
 <div id="hype-ticker" aria-label="Community Hype Economy Counter">
@@ -3102,8 +3166,13 @@
                 </div>
                 <!-- Community feed view (shown when a Hub is open) -->
                 <div id="community-feed-view">
-                    <button class="btn" style="margin-bottom:14px;padding:7px 16px;font-size:0.78rem;"
-                            onclick="closeCommunityFeed()">&#8592; Back to Communities</button>
+                    <div class="comm-back-row">
+                        <button class="btn" style="padding:7px 16px;font-size:0.78rem;"
+                                id="comm-back-btn" onclick="commHandleBack()">&#8592; Back</button>
+                        <button class="comm-share-btn" onclick="shareCurrentHub()" title="Copy shareable link">
+                            🔗 Share Hub
+                        </button>
+                    </div>
                     <img id="comm-feed-banner-img" class="comm-feed-banner" src="" alt="" crossorigin="anonymous" style="display:none;">
                     <div class="comm-feed-name" id="comm-feed-name"></div>
                     <div class="comm-feed-desc" id="comm-feed-desc"></div>
@@ -6376,6 +6445,11 @@
             // V18: Vault health check — disables Broadcast/Post if vault is empty
             setTimeout(() => { verifyVaultHealth(); }, 2000);
             setInterval(() => { verifyVaultHealth(); }, 60000); // re-check every minute
+
+            // DEEP-LINK: resolve ?hub= param after the app has initialised.
+            // Runs after the other setTimeouts so Firebase and feeds are ready.
+            setTimeout(() => { resolveHubDeepLink(); }, 3000);
+
         } catch (e) { console.error("Startup failed:", e); }
     });
 
@@ -7935,6 +8009,13 @@
     async function openCommunityFeed(comm) {
         _activeCommunity = comm;
 
+        // Push ?hub=<id> into the URL so this view is bookmarkable / shareable
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.set('hub', comm.id);
+            window.history.pushState({ hub: comm.id }, '', url.toString());
+        } catch (_) {}
+
         // Sync the community composer identity and fee display
         if (typeof syncCommComposerIdentity === 'function') syncCommComposerIdentity();
         if (typeof commUpdateFeeDisplay     === 'function') commUpdateFeeDisplay();
@@ -8119,6 +8200,14 @@
     // ─── Close community feed and return to browser ───────────────────────────────
     function closeCommunityFeed() {
         _activeCommunity = null;
+
+        // Remove ?hub= from the URL — user is back at global communities browser
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('hub');
+            window.history.pushState({}, '', url.toString());
+        } catch (_) {}
+
         var browser  = document.getElementById('community-browser');
         var feedView = document.getElementById('community-feed-view');
         if (browser)  browser.style.display  = '';
@@ -8901,6 +8990,194 @@
         await commFollowHub();
     }
     window.heroFollowCommunity = heroFollowCommunity;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // DEEP-LINK ROUTING — ?hub=<communityId>
+    //
+    // Three public functions:
+    //   commHandleBack()       — back button: global feed if deep-linked, else communities browser
+    //   shareCurrentHub()      — copies shareable ?hub= URL to clipboard + toast
+    //   resolveHubDeepLink()   — called once on window.load; reads URLSearchParams,
+    //                            waits for Firebase + _allCommunities, then opens the hub
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Track whether this page visit started from a ?hub= deep-link
+    let _deepLinkEntry = false;
+
+    // ── Back button handler ───────────────────────────────────────────
+    function commHandleBack() {
+        if (_deepLinkEntry) {
+            // Deep-link entry: going "back" means going to the Global Feed,
+            // not the communities browser (which the user never visited).
+            _deepLinkEntry = false;
+            closeCommunityFeed();
+            // Switch to home feed
+            if (typeof _activateTab === 'function') {
+                _activateTab('home', document.getElementById('nav-home'));
+            }
+            if (typeof setBnav === 'function') setBnav('home');
+        } else {
+            // Normal navigation: return to the communities browser
+            closeCommunityFeed();
+        }
+    }
+    window.commHandleBack = commHandleBack;
+
+    // ── Share Hub — copy ?hub= URL to clipboard ───────────────────────
+    function shareCurrentHub() {
+        if (!_activeCommunity) return;
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.set('hub', _activeCommunity.id);
+            const shareUrl = url.toString();
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(shareUrl).then(function() {
+                    showToast('🔗 Hub link copied to clipboard!');
+                }).catch(function() {
+                    _fallbackCopyToClipboard(shareUrl);
+                });
+            } else {
+                _fallbackCopyToClipboard(shareUrl);
+            }
+        } catch (e) {
+            console.warn('[shareCurrentHub]', e);
+            showToast('Could not copy link.');
+        }
+    }
+    window.shareCurrentHub = shareCurrentHub;
+
+    function _fallbackCopyToClipboard(text) {
+        try {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            showToast('🔗 Hub link copied to clipboard!');
+        } catch (_) {
+            showToast('Copy: ' + text);
+        }
+    }
+
+    // ── Deep-link resolver ────────────────────────────────────────────
+    // Reads ?hub= from the URL. Waits up to 8 s for:
+    //   1. window.db  to be set   (Firebase module ready)
+    //   2. _allCommunities.length (loadCommunities onSnapshot has fired)
+    // Then matches by exact Firestore doc ID, or by slugified name as fallback.
+    // Shows the loading overlay during the wait.
+    async function resolveHubDeepLink() {
+        const params = new URLSearchParams(window.location.search);
+        const hubParam = params.get('hub');
+        if (!hubParam) return;   // no deep-link — normal load, nothing to do
+
+        _deepLinkEntry = true;
+
+        // Show loading overlay
+        const overlay = document.getElementById('deeplink-overlay');
+        const label   = document.getElementById('deeplink-label');
+        if (overlay) overlay.classList.add('visible');
+        if (label)   label.textContent = 'Loading Hub…';
+
+        try {
+            // Step 1: wait for window.db (Firebase module script runs before main
+            // script, so this is almost always already set — but guard anyway)
+            const dbReady = await _waitFor(function() { return !!window.db; }, 6000, 50);
+            if (!dbReady) throw new Error('Firebase not ready');
+
+            // Step 2: trigger loadCommunities so _allCommunities gets populated,
+            // but only if no listener is active yet (avoids double-load)
+            if (_allCommunities.length === 0) {
+                // Switch to communities tab silently to init the listener
+                if (typeof loadCommunities === 'function') loadCommunities();
+            }
+
+            // Wait for _allCommunities to have at least one entry (or confirm empty)
+            await _waitFor(function() { return _allCommunities.length > 0; }, 6000, 100);
+
+            // Step 3: match by doc ID (exact) or slugified name (fallback)
+            function slugify(s) {
+                return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '').trim();
+            }
+            const needle = hubParam.toLowerCase();
+            let comm = _allCommunities.find(function(c) {
+                return c.id === hubParam ||
+                       c.id.toLowerCase() === needle ||
+                       slugify(c.name) === slugify(hubParam);
+            });
+
+            if (!comm) {
+                // Try a direct Firestore fetch by doc ID in case the communities
+                // collection is large and the snapshot hasn't paginated to it yet
+                try {
+                    const snap = await window.fs.getDoc(
+                        window.fs.doc(window.db, 'communities', hubParam)
+                    );
+                    if (snap.exists()) comm = Object.assign({ id: snap.id }, snap.data());
+                } catch (_) {}
+            }
+
+            if (!comm) throw new Error('Hub "' + hubParam + '" not found');
+
+            // Step 4: navigate to the hub
+            // Switch to communities tab first so the DOM is visible
+            if (typeof _activateTab === 'function') {
+                _activateTab('communities', document.getElementById('nav-communities'));
+            }
+            if (typeof setBnav === 'function') setBnav('communities');
+
+            await openCommunityFeed(comm);
+
+        } catch (e) {
+            console.warn('[deepLink]', e.message);
+            // Clear bad param and land on Global Feed
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('hub');
+                window.history.replaceState({}, '', url.toString());
+            } catch (_) {}
+            showToast('Hub not found — loading Global Feed.');
+            _deepLinkEntry = false;
+        } finally {
+            if (overlay) overlay.classList.remove('visible');
+        }
+    }
+    window.resolveHubDeepLink = resolveHubDeepLink;
+
+    // Utility: poll a condition fn every intervalMs, resolve true when met,
+    // resolve false after timeoutMs. Never rejects.
+    function _waitFor(conditionFn, timeoutMs, intervalMs) {
+        return new Promise(function(resolve) {
+            if (conditionFn()) { resolve(true); return; }
+            var elapsed = 0;
+            var timer = setInterval(function() {
+                elapsed += intervalMs;
+                if (conditionFn()) { clearInterval(timer); resolve(true); }
+                else if (elapsed >= timeoutMs) { clearInterval(timer); resolve(false); }
+            }, intervalMs);
+        });
+    }
+
+    // Handle browser back/forward button (?hub= param appears/disappears)
+    window.addEventListener('popstate', function(e) {
+        var params = new URLSearchParams(window.location.search);
+        var hubParam = params.get('hub');
+        if (hubParam) {
+            // Forward into a hub — find and open it
+            var comm = _allCommunities.find(function(c) { return c.id === hubParam; });
+            if (comm) openCommunityFeed(comm);
+        } else if (_activeCommunity) {
+            // Back out of a hub — close it without modifying history again
+            _activeCommunity = null;
+            var browser  = document.getElementById('community-browser');
+            var feedView = document.getElementById('community-feed-view');
+            if (browser)  browser.style.display = '';
+            if (feedView) feedView.style.display = 'none';
+            var container = document.getElementById('comm-feed-items');
+            if (container) container.innerHTML = '';
+        }
+    });
 
     // Close HIW on Escape key
     document.addEventListener('keydown', function(e) {
