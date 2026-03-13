@@ -2570,13 +2570,91 @@
         /* ═══════════════════════════════════════════════════════════════
            MOBILE tweaks for hero actions / tip tray
         ═══════════════════════════════════════════════════════════════ */
+        /* ═══════════════════════════════════════════════════════════════
+           COMMUNITY HEADER V2 — member count, creator info, follow btn
+        ═══════════════════════════════════════════════════════════════ */
+        .comm-header-v2 {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        .comm-creator-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 0;
+        }
+        .comm-creator-avatar {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            border: 2px solid rgba(45,212,191,0.4);
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+        .comm-creator-meta { min-width: 0; }
+        .comm-creator-label {
+            font-size: 0.58rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 700;
+        }
+        .comm-creator-name {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--teal);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+        }
+        .comm-creator-name:hover { text-decoration: underline; }
+        .comm-member-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 12px;
+            border-radius: 50px;
+            background: rgba(45,212,191,0.08);
+            border: 1px solid rgba(45,212,191,0.22);
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: var(--teal);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .comm-follow-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 18px;
+            border-radius: 50px;
+            border: 1px solid rgba(124,92,191,0.4);
+            background: transparent;
+            color: var(--purple-lt);
+            font-size: 0.78rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+            flex-shrink: 0;
+            -webkit-tap-highlight-color: transparent;
+            min-height: 40px;
+        }
+        .comm-follow-btn:hover { background: rgba(124,92,191,0.12); border-color: var(--purple-lt); }
+        .comm-follow-btn.following {
+            background: rgba(124,92,191,0.18);
+            border-color: var(--purple-lt);
+            color: var(--purple-lt);
+        }
         @media (max-width: 600px) {
-            .hero-actions { gap: 6px; margin-top: 12px; }
-            .hero-action-btn { padding: 8px 14px; font-size: 0.72rem; min-height: 44px; }
-            .tip-presets { gap: 6px; }
-            .tip-preset-btn, .tip-dice-btn { min-height: 44px; font-size: 0.75rem; }
-            .tip-send-btn { min-height: 44px; }
-            .feed-toggle-btn { font-size: 0.68rem; padding: 7px 8px; }
+            .comm-header-v2 { gap: 10px; }
+            .comm-follow-btn { min-height: 44px; padding: 8px 14px; font-size: 0.72rem; }
         }
     </style>
 </head>
@@ -2981,7 +3059,20 @@
                     <div class="comm-feed-name" id="comm-feed-name"></div>
                     <div class="comm-feed-desc" id="comm-feed-desc"></div>
 
-                    <!-- ── Community Composer (cloned from global, unique IDs) ── -->
+                    <!-- Community Header V2: member count, creator, follow button -->
+                    <div class="comm-header-v2" id="comm-header-v2">
+                        <div class="comm-creator-row">
+                            <img id="comm-creator-avatar" class="comm-creator-avatar"
+                                 src="https://api.dicebear.com/7.x/identicon/svg?seed=hub" alt="">
+                            <div class="comm-creator-meta">
+                                <div class="comm-creator-label">Created by</div>
+                                <div class="comm-creator-name" id="comm-creator-name"
+                                     onclick="if(window._commCreatorAddr) viewUserWall(window._commCreatorAddr)">…</div>
+                            </div>
+                        </div>
+                        <div class="comm-member-chip" id="comm-member-chip">⬡ 0 Members</div>
+                        <button class="comm-follow-btn" id="comm-follow-btn" onclick="commFollowHub()">+ Follow Hub</button>
+                    </div> -->
                     <div class="card" id="comm-composer-card" style="border-color:rgba(45,212,191,0.28); margin-bottom:16px;">
                         <div class="composer-row">
                             <img id="comm-pb-avatar" class="av" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub">
@@ -6073,13 +6164,18 @@
                 );
                 const passesCat     = !_categoryFilter || (post.category || 'Global') === _categoryFilter;
                 const passesVisible = post.isVisible !== false;
-                // ── Community isolation: global feed ONLY shows posts with no communityId.
-                const passesGlobal  = !post.communityId;
-                // ── Following filter: only show posts from followed addresses
+                // ── Community isolation: global feed shows non-community posts.
+                // In Following mode, community posts the user follows are also allowed.
+                const passesGlobal  = !post.communityId ||
+                    (_followMode === 'following' && post.communityId &&
+                     _followingSet.has(post.communityId.toLowerCase()));
+                // ── Following filter: show posts from followed AUTHORS or followed COMMUNITIES
                 const passesFollowing = (_followMode !== 'following' || _wallFilter)
                     ? true
-                    : (_followingSet.size > 0 && post.authorAddr &&
-                       _followingSet.has(post.authorAddr.toLowerCase()));
+                    : (_followingSet.size > 0 && (
+                        (post.authorAddr  && _followingSet.has(post.authorAddr.toLowerCase())) ||
+                        (post.communityId && _followingSet.has(post.communityId.toLowerCase()))
+                      ));
                 const passesFilter  = passesWall && passesCat && passesVisible && passesGlobal && passesFollowing;
 
                 // ── REMOVED or filtered out: delete the card if it exists ────────
@@ -7814,6 +7910,69 @@
         if (nameEl) nameEl.textContent = comm.name || 'Hub';
         if (descEl) descEl.textContent = comm.description || '';
 
+        // ── Community Header V2: member count, creator info, follow button ────────
+        window._commCreatorAddr = (comm.ownerId || '').toLowerCase();
+
+        // Member count from social_graph (async — update when ready)
+        const memberChip = document.getElementById('comm-member-chip');
+        const followBtn2 = document.getElementById('comm-follow-btn');
+        const creatorNameEl = document.getElementById('comm-creator-name');
+        const creatorAvatarEl = document.getElementById('comm-creator-avatar');
+
+        // Optimistic placeholder
+        if (memberChip) memberChip.textContent = '⬡ … Members';
+
+        // Populate creator identity from user_metadata / users / ownerName fallback
+        (async () => {
+            try {
+                const ownerAddr = (comm.ownerId || '').toLowerCase();
+                let displayName = comm.ownerName || (ownerAddr.slice(0,6) + '…' + ownerAddr.slice(-4));
+                let avatarUrl   = 'https://api.dicebear.com/7.x/identicon/svg?seed=' + ownerAddr;
+                if (window.db && ownerAddr) {
+                    try {
+                        const metaSnap = await window.fs.getDoc(window.fs.doc(window.db, 'user_metadata', ownerAddr));
+                        if (metaSnap.exists()) {
+                            if (metaSnap.data().displayName) displayName = metaSnap.data().displayName;
+                            if (metaSnap.data().avatarUrl)   avatarUrl   = metaSnap.data().avatarUrl;
+                        } else {
+                            const uSnap = await window.fs.getDoc(window.fs.doc(window.db, 'users', ownerAddr));
+                            if (uSnap.exists()) {
+                                if (uSnap.data().displayName) displayName = uSnap.data().displayName;
+                                if (uSnap.data().avatarUrl)   avatarUrl   = uSnap.data().avatarUrl;
+                            }
+                        }
+                    } catch (_) {}
+                }
+                if (creatorNameEl)   creatorNameEl.textContent = displayName;
+                if (creatorAvatarEl) creatorAvatarEl.src = avatarUrl;
+            } catch (_) {}
+        })();
+
+        // Member count + follow button state from social_graph
+        (async () => {
+            if (!window.db) return;
+            try {
+                const commIdLower = (comm.id || '').toLowerCase();
+                const memberQ = window.fs.query(
+                    window.fs.collection(window.db, 'social_graph'),
+                    window.fs.where('following', '==', commIdLower)
+                );
+                const memberSnap = await window.fs.getDocs(memberQ);
+                const count = memberSnap.size;
+                if (memberChip) {
+                    memberChip.textContent = '⬡ ' + (count >= 1000
+                        ? (count / 1000).toFixed(1) + 'k'
+                        : count) + ' Member' + (count !== 1 ? 's' : '');
+                }
+                // Follow button state
+                if (followBtn2 && userAddress) {
+                    const isFollowing = _followingSet.has(commIdLower);
+                    followBtn2.textContent = isFollowing ? '✓ Following Hub' : '+ Follow Hub';
+                    followBtn2.classList.toggle('following', isFollowing);
+                }
+            } catch (e) { console.warn('[comm header v2] member count failed:', e); }
+        })();
+
         // Load posts
         var container = document.getElementById('comm-feed-items');
         if (!container || !window.db) return;
@@ -8314,23 +8473,37 @@
     // FEATURE 1b — FEED MODE TOGGLE (Global / Following)
     // ═══════════════════════════════════════════════════════════════════
     async function setFeedMode(mode) {
-        if (_followMode === mode) return;
         _followMode = mode;
 
+        // Immediately update toggle button appearance — no async wait
         const globalBtn    = document.getElementById('feed-toggle-global');
         const followingBtn = document.getElementById('feed-toggle-following');
         if (globalBtn)    globalBtn.classList.toggle('active',    mode === 'global');
         if (followingBtn) followingBtn.classList.toggle('active', mode === 'following');
 
         if (mode === 'following') {
-            if (!userAddress) { showToast('Connect wallet to use Following Feed.'); return; }
-            // Refresh followingSet before reloading
-            await loadFollowingSet();
-            if (_followingSet.size === 0) {
-                showToast('Follow creators to populate your Following Feed.');
+            if (!userAddress) {
+                showToast('Connect wallet to use Following Feed.');
+                // Revert toggle visually
+                _followMode = 'global';
+                if (globalBtn)    globalBtn.classList.add('active');
+                if (followingBtn) followingBtn.classList.remove('active');
+                return;
             }
+            // Refresh followingSet in background — feed reloads immediately with
+            // whatever is in _followingSet, then the async refresh triggers a
+            // second reload if new follows were found.
+            loadFollowingSet().then(() => {
+                if (_followingSet.size === 0) {
+                    showToast('Follow creators or hubs to populate your Following Feed.');
+                }
+                visibleCount = 10;
+                if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
+            });
         }
-        // Reset visible count and reload
+
+        // Reload immediately with current _followingSet (instant for global mode,
+        // and shows a first-pass for following mode while the async refresh runs)
         visibleCount = 10;
         if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
     }
@@ -8554,6 +8727,119 @@
     window.triggerStarShower = triggerStarShower;
     window.heroFollow        = heroFollow;
     window.showFollowList    = showFollowList;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // COMMUNITY FOLLOW — costs 1★, 90% to community creator, 10% platform
+    // Uses community doc ID (lowercased) as the 'following' value in
+    // social_graph so the Following Feed filter can match communityId.
+    // ═══════════════════════════════════════════════════════════════════
+    async function commFollowHub() {
+        if (!userAddress) return showToast('Connect wallet first!');
+        if (!_activeCommunity) return;
+        if (isActionPending) return;
+        isActionPending = true;
+
+        const followBtn = document.getElementById('comm-follow-btn');
+        if (followBtn) followBtn.disabled = true;
+
+        // Normalise all addresses / IDs to lowercase
+        const senderAddr  = userAddress.toLowerCase();
+        const commId      = (_activeCommunity.id || '').toLowerCase();
+        const creatorAddr = (_activeCommunity.ownerId || '').toLowerCase();
+
+        if (!commId) {
+            isActionPending = false;
+            if (followBtn) followBtn.disabled = false;
+            return showToast('Community ID missing — cannot follow.');
+        }
+
+        try {
+            const docId  = senderAddr + '_' + commId;
+            const docRef = window.fs.doc(window.db, 'social_graph', docId);
+            const snap   = await window.fs.getDoc(docRef);
+
+            if (snap.exists()) {
+                // ── UNFOLLOW ──────────────────────────────────────────────
+                await window.fs.deleteDoc(docRef);
+                _followingSet.delete(commId);
+                if (followBtn) { followBtn.textContent = '+ Follow Hub'; followBtn.classList.remove('following'); }
+                showToast('Unfollowed ' + (_activeCommunity.name || 'Hub') + '.');
+
+            } else {
+                // ── FOLLOW — atomic 90/10 split ───────────────────────────
+
+                // STEP A: Validate sender has >= 1 Star
+                const total = getTotalSpendableStars();
+                if (total < 1) {
+                    isActionPending = false;
+                    if (followBtn) followBtn.disabled = false;
+                    return showToast('Not enough Stars to follow! Deposit APTM.');
+                }
+
+                // STEP B: Deduct 1★ from sender
+                await deductStars(1);
+
+                // STEP C: Credit 0.9★ to community creator
+                if (creatorAddr) {
+                    await creditCreatorStars(creatorAddr, 0.9);
+                }
+
+                // STEP D: Route 0.1★ to platform revenue
+                logAdminRevenue(senderAddr, 'community_follow_fee', 0.1);
+
+                // STEP E: Log both sides of the transaction
+                if (creatorAddr) {
+                    logTransaction(
+                        creatorAddr, 'earn', 0.9,
+                        'Hub Follow Earnings — ' + (_activeCommunity.name || commId) +
+                        ' (from ' + senderAddr.slice(0, 8) + '…)',
+                        null, commId
+                    );
+                }
+                logTransaction(
+                    senderAddr, 'spend', 1,
+                    'Followed Hub: ' + (_activeCommunity.name || commId),
+                    null, commId
+                );
+
+                // Write social_graph entry — community ID is the 'following' value
+                await window.fs.setDoc(docRef, {
+                    follower:  senderAddr,
+                    following: commId,
+                    type:      'community',
+                    timestamp: Date.now()
+                });
+
+                _followingSet.add(commId);
+                if (followBtn) { followBtn.textContent = '✓ Following Hub'; followBtn.classList.add('following'); }
+                showToast('Following ' + (_activeCommunity.name || 'Hub') + '! 0.9★ sent to creator.');
+            }
+
+            // Refresh member count display
+            if (window.db) {
+                const memberQ = window.fs.query(
+                    window.fs.collection(window.db, 'social_graph'),
+                    window.fs.where('following', '==', commId)
+                );
+                const memberSnap = await window.fs.getDocs(memberQ);
+                const count = memberSnap.size;
+                const chip  = document.getElementById('comm-member-chip');
+                if (chip) {
+                    chip.textContent = '⬡ ' + (count >= 1000
+                        ? (count / 1000).toFixed(1) + 'k'
+                        : count) + ' Member' + (count !== 1 ? 's' : '');
+                }
+            }
+
+        } catch (e) {
+            console.error('[commFollowHub]', e);
+            showToast('Follow failed. Please try again.');
+        }
+
+        isActionPending = false;
+        if (followBtn) followBtn.disabled = false;
+    }
+    window.commFollowHub = commFollowHub;
 
     // Close HIW on Escape key
     document.addEventListener('keydown', function(e) {
