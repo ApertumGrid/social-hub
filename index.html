@@ -8210,7 +8210,12 @@
     async function heroFollow() {
         if (!userAddress) return showToast('Connect wallet first!');
         if (!_heroTargetAddr) return;
-        if (_heroTargetAddr === userAddress.toLowerCase()) return showToast("You can't follow yourself.");
+
+        // Normalise both addresses to lowercase before ANY comparison or write
+        const senderAddr    = userAddress.toLowerCase();
+        const recipientAddr = _heroTargetAddr.toLowerCase();
+
+        if (recipientAddr === senderAddr) return showToast("You can't follow yourself.");
         if (isActionPending) return;
         isActionPending = true;
 
@@ -8218,38 +8223,64 @@
         if (followBtn) followBtn.disabled = true;
 
         try {
-            const docId  = userAddress.toLowerCase() + '_' + _heroTargetAddr;
+            const docId  = senderAddr + '_' + recipientAddr;
             const docRef = window.fs.doc(window.db, 'social_graph', docId);
             const snap   = await window.fs.getDoc(docRef);
 
             if (snap.exists()) {
-                // Unfollow — no star cost for unfollowing
+                // ── UNFOLLOW — no star cost ───────────────────────────────
                 await window.fs.deleteDoc(docRef);
-                _followingSet.delete(_heroTargetAddr);
+                _followingSet.delete(recipientAddr);
                 if (followBtn) { followBtn.textContent = '+ Follow'; followBtn.classList.remove('following'); }
                 showToast('Unfollowed.');
+
             } else {
-                // Follow — costs 1★ as bot prevention
+                // ── FOLLOW — atomic 90/10 split ───────────────────────────
+
+                // STEP A: Validate sender has >= 1 Star
                 const total = getTotalSpendableStars();
                 if (total < 1) {
                     isActionPending = false;
                     if (followBtn) followBtn.disabled = false;
                     return showToast('Not enough Stars to follow! Deposit APTM.');
                 }
+
+                // STEP B: Deduct 1★ from sender
+                await deductStars(1);
+
+                // STEP C: Credit 0.9★ to recipient (creditCreatorStars uses lowercase internally)
+                await creditCreatorStars(recipientAddr, 0.9);
+
+                // STEP D: Route 0.1★ to platform revenue
+                logAdminRevenue(senderAddr, 'follow_fee', 0.1);
+
+                // STEP E: Log both sides of the transaction in the ledger
+                logTransaction(
+                    recipientAddr, 'earn', 0.9,
+                    'Follow Earnings from ' + senderAddr.slice(0, 8) + '…',
+                    null, null
+                );
+                logTransaction(
+                    senderAddr, 'spend', 1,
+                    'Followed ' + recipientAddr.slice(0, 8) + '…',
+                    null, null
+                );
+
+                // Write the social_graph document AFTER payment succeeds
                 await window.fs.setDoc(docRef, {
-                    follower:  userAddress.toLowerCase(),
-                    following: _heroTargetAddr,
+                    follower:  senderAddr,
+                    following: recipientAddr,
                     timestamp: Date.now()
                 });
-                await deductStars(1);
-                logTransaction(userAddress, 'spend', 1, 'Followed ' + _heroTargetAddr.slice(0,8) + '…', null, null);
-                _followingSet.add(_heroTargetAddr);
+
+                _followingSet.add(recipientAddr);
                 if (followBtn) { followBtn.textContent = '✓ Following'; followBtn.classList.add('following'); }
-                showToast('Following! 1★ spent.');
+                showToast('Following! 0.9★ sent to creator.');
             }
 
-            // Refresh counts
-            await _loadHeroSocialGraph(_heroTargetAddr, false);
+            // Refresh follower/following counts on the hero
+            await _loadHeroSocialGraph(recipientAddr, false);
+
         } catch (e) {
             console.error('[heroFollow]', e);
             showToast('Follow failed. Please try again.');
