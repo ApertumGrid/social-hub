@@ -6164,18 +6164,15 @@
                 );
                 const passesCat     = !_categoryFilter || (post.category || 'Global') === _categoryFilter;
                 const passesVisible = post.isVisible !== false;
-                // ── Community isolation: global feed shows non-community posts.
-                // In Following mode, community posts the user follows are also allowed.
-                const passesGlobal  = !post.communityId ||
-                    (_followMode === 'following' && post.communityId &&
-                     _followingSet.has(post.communityId.toLowerCase()));
-                // ── Following filter: show posts from followed AUTHORS or followed COMMUNITIES
-                const passesFollowing = (_followMode !== 'following' || _wallFilter)
-                    ? true
-                    : (_followingSet.size > 0 && (
-                        (post.authorAddr  && _followingSet.has(post.authorAddr.toLowerCase())) ||
-                        (post.communityId && _followingSet.has(post.communityId.toLowerCase()))
-                      ));
+                // ── Community isolation: non-community posts always pass.
+                // Community posts pass only when on a wall, or when the user follows that hub.
+                const passesGlobal = !post.communityId || !!_wallFilter ||
+                    _followingSet.has((post.communityId || '').toLowerCase());
+                // ── Unified following filter: author-follow OR community-follow
+                const passesFollowing = (_followMode === 'global') ||
+                    !!_wallFilter ||
+                    _followingSet.has((post.authorAddr  || '').toLowerCase()) ||
+                    _followingSet.has((post.communityId || '').toLowerCase());
                 const passesFilter  = passesWall && passesCat && passesVisible && passesGlobal && passesFollowing;
 
                 // ── REMOVED or filtered out: delete the card if it exists ────────
@@ -8840,6 +8837,21 @@
         if (followBtn) followBtn.disabled = false;
     }
     window.commFollowHub = commFollowHub;
+
+    // Named alias — satisfies external call pattern heroFollowCommunity(commId, creatorAddr)
+    // Sets _activeCommunity shim if needed, then delegates to commFollowHub.
+    async function heroFollowCommunity(commId, creatorAddr) {
+        if (!commId) return showToast('Community ID missing.');
+        // If _activeCommunity isn't set (e.g. called from feed card), build a minimal shim
+        if (!_activeCommunity || _activeCommunity.id !== commId) {
+            _activeCommunity = { id: commId, ownerId: creatorAddr || '', name: commId };
+            // Try to resolve real name from cache
+            const cached = _allCommunities.find(c => c.id === commId);
+            if (cached) _activeCommunity = cached;
+        }
+        await commFollowHub();
+    }
+    window.heroFollowCommunity = heroFollowCommunity;
 
     // Close HIW on Escape key
     document.addEventListener('keydown', function(e) {
