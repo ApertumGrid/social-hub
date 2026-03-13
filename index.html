@@ -527,6 +527,28 @@
         .comm-member-count { font-size:0.62rem; color:var(--text-muted); }
         #start-comm-form { display:none; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-md); padding:16px; margin-bottom:16px; }
         #start-comm-form.open { display:block; }
+        .alias-input-wrap { position:relative; margin-bottom:8px; }
+        .alias-prefix {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            pointer-events: none;
+            user-select: none;
+        }
+        .alias-input-wrap .field { padding-left: 52px; font-family: var(--font-mono); }
+        .alias-hint {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            margin-top: -4px;
+            margin-bottom: 10px;
+            padding-left: 2px;
+        }
+        .alias-hint.error { color: var(--red, #ef4444); }
+        .alias-hint.ok    { color: var(--teal); }
         .start-comm-title { font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:12px; }
         #community-feed-view { display:none; }
         .comm-feed-banner { width:100%; height:180px; object-fit:cover; object-position:center; border-radius:var(--radius-md); display:block; margin-bottom:10px; background:linear-gradient(135deg,#12151f 0%,#1a1f2e 100%); }
@@ -3266,12 +3288,25 @@
                     <div id="start-comm-form">
                         <div class="start-comm-title">&#x2B21; New Community Hub</div>
                         <input type="text" id="comm-name-input" class="field"
-                               placeholder="Community Name (e.g. DeFi Traders)" style="margin-bottom:8px;">
+                               placeholder="Community Name (e.g. DeFi Traders)" style="margin-bottom:8px;"
+                               oninput="commAutoAlias(this.value)">
                         <textarea id="comm-desc-input" class="field" rows="4"
                                   placeholder="Short description — press Enter for line breaks, they will be preserved exactly as you type them."
                                   style="margin-bottom:8px; resize:vertical;"></textarea>
                         <input type="text" id="comm-img-input" class="field"
                                placeholder="Header Image URL (optional)" style="margin-bottom:12px;">
+                        <!-- Hub Handle / Alias — free feature, stored as comm.alias -->
+                        <div class="alias-input-wrap">
+                            <span class="alias-prefix">?hub=</span>
+                            <input type="text" id="comm-alias-input" class="field"
+                                   placeholder="hub-handle  (letters, numbers, hyphens)"
+                                   maxlength="48"
+                                   oninput="sanitiseAlias(this)">
+                        </div>
+                        <div class="alias-hint" id="alias-hint">
+                            Optional. Creates a shareable link like <strong>?hub=your-handle</strong>.
+                            Letters, numbers, and hyphens only. Free for all Hub creators.
+                        </div>
                         <div style="display:flex;gap:8px;">
                             <button class="btn btn-purple" onclick="submitStartCommunity()">Launch Hub &mdash; 1,000 &#9733;</button>
                             <button class="btn" onclick="toggleStartCommForm()">Cancel</button>
@@ -8009,11 +8044,12 @@
     async function openCommunityFeed(comm) {
         _activeCommunity = comm;
 
-        // Push ?hub=<id> into the URL so this view is bookmarkable / shareable
+        // Push ?hub=<alias|id> into the URL so this view is bookmarkable / shareable
         try {
+            const hubSlug = (comm.alias && comm.alias.trim()) ? comm.alias.trim() : comm.id;
             const url = new URL(window.location.href);
-            url.searchParams.set('hub', comm.id);
-            window.history.pushState({ hub: comm.id }, '', url.toString());
+            url.searchParams.set('hub', hubSlug);
+            window.history.pushState({ hub: hubSlug }, '', url.toString());
         } catch (_) {}
 
         // Sync the community composer identity and fee display
@@ -8231,6 +8267,66 @@
     }
     window.toggleStartCommForm = toggleStartCommForm;
 
+    // ─── Alias helpers ────────────────────────────────────────────────────────────
+    // Enforce alphanumeric + hyphens only, lowercase, no leading/trailing hyphens
+    function sanitiseAlias(inputEl) {
+        var raw   = inputEl.value;
+        var clean = raw.toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/^-+/, '');
+        if (clean !== raw) inputEl.value = clean;
+        _validateAliasHint(clean);
+    }
+    window.sanitiseAlias = sanitiseAlias;
+
+    // Auto-suggest alias from hub name when alias field is empty
+    function commAutoAlias(nameValue) {
+        var aliasEl = document.getElementById('comm-alias-input');
+        if (!aliasEl || aliasEl.dataset.userEdited === 'true') return;
+        var suggested = nameValue.toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 48);
+        aliasEl.value = suggested;
+        _validateAliasHint(suggested);
+    }
+    window.commAutoAlias = commAutoAlias;
+
+    // Mark alias as manually edited so auto-suggest stops overwriting
+    (function () {
+        document.addEventListener('DOMContentLoaded', function () {
+            var aliasEl = document.getElementById('comm-alias-input');
+            if (aliasEl) {
+                aliasEl.addEventListener('input', function () {
+                    aliasEl.dataset.userEdited = 'true';
+                    if (!aliasEl.value) aliasEl.dataset.userEdited = 'false'; // cleared = reset
+                });
+            }
+        });
+    })();
+
+    function _validateAliasHint(value) {
+        var hint = document.getElementById('alias-hint');
+        if (!hint) return;
+        if (!value) {
+            hint.className = 'alias-hint';
+            hint.innerHTML = 'Optional. Creates a shareable link like <strong>?hub=your-handle</strong>. Letters, numbers, and hyphens only. Free for all Hub creators.';
+            return;
+        }
+        // Check for collision against in-memory cache (instant)
+        var taken = _allCommunities.some(function(c) {
+            return (c.alias || '').toLowerCase() === value.toLowerCase();
+        });
+        if (taken) {
+            hint.className = 'alias-hint error';
+            hint.textContent = '✗ "' + value + '" is already taken. Choose a different handle.';
+        } else if (value.length < 3) {
+            hint.className = 'alias-hint error';
+            hint.textContent = 'Handle must be at least 3 characters.';
+        } else {
+            hint.className = 'alias-hint ok';
+            hint.textContent = '✓ "' + value + '" looks good!';
+        }
+    }
+
     // ─── Submit: create a new Community Hub ──────────────────────────────────────
     async function submitStartCommunity() {
         if (!userAddress) return showToast('Connect your wallet first!');
@@ -8239,8 +8335,34 @@
         var name   = (document.getElementById('comm-name-input')?.value  || '').trim();
         var desc   = (document.getElementById('comm-desc-input')?.value  || '').trim();
         var imgUrl = (document.getElementById('comm-img-input')?.value   || '').trim();
+        var alias  = (document.getElementById('comm-alias-input')?.value || '').trim().toLowerCase();
 
         if (!name) return showToast('Please enter a community name.');
+
+        // ── Alias validation (optional but enforced if provided) ──────────────────
+        if (alias) {
+            if (!/^[a-z0-9][a-z0-9-]{1,47}$/.test(alias)) {
+                return showToast('Hub handle must be 3–48 chars: letters, numbers, hyphens only.');
+            }
+            // Check uniqueness against in-memory cache first (fast)
+            var aliasTaken = _allCommunities.some(function(c) {
+                return (c.alias || '').toLowerCase() === alias;
+            });
+            if (aliasTaken) {
+                return showToast('Hub handle "' + alias + '" is already taken. Choose another.');
+            }
+            // Double-check Firestore in case cache is stale
+            try {
+                var aliasQ = window.fs.query(
+                    window.fs.collection(window.db, 'communities'),
+                    window.fs.where('alias', '==', alias)
+                );
+                var aliasSnap = await window.fs.getDocs(aliasQ);
+                if (!aliasSnap.empty) {
+                    return showToast('Hub handle "' + alias + '" is already taken. Choose another.');
+                }
+            } catch (e) { console.warn('[alias check]', e); }
+        }
 
         // ── Admin bypass: set cost = 0 for the platform owner ────────────────────
         // The master wallet below pays zero Stars to create Community Hubs.
@@ -8293,7 +8415,7 @@
 
             // Write community doc to Firestore
             var ownerName = localStorage.getItem('hub_userName') || userHandle;
-            await window.fs.addDoc(window.fs.collection(window.db, 'communities'), {
+            var commData = {
                 name:        name,
                 description: desc,
                 headerImg:   imgUrl,
@@ -8301,14 +8423,21 @@
                 ownerName:   ownerName,
                 createdAt:   Date.now(),
                 postCount:   0
-            });
+            };
+            // Only write alias field if one was provided (keeps doc clean for hubs without one)
+            if (alias) commData.alias = alias;
 
-            showToast('Community Hub "' + name + '" is live! \u2713');
+            await window.fs.addDoc(window.fs.collection(window.db, 'communities'), commData);
+
+            showToast('Community Hub "' + name + '" is live!' + (alias ? ' Handle: ?' + 'hub=' + alias : '') + ' \u2713');
 
             // Reset form
-            var n = document.getElementById('comm-name-input'); if (n) n.value = '';
-            var d2 = document.getElementById('comm-desc-input'); if (d2) d2.value = '';
-            var im = document.getElementById('comm-img-input');  if (im) im.value = '';
+            var n  = document.getElementById('comm-name-input');  if (n)  n.value = '';
+            var d2 = document.getElementById('comm-desc-input');  if (d2) d2.value = '';
+            var im = document.getElementById('comm-img-input');   if (im) im.value = '';
+            var al = document.getElementById('comm-alias-input'); if (al) { al.value = ''; al.dataset.userEdited = 'false'; }
+            var hint = document.getElementById('alias-hint');
+            if (hint) { hint.className = 'alias-hint'; hint.innerHTML = 'Optional. Creates a shareable link like <strong>?hub=your-handle</strong>. Letters, numbers, and hyphens only. Free for all Hub creators.'; }
             toggleStartCommForm();
             updateUI();
             loadCommunities();
@@ -9027,9 +9156,13 @@
     function shareCurrentHub() {
         if (!_activeCommunity) return;
         try {
-            const url = new URL(window.location.href);
-            url.searchParams.set('hub', _activeCommunity.id);
-            const shareUrl = url.toString();
+            // Prefer human-readable alias; fall back to Firestore doc ID
+            var hubSlug = (_activeCommunity.alias && _activeCommunity.alias.trim())
+                ? _activeCommunity.alias.trim()
+                : _activeCommunity.id;
+            var url = new URL(window.location.href);
+            url.searchParams.set('hub', hubSlug);
+            var shareUrl = url.toString();
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(shareUrl).then(function() {
                     showToast('🔗 Hub link copied to clipboard!');
@@ -9096,26 +9229,71 @@
             // Wait for _allCommunities to have at least one entry (or confirm empty)
             await _waitFor(function() { return _allCommunities.length > 0; }, 6000, 100);
 
-            // Step 3: match by doc ID (exact) or slugified name (fallback)
-            function slugify(s) {
-                return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '').trim();
-            }
-            const needle = hubParam.toLowerCase();
-            let comm = _allCommunities.find(function(c) {
-                return c.id === hubParam ||
-                       c.id.toLowerCase() === needle ||
-                       slugify(c.name) === slugify(hubParam);
-            });
+            // Step 3 — three-pass resolution:
+            //   Pass A: exact Firestore doc ID match (handles old links)
+            //   Pass B: alias field query (`where alias == hubParam`)
+            //   Pass C: slugified name fallback (e.g. "Sports Future" → "sportsfuture")
+            var comm = null;
+            var needle = hubParam.toLowerCase();
 
+            // Pass A: check in-memory cache by doc ID
+            comm = _allCommunities.find(function(c) {
+                return c.id === hubParam || c.id.toLowerCase() === needle;
+            }) || null;
+
+            // Pass B: alias match from cache, then Firestore query if not found
             if (!comm) {
-                // Try a direct Firestore fetch by doc ID in case the communities
-                // collection is large and the snapshot hasn't paginated to it yet
+                comm = _allCommunities.find(function(c) {
+                    return c.alias && c.alias.toLowerCase() === needle;
+                }) || null;
+            }
+            if (!comm) {
+                // Alias Firestore query — handles hubs not yet in the local snapshot
                 try {
-                    const snap = await window.fs.getDoc(
+                    var aliasQ = window.fs.query(
+                        window.fs.collection(window.db, 'communities'),
+                        window.fs.where('alias', '==', hubParam)
+                    );
+                    var aliasSnap = await window.fs.getDocs(aliasQ);
+                    if (!aliasSnap.empty) {
+                        aliasSnap.forEach(function(d) {
+                            if (!comm) comm = Object.assign({ id: d.id }, d.data());
+                        });
+                    }
+                    // Also try lowercase alias in case of casing mismatch at creation time
+                    if (!comm && hubParam !== needle) {
+                        var aliasQL = window.fs.query(
+                            window.fs.collection(window.db, 'communities'),
+                            window.fs.where('alias', '==', needle)
+                        );
+                        var aliasSnapL = await window.fs.getDocs(aliasQL);
+                        if (!aliasSnapL.empty) {
+                            aliasSnapL.forEach(function(d) {
+                                if (!comm) comm = Object.assign({ id: d.id }, d.data());
+                            });
+                        }
+                    }
+                } catch (e) { console.warn('[deepLink] alias query failed:', e); }
+            }
+
+            // Pass C: direct doc-ID fetch (in case it IS a doc ID but not yet in snapshot)
+            if (!comm) {
+                try {
+                    var idSnap = await window.fs.getDoc(
                         window.fs.doc(window.db, 'communities', hubParam)
                     );
-                    if (snap.exists()) comm = Object.assign({ id: snap.id }, snap.data());
+                    if (idSnap.exists()) comm = Object.assign({ id: idSnap.id }, idSnap.data());
                 } catch (_) {}
+            }
+
+            // Pass D: slugified name (last resort — "sports-future" matches "Sports Future")
+            if (!comm) {
+                function _slugify(s) {
+                    return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                }
+                comm = _allCommunities.find(function(c) {
+                    return _slugify(c.name) === _slugify(hubParam);
+                }) || null;
             }
 
             if (!comm) throw new Error('Hub "' + hubParam + '" not found');
