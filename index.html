@@ -4227,6 +4227,12 @@
             signer      = provider.getSigner();
             hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
 
+            // Zero module-level balance cache immediately so the UI never shows
+            // stale values from a previous session while Firestore catches up.
+            purchasedStars  = 0;
+            creatorEarnings = 0;
+            updateUI();
+
             const statusEl = document.getElementById('wallet-status');
             if (statusEl) statusEl.textContent = userAddress.slice(0, 6) + '…' + userAddress.slice(-4);
 
@@ -4398,9 +4404,21 @@
 
             // Creator Studio page — Available Stars + Earned Stars only, no receipt
             s('creator-revenue-display', availStr);
-            s('studio-purchased-stars',  purchasedStars.toFixed(1));
+            // studio-purchased-stars: always read fresh from Firestore, never from
+            // the module-level purchasedStars var which may lag on first load.
+            s('studio-purchased-stars',  '…');
             s('studio-earned-stars',     earnedStars.toFixed(1));
             s('earnings-aptm-value',     aptmStr);
+            if (userAddress && window.db) {
+                window.fs.getDoc(window.fs.doc(window.db, 'user_balances', userAddress.toLowerCase()))
+                    .then(function(snap) {
+                        const val = snap.exists() ? (parseFloat(snap.data().stars) || 0) : 0;
+                        s('studio-purchased-stars', val.toFixed(1));
+                    })
+                    .catch(function() { s('studio-purchased-stars', purchasedStars.toFixed(1)); });
+            } else {
+                s('studio-purchased-stars', userAddress ? purchasedStars.toFixed(1) : '—');
+            }
 
             const pbAv = document.getElementById('pb-avatar'); if (pbAv) pbAv.src = userAvatar;
             const nvAv = document.getElementById('nav-avatar'); if (nvAv) nvAv.src = userAvatar;
@@ -4989,124 +5007,7 @@
             snap.forEach(d => docs.push(d.data()));
             _renderMCD(docs);
 
-            // ── Global metrics + Solvency Light ──────────────────────────────
-            // Runs async in background so the ticker renders immediately.
-            (async () => {
-                if (!window.db) return;
-                const s2 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
-                // Step 1: Aggregate user_balances
-                //   totalPurchased = Σ user_balances.stars        (deposited, unspent — user deposit liability)
-                //   totalEarned    = Σ user_balances.creatorStars  (earned — creator payout liability)
-                //   totalCirculating = totalPurchased + totalEarned  (ALL user-owned stars)
-                // Both pools must be in the liability: if every user settled the contract must cover both.
-                let totalCirculating = 0;
-                let totalPurchased   = 0;
-                let totalEarned      = 0;
-                try {
-                    const balSnap = await window.fs.getDocs(
-                        window.fs.collection(window.db, 'user_balances')
-                    );
-                    balSnap.forEach(d => {
-                        const data     = d.data();
-                        const purchased = parseFloat(data.stars)        || 0;
-                        const earned    = parseFloat(data.creatorStars) || 0;
-                        totalPurchased   += purchased;
-                        totalEarned      += earned;
-                        totalCirculating += purchased + earned;
-                    });
-                    s2('mcd-circulating', totalCirculating.toFixed(2) + ' ★');
-                    // User-Owned Debt metric = ALL user stars (both pools)
-                    s2('mcd-pending', totalCirculating.toFixed(2) + ' ★');
-                } catch (e) { console.warn('[MCD] user_balances fetch failed:', e); }
-
-                // Step 2: Read admin_revenue/global for the withdrawable platform revenue
-                let adminRevStars = 0;
-                try {
-                    const gSnap = await window.fs.getDoc(
-                        window.fs.doc(window.db, 'admin_revenue', 'global')
-                    );
-                    if (gSnap.exists()) adminRevStars = parseFloat(gSnap.data().total) || 0;
-                } catch (e) { console.warn('[MCD] admin_revenue fetch failed:', e); }
-
-                // Step 3: Read contract balance via provider (requires wallet connected)
-                //
-                // TRUE TOTAL LIABILITY:
-                //   Σ user_balances.stars        ← purchased stars (deposit liability)
-                // + Σ user_balances.creatorStars  ← earned stars   (creator payout liability)
-                // + admin_revenue/global.total    ← platform revenue owed to admin
-                //
-                // ASSET: contract APTM balance converted to stars at live price
-                const bar       = document.getElementById('mcd-solvency-bar');
-                const statusEl  = document.getElementById('mcd-sol-status');
-                const detailEl  = document.getElementById('mcd-sol-detail');
-                const ratioEl   = document.getElementById('mcd-sol-ratio');
-
-                if (!provider) {
-                    if (bar) bar.className = 'mcd-solvency loading';
-                    if (statusEl) statusEl.textContent = 'WALLET NOT CONNECTED';
-                    if (detailEl) detailEl.textContent = 'Connect wallet to run solvency check.';
-                    if (ratioEl)  ratioEl.textContent  = '— / —';
-                    return;
-                }
-
-                let contractBalAptm = 0;
-                try {
-                    const raw = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
-                    contractBalAptm = parseFloat(ethers.utils.formatEther(raw)) || 0;
-                } catch (e) {
-                    console.warn('[MCD] Contract balance fetch failed:', e);
-                    if (bar) bar.className = 'mcd-solvency loading';
-                    if (statusEl) statusEl.textContent = 'CONTRACT READ ERROR';
-                    if (detailEl) detailEl.textContent = 'Could not fetch on-chain balance.';
-                    return;
-                }
-
-                // Convert contract APTM → stars using live price (fall back to $0.3391)
-                const livePrice = (currentAptmPriceUsd > 0) ? currentAptmPriceUsd
-                                : (window.aptmPriceUSD > 0 ? window.aptmPriceUSD : 0.3391);
-                const contractBalStars = (contractBalAptm * livePrice) / CONFIG.STAR_USD;
-
-                // Full liability = ALL user-owned stars + admin platform revenue
-                const totalLiabilityStars = totalPurchased + totalEarned + adminRevStars;
-
-                const isSolvent     = contractBalStars >= totalLiabilityStars;
-                const discrepancy   = Math.abs(contractBalStars - totalLiabilityStars);
-                const coverageRatio = totalLiabilityStars > 0
-                    ? ((contractBalStars / totalLiabilityStars) * 100).toFixed(1)
-                    : '∞';
-
-                // Update solvency bar
-                if (bar) bar.className = 'mcd-solvency ' + (isSolvent ? 'solvent' : 'insolvent');
-                if (ratioEl) ratioEl.textContent =
-                    contractBalStars.toFixed(1) + ' ★ / ' + totalLiabilityStars.toFixed(1) + ' ★';
-
-                if (isSolvent) {
-                    if (statusEl) statusEl.textContent = 'SYSTEM SOLVENT';
-                    if (detailEl) detailEl.textContent =
-                        'Coverage: ' + coverageRatio + '% · Surplus: ' +
-                        discrepancy.toFixed(2) + ' ★ ($' + (discrepancy * CONFIG.STAR_USD).toFixed(2) + ')' +
-                        ' · Purchased: ' + totalPurchased.toFixed(2) + '★  Earned: ' + totalEarned.toFixed(2) + '★  Admin: ' + adminRevStars.toFixed(2) + '★';
-                } else {
-                    if (statusEl) statusEl.textContent = 'RESERVE DISCREPANCY';
-                    if (detailEl) detailEl.textContent =
-                        'Shortfall: ' + discrepancy.toFixed(2) + ' ★ ($' +
-                        (discrepancy * CONFIG.STAR_USD).toFixed(2) +
-                        ') · Coverage: ' + coverageRatio + '%' +
-                        ' · Purchased: ' + totalPurchased.toFixed(2) + '★  Earned: ' + totalEarned.toFixed(2) + '★  Admin: ' + adminRevStars.toFixed(2) + '★';
-                }
-
-                console.log(
-                    '[Solvency] Contract: ' + contractBalStars.toFixed(4) + '★' +
-                    ' | LIABILITY BREAKDOWN:' +
-                    ' purchased=' + totalPurchased.toFixed(4) + '★' +
-                    ' earned=' + totalEarned.toFixed(4) + '★' +
-                    ' admin=' + adminRevStars.toFixed(4) + '★' +
-                    ' TOTAL=' + totalLiabilityStars.toFixed(4) + '★' +
-                    ' | ' + (isSolvent ? 'SOLVENT' : 'DISCREPANCY') +
-                    ' (' + coverageRatio + '% coverage)'
-                );
-            })();
 
         }, (err) => {
             // Fallback: composite index may not be ready — query without orderBy
@@ -5127,10 +5028,122 @@
         window.fs.onSnapshot(globalRef, (snap) => {
             const total = snap.exists() ? (snap.data().total || 0) : 0;
             const s = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-            // Drawer still shows the withdrawable balance from admin_revenue/global
-            // (matches what adminWithdraw() will actually pull)
             s('drawer-admin-revenue', total.toFixed(2) + ' ★ (withdrawable)');
+
+            // Re-run solvency check whenever the admin balance changes.
+            // Pass the fresh adminRevStars into the solvency updater.
+            _updateSolvency(total);
         }, () => {});
+
+        // ── Live user_balances aggregate — onSnapshot fires on any balance change ──
+        // This is the TRUTH feed for the dashboard metrics. Never reads from JS vars.
+        // Replaces the one-shot getDocs which could show stale data if Firestore had
+        // not yet propagated writes from recent transactions.
+        let _balUnsub = null;
+        function _subscribeBalMetrics() {
+            if (_balUnsub) { try { _balUnsub(); } catch (_) {} }
+            _balUnsub = window.fs.onSnapshot(
+                window.fs.collection(window.db, 'user_balances'),
+                function(snap) {
+                    let totalPurchased = 0;
+                    let totalEarned    = 0;
+                    snap.forEach(function(d) {
+                        const data = d.data();
+                        totalPurchased += parseFloat(data.stars)        || 0;
+                        totalEarned    += parseFloat(data.creatorStars) || 0;
+                    });
+                    const totalCirculating = totalPurchased + totalEarned;
+                    const s2 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+                    s2('mcd-circulating', totalCirculating.toFixed(2) + ' ★');
+                    s2('mcd-pending',     totalCirculating.toFixed(2) + ' ★');
+                    // Cache for solvency formula
+                    window._mcdPurchased = totalPurchased;
+                    window._mcdEarned    = totalEarned;
+                    // Re-run solvency with fresh user balance totals
+                    const adminRev = window._mcdAdminRev || 0;
+                    _updateSolvency(adminRev);
+                },
+                function(err) {
+                    console.warn('[MCD] user_balances onSnapshot failed:', err.message);
+                    const s2 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+                    s2('mcd-circulating', 'Error — check console');
+                    s2('mcd-pending',     'Error — check console');
+                }
+            );
+        }
+        _subscribeBalMetrics();
+
+        // ── Solvency updater — called by both balance and admin-revenue listeners ──
+        async function _updateSolvency(adminRevStars) {
+            window._mcdAdminRev = adminRevStars;
+            const totalPurchased = window._mcdPurchased || 0;
+            const totalEarned    = window._mcdEarned    || 0;
+
+            const bar      = document.getElementById('mcd-solvency-bar');
+            const statusEl = document.getElementById('mcd-sol-status');
+            const detailEl = document.getElementById('mcd-sol-detail');
+            const ratioEl  = document.getElementById('mcd-sol-ratio');
+
+            if (!provider) {
+                if (bar) bar.className = 'mcd-solvency loading';
+                if (statusEl) statusEl.textContent = 'WALLET NOT CONNECTED';
+                if (detailEl) detailEl.textContent = 'Connect wallet to run solvency check.';
+                if (ratioEl)  ratioEl.textContent  = '— / —';
+                return;
+            }
+
+            let contractBalAptm = 0;
+            try {
+                const raw = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
+                contractBalAptm = parseFloat(ethers.utils.formatEther(raw)) || 0;
+            } catch (e) {
+                if (bar) bar.className = 'mcd-solvency loading';
+                if (statusEl) statusEl.textContent = 'CONTRACT READ ERROR';
+                if (detailEl) detailEl.textContent = 'Could not fetch on-chain balance: ' + (e.message || '');
+                return;
+            }
+
+            const livePrice = (currentAptmPriceUsd > 0) ? currentAptmPriceUsd
+                            : (window.aptmPriceUSD > 0 ? window.aptmPriceUSD : 0.3391);
+            const contractBalStars    = (contractBalAptm * livePrice) / CONFIG.STAR_USD;
+            // Full liability = ALL user-owned stars + admin platform revenue
+            const totalLiabilityStars = totalPurchased + totalEarned + adminRevStars;
+
+            const isSolvent     = contractBalStars >= totalLiabilityStars;
+            const discrepancy   = Math.abs(contractBalStars - totalLiabilityStars);
+            const coverageRatio = totalLiabilityStars > 0
+                ? ((contractBalStars / totalLiabilityStars) * 100).toFixed(1)
+                : '∞';
+
+            if (bar) bar.className = 'mcd-solvency ' + (isSolvent ? 'solvent' : 'insolvent');
+            if (ratioEl) ratioEl.textContent =
+                contractBalStars.toFixed(1) + ' ★ / ' + totalLiabilityStars.toFixed(1) + ' ★';
+
+            if (isSolvent) {
+                if (statusEl) statusEl.textContent = 'SYSTEM SOLVENT';
+                if (detailEl) detailEl.textContent =
+                    'Coverage: ' + coverageRatio + '% · Surplus: ' +
+                    discrepancy.toFixed(2) + ' ★ ($' + (discrepancy * CONFIG.STAR_USD).toFixed(2) + ')' +
+                    ' · Purchased: ' + totalPurchased.toFixed(2) + '★  Earned: ' + totalEarned.toFixed(2) + '★  Admin: ' + adminRevStars.toFixed(2) + '★';
+            } else {
+                if (statusEl) statusEl.textContent = 'RESERVE DISCREPANCY';
+                if (detailEl) detailEl.textContent =
+                    'Shortfall: ' + discrepancy.toFixed(2) + ' ★ ($' +
+                    (discrepancy * CONFIG.STAR_USD).toFixed(2) + ')' +
+                    ' · Coverage: ' + coverageRatio + '%' +
+                    ' · Purchased: ' + totalPurchased.toFixed(2) + '★  Earned: ' + totalEarned.toFixed(2) + '★  Admin: ' + adminRevStars.toFixed(2) + '★';
+            }
+
+            console.log(
+                '[Solvency] Contract: ' + contractBalStars.toFixed(4) + '★' +
+                ' | purchased=' + totalPurchased.toFixed(4) + '★' +
+                ' earned=' + totalEarned.toFixed(4) + '★' +
+                ' admin=' + adminRevStars.toFixed(4) + '★' +
+                ' TOTAL_LIABILITY=' + totalLiabilityStars.toFixed(4) + '★' +
+                ' | ' + (isSolvent ? 'SOLVENT' : 'DISCREPANCY') +
+                ' (' + coverageRatio + '% coverage)'
+            );
+        }
     }
 
     async function adminWithdraw() {
