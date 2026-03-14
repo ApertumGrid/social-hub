@@ -4690,77 +4690,57 @@
     //   description — human-readable label
     //   from        — wallet that SENT the stars (spend rows = own addr; earn rows = counterpart)
     //   to          — wallet that RECEIVED the stars (earn rows = own addr; spend rows = counterpart)
-    function logTransaction(address, type, amount, description, postId, communityId, opts) {
+    // CANONICAL SIGNATURE: logTransaction(type, amount, opts = {})
+    // opts keys: from, to, description, postId, communityId
+    function logTransaction(type, amount, opts) {
         if (!window.db) return;
+        if (opts === undefined) opts = {};
 
-        // ── Global user reference ─────────────────────────────────────────────
+        // ── Resolve addresses ────────────────────────────────────────────
         var globalUser = (typeof userAddress !== 'undefined' && userAddress)
             ? String(userAddress).toLowerCase()
             : (window.userAddress ? String(window.userAddress).toLowerCase() : '');
 
-        // ── Resolve owner address (the wallet this ledger entry belongs to) ───
-        var resolvedAddr = address
-            || globalUser
-            || window.userAddress
-            || '';
-        resolvedAddr = String(resolvedAddr || '').toLowerCase().trim();
-        if (!resolvedAddr || resolvedAddr === 'undefined') {
-            console.error('[logTransaction] Missing owner address — type=' + type + ' amount=' + amount);
-            return;
-        }
-
-        // ── Double-entry fromAddress / toAddress ──────────────────────────────
-        // fromAddress = wallet that sent the stars
-        // toAddress   = wallet (or vault name) that received them
-        var fromRaw = (opts && opts.from && opts.from !== 'undefined')
+        var fromAddress = (opts.from && String(opts.from) !== 'undefined')
             ? String(opts.from).toLowerCase()
-            : (type === 'earn' ? (globalUser || 'platform') : resolvedAddr);
+            : (type === 'earn' ? 'platform' : (globalUser || '0x_unknown'));
 
-        var toRaw = (opts && opts.to && opts.to !== 'undefined')
+        var toAddress = (opts.to && String(opts.to) !== 'undefined')
             ? String(opts.to).toLowerCase()
-            : (type === 'earn' ? resolvedAddr : 'admin_vault');
+            : (type === 'earn' ? (globalUser || '0x_unknown') : 'admin_vault');
 
-        // Block the literal string "undefined" at every path
-        var fromAddress = (fromRaw && fromRaw !== 'undefined') ? fromRaw : (globalUser || 'system');
-        var toAddress   = (toRaw   && toRaw   !== 'undefined') ? toRaw   : 'admin_vault';
+        // Block literal "undefined" at every path
+        if (fromAddress === 'undefined') fromAddress = globalUser || '0x_unknown';
+        if (toAddress   === 'undefined') toAddress   = 'admin_vault';
 
-        // ── Sanitise scalars — Firestore rejects undefined values ─────────────
-        var safeDescription = (description !== undefined && description !== null && description !== '')
-            ? String(description)
-            : ((opts && opts.description) ? String(opts.description) : (type + ' of ' + amount + '\u2605'));
-        var safeAmount = (amount !== undefined && amount !== null && !isNaN(amount))
-            ? parseFloat(amount)
-            : 0;
-        var safeType = String(type || 'unknown');
-
-        // ── Build document ────────────────────────────────────────────────────
-        // `address` is kept as the per-user routing key so subscribeLedger's
-        // where("address","==",addr) query continues to work for existing docs.
-        // New docs also carry fromAddress/toAddress for double-entry queries.
-        const data = {
-            address:     resolvedAddr,   // routing key — matches subscribeLedger query
-            type:        safeType,
-            amount:      safeAmount,
-            description: safeDescription,
-            fromAddress,
-            toAddress,
+        // ── Sanitise every scalar field ──────────────────────────────────
+        var finalRecord = {
+            type:        String(type  || 'unknown'),
+            amount:      Number(isNaN(amount) ? 0 : amount),
+            fromAddress: fromAddress,
+            toAddress:   toAddress,
+            description: String(opts.description || type + ' of ' + amount + '\u2605'),
             timestamp:   Date.now()
         };
-        if (postId)      data.postId      = String(postId);
-        if (communityId) data.communityId = String(communityId);
+        if (opts.postId)      finalRecord.postId      = String(opts.postId);
+        if (opts.communityId) finalRecord.communityId = String(opts.communityId);
 
-        // ── Try/catch so a ledger failure never crashes the calling function ──
+        // Legacy `address` field kept so existing Firestore queries
+        // (where("address","==",addr)) continue to work on old documents.
+        // New queries use fromAddress / toAddress directly.
+        finalRecord.address = (type === 'earn') ? toAddress : fromAddress;
+
+        // ── Write — try/catch so failure never crashes the caller ────────
         try {
-            window.fs.addDoc(window.fs.collection(window.db, 'user_transactions'), data)
+            window.fs.addDoc(window.fs.collection(window.db, 'user_transactions'), finalRecord)
                 .catch(function(e) {
-                    console.error('[logTransaction] addDoc failed — type=' + safeType
-                        + ' amount=' + safeAmount
-                        + ' from=' + fromAddress
-                        + ' to=' + toAddress
-                        + ' | ' + (e.message || String(e)));
+                    console.error('\u274C LEDGER CRASH:', finalRecord.type, finalRecord.amount,
+                        'from=' + finalRecord.fromAddress, 'to=' + finalRecord.toAddress,
+                        '|', e.message || String(e));
                 });
+            console.log('\u2705 LEDGER SECURED:', finalRecord);
         } catch (syncErr) {
-            console.error('[logTransaction] Unexpected sync error:', syncErr);
+            console.error('[logTransaction] sync error:', syncErr);
         }
     }
 
@@ -5402,11 +5382,10 @@
                 } catch (e) { console.warn("[AdminWithdraw] Firebase admin_revenue reset failed:", e); }
             }
 
-            logTransaction(
-                userAddress, "settle", revenueAptm,
-                `Admin withdrew ${revenueStars.toFixed(2)} ★ = ${revenueAptm.toFixed(6)} APTM at $${livePrice.toFixed(4)}/APTM`,
-                null, null, { from: userAddress, to: 'admin-wallet' }
-            );
+            logTransaction('settle', revenueAptm, {
+                from: userAddress, to: 'admin-wallet',
+                description: `Admin withdrew ${revenueStars.toFixed(2)} ★ = ${revenueAptm.toFixed(6)} APTM at $${livePrice.toFixed(4)}/APTM`
+            });
 
             // ── Step 8: Update revenue displays to 0 ─────────────────────────
             const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -5477,9 +5456,10 @@
             }
 
             await creditPurchasedStars(userAddress, starsReceived);
-            logTransaction(userAddress, "deposit", starsReceived,
-                `Deposited ${aptmAmount.toFixed(2)} $APTM \u2192 ${starsReceived} Stars`,
-                null, null, { from: 'on-chain', to: userAddress });
+            logTransaction('deposit', starsReceived, {
+                from: 'on-chain', to: userAddress,
+                description: `Deposited ${aptmAmount.toFixed(2)} $APTM → ${starsReceived} Stars`
+            });
             showToast("Deposit Successful ✓");
             setTimeout(() => { syncData(); }, 2000);
         } catch (e) { console.error("[Deposit] Failed:", e); alert("Transaction failed: " + (e.reason || e.message).slice(0,100)); }
@@ -5589,9 +5569,10 @@
                 } catch (e) { console.warn("[settleToWallet] Firebase zero failed:", e); }
             }
 
-            logTransaction(addr, "settle", withdrawAptm,
-                `Settled ${totalStars.toFixed(1)}★ → ${withdrawAptm.toFixed(4)} $APTM to wallet`,
-                null, null, { from: addr, to: 'wallet' });
+            logTransaction('settle', withdrawAptm, {
+                from: addr, to: 'wallet',
+                description: `Settled ${totalStars.toFixed(1)}★ → ${withdrawAptm.toFixed(4)} $APTM to wallet`
+            });
             showToast(`Settled! ${withdrawAptm.toFixed(4)} APTM → wallet ✓`);
             updateUI();
             updateDrawerUI();
@@ -6075,9 +6056,10 @@
             logAdminRevenue(userAddress, "boost_post", boostCost);
 
             // Log to private ledger with clear description
-            logTransaction(userAddress, "spend", boostCost,
-                `Post Boosted — ${boostCost}★ fee (100% platform) · Post ID: ${postId.slice(0, 8)}…`,
-                null, null, { from: userAddress, to: CONFIG.ADMIN_ADDRESS });
+            logTransaction('spend', boostCost, {
+                from: userAddress, to: CONFIG.ADMIN_ADDRESS,
+                description: `Post Boosted — ${boostCost}★ fee (100% platform) · Post ID: ${postId.slice(0, 8)}…`
+            });
 
             // Update post: mark as boosted WITHOUT touching the original timestamp.
             // The feed sorts by priority key: max(boostedAt, timestamp) desc, so
@@ -6158,46 +6140,60 @@
                 if (recipientAddress && recipientAddress !== "unknown") {
                     if (_activeCommunity) {
                         await creditCreatorStars(recipientAddress, 0.4);
-                        logTransaction(recipientAddress, "earn", 0.4,
-                            "Earnings from " + _activeCommunity.name + " Hub (comment hype)",
-                            null, _activeCommunity.id, { from: userAddress, to: recipientAddress });
+                        logTransaction('earn', 0.4, {
+                            from: userAddress, to: recipientAddress,
+                            description: "Earnings from " + _activeCommunity.name + " Hub (comment hype)",
+                            communityId: _activeCommunity.id
+                        });
                         await creditCreatorStars(_activeCommunity.ownerId, 0.4);
-                        logTransaction(_activeCommunity.ownerId, "earn", 0.4,
-                            "Landlord Earnings from " + _activeCommunity.name + " Hub (comment hype)",
-                            null, _activeCommunity.id, { from: userAddress, to: _activeCommunity.ownerId });
+                        logTransaction('earn', 0.4, {
+                            from: userAddress, to: _activeCommunity.ownerId,
+                            description: "Landlord Earnings from " + _activeCommunity.name + " Hub (comment hype)",
+                            communityId: _activeCommunity.id
+                        });
                     } else {
                         await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
-                        logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
-                            "Earnings from Global Feed", null, null, { from: userAddress, to: recipientAddress });
+                        logTransaction('earn', CONFIG.CREATOR_CUT, {
+                            from: userAddress, to: recipientAddress,
+                            description: "Earnings from Global Feed"
+                        });
                     }
                 }
             } else if (_activeCommunity && recipientAddress &&
                        recipientAddress.toLowerCase() !== _activeCommunity.ownerId.toLowerCase()) {
                 await creditCreatorStars(recipientAddress, 0.4);
-                logTransaction(recipientAddress, "earn", 0.4,
-                    "Earnings from " + _activeCommunity.name + " Hub (guest post)", entityId, _activeCommunity.id,
-                    { from: userAddress, to: recipientAddress });
+                logTransaction('earn', 0.4, {
+                    from: userAddress, to: recipientAddress,
+                    description: "Earnings from " + _activeCommunity.name + " Hub (guest post)",
+                    postId: entityId, communityId: _activeCommunity.id
+                });
                 await creditCreatorStars(_activeCommunity.ownerId, 0.4);
-                logTransaction(_activeCommunity.ownerId, "earn", 0.4,
-                    "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)", entityId, _activeCommunity.id,
-                    { from: userAddress, to: _activeCommunity.ownerId });
+                logTransaction('earn', 0.4, {
+                    from: userAddress, to: _activeCommunity.ownerId,
+                    description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
+                    postId: entityId, communityId: _activeCommunity.id
+                });
             } else {
                 if (recipientAddress && recipientAddress !== "unknown") {
                     const lbl = _activeCommunity
                         ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
                         : "Earnings from Global Feed";
                     await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
-                    logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, lbl, entityId,
-                        _activeCommunity ? _activeCommunity.id : null, { from: userAddress, to: recipientAddress });
+                    logTransaction('earn', CONFIG.CREATOR_CUT, {
+                        from: userAddress, to: recipientAddress,
+                        description: lbl, postId: entityId,
+                        communityId: _activeCommunity ? _activeCommunity.id : null
+                    });
                 }
             }
 
             // ── STEP C: Log sender spend entry with recipient as counterpart ─────
             logAdminRevenue(userAddress, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
-            logTransaction(userAddress, "spend", 1,
-                isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype",
-                isComment ? null : entityId, null,
-                { from: userAddress, to: recipientAddress || CONFIG.ADMIN_ADDRESS });
+            logTransaction('spend', 1, {
+                from: userAddress, to: recipientAddress || CONFIG.ADMIN_ADDRESS,
+                description: isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype",
+                postId: isComment ? null : entityId
+            });
 
             updateUI();
             updateDrawerUI();
@@ -6293,37 +6289,46 @@
             if (isReply) {
                 if (recipientAddress && recipientAddress !== "unknown") {
                     await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
-                    logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
-                        "Earnings from Global Feed", postId, null,
-                        { from: userAddress, to: recipientAddress });
+                    logTransaction('earn', CONFIG.CREATOR_CUT, {
+                        from: userAddress, to: recipientAddress,
+                        description: "Earnings from Global Feed", postId: postId
+                    });
                 }
             } else if (_activeCommunity && recipientAddress &&
                        recipientAddress.toLowerCase() !== _activeCommunity.ownerId.toLowerCase()) {
                 await creditCreatorStars(recipientAddress, 0.4);
-                logTransaction(recipientAddress, "earn", 0.4,
-                    "Earnings from " + _activeCommunity.name + " Hub (guest post)", postId, _activeCommunity.id,
-                    { from: userAddress, to: recipientAddress });
+                logTransaction('earn', 0.4, {
+                    from: userAddress, to: recipientAddress,
+                    description: "Earnings from " + _activeCommunity.name + " Hub (guest post)",
+                    postId: postId, communityId: _activeCommunity.id
+                });
                 await creditCreatorStars(_activeCommunity.ownerId, 0.4);
-                logTransaction(_activeCommunity.ownerId, "earn", 0.4,
-                    "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)", postId, _activeCommunity.id,
-                    { from: userAddress, to: _activeCommunity.ownerId });
+                logTransaction('earn', 0.4, {
+                    from: userAddress, to: _activeCommunity.ownerId,
+                    description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
+                    postId: postId, communityId: _activeCommunity.id
+                });
             } else {
                 if (recipientAddress && recipientAddress !== "unknown") {
                     const lbl = _activeCommunity
                         ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
                         : "Earnings from Global Feed";
                     await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
-                    logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, lbl, postId,
-                        _activeCommunity ? _activeCommunity.id : null,
-                        { from: userAddress, to: recipientAddress });
+                    logTransaction('earn', CONFIG.CREATOR_CUT, {
+                        from: userAddress, to: recipientAddress,
+                        description: lbl, postId: postId,
+                        communityId: _activeCommunity ? _activeCommunity.id : null
+                    });
                 }
             }
 
             // ── STEP C: Log sender spend with counterpart ─────────────────────────
             logAdminRevenue(userAddress, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
-            logTransaction(userAddress, "spend", 1,
-                isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment", postId, null,
-                { from: userAddress, to: recipientAddress || CONFIG.ADMIN_ADDRESS });
+            logTransaction('spend', 1, {
+                from: userAddress, to: recipientAddress || CONFIG.ADMIN_ADDRESS,
+                description: isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment",
+                postId: postId
+            });
 
             updateUI();
             updateDrawerUI();
@@ -6583,9 +6588,10 @@
             // STEP B: 80% → commenter's creatorStars
             if (commenterAddress && commenterAddress !== "unknown") {
                 await creditCreatorStars(commenterAddress, CONFIG.CREATOR_CUT);
-                logTransaction(commenterAddress, "earn", CONFIG.CREATOR_CUT,
-                    "Earned 0.8★ — someone liked your comment", null, null,
-                    { from: userAddress, to: commenterAddress });
+                logTransaction('earn', CONFIG.CREATOR_CUT, {
+                    from: userAddress, to: commenterAddress,
+                    description: "Earned 0.8★ — someone liked your comment"
+                });
             }
 
             // 20% → adminBalance (platform_revenue)
@@ -6600,7 +6606,10 @@
                 amount: CONFIG.PLATFORM_CUT, timestamp: Date.now()
             });
 
-            logTransaction(userAddress, "spend", 1, "Spent 1★ to like a comment", null, null, { from: userAddress, to: commenterAddress || CONFIG.ADMIN_ADDRESS });
+            logTransaction('spend', 1, {
+                from: userAddress, to: commenterAddress || CONFIG.ADMIN_ADDRESS,
+                description: "Spent 1★ to like a comment"
+            });
 
             // ── Fix 2A (comments): Do not manually patch the counter span.
             // The comments onSnapshot listener re-renders the comment list when
@@ -6649,9 +6658,10 @@
             // STEP B: 80% → original commenter's creatorStars
             if (commenterAddress && commenterAddress !== "unknown") {
                 await creditCreatorStars(commenterAddress, CONFIG.CREATOR_CUT);
-                logTransaction(commenterAddress, "earn", CONFIG.CREATOR_CUT,
-                    "Earned 0.8★ — someone replied to your comment", null, null,
-                    { from: userAddress, to: commenterAddress });
+                logTransaction('earn', CONFIG.CREATOR_CUT, {
+                    from: userAddress, to: commenterAddress,
+                    description: "Earned 0.8★ — someone replied to your comment"
+                });
             }
 
             // 20% → adminBalance
@@ -6666,7 +6676,10 @@
                 amount: CONFIG.PLATFORM_CUT, timestamp: Date.now()
             });
 
-            logTransaction(userAddress, "spend", 1, "Spent 1★ on a Reply", null, null, { from: userAddress, to: commenterAddress || CONFIG.ADMIN_ADDRESS });
+            logTransaction('spend', 1, {
+                from: userAddress, to: commenterAddress || CONFIG.ADMIN_ADDRESS,
+                description: "Spent 1★ on a Reply"
+            });
 
             // Reset textarea and close reply area
             if (textarea) textarea.value = "";
@@ -7784,7 +7797,10 @@
             // 80% → creator's creatorStars
             if (sData.authorAddr && sData.authorAddr !== 'unknown') {
                 await creditCreatorStars(sData.authorAddr, CONFIG.CREATOR_CUT);
-                logTransaction(sData.authorAddr, 'earn', CONFIG.CREATOR_CUT, 'Earned 0.8★ — someone hyped your Daily Signal', null, null, { from: userAddress, to: sData.authorAddr });
+                logTransaction('earn', CONFIG.CREATOR_CUT, {
+                    from: userAddress, to: sData.authorAddr,
+                    description: 'Earned 0.8★ — someone hyped your Daily Signal'
+                });
             }
 
             // Deduct 1★ from sender
@@ -7792,7 +7808,10 @@
 
             // 20% → platform_revenue
             logAdminRevenue(userAddress, 'signal_hype', CONFIG.PLATFORM_CUT);
-            logTransaction(userAddress, 'spend', 1, 'Hyped a Daily Signal (1★ → 0.8 creator, 0.2 platform)', null, null, { from: userAddress, to: sData.authorAddr || CONFIG.ADMIN_ADDRESS });
+            logTransaction('spend', 1, {
+                from: userAddress, to: sData.authorAddr || CONFIG.ADMIN_ADDRESS,
+                description: 'Hyped a Daily Signal (1★ → 0.8 creator, 0.2 platform)'
+            });
 
             // ── Fix 2B: Do NOT manually patch the meta line count here.
             // sData.hypes is a point-in-time read taken BEFORE the increment write,
@@ -8123,9 +8142,10 @@
 
             // 100% of signal fee → platform revenue
             logAdminRevenue(userAddress, 'daily_signal_post', SIGNAL_FEE);
-            logTransaction(userAddress, 'spend', SIGNAL_FEE,
-                `Daily Signal posted (24h) — ${SIGNAL_FEE.toFixed(1)}★ fee (100% platform)`,
-                null, null, { from: userAddress, to: CONFIG.ADMIN_ADDRESS });
+            logTransaction('spend', SIGNAL_FEE, {
+                from: userAddress, to: CONFIG.ADMIN_ADDRESS,
+                description: `Daily Signal posted (24h) — ${SIGNAL_FEE.toFixed(1)}★ fee (100% platform)`
+            });
 
             // Write to `signals` collection
             try {
@@ -8227,9 +8247,10 @@
         // 100% of post fee → platform_revenue. No creator rebate on own posts.
         const firestoreLabel = postType === 1 ? 'text_post' : postType === 2 ? 'photo_post' : 'video_post';
         logAdminRevenue(userAddress, firestoreLabel, feeAmount);
-        logTransaction(userAddress, 'spend', feeAmount,
-            `${postTypeLabel} Broadcast — ${feeAmount.toFixed(1)}★ creation fee (100% platform)`,
-            null, null, { from: userAddress, to: CONFIG.ADMIN_ADDRESS });
+        logTransaction('spend', feeAmount, {
+            from: userAddress, to: CONFIG.ADMIN_ADDRESS,
+            description: `${postTypeLabel} Broadcast — ${feeAmount.toFixed(1)}★ creation fee (100% platform)`
+        });
 
         // Write post to `posts` Firestore collection
         try {
@@ -8489,9 +8510,10 @@
 
             // 100% → admin revenue. No creator split for this action.
             logAdminRevenue(userAddress, 'promote_to_signal', SIGNAL_FEE);
-            logTransaction(userAddress, 'spend', SIGNAL_FEE,
-                `Promoted post to Signal — ${SIGNAL_FEE.toFixed(1)}★ (100% platform) · Post: ${postId.slice(0,8)}…`,
-                null, null, { from: userAddress, to: CONFIG.ADMIN_ADDRESS });
+            logTransaction('spend', SIGNAL_FEE, {
+                from: userAddress, to: CONFIG.ADMIN_ADDRESS,
+                description: `Promoted post to Signal — ${SIGNAL_FEE.toFixed(1)}★ (100% platform) · Post: ${postId.slice(0,8)}…`
+            });
 
             // Write to `signals` collection — same shape as a Daily Signal post
             await window.fs.addDoc(window.fs.collection(window.db, 'signals'), {
@@ -8747,9 +8769,11 @@
         const firestoreLabel = postType === 1 ? 'text_post' : postType === 2 ? 'photo_post' : 'video_post';
         if (!isAdmin) {
             logAdminRevenue(userAddress, firestoreLabel, feeAmount);
-            logTransaction(userAddress, 'spend', feeAmount,
-                `${postTypeLabel} Broadcast in ${_activeCommunity.name} Hub — ${feeAmount.toFixed(1)}★ (100% platform)`,
-                null, _activeCommunity.id, { from: userAddress, to: CONFIG.ADMIN_ADDRESS });
+            logTransaction('spend', feeAmount, {
+                from: userAddress, to: CONFIG.ADMIN_ADDRESS,
+                description: `${postTypeLabel} Broadcast in ${_activeCommunity.name} Hub — ${feeAmount.toFixed(1)}★ (100% platform)`,
+                communityId: _activeCommunity.id
+            });
         }
 
         // ── Write post to Firestore with communityId ─────────────────────────
@@ -9283,9 +9307,10 @@
                 await deductSpendableStars(userAddress, effectiveCost);
             }
             logAdminRevenue(userAddress, 'community_startup', effectiveCost);
-            logTransaction(userAddress, 'spend', effectiveCost,
-                'Launched Community Hub: "' + name + '" \u2014 ' + (effectiveCost > 0 ? effectiveCost.toLocaleString() + '\u2605 startup cost (100% platform)' : 'FREE (admin bypass)'),
-                null, null, { from: userAddress, to: CONFIG.ADMIN_ADDRESS });
+            logTransaction('spend', effectiveCost, {
+                from: userAddress, to: CONFIG.ADMIN_ADDRESS,
+                description: 'Launched Community Hub: "' + name + '" — ' + (effectiveCost > 0 ? effectiveCost.toLocaleString() + '★ startup cost (100% platform)' : 'FREE (admin bypass)')
+            });
 
             // Write community doc to Firestore
             var ownerName = localStorage.getItem('hub_userName') || userHandle;
@@ -9552,16 +9577,14 @@
                 logAdminRevenue(senderAddr, 'follow_fee', 0.1);
 
                 // STEP E: Log both sides of the transaction in the ledger
-                logTransaction(
-                    recipientAddr, 'earn', 0.9,
-                    'Follow Earnings from ' + senderAddr.slice(0, 8) + '…',
-                    null, null, { from: senderAddr, to: recipientAddr }
-                );
-                logTransaction(
-                    senderAddr, 'spend', 1,
-                    'Followed ' + recipientAddr.slice(0, 8) + '…',
-                    null, null, { from: senderAddr, to: recipientAddr }
-                );
+                logTransaction('earn', 0.9, {
+                    from: senderAddr, to: recipientAddr,
+                    description: 'Follow Earnings from ' + senderAddr.slice(0, 8) + '…'
+                });
+                logTransaction('spend', 1, {
+                    from: senderAddr, to: recipientAddr,
+                    description: 'Followed ' + recipientAddr.slice(0, 8) + '…'
+                });
 
                 // Write the social_graph document AFTER payment succeeds
                 await window.fs.setDoc(docRef, {
@@ -9679,12 +9702,14 @@
 
             // STEP B: 90% to creator
             await creditCreatorStars(_heroTargetAddr, creatorCut);
-            logTransaction(_heroTargetAddr, 'earn', creatorCut,
-                'Profile Like from ' + userAddress.toLowerCase().slice(0,8) + '…', null, null,
-                { from: userAddress, to: _heroTargetAddr });
-            logTransaction(userAddress, 'spend', 1,
-                'Profile Like on ' + _heroTargetAddr.slice(0,8) + '…', null, null,
-                { from: userAddress, to: _heroTargetAddr });
+            logTransaction('earn', creatorCut, {
+                from: userAddress, to: _heroTargetAddr,
+                description: 'Profile Like from ' + userAddress.toLowerCase().slice(0,8) + '…'
+            });
+            logTransaction('spend', 1, {
+                from: userAddress, to: _heroTargetAddr,
+                description: 'Profile Like on ' + _heroTargetAddr.slice(0,8) + '…'
+            });
             logAdminRevenue(userAddress, 'profile_like', platformCut);
 
             // Star shower animation — small (1 star)
@@ -9782,12 +9807,14 @@
 
             // STEP B: 90% to creator
             await creditCreatorStars(_heroTargetAddr, creatorCut);
-            logTransaction(_heroTargetAddr, 'earn', creatorCut,
-                'Profile Tip from ' + userAddress.toLowerCase().slice(0,8) + '… (' + amount + '★)', null, null,
-                { from: userAddress, to: _heroTargetAddr });
-            logTransaction(userAddress, 'spend', amount,
-                'Profile Tip to ' + _heroTargetAddr.slice(0,8) + '… (' + amount + '★)', null, null,
-                { from: userAddress, to: _heroTargetAddr });
+            logTransaction('earn', creatorCut, {
+                from: userAddress, to: _heroTargetAddr,
+                description: 'Profile Tip from ' + userAddress.toLowerCase().slice(0,8) + '… (' + amount + '★)'
+            });
+            logTransaction('spend', amount, {
+                from: userAddress, to: _heroTargetAddr,
+                description: 'Profile Tip to ' + _heroTargetAddr.slice(0,8) + '… (' + amount + '★)'
+            });
             logAdminRevenue(userAddress, 'profile_tip', platformCut);
 
             // Star shower — intensity scales with amount
@@ -9935,18 +9962,17 @@
 
                 // STEP E: Log both sides of the transaction
                 if (creatorAddr) {
-                    logTransaction(
-                        creatorAddr, 'earn', 0.9,
-                        'Hub Follow Earnings — ' + (_activeCommunity.name || commId) +
-                        ' (from ' + senderAddr.slice(0, 8) + '…)',
-                        null, commId, { from: senderAddr, to: creatorAddr }
-                    );
+                    logTransaction('earn', 0.9, {
+                        from: senderAddr, to: creatorAddr,
+                        description: 'Hub Follow Earnings — ' + (_activeCommunity.name || commId) + ' (from ' + senderAddr.slice(0, 8) + '…)',
+                        communityId: commId
+                    });
                 }
-                logTransaction(
-                    senderAddr, 'spend', 1,
-                    'Followed Hub: ' + (_activeCommunity.name || commId),
-                    null, commId, { from: senderAddr, to: creatorAddr || CONFIG.ADMIN_ADDRESS }
-                );
+                logTransaction('spend', 1, {
+                    from: senderAddr, to: creatorAddr || CONFIG.ADMIN_ADDRESS,
+                    description: 'Followed Hub: ' + (_activeCommunity.name || commId),
+                    communityId: commId
+                });
 
                 // Write social_graph entry — community ID is the 'following' value
                 await window.fs.setDoc(docRef, {
@@ -10410,10 +10436,10 @@
             }
 
             // Step 5: Log the reconciliation event
-            logTransaction(userAddress, 'settle', totalGhost,
-                'Admin Reconciliation: removed ' + totalGhost.toFixed(2) + '\u2605 ghost money across ' + plan.length + ' accounts',
-                null, null, { from: 'reconciliation', to: 'zeroed' }
-            );
+            logTransaction('settle', totalGhost, {
+                from: 'reconciliation', to: 'zeroed',
+                description: 'Admin Reconciliation: removed ' + totalGhost.toFixed(2) + '★ ghost money across ' + plan.length + ' accounts'
+            });
 
             alert(
                 'Reconciliation complete.\n\n' +
