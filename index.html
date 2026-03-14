@@ -1539,42 +1539,6 @@
         .page-heading { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; }
         .page-heading span { color: var(--purple-lt); }
 
-        /* ── Profile wall feed ── */
-        #profile-edit-form.hidden { display: none; }
-        #profile-wall-feed .profile-post-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            padding: 14px;
-            margin-bottom: 10px;
-            cursor: pointer;
-            transition: border-color 0.15s;
-        }
-        #profile-wall-feed .profile-post-card:hover { border-color: var(--purple-lt); }
-        #profile-wall-feed .profile-post-meta {
-            font-size: 0.62rem; color: var(--text-muted);
-            font-family: var(--font-mono); margin-bottom: 6px;
-            display: flex; gap: 10px; align-items: center;
-        }
-        #profile-wall-feed .profile-post-text {
-            font-size: 0.82rem; color: var(--text-primary); line-height: 1.5;
-            /* clamp to 3 lines with fade */
-            display: -webkit-box; -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical; overflow: hidden;
-        }
-        #profile-wall-feed .profile-post-stats {
-            margin-top: 8px; display: flex; gap: 14px;
-            font-size: 0.65rem; color: var(--text-muted);
-        }
-        #profile-wall-feed .profile-post-media {
-            margin-top: 8px; border-radius: var(--radius-sm);
-            max-width: 100%; max-height: 180px;
-            object-fit: cover; display: block;
-        }
-        #profile-wall-feed .pwf-empty {
-            text-align: center; padding: 32px 0;
-            color: var(--text-muted); font-size: 0.78rem;
-        }
         .info-box { padding: 12px 14px; background: var(--purple-dim); border: 1px solid rgba(124,92,191,0.2); border-radius: var(--radius-md); font-size: 0.78rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 14px; }
         .info-box strong { color: var(--purple-lt); }
         .balance-note { font-size: 0.62rem; color: var(--text-muted); margin-top: 2px; }
@@ -3233,6 +3197,7 @@
                 <!-- Wall filter header — replaced by Profile Hero in Index 24 -->
                 <div id="profile-hero">
                     <button id="hero-back-btn" onclick="clearWall()">← Home Feed</button>
+                    <button id="hero-edit-identity-btn" style="display:none; font-size:0.68rem; padding:5px 14px; border-radius:20px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-secondary); cursor:pointer; margin-left:8px;" onclick="openHeroEditForm()">✎ Edit Identity</button>
                     <div class="hero-top">
                         <img id="hero-avatar" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub">
                         <div class="hero-info">
@@ -3357,7 +3322,6 @@
                         <strong>How it works:</strong> Stars power instant interactions on the internal ledger. Click <strong>Settle Total Balance to Wallet</strong> to convert your <strong>entire</strong> balance — both purchased and earned stars — into $APTM at the live price. Both balances are wiped to zero after the transaction mines.
                     </div>
                     <button class="btn btn-teal" style="width:auto; padding:10px 24px;" onclick="settleStarsToWallet(event)">Settle Total Balance to Wallet →</button>
-                    <button class="btn btn-gold" style="width:auto; padding:10px 20px; margin-top:10px;" onclick="viewUserWall(userAddress)">◉ View My Public Wall</button>
                 </div>
 
                 <div class="card">
@@ -3491,54 +3455,8 @@
                 </div>
             </div>
 
-            <!-- PROFILE PAGE -->
-            <div id="page-profile" class="page">
-                <div class="page-heading">My <span>Profile</span></div>
-
-                <!-- Identity card — compact, always at top -->
-                <div class="card" id="profile-identity-card">
-                    <div style="display:flex; align-items:center; gap:14px; margin-bottom:14px;">
-                        <img id="profile-avatar-preview" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub"
-                             style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--purple-lt);flex-shrink:0;">
-                        <div style="flex:1; min-width:0;">
-                            <div style="font-size:0.95rem;font-weight:700;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="profile-display-name">Anonymous_Creator</div>
-                            <div style="font-size:0.62rem;color:var(--text-muted);font-family:var(--font-mono);margin-top:2px;" id="profile-display-addr">— connect wallet —</div>
-                        </div>
-                        <!-- Collapse/expand identity edit form -->
-                        <button id="profile-edit-toggle"
-                                onclick="document.getElementById('profile-edit-form').classList.toggle('hidden')"
-                                style="font-size:0.68rem;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-secondary);cursor:pointer;flex-shrink:0;">
-                            ✎ Edit
-                        </button>
-                    </div>
-
-                    <!-- Collapsible edit form — hidden by default once profile is set -->
-                    <div id="profile-edit-form">
-                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px;">
-                            Set your display name and avatar URL. Saved locally and synced to Firebase.
-                        </div>
-                        <input type="text" id="handle-input" class="field" placeholder="@Username" style="margin-top:0;"
-                               oninput="(function(v){var el=document.getElementById('profile-display-name');if(el&&v)el.textContent=v;})(this.value)">
-                        <input type="text" id="avatar-input" class="field" placeholder="Avatar Image URL"
-                               oninput="(function(v){var el=document.getElementById('profile-avatar-preview');if(el&&v)el.src=v;})(this.value)">
-                        <button class="btn btn-purple" onclick="saveProfile()">Sync Identity</button>
-                    </div>
-                </div>
-
-                <!-- Personal wall divider -->
-                <div style="display:flex;align-items:center;gap:10px;margin:18px 0 10px;">
-                    <div style="font-size:0.75rem;font-weight:700;color:var(--text-primary);letter-spacing:0.3px;">◉ My Broadcasts</div>
-                    <div style="flex:1;height:1px;background:var(--border);"></div>
-                    <div style="font-size:0.6rem;color:var(--text-muted);" id="profile-wall-count">—</div>
-                </div>
-
-                <!-- Personal wall feed — posts injected here by _loadProfileWallFeed() -->
-                <div id="profile-wall-feed">
-                    <div style="text-align:center;padding:28px 0;color:var(--text-muted);font-size:0.78rem;">
-                        Connect your wallet to see your posts.
-                    </div>
-                </div>
-            </div>
+            <!-- PROFILE PAGE — delegates immediately to viewUserWall(userAddress) -->
+            <div id="page-profile" class="page"></div>
 
             <!-- TOKENOMICS PAGE -->
             <div id="page-info" class="page">
@@ -4605,14 +4523,6 @@
             const pbH  = document.getElementById('pb-handle');  if (pbH)  pbH.textContent = userHandle;
             const nvH  = document.getElementById('nav-handle');  if (nvH)  nvH.textContent = userHandle;
 
-            // ── Sync My Profile tab identity header ───────────────────────────────
-            const profAv   = document.getElementById('profile-avatar-preview');
-            const profName = document.getElementById('profile-display-name');
-            const profAddr = document.getElementById('profile-display-addr');
-            if (profAv   && userAvatar)  profAv.src           = userAvatar;
-            if (profName && userHandle)  profName.textContent = userHandle;
-            if (profAddr && userAddress) profAddr.textContent = userAddress.slice(0,8) + '…' + userAddress.slice(-4);
-
             // Update settle button text with live APTM amount
             if (typeof updateSettleButtons === 'function') updateSettleButtons();
 
@@ -4689,11 +4599,11 @@
         updateUI();
         loadGlobalFeed();
 
-        // ── Refresh the My Profile tab's identity header + wall feed ──
-        if (typeof _loadProfileWallFeed === 'function') _loadProfileWallFeed();
-        // Auto-collapse the edit form after saving
-        const editForm = document.getElementById('profile-edit-form');
-        if (editForm) editForm.classList.add('hidden');
+        // Close edit modal and refresh the hero with updated identity
+        closeHeroEditForm();
+        if (userAddress && typeof viewUserWall === 'function' && _wallFilter && _wallFilter.toLowerCase() === userAddress.toLowerCase()) {
+            viewUserWall(userAddress);
+        }
     }
 
     // ── Load profile from Firebase when wallet connects ──────────────
@@ -6294,13 +6204,7 @@
             if (signalsBarEl)  signalsBarEl.classList.add('signals-hidden');
             if (categoryBarEl) categoryBarEl.classList.add('signals-hidden');
 
-            // Tear down profile wall listener when navigating away from profile tab
-            if (tabName !== 'profile' && typeof _profileWallUnsub !== 'undefined' && _profileWallUnsub) {
-                try { _profileWallUnsub(); } catch (_) {}
-                _profileWallUnsub = null;
-            }
-
-            const pageMap = { earnings: 'earnings', studio: 'earnings', info: 'info', tokenomics: 'info', profile: 'profile', communities: 'communities' };
+            const pageMap = { earnings: 'earnings', studio: 'earnings', info: 'info', tokenomics: 'info', communities: 'communities' };
             const pageId  = pageMap[tabName];
             const pg      = pageId ? document.getElementById('page-' + pageId) : null;
             if (pg) { pg.style.display = 'block'; pg.classList.add('active'); }
@@ -6311,9 +6215,14 @@
                 if (typeof _notifDotClear === 'function') _notifDotClear();
             }
 
-            // FIX 3: Profile tab — inject personal wall feed below identity card
+            // Profile tab — delegate to the full wall view (identical to public wall)
             if (tabName === 'profile') {
-                _loadProfileWallFeed();
+                if (userAddress) {
+                    viewUserWall(userAddress);
+                } else {
+                    showToast('Connect your wallet to view your profile.');
+                    _activateTab('home', document.getElementById('nav-home'));
+                }
             }
         }
     }
@@ -6321,149 +6230,35 @@
         _activateTab(p, el);
     }
 
-    // ═══════════════════════════════════════════════════════════════════
-    // FIX 3: _loadProfileWallFeed()
-    //
-    // Renders the current user's own posts into #profile-wall-feed on
-    // the My Profile tab. Completely separate from the main feed-items
-    // div — does NOT disturb global feed state or listeners.
-    // Also syncs the identity header fields (avatar, name, address).
-    // ═══════════════════════════════════════════════════════════════════
-    let _profileWallUnsub = null;   // active onSnapshot unsub for profile wall
 
-    function _loadProfileWallFeed() {
-        const container = document.getElementById('profile-wall-feed');
-        const countEl   = document.getElementById('profile-wall-count');
-        if (!container) return;
-
-        // ── Sync identity header from live state ──────────────────────
-        const avatarPreview = document.getElementById('profile-avatar-preview');
-        const nameDisplay   = document.getElementById('profile-display-name');
-        const addrDisplay   = document.getElementById('profile-display-addr');
-        const handleInput   = document.getElementById('handle-input');
-        const avatarInput   = document.getElementById('avatar-input');
-
-        if (avatarPreview && userAvatar)  avatarPreview.src         = userAvatar;
-        if (nameDisplay   && userHandle)  nameDisplay.textContent   = userHandle;
-        if (addrDisplay   && userAddress) addrDisplay.textContent   = userAddress.slice(0,8) + '…' + userAddress.slice(-4);
-        if (handleInput   && userHandle)  handleInput.value         = userHandle;
-        if (avatarInput   && userAvatar)  avatarInput.value         = userAvatar;
-
-        // Auto-collapse the edit form when the user already has a handle —
-        // experienced users see the storefront directly. New users (no handle
-        // saved) see the form open so they know to fill it in first.
-        const editForm = document.getElementById('profile-edit-form');
-        if (editForm) {
-            const hasProfile = userHandle && userHandle !== 'Anonymous_Creator';
-            editForm.classList.toggle('hidden', !!hasProfile);
-        }
-
-        // ── If no wallet connected, show connect prompt ───────────────
-        if (!userAddress || !window.db) {
-            container.innerHTML = '<div class="pwf-empty">Connect your wallet to see your posts.</div>';
-            if (countEl) countEl.textContent = '';
-            return;
-        }
-
-        container.innerHTML = '<div class="pwf-empty" style="padding:16px 0;">Loading your posts…</div>';
-
-        // ── Tear down any previous listener ──────────────────────────
-        if (_profileWallUnsub) { try { _profileWallUnsub(); } catch (_) {} _profileWallUnsub = null; }
-
-        // ── Subscribe to this user's posts, newest first ──────────────
-        const addr = userAddress.toLowerCase();
-        const q = window.fs.query(
-            window.fs.collection(window.db, 'posts'),
-            window.fs.where('authorAddr', '==', userAddress),
-            window.fs.orderBy('timestamp', 'desc')
-        );
-
-        _profileWallUnsub = window.fs.onSnapshot(q, function(snap) {
-            const posts = [];
-            snap.forEach(function(d) { posts.push({ id: d.id, ...d.data() }); });
-
-            if (countEl) countEl.textContent = posts.length + (posts.length === 1 ? ' post' : ' posts');
-
-            if (posts.length === 0) {
-                container.innerHTML = '<div class="pwf-empty">No broadcasts yet. Share your first signal!</div>';
-                return;
-            }
-
-            container.innerHTML = '';
-            posts.forEach(function(post) {
-                const date = post.timestamp
-                    ? new Date(post.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                    : '';
-                const typeLabel = post.type === 3 ? '🎬 Video' : post.type === 2 ? '🖼 Image' : '📝 Text';
-                const hypes    = post.hypes  || 0;
-                const views    = post.views  || 0;
-                const boosted  = post.isBoosted ? ' 🚀' : '';
-
-                // Thumbnail for image/video posts
-                let mediaHtml = '';
-                if (post.media && post.type === 2) {
-                    mediaHtml = '<img class="profile-post-media" src="' + _esc(post.media) + '" loading="lazy" onerror="this.style.display=\'none\'">';
-                }
-
-                const card = document.createElement('div');
-                card.className = 'profile-post-card';
-                card.setAttribute('data-id', post.id);
-                card.innerHTML =
-                    '<div class="profile-post-meta">' +
-                        '<span>' + typeLabel + boosted + '</span>' +
-                        '<span>' + date + '</span>' +
-                    '</div>' +
-                    (post.text ? '<div class="profile-post-text">' + _esc(post.text) + '</div>' : '') +
-                    mediaHtml +
-                    '<div class="profile-post-stats">' +
-                        '<span>🔥 ' + hypes + ' hypes</span>' +
-                        '<span>👁 ' + views + ' views</span>' +
-                        (post.feePaid ? '<span>' + parseFloat(post.feePaid).toFixed(1) + '★ spent</span>' : '') +
-                    '</div>';
-
-                // Click → jump to the post in the global feed
-                card.addEventListener('click', function() {
-                    if (typeof jumpToPost === 'function') jumpToPost(post.id, post.communityId || null);
-                });
-                container.appendChild(card);
-            });
-        }, function(err) {
-            console.warn('[ProfileWall] Query failed (may need index):', err.message);
-            // Fallback: try without orderBy (no composite index required)
-            const qFallback = window.fs.query(
-                window.fs.collection(window.db, 'posts'),
-                window.fs.where('authorAddr', '==', userAddress)
-            );
-            _profileWallUnsub = window.fs.onSnapshot(qFallback, function(snap) {
-                const posts = [];
-                snap.forEach(function(d) { posts.push({ id: d.id, ...d.data() }); });
-                posts.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
-                if (countEl) countEl.textContent = posts.length + ' posts';
-                if (posts.length === 0) {
-                    container.innerHTML = '<div class="pwf-empty">No broadcasts yet.</div>';
-                    return;
-                }
-                container.innerHTML = '<div class="pwf-empty" style="font-size:0.7rem;padding:8px 0;color:var(--text-muted);">Showing unordered results — add Firestore index for sorted view.</div>';
-                posts.forEach(function(post) {
-                    const card = document.createElement('div');
-                    card.className = 'profile-post-card';
-                    card.innerHTML = '<div class="profile-post-text">' + _esc(post.text || '') + '</div>';
-                    card.addEventListener('click', function() { if (typeof jumpToPost === 'function') jumpToPost(post.id); });
-                    container.appendChild(card);
-                });
-            });
-        });
-    }
-
-    // Tiny HTML-escape helper for profile wall (keeps XSS out of innerHTML)
+    // Tiny HTML-escape helper (keeps XSS out of innerHTML)
     function _esc(str) {
         return String(str || '')
             .replace(/&/g,'&amp;').replace(/</g,'&lt;')
             .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    // Expose so external callers can refresh after saveProfile()
-    window._loadProfileWallFeed = _loadProfileWallFeed;
+    // ═══════════════════════════════════════════════════════════════════
+    // EDIT IDENTITY MODAL — open/close helpers
+    // Triggered from the ✎ Edit Identity button in the profile hero
+    // ═══════════════════════════════════════════════════════════════════
+    function openHeroEditForm() {
+        const overlay = document.getElementById('edit-identity-overlay');
+        if (!overlay) return;
+        // Pre-fill fields with current values
+        const hi = document.getElementById('handle-input');
+        const ai = document.getElementById('avatar-input');
+        if (hi) hi.value = userHandle || '';
+        if (ai) ai.value = userAvatar || '';
+        overlay.style.display = 'flex';
+        if (hi) setTimeout(() => hi.focus(), 60);
+    }
+    function closeHeroEditForm() {
+        const overlay = document.getElementById('edit-identity-overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+    window.openHeroEditForm  = openHeroEditForm;
+    window.closeHeroEditForm = closeHeroEditForm;
 
     // ═══════════════════════════════════════════════════════════════════
     // JUMP TO POST — destination-aware navigation from the Ledger.
@@ -8566,6 +8361,9 @@
         const tipTray   = document.getElementById('hero-tip-tray');
         if (tipTray) { tipTray.classList.remove('open'); _heroPendingTip = 0; }
         if (actionsEl) actionsEl.style.display = ownWall ? 'none' : '';
+        // Show/hide Edit Identity button on own wall
+        const heroEditBtn = document.getElementById('hero-edit-identity-btn');
+        if (heroEditBtn) heroEditBtn.style.display = ownWall ? '' : 'none';
         // Load follow state and social counts
         _loadHeroSocialGraph(addrLower, ownWall);
 
@@ -11346,6 +11144,20 @@
     <div id="signal-lb-meta"></div>
     <button id="signal-lb-hype-btn" onclick="hypeSignal()">❤ Hype This Signal — 1★ → Creator +0.8★</button>
     <div id="signal-lb-timer-bar" style="width:100%;"></div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     EDIT IDENTITY MODAL — triggered from hero ✎ Edit Identity button
+════════════════════════════════════════════════════════════════ -->
+<div id="edit-identity-overlay" style="display:none; position:fixed; inset:0; z-index:6000; background:rgba(0,0,0,0.55); display:flex; align-items:center; justify-content:center;" onclick="if(event.target===this) closeHeroEditForm()">
+    <div style="background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius-lg); padding:24px; width:min(420px,90vw); box-shadow:0 8px 32px rgba(0,0,0,0.25); position:relative;">
+        <button onclick="closeHeroEditForm()" style="position:absolute;top:14px;right:14px;background:none;border:none;font-size:1rem;color:var(--text-muted);cursor:pointer;" title="Close">✕</button>
+        <div style="font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:4px;">✎ Edit Identity</div>
+        <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:16px;">Set your display name and avatar URL. Synced to Firebase.</div>
+        <input type="text" id="handle-input" class="field" placeholder="@Username" style="margin-top:0;">
+        <input type="text" id="avatar-input" class="field" placeholder="Avatar Image URL">
+        <button class="btn btn-purple" onclick="saveProfile()" style="margin-top:14px;">Sync Identity</button>
+    </div>
 </div>
 
 <!-- IMAGE LIGHTBOX OVERLAY (Index 19) -->
