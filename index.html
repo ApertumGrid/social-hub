@@ -1,3 +1,7 @@
+
+
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -296,6 +300,34 @@
             background: var(--purple-dim);
             border-radius: 50px; padding: 2px 7px;
             white-space: nowrap;
+        }
+
+        /* ── Ledger notification dot ──────────────────────────────────────────── */
+        .notif-dot {
+            display: none;           /* hidden by default; shown via JS */
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #ef4444;     /* red */
+            box-shadow: 0 0 0 2px rgba(239,68,68,0.28), 0 0 6px rgba(239,68,68,0.5);
+            flex-shrink: 0;
+            animation: notif-pulse 2s ease-in-out infinite;
+        }
+        .notif-dot.visible { display: inline-block; }
+        @keyframes notif-pulse {
+            0%, 100% { box-shadow: 0 0 0 2px rgba(239,68,68,0.28), 0 0 6px rgba(239,68,68,0.5); }
+            50%       { box-shadow: 0 0 0 4px rgba(239,68,68,0.14), 0 0 12px rgba(239,68,68,0.7); }
+        }
+        /* Position inside the sidebar nav item */
+        #nav-earnings { position: relative; }
+        .nav-earnings-dot {
+            position: absolute;
+            top: 8px; right: 10px;
+        }
+        /* Position inside mobile bnav buttons */
+        .bnav-item { position: relative; }
+        .bnav-notif-dot {
+            position: absolute;
+            top: 6px; right: 14px;
         }
         .sidebar-section { margin-top: 16px; margin-bottom: 6px; }
         .sidebar-section-label {
@@ -2852,6 +2884,7 @@
                 <div class="nav-item" id="nav-earnings" onclick="switchPage('earnings', this)">
                     <span class="nav-icon">◆</span> Creator Studio
                     <span class="nav-badge" id="sidebar-stars-badge">0 ★</span>
+                    <span class="notif-dot nav-earnings-dot" id="notif-dot-sidebar" aria-label="New activity"></span>
                 </div>
                 <div class="nav-item" id="nav-profile" onclick="switchPage('profile', this)"><span class="nav-icon">◉</span> My Profile</div>
                 <div class="nav-item" id="nav-info" onclick="switchPage('info', this)"><span class="nav-icon">◎</span> Tokenomics</div>
@@ -3373,11 +3406,13 @@
             onclick="switchPage('earnings', null); setBnav('studio')">
         <span class="bnav-icon">◆</span>
         Studio
+        <span class="notif-dot bnav-notif-dot" id="notif-dot-studio" aria-label="New activity"></span>
     </button>
     <button class="bnav-item" id="bnav-ledger"
             onclick="switchPage('earnings', null); setBnav('ledger'); setTimeout(()=>{ const el=document.getElementById('ledger-list'); if(el) el.scrollIntoView({behavior:'smooth'}); },120)">
         <span class="bnav-icon">📋</span>
         Ledger
+        <span class="notif-dot bnav-notif-dot" id="notif-dot-ledger" aria-label="New activity"></span>
     </button>
     <button class="bnav-item" id="bnav-wallet"
             onclick="openWalletDrawer(); setBnav('wallet')">
@@ -4384,6 +4419,60 @@
         });
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // LEDGER NOTIFICATION DOT
+    //
+    // Shows a red pulsing dot on the Creator Studio nav buttons whenever
+    // a new incoming (earn) transaction arrives in user_transactions that
+    // is newer than the timestamp stored in localStorage.
+    //
+    // localStorage key:  hub_ledgerLastSeen  (unix ms, per-browser)
+    // Dot elements:      #notif-dot-sidebar  (desktop sidebar)
+    //                    #notif-dot-studio   (mobile bnav Studio)
+    //                    #notif-dot-ledger   (mobile bnav Ledger)
+    //
+    // Show:  _notifDotShow()  — sets all three dots visible
+    // Clear: _notifDotClear() — hides dots + writes now() to localStorage
+    // ═══════════════════════════════════════════════════════════════════
+    const _NOTIF_LS_KEY = 'hub_ledgerLastSeen';
+
+    function _notifDotShow() {
+        ['notif-dot-sidebar', 'notif-dot-studio', 'notif-dot-ledger'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.classList.add('visible');
+        });
+    }
+
+    function _notifDotClear() {
+        ['notif-dot-sidebar', 'notif-dot-studio', 'notif-dot-ledger'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.classList.remove('visible');
+        });
+        try { localStorage.setItem(_NOTIF_LS_KEY, String(Date.now())); } catch (_) {}
+    }
+
+    // ── Internal: called from subscribeLedger's onSnapshot with the doc array ──
+    function _notifDotCheck(docs) {
+        // Only earned (incoming) events trigger the dot
+        var earnDocs = docs.filter(function(d) { return d.type === 'earn'; });
+        if (earnDocs.length === 0) return;
+
+        // Most-recent earn timestamp
+        var latestTs = earnDocs.reduce(function(max, d) {
+            return Math.max(max, d.timestamp || 0);
+        }, 0);
+        if (!latestTs) return;
+
+        // Compare against last-seen timestamp stored in localStorage
+        var lastSeen = 0;
+        try { lastSeen = parseInt(localStorage.getItem(_NOTIF_LS_KEY) || '0', 10) || 0; } catch (_) {}
+
+        if (latestTs > lastSeen) {
+            _notifDotShow();
+        }
+        // If latestTs <= lastSeen the dot stays hidden (or clears if previously shown)
+    }
+
     function subscribeLedger(walletAddr) {
         // Tear down any existing listener before creating a new one
         if (_ledgerUnsub) { try { _ledgerUnsub(); } catch (_) {} _ledgerUnsub = null; }
@@ -4406,6 +4495,7 @@
             const docs = [];
             snap.forEach(d => docs.push(d.data()));
             renderLedger(docs);
+            _notifDotCheck(docs);   // ← check for new incoming events
         }, (err) => {
             // Fallback: missing composite index — filter by address, sort client-side
             console.warn("Ledger index missing, falling back to client-side sort:", err.message);
@@ -4418,6 +4508,7 @@
                 snap.forEach(d => docs.push(d.data()));
                 docs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                 renderLedger(docs);
+                _notifDotCheck(docs);   // ← check for new incoming events (fallback path)
             });
         });
     }
@@ -5038,6 +5129,12 @@
             const pg      = pageId ? document.getElementById('page-' + pageId) : null;
             if (pg) { pg.style.display = 'block'; pg.classList.add('active'); }
             if (tabName === 'communities' && typeof loadCommunities === 'function') loadCommunities();
+
+            // ── Clear ledger notification dot when Creator Studio or Ledger is opened ──
+            // Covers: desktop 'earnings', mobile 'studio', mobile 'ledger' bnav buttons
+            if (tabName === 'earnings' || tabName === 'studio' || tabName === 'ledger') {
+                if (typeof _notifDotClear === 'function') _notifDotClear();
+            }
         }
     }
 
