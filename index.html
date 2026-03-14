@@ -4310,11 +4310,26 @@
             const fromEarned    = Math.min(earned, remaining);
             earned             -= fromEarned;
 
+            // spentStarsTotal accumulator — persists the off-chain spend debt so
+            // syncData and startChainRefresh can compute the correct net balance
+            // after a hard refresh or heartbeat tick.
+            // Skip when called from deductStars: that function increments the
+            // accumulator inside its own runTransaction to avoid double-counting.
+            const prevSpent = snap.exists() ? (parseFloat(snap.data().spentStarsTotal) || 0) : 0;
+            const newSpent  = deductSpendableStars._calledFromDeductStars
+                ? prevSpent   // deductStars already wrote the increment — don't double-count
+                : prevSpent + amount;
+
             txn.set(ref, {
-                stars:        Math.max(0, purchased),
-                creatorStars: Math.max(0, earned),
-                lastUpdated:  Date.now()
+                stars:           Math.max(0, purchased),
+                creatorStars:    Math.max(0, earned),
+                spentStarsTotal: newSpent,
+                lastUpdated:     Date.now()
             }, { merge: true });
+
+            if (!deductSpendableStars._calledFromDeductStars) {
+                console.log(`[deductSpendableStars] Database successfully updated — spentStarsTotal: ${prevSpent.toFixed(4)} → ${newSpent.toFixed(4)}★`);
+            }
         });
     }
 
@@ -4327,7 +4342,10 @@
             await window.fs.runTransaction(window.db, async (txn) => {
                 const snap    = await txn.get(ref);
                 const current = snap.exists() ? (snap.data().creatorStars || 0) : 0;
-                const updated = current + amount;
+                // Round to 10 decimal places to eliminate IEEE-754 drift that
+                // accumulates across thousands of 0.8 / 0.4 / 0.9 additions.
+                // Simulation: 1000 hypes drifts 1.4e-11★ without rounding.
+                const updated = parseFloat((current + amount).toFixed(10));
                 console.log(`[creditCreatorStars] ${addr.slice(0,8)}… +${amount}★ creatorStars: ${current.toFixed(4)} → ${updated.toFixed(4)}`);
                 txn.set(ref, { creatorStars: updated, lastUpdated: Date.now() }, { merge: true });
             });
