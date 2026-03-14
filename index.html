@@ -16,7 +16,7 @@
     <!-- 2. Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
         const firebaseConfig = {
@@ -33,7 +33,7 @@
         const storage = getStorage(app);
         window.db  = db;
         window.storage = storage;
-        window.fs  = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc };
+        window.fs  = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc, writeBatch };
         window.fsStorage = { ref, uploadBytesResumable, getDownloadURL };
     </script>
 
@@ -3401,6 +3401,16 @@
 
                     <!-- Withdraw -->
                     <button id="admin-withdraw-btn" onclick="adminWithdraw()">⬇ Settle Platform Revenue to Admin Wallet</button>
+                    <button id="admin-reconcile-btn" onclick="adminReconcile()"
+                            style="display:flex;align-items:center;justify-content:center;gap:8px;
+                                   width:100%;margin-top:8px;padding:10px 18px;
+                                   background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.4);
+                                   border-radius:var(--radius-md);color:#ef4444;
+                                   font-family:var(--font-body);font-size:0.78rem;font-weight:700;
+                                   cursor:pointer;letter-spacing:0.3px;"
+                            title="One-time: reset all balances to match actual APTM deposits">
+                        ⚠ Run Balance Reconciliation
+                    </button>
                 </div>
             </div>
 
@@ -4668,13 +4678,32 @@
     // ═══════════════════════════════════════════════════════════════════
     // TRANSACTION LEDGER
     // ═══════════════════════════════════════════════════════════════════
-    function logTransaction(address, type, amount, description, postId, communityId) {
+    // Fields per doc:
+    //   address     — wallet this entry belongs to (for per-user ledger query)
+    //   type        — 'earn' | 'spend' | 'deposit' | 'settle'
+    //   amount      — star amount
+    //   description — human-readable label
+    //   from        — wallet that SENT the stars (spend rows = own addr; earn rows = counterpart)
+    //   to          — wallet that RECEIVED the stars (earn rows = own addr; spend rows = counterpart)
+    function logTransaction(address, type, amount, description, postId, communityId, opts) {
         if (!address || !window.db) return;
-        const data = { address: address.toLowerCase(), type, amount, description, timestamp: Date.now() };
+        // opts = { from, to } — counterpart addresses for earn/spend traceability.
+        // Defaults: spend rows → from=own, to=platform; earn rows → from=counterpart/platform, to=own.
+        var from = (opts && opts.from) ? String(opts.from).toLowerCase() : address.toLowerCase();
+        var to   = (opts && opts.to)   ? String(opts.to).toLowerCase()   : address.toLowerCase();
+        const data = {
+            address:     address.toLowerCase(),
+            type,
+            amount,
+            description,
+            from,
+            to,
+            timestamp:   Date.now()
+        };
         if (postId)      data.postId      = String(postId);
         if (communityId) data.communityId = String(communityId);
-        window.fs.addDoc(window.fs.collection(window.db, "user_transactions"), data)
-            .catch(e => console.warn("logTransaction:", e));
+        window.fs.addDoc(window.fs.collection(window.db, 'user_transactions'), data)
+            .catch(e => console.warn('logTransaction:', e));
     }
 
     // 100% of post fees + 20% of interactions → admin_revenue
@@ -4724,6 +4753,14 @@
             const amtCls = isEarn ? "earn" : (tx.type === "settle" ? "neutral" : "spend");
             const badge  = { earn:"Earned", spend:"Spent", deposit:"Deposit", settle:"Settle" }[tx.type] || tx.type;
             const date   = new Date(tx.timestamp).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
+            // Counterpart display: earn rows show who paid, spend rows show who received
+            const isEarnRow = tx.type === 'earn' || tx.type === 'deposit';
+            let counterpart = '';
+            if (tx.type === 'earn' && tx.from && tx.from !== tx.address) {
+                counterpart = `<span style="font-size:0.58rem;color:var(--text-muted);margin-left:4px;">from ${tx.from.slice(0,6)}\u2026</span>`;
+            } else if (tx.type === 'spend' && tx.to && tx.to !== tx.address) {
+                counterpart = `<span style="font-size:0.58rem;color:var(--text-muted);margin-left:4px;">to ${tx.to.slice(0,6)}\u2026</span>`;
+            }
             const row    = document.createElement('div');
             row.className = 'ledger-row';
             // Build jump hint — indicate whether the post lives in a Hub or the global feed
@@ -4733,7 +4770,7 @@
                     : `<span style="font-size:0.55rem;color:var(--teal);margin-left:4px;opacity:0.75;">↗ view post</span>`)
                 : '';
             row.innerHTML = `
-                <div class="ledger-desc">${tx.description}${jumpHint}<small>${date}</small></div>
+                <div class="ledger-desc">${tx.description}${counterpart}${jumpHint}<small>${date}</small></div>
                 <div style="width:58px;text-align:center;flex-shrink:0;"><span class="ledger-badge ${tx.type}">${badge}</span></div>
                 <div class="ledger-amount ${amtCls}">${amtStr}</div>`;
             if (tx.postId) {
@@ -5975,61 +6012,61 @@
                 await window.fs.updateDoc(window.fs.doc(window.db, "posts", entityId), { hypes: window.fs.increment(1) });
             }
 
-            // ── Revenue split ─────────────────────────────────────────────────────
+            // ── STEP A: Deduct 1★ from sender FIRST (debit-before-credit) ──────────
+            // This ensures no stars are credited if the sender has insufficient balance.
+            await deductStars(1);
+
+            // ── STEP B: Revenue split ─────────────────────────────────────────────
             // Comment hype (isComment = true):
             //   • Global feed  → 80% commenter / 20% platform  (strict 80/20)
             //   • Inside a Hub → 40% commenter / 40% Hub owner (Landlord Earnings) / 20% platform
             // Post hype (isComment = false):
-            //   • Global feed or Hub owner's own post → 80% creator / 20% platform
-            //   • Hub guest post → 40% guest / 40% Hub owner (Landlord Earnings) / 20% platform
+            //   • Global feed or Hub owner’s own post → 80% creator / 20% platform
+            //   • Hub guest post → 40% guest / 40% Hub owner / 20% platform
             if (isComment) {
                 if (recipientAddress && recipientAddress !== "unknown") {
                     if (_activeCommunity) {
-                        // Hub comment hype: 40% commenter + 40% Hub owner + 20% platform
                         await creditCreatorStars(recipientAddress, 0.4);
                         logTransaction(recipientAddress, "earn", 0.4,
                             "Earnings from " + _activeCommunity.name + " Hub (comment hype)",
-                            null, _activeCommunity.id);
+                            null, _activeCommunity.id, { from: userAddress, to: recipientAddress });
                         await creditCreatorStars(_activeCommunity.ownerId, 0.4);
                         logTransaction(_activeCommunity.ownerId, "earn", 0.4,
                             "Landlord Earnings from " + _activeCommunity.name + " Hub (comment hype)",
-                            null, _activeCommunity.id);
+                            null, _activeCommunity.id, { from: userAddress, to: _activeCommunity.ownerId });
                     } else {
-                        // Global feed comment hype: strict 80/20
                         await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
                         logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
-                            "Earnings from Global Feed", null, null);
+                            "Earnings from Global Feed", null, null, { from: userAddress, to: recipientAddress });
                     }
                 }
             } else if (_activeCommunity && recipientAddress &&
                        recipientAddress.toLowerCase() !== _activeCommunity.ownerId.toLowerCase()) {
-                // Hub guest post hype: 40% guest + 40% Hub owner + 20% platform
                 await creditCreatorStars(recipientAddress, 0.4);
                 logTransaction(recipientAddress, "earn", 0.4,
-                    "Earnings from " + _activeCommunity.name + " Hub (guest post)", entityId, _activeCommunity.id);
+                    "Earnings from " + _activeCommunity.name + " Hub (guest post)", entityId, _activeCommunity.id,
+                    { from: userAddress, to: recipientAddress });
                 await creditCreatorStars(_activeCommunity.ownerId, 0.4);
                 logTransaction(_activeCommunity.ownerId, "earn", 0.4,
-                    "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)", entityId, _activeCommunity.id);
+                    "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)", entityId, _activeCommunity.id,
+                    { from: userAddress, to: _activeCommunity.ownerId });
             } else {
-                // Global feed OR Hub owner's own post: strict 80/20
                 if (recipientAddress && recipientAddress !== "unknown") {
                     const lbl = _activeCommunity
                         ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
                         : "Earnings from Global Feed";
                     await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
                     logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, lbl, entityId,
-                        _activeCommunity ? _activeCommunity.id : null);
+                        _activeCommunity ? _activeCommunity.id : null, { from: userAddress, to: recipientAddress });
                 }
             }
 
-            // Deduct 1★ from sender using waterfall — purchasedStars first (deductStars)
-            await deductStars(1);
-
-            // 20% admin revenue (unchanged regardless of split type)
+            // ── STEP C: Log sender spend entry with recipient as counterpart ─────
             logAdminRevenue(userAddress, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
             logTransaction(userAddress, "spend", 1,
                 isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype",
-                isComment ? null : entityId);
+                isComment ? null : entityId, null,
+                { from: userAddress, to: recipientAddress || CONFIG.ADMIN_ADDRESS });
 
             updateUI();
             updateDrawerUI();
@@ -6118,44 +6155,44 @@
 
             await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
 
-            // ── Revenue split ─────────────────────────────────────────────────────
-            // Reply (isReply = true): always 80% to the commenter being replied to / 20% platform.
-            // Comment on Hub guest post: 40% post author / 40% Hub owner (Landlord Earnings) / 20% platform.
-            // Comment on global or Hub owner post: strict 80% creator / 20% platform.
+            // ── STEP A: Deduct 1★ from commenter FIRST (debit-before-credit) ─────
+            await deductStars(1);
+
+            // ── STEP B: Revenue split ─────────────────────────────────────────────
             if (isReply) {
                 if (recipientAddress && recipientAddress !== "unknown") {
                     await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
                     logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT,
-                        "Earnings from Global Feed", postId, null);
+                        "Earnings from Global Feed", postId, null,
+                        { from: userAddress, to: recipientAddress });
                 }
             } else if (_activeCommunity && recipientAddress &&
                        recipientAddress.toLowerCase() !== _activeCommunity.ownerId.toLowerCase()) {
-                // Hub guest post comment: 40% guest + 40% Hub owner + 20% platform
                 await creditCreatorStars(recipientAddress, 0.4);
                 logTransaction(recipientAddress, "earn", 0.4,
-                    "Earnings from " + _activeCommunity.name + " Hub (guest post)", postId, _activeCommunity.id);
+                    "Earnings from " + _activeCommunity.name + " Hub (guest post)", postId, _activeCommunity.id,
+                    { from: userAddress, to: recipientAddress });
                 await creditCreatorStars(_activeCommunity.ownerId, 0.4);
                 logTransaction(_activeCommunity.ownerId, "earn", 0.4,
-                    "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)", postId, _activeCommunity.id);
+                    "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)", postId, _activeCommunity.id,
+                    { from: userAddress, to: _activeCommunity.ownerId });
             } else {
-                // Global feed OR Hub owner's own post: strict 80/20
                 if (recipientAddress && recipientAddress !== "unknown") {
                     const lbl = _activeCommunity
                         ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
                         : "Earnings from Global Feed";
                     await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
                     logTransaction(recipientAddress, "earn", CONFIG.CREATOR_CUT, lbl, postId,
-                        _activeCommunity ? _activeCommunity.id : null);
+                        _activeCommunity ? _activeCommunity.id : null,
+                        { from: userAddress, to: recipientAddress });
                 }
             }
 
-            // Deduct 1★ from commenter — purchasedStars first (deductStars)
-            await deductStars(1);
-
-            // 20% admin revenue (unchanged regardless of split type)
+            // ── STEP C: Log sender spend with counterpart ─────────────────────────
             logAdminRevenue(userAddress, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
             logTransaction(userAddress, "spend", 1,
-                isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment", postId);
+                isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment", postId, null,
+                { from: userAddress, to: recipientAddress || CONFIG.ADMIN_ADDRESS });
 
             updateUI();
             updateDrawerUI();
@@ -6409,14 +6446,16 @@
             // Increment like count on comment doc
             await window.fs.updateDoc(window.fs.doc(window.db, "comments", commentId), { likes: window.fs.increment(1) });
 
-            // 80% → commenter's creatorStars
+            // STEP A: debit sender first
+            await deductStars(1);
+
+            // STEP B: 80% → commenter's creatorStars
             if (commenterAddress && commenterAddress !== "unknown") {
                 await creditCreatorStars(commenterAddress, CONFIG.CREATOR_CUT);
-                logTransaction(commenterAddress, "earn", CONFIG.CREATOR_CUT, "Earned 0.8★ — someone liked your comment");
+                logTransaction(commenterAddress, "earn", CONFIG.CREATOR_CUT,
+                    "Earned 0.8★ — someone liked your comment", null, null,
+                    { from: userAddress, to: commenterAddress });
             }
-
-            // Deduct 1★ from liker (purchasedStars first via deductStars)
-            await deductStars(1);
 
             // 20% → adminBalance (platform_revenue)
             const adminRef = window.fs.doc(window.db, "admin_revenue", "global");
@@ -6430,7 +6469,7 @@
                 amount: CONFIG.PLATFORM_CUT, timestamp: Date.now()
             });
 
-            logTransaction(userAddress, "spend", 1, "Spent 1★ to like a comment");
+            logTransaction(userAddress, "spend", 1, "Spent 1★ to like a comment", null, null, { from: userAddress, to: commenterAddress || CONFIG.ADMIN_ADDRESS });
 
             // ── Fix 2A (comments): Do not manually patch the counter span.
             // The comments onSnapshot listener re-renders the comment list when
@@ -6473,14 +6512,16 @@
                 isReply: true, timestamp: Date.now(), likes: 0, hypes: 0
             });
 
-            // 80% → original commenter's creatorStars
+            // STEP A: debit sender first
+            await deductStars(1);
+
+            // STEP B: 80% → original commenter's creatorStars
             if (commenterAddress && commenterAddress !== "unknown") {
                 await creditCreatorStars(commenterAddress, CONFIG.CREATOR_CUT);
-                logTransaction(commenterAddress, "earn", CONFIG.CREATOR_CUT, "Earned 0.8★ — someone replied to your comment");
+                logTransaction(commenterAddress, "earn", CONFIG.CREATOR_CUT,
+                    "Earned 0.8★ — someone replied to your comment", null, null,
+                    { from: userAddress, to: commenterAddress });
             }
-
-            // Deduct 1★ from replier (purchasedStars first via deductStars)
-            await deductStars(1);
 
             // 20% → adminBalance
             const adminRef = window.fs.doc(window.db, "admin_revenue", "global");
@@ -6494,7 +6535,7 @@
                 amount: CONFIG.PLATFORM_CUT, timestamp: Date.now()
             });
 
-            logTransaction(userAddress, "spend", 1, "Spent 1★ on a Reply");
+            logTransaction(userAddress, "spend", 1, "Spent 1★ on a Reply", null, null, { from: userAddress, to: commenterAddress || CONFIG.ADMIN_ADDRESS });
 
             // Reset textarea and close reply area
             if (textarea) textarea.value = "";
@@ -9378,12 +9419,12 @@
                 logTransaction(
                     recipientAddr, 'earn', 0.9,
                     'Follow Earnings from ' + senderAddr.slice(0, 8) + '…',
-                    null, null
+                    null, null, { from: senderAddr, to: recipientAddr }
                 );
                 logTransaction(
                     senderAddr, 'spend', 1,
                     'Followed ' + recipientAddr.slice(0, 8) + '…',
-                    null, null
+                    null, null, { from: senderAddr, to: recipientAddr }
                 );
 
                 // Write the social_graph document AFTER payment succeeds
@@ -9497,13 +9538,17 @@
             const creatorCut = 0.9;
             const platformCut = 0.1;
 
-            await creditCreatorStars(_heroTargetAddr, creatorCut);
+            // STEP A: debit sender first
             await deductStars(1);
 
+            // STEP B: 90% to creator
+            await creditCreatorStars(_heroTargetAddr, creatorCut);
             logTransaction(_heroTargetAddr, 'earn', creatorCut,
-                'Profile Like from ' + userAddress.toLowerCase().slice(0,8) + '…', null, null);
+                'Profile Like from ' + userAddress.toLowerCase().slice(0,8) + '…', null, null,
+                { from: userAddress, to: _heroTargetAddr });
             logTransaction(userAddress, 'spend', 1,
-                'Profile Like on ' + _heroTargetAddr.slice(0,8) + '…', null, null);
+                'Profile Like on ' + _heroTargetAddr.slice(0,8) + '…', null, null,
+                { from: userAddress, to: _heroTargetAddr });
             logAdminRevenue(userAddress, 'profile_like', platformCut);
 
             // Star shower animation — small (1 star)
@@ -9596,13 +9641,17 @@
             const creatorCut  = parseFloat((amount * 0.9).toFixed(4));
             const platformCut = parseFloat((amount * 0.1).toFixed(4));
 
-            await creditCreatorStars(_heroTargetAddr, creatorCut);
+            // STEP A: debit sender first
             await deductStars(amount);
 
+            // STEP B: 90% to creator
+            await creditCreatorStars(_heroTargetAddr, creatorCut);
             logTransaction(_heroTargetAddr, 'earn', creatorCut,
-                'Profile Tip from ' + userAddress.toLowerCase().slice(0,8) + '… (' + amount + '★)', null, null);
+                'Profile Tip from ' + userAddress.toLowerCase().slice(0,8) + '… (' + amount + '★)', null, null,
+                { from: userAddress, to: _heroTargetAddr });
             logTransaction(userAddress, 'spend', amount,
-                'Profile Tip to ' + _heroTargetAddr.slice(0,8) + '… (' + amount + '★)', null, null);
+                'Profile Tip to ' + _heroTargetAddr.slice(0,8) + '… (' + amount + '★)', null, null,
+                { from: userAddress, to: _heroTargetAddr });
             logAdminRevenue(userAddress, 'profile_tip', platformCut);
 
             // Star shower — intensity scales with amount
@@ -9754,13 +9803,13 @@
                         creatorAddr, 'earn', 0.9,
                         'Hub Follow Earnings — ' + (_activeCommunity.name || commId) +
                         ' (from ' + senderAddr.slice(0, 8) + '…)',
-                        null, commId
+                        null, commId, { from: senderAddr, to: creatorAddr }
                     );
                 }
                 logTransaction(
                     senderAddr, 'spend', 1,
                     'Followed Hub: ' + (_activeCommunity.name || commId),
-                    null, commId
+                    null, commId, { from: senderAddr, to: creatorAddr || CONFIG.ADMIN_ADDRESS }
                 );
 
                 // Write social_graph entry — community ID is the 'following' value
@@ -10053,6 +10102,165 @@
             if (container) container.innerHTML = '';
         }
     });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // ONE-TIME BALANCE RECONCILIATION (ADMIN ONLY)
+    //
+    // Fixes "ghost money": resets every user's star balances so they
+    // match the APTM they actually deposited on-chain.
+    //
+    // Algorithm per user doc in user_balances:
+    //   correctStars = floor( initial_deposit × livePrice / $0.01 )
+    //   newStars     = max(0, correctStars - spentStarsTotal)
+    //   newCreator   = 0   ← earned stars are phantom credits; zeroed
+    //   spentTotal   = min(spentStarsTotal, correctStars)  ← clamp to real deposit
+    //
+    // platform_revenue total in admin_revenue/global is NOT touched here —
+    // the admin should withdraw then reconcile so the on-chain contract
+    // balance and Firebase are in sync after the script runs.
+    //
+    // A confirmation dialog shows the full diff before writing anything.
+    // ═══════════════════════════════════════════════════════════════════
+    async function adminReconcile() {
+        if (!userAddress || userAddress.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) {
+            return alert('Admin only.');
+        }
+        if (!window.db || !provider) {
+            return alert('Wallet and Firebase must both be connected.');
+        }
+
+        const btn = document.getElementById('admin-reconcile-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Reading Firestore…'; }
+
+        try {
+            // Step 1: get live price
+            let livePrice = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
+            if (livePrice <= 0) {
+                const p = await getLiveAptmPrice();
+                livePrice = (p && p > 0) ? p : 0.3391;
+            }
+
+            // Step 2: read all user_balances docs
+            const snap = await window.fs.getDocs(window.fs.collection(window.db, 'user_balances'));
+            const plan = [];   // { ref, addr, currentStars, currentCreator, newStars, newCreator, newSpent }
+            let totalGhostStars = 0;
+            let totalGhostCreator = 0;
+
+            snap.forEach(d => {
+                const data         = d.data();
+                const addr         = data.address || d.id;
+                const deposit      = parseFloat(data.initial_deposit)  || 0;
+                const curStars     = parseFloat(data.stars)            || 0;
+                const curCreator   = parseFloat(data.creatorStars)     || 0;
+                const spentRaw     = parseFloat(data.spentStarsTotal)  || 0;
+
+                // Stars legitimately earned from deposit
+                const depositStars = Math.floor(deposit * livePrice / CONFIG.STAR_USD);
+                // Clamp spentStarsTotal to what was actually deposited
+                const spentClamped = Math.min(spentRaw, depositStars);
+                // Remaining unspent deposit stars
+                const newStars     = Math.max(0, depositStars - spentClamped);
+                // Earned (creatorStars) cannot exceed deposit total — zero ghost credits
+                const newCreator   = 0;
+
+                const ghostStars   = curStars   - newStars;
+                const ghostCreator = curCreator - newCreator;
+                totalGhostStars   += Math.max(0, ghostStars);
+                totalGhostCreator += Math.max(0, ghostCreator);
+
+                plan.push({
+                    ref:         d.ref,
+                    addr,
+                    deposit:     deposit.toFixed(4),
+                    depositStars,
+                    curStars:    curStars.toFixed(2),
+                    curCreator:  curCreator.toFixed(2),
+                    newStars,
+                    newCreator,
+                    newSpent:    spentClamped
+                });
+            });
+
+            const totalGhost = totalGhostStars + totalGhostCreator;
+
+            // Step 3: show confirmation dialog
+            const preview = plan.slice(0, 8).map(p =>
+                p.addr.slice(0,8) + '…  deposit=' + p.deposit + 'APTM (' + p.depositStars + '\u2605)' +
+                '  cur=' + p.curStars + '+' + p.curCreator + '\u2605  \u2192  new=' + p.newStars + '+0\u2605'
+            ).join('\n');
+
+            const confirmed = confirm(
+                'BALANCE RECONCILIATION\n\n' +
+                'Live APTM price: $' + livePrice.toFixed(4) + '\n' +
+                'Users to update: ' + plan.length + '\n' +
+                'Ghost stars to remove: ' + totalGhost.toFixed(2) + '\u2605\n' +
+                '  (purchased: ' + totalGhostStars.toFixed(2) + '\u2605  earned: ' + totalGhostCreator.toFixed(2) + '\u2605)\n\n' +
+                'Preview (first 8 users):\n' + preview + '\n\n' +
+                'creatorStars will be set to 0 for all users.\n' +
+                'stars will be recalculated from initial_deposit.\n\n' +
+                'This CANNOT be undone. Proceed?'
+            );
+            if (!confirmed) {
+                if (btn) { btn.disabled = false; btn.textContent = '\u26a0 Run Balance Reconciliation'; }
+                return;
+            }
+
+            // Step 4: write corrections in batches of 400 (Firestore batch limit = 500)
+            if (btn) btn.textContent = 'Writing ' + plan.length + ' corrections…';
+            const BATCH_SIZE = 400;
+            let written = 0;
+            for (let i = 0; i < plan.length; i += BATCH_SIZE) {
+                const batch = window.fs.writeBatch ? window.fs.writeBatch(window.db) : null;
+                const chunk = plan.slice(i, i + BATCH_SIZE);
+                if (batch) {
+                    chunk.forEach(p => {
+                        batch.set(p.ref, {
+                            stars:           p.newStars,
+                            creatorStars:    p.newCreator,
+                            spentStarsTotal: p.newSpent,
+                            lastReconciled:  Date.now(),
+                            lastUpdated:     Date.now()
+                        }, { merge: true });
+                    });
+                    await batch.commit();
+                } else {
+                    // Fallback: sequential writes if writeBatch not available
+                    for (const p of chunk) {
+                        await window.fs.setDoc(p.ref, {
+                            stars:           p.newStars,
+                            creatorStars:    p.newCreator,
+                            spentStarsTotal: p.newSpent,
+                            lastReconciled:  Date.now(),
+                            lastUpdated:     Date.now()
+                        }, { merge: true });
+                    }
+                }
+                written += chunk.length;
+                if (btn) btn.textContent = 'Written ' + written + ' / ' + plan.length + '…';
+            }
+
+            // Step 5: Log the reconciliation event
+            logTransaction(userAddress, 'settle', totalGhost,
+                'Admin Reconciliation: removed ' + totalGhost.toFixed(2) + '\u2605 ghost money across ' + plan.length + ' accounts',
+                null, null, { from: 'reconciliation', to: 'zeroed' }
+            );
+
+            alert(
+                'Reconciliation complete.\n\n' +
+                'Updated: ' + plan.length + ' accounts\n' +
+                'Ghost stars removed: ' + totalGhost.toFixed(2) + '\u2605\n\n' +
+                'The dashboard will refresh automatically.'
+            );
+            console.log('[Reconciliation] Complete. Ghost stars removed:', totalGhost.toFixed(4));
+
+        } catch (e) {
+            console.error('[Reconciliation] Failed:', e);
+            alert('Reconciliation failed: ' + (e.message || String(e)));
+        }
+
+        if (btn) { btn.disabled = false; btn.textContent = '\u26a0 Run Balance Reconciliation'; }
+    }
+    window.adminReconcile = adminReconcile;
 
     // Close HIW on Escape key
     document.addEventListener('keydown', function(e) {
