@@ -4791,7 +4791,7 @@
             return;
         }
         el.innerHTML = "";
-        docs.slice(0, 10).forEach(tx => {
+        docs.slice(0, 50).forEach(tx => {
             const myAddr = userAddress ? userAddress.toLowerCase() : '';
             const txFrom = (tx.fromAddress || tx.from || '').toLowerCase();
             const txTo   = (tx.toAddress   || tx.to   || '').toLowerCase();
@@ -4811,9 +4811,13 @@
             }
 
             const isEarn = displayType === 'earn' || displayType === 'deposit';
+            const isSettle = displayType === 'settle';
             const prefix = isEarn ? '+' : '−';
-            const amtStr = prefix + parseFloat(tx.amount).toFixed(1) + ' ★';
-            const amtCls = isEarn ? 'earn' : (displayType === 'settle' ? 'neutral' : 'spend');
+            // Settle amounts are in APTM; all other types are in Stars
+            const amtStr = isSettle
+                ? '−' + parseFloat(tx.amount).toFixed(4) + ' APTM'
+                : prefix + parseFloat(tx.amount).toFixed(1) + ' ★';
+            const amtCls = isEarn ? 'earn' : (isSettle ? 'neutral' : 'spend');
             const badge  = { earn:'Earned', spend:'Spent', deposit:'Deposit', settle:'Settle' }[displayType] || displayType;
             const date   = new Date(tx.timestamp).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
             // Counterpart chip: earn rows show who sent, spend rows show who received
@@ -4951,8 +4955,21 @@
                 // Block platform-sink rows from appearing as earns in personal ledger.
                 // These go to the Admin Dashboard only.
                 if ((t === 'earn' || t === 'deposit') && PLATFORM_SINKS.has(txTo)) return false;
-                // Block self-loop: if sender == receiver it's a no-op, never show
-                if (txFrom && txTo && txFrom === txTo) return false;
+
+                // IDENTITY BLEED FIX: self-loop guard must NOT block 'earn' or 'spend' docs.
+                //
+                // On a self-like, TWO docs have fromAddress === toAddress === userAddr:
+                //   • spend doc (t='spend'): −1.0★ cost — must show in ledger
+                //   • earn  doc (t='earn'):  +0.8★ reward — must show in ledger
+                //
+                // The net visible effect (−0.2★) is correct platform-fee accounting.
+                // The PLATFORM_SINKS guard above already stops admin_vault fee rows
+                // from leaking into the personal ledger — that is the real loop guard.
+                //
+                // We only suppress self-loops for 'deposit' and unknown types where
+                // a self-addressed doc is genuinely a no-op or data error.
+                if (t !== 'earn' && t !== 'spend' && t !== 'settle' &&
+                    txFrom && txTo && txFrom === txTo) return false;
 
                 if (t === 'spend' || t === 'settle') {
                     return txFrom === addr;   // user must be the sender
@@ -6701,10 +6718,15 @@
             });
         } catch (e) { console.warn('[deductStars] Firestore write failed:', e); }
 
-        // Flag so deductSpendableStars skips its own APTM deduction (already done above)
+        // Flag so deductSpendableStars skips its own APTM deduction (already done above).
+        // CRITICAL: reset in finally — if deductSpendableStars throws, the flag must not
+        // stay true or ALL subsequent deductions will silently skip spentStarsTotal writes.
         deductSpendableStars._calledFromDeductStars = true;
-        await deductSpendableStars(userAddress, amount);
-        deductSpendableStars._calledFromDeductStars = false;
+        try {
+            await deductSpendableStars(userAddress, amount);
+        } finally {
+            deductSpendableStars._calledFromDeductStars = false;
+        }
 
         // Re-fetch star counts from Firebase to confirm atomic write landed
         try {
@@ -6972,18 +6994,84 @@
             );
         }
 
-        const exactAptmHuman = parseFloat(ethers.utils.formatEther(exactBalWei));
+        // ── MODAL DESYNC FIX ────────────────────────────────────────────────────
+        // The raw on-chain starBalances() value (exactBalWei) is the ORIGINAL
+        // deposit and must NEVER be presented to the user as their withdrawal
+        // amount — it ignores all Spend transactions.
+        //
+        // The correct net balance is:
+        //   netAptm = (fbStars + fbEarned) × $0.01 / livePrice
+        // where fbStars has already had spentStarsTotal subtracted by syncData().
+        // We then cap at the on-chain value as a hard reserve guard.
+        let fbSnapForModal = null;
+        let fbStarsForModal = 0, fbEarnedForModal = 0, fbSpentForModal = 0;
+        try {
+            fbSnapForModal = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr));
+            if (fbSnapForModal.exists()) {
+                const d = fbSnapForModal.data();
+                fbStarsForModal  = parseFloat(d.stars           || 0);
+                fbEarnedForModal = parseFloat(d.creatorStars    || 0);
+                fbSpentForModal  = parseFloat(d.spentStarsTotal || 0);
+            }
+        } catch (_) { /* non-fatal — fall back to module-level vars */ }
+
+        // If the Firebase read silently failed (all zeros), fall back to the
+        // module-level vars that syncData() already populated.
+        const livePriceForModal = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : 0;
+        const _fbStars  = fbStarsForModal  > 0 ? fbStarsForModal  : (parseFloat(purchasedStars)  || 0);
+        const _fbEarned = fbEarnedForModal > 0 ? fbEarnedForModal : (parseFloat(creatorEarnings) || 0);
+        const _fbSpent  = fbSpentForModal;   // already 0 if read failed — safe default
+        const netStarsForModal  = Math.max(0, _fbStars + _fbEarned);
+        // Re-assign for use in modal display strings
+        fbStarsForModal  = _fbStars;
+        fbEarnedForModal = _fbEarned;
+        fbSpentForModal  = _fbSpent;
+
+        // ATOMIC WITHDRAWAL: dynamicAptmAmount is the authoritative withdraw figure —
+        // derived from Firebase net stars, NOT from the raw on-chain deposit.
+        const dynamicAptmAmount = livePriceForModal > 0
+            ? (netStarsForModal * CONFIG.STAR_USD) / livePriceForModal
+            : 0;
+        // Hard cap: never withdraw more than the contract holds for this user
+        const onChainAptmCap = parseFloat(ethers.utils.formatEther(exactBalWei));
+        const safeModalAptm  = Math.min(dynamicAptmAmount, onChainAptmCap);
+
+        // Guard: if price isn't loaded yet, block confirm and surface the problem
+        if (livePriceForModal <= 0 || safeModalAptm <= 0) {
+            if (_clickedBtn) _clickedBtn.disabled = false;
+            return alert(
+                "Cannot calculate withdrawal amount.\n\n" +
+                "Live Price: $" + livePriceForModal.toFixed(4) + "\n" +
+                "Net Stars:  " + netStarsForModal.toFixed(4) + " \u2605\n\n" +
+                "Please wait for the price feed to load and try again."
+            );
+        }
+
+        console.log("[settleStarsToWallet] Modal calc" +
+            " | fbStars="   + fbStarsForModal.toFixed(4) +
+            " | fbEarned="  + fbEarnedForModal.toFixed(4) +
+            " | fbSpent="   + fbSpentForModal.toFixed(4) +
+            " | netStars="  + netStarsForModal.toFixed(4) +
+            " | dynamic="   + dynamicAptmAmount.toFixed(6) +
+            " | onChainCap=" + onChainAptmCap.toFixed(6) +
+            " | willSend="  + safeModalAptm.toFixed(6));
+
         const syncLine = liveCreatorStars > 0
-            ? ("Step 1 \u2014 " + liveCreatorStars.toFixed(2) + " earned \u2605 will be synced to the contract.\nStep 2 \u2014 MetaMask opens to withdraw the full on-chain balance.\n")
-            : "MetaMask will open to withdraw your on-chain balance.\n";
+            ? ("Step 1 \u2014 " + liveCreatorStars.toFixed(2) + " earned \u2605 will be synced to the contract.\nStep 2 \u2014 MetaMask opens to withdraw your net balance.\n")
+            : "MetaMask will open to withdraw your net balance.\n";
 
         const confirmed = confirm(
             "Settle Balance to Wallet\n\n" +
-            "On-chain APTM:   " + exactAptmHuman.toFixed(6) + " APTM\n" +
-            "Earned Stars:    " + liveCreatorStars.toFixed(2) + " \u2605\n" +
+            "Purchased Stars:  " + fbStarsForModal.toFixed(2)  + " \u2605\n" +
+            "Earned Stars:     " + fbEarnedForModal.toFixed(2) + " \u2605\n" +
+            "Spent (deducted): " + fbSpentForModal.toFixed(2)  + " \u2605\n" +
+            "Net Stars:        " + netStarsForModal.toFixed(2) + " \u2605\n" +
+            "\u2500".repeat(30) + "\n" +
+            "Live Price:       $" + (livePriceForModal).toFixed(4) + " / APTM\n" +
+            "You Will Receive: " + safeModalAptm.toFixed(6) + " APTM\n" +
             "\u2500".repeat(30) + "\n\n" +
             syncLine +
-            "Firebase balances will be zeroed only after the transaction confirms.\nProceed?"
+            "Firebase balances zeroed ONLY after on-chain confirmation.\nProceed?"
         );
         if (!confirmed) {
             if (_clickedBtn) _clickedBtn.disabled = false;
@@ -7048,24 +7136,42 @@
         // STEP B — Withdrawal
         // ══════════════════════════════════════════════════════════════════════
         try {
-            // FIX: Re-read the balance AFTER the sync delay to get the "Truth"
-            const activeBalanceWei = await hubContract.starBalances(finalAddr);
-            
-            if (activeBalanceWei.isZero()) {
+            // ── ATOMIC WITHDRAWAL FIX ────────────────────────────────────────
+            // Re-read the on-chain balance AFTER the sync delay.
+            // Then compute the final withdraw Wei from safeModalAptm (the
+            // dynamicAptmAmount already capped at the on-chain balance).
+            // This ensures the contract call passes the SPECIFIC calculated
+            // value (e.g. 4.14 APTM) and never the raw deposit total (5.0 APTM).
+            const postSyncBalanceWei = await hubContract.starBalances(finalAddr);
+
+            if (postSyncBalanceWei.isZero()) {
                 _unlockSettle();
                 return alert("Ledger not updated yet.\n\nYour on-chain balance is still 0 APTM. Please wait a moment and try again.");
             }
 
-            // ADDED ONLY THIS LINE: Define safeAmountWei (with a 1000 wei safety buffer)
-            const safeAmountWei = activeBalanceWei.gt(1000) ? activeBalanceWei.sub(1000) : activeBalanceWei;
+            // safeModalAptm was calculated before the confirm() — it is the net
+            // dynamic amount.  Re-cap against the freshly-read post-sync balance
+            // in case the sync added credits that push the on-chain total higher.
+            const postSyncAptm      = parseFloat(ethers.utils.formatEther(postSyncBalanceWei));
+            const finalWithdrawAptm = Math.min(safeModalAptm, postSyncAptm);
+            if (finalWithdrawAptm <= 0) {
+                _unlockSettle();
+                return alert("Withdraw amount resolved to 0 after sync.\n\nPlease try again.");
+            }
 
-            const settleAptm = parseFloat(ethers.utils.formatEther(activeBalanceWei));
+            // Convert to Wei — parse from the truncated string to avoid float drift
+            const withdrawWei = ethers.utils.parseEther(finalWithdrawAptm.toFixed(18));
+
             showToast("Step 2/2 \u2014 Opening MetaMask\u2026");
-            console.log("[Settlement] Calling userWithdraw(" + safeAmountWei.toString() + ")");
+            console.log("[Settlement] ATOMIC userWithdraw(" + withdrawWei.toString() +
+                ") = " + finalWithdrawAptm.toFixed(6) + " APTM" +
+                " (dynamic=" + safeModalAptm.toFixed(6) +
+                " postSync=" + postSyncAptm.toFixed(6) + ")");
 
-            const tx = await hubContract.userWithdraw(safeAmountWei, { gasLimit: 500000 });
+            const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
             showToast("Transaction submitted \u2014 waiting for on-chain confirmation\u2026");
 
+            // ── RECEIPT LOGIC: ONLY zero Firebase after status === 1 ─────────
             const receipt = await tx.wait();
             if (!receipt || receipt.status !== 1) {
                 const detail = receipt
@@ -7073,39 +7179,45 @@
                     : "No receipt returned by RPC.";
                 console.error("[Settlement] withdrawStars reverted.", detail);
                 _unlockSettle();
-                return alert("Withdrawal reverted on-chain.\n\n" + detail);
+                return alert("Withdrawal reverted on-chain.\n\n" + detail +
+                    "\n\nYour Firebase stars are UNCHANGED. Try again.");
             }
 
-            // ── Zero local state + arm spend lock BEFORE writing to Firebase ──
+            // ── Zero local state AFTER confirmed receipt ──────────────────────
             purchasedStars     = 0;
             creatorEarnings    = 0;
             currentAptmBalance = 0;
             totalDepositedAptm = 0;
             _lastSpendTime      = Date.now();
 
-            // ── Zero Firebase ONLY after on-chain status === 1 ───────────────
+            // ── Zero Firebase ONLY after receipt.status === 1 ────────────────
             if (window.db) {
                 try {
                     await window.fs.setDoc(
                         window.fs.doc(window.db, "user_balances", addr),
                         {
                             stars:              0,
-                            creatorStars:        0,
-                            aptmBalance:         0,
+                            creatorStars:       0,
+                            aptmBalance:        0,
                             currentAptmBalance: 0,
-                            initial_deposit:     0,
-                            lastWithdraw:        Date.now(),
-                            lastUpdated:         Date.now()
+                            spentStarsTotal:    0,
+                            initial_deposit:    0,
+                            lastWithdraw:       Date.now(),
+                            lastUpdated:        Date.now()
                         },
                         { merge: true }
                     );
-                    console.log("[Settlement] Firebase zeroed after confirmed withdrawal.");
+                    console.log("[Settlement] Firebase zeroed after receipt.status===1 confirmed.");
                 } catch (fbErr) {
                     console.error("[Settlement] CRITICAL: on-chain OK, Firebase zero failed:", fbErr);
                 }
             }
 
-            alert("Settlement Successful! " + settleAptm.toFixed(4) + " APTM sent to your wallet.");
+            logTransaction("settle", finalWithdrawAptm, {
+                from: addr, to: "wallet",
+                description: "Settled " + netStarsForModal.toFixed(2) + "\u2605 \u2192 " + finalWithdrawAptm.toFixed(4) + " $APTM to wallet"
+            });
+            alert("Settlement Successful! " + finalWithdrawAptm.toFixed(4) + " APTM sent to your wallet.");
             location.reload();
 
         } catch (err) {
@@ -8320,7 +8432,14 @@
                 });
             } catch (e) {
                 console.error('Signal write failed:', e);
-                return alert('Signal post failed: ' + e.message);
+                // ── STAR REFUND: signal write failed after deduction ──
+                try {
+                    await creditPurchasedStars(userAddress, SIGNAL_FEE);
+                    console.warn('[Signal] Refunded ' + SIGNAL_FEE + '★ after signal write failure.');
+                } catch (refundErr) {
+                    console.error('[Signal] CRITICAL: refund also failed:', refundErr);
+                }
+                return alert('Signal post failed — your 1★ has been refunded.\n\n' + e.message);
             }
 
             // Reset composer
@@ -8446,7 +8565,17 @@
             showToast('Signal Live! ◈');
         } catch (e) {
             console.error('Firebase write failed:', e);
-            alert('Post failed: ' + e.message);
+            // ── STAR REFUND: post write failed after deduction — restore stars ──
+            // creditPurchasedStars re-adds to the `stars` pool. spentStarsTotal is
+            // NOT decremented here because the heartbeat will re-sync net balance
+            // from on-chain on the next tick — the user loses nothing.
+            try {
+                await creditPurchasedStars(userAddress, feeAmount);
+                console.warn('[handleBroadcast] Refunded ' + feeAmount + '★ after post write failure.');
+            } catch (refundErr) {
+                console.error('[handleBroadcast] CRITICAL: refund also failed:', refundErr);
+            }
+            alert('Post failed — your ' + feeAmount.toFixed(1) + '★ has been refunded.\n\n' + e.message);
         }
     }
 
@@ -8989,7 +9118,18 @@
 
         } catch (e) {
             console.error('[handleCommBroadcast] write failed:', e);
-            alert('Post failed: ' + e.message);
+            // ── STAR REFUND: post write failed after deduction — restore stars ──
+            if (!isAdmin && feeAmount > 0) {
+                try {
+                    await creditPurchasedStars(userAddress, feeAmount);
+                    console.warn('[handleCommBroadcast] Refunded ' + feeAmount + '★ after write failure.');
+                } catch (refundErr) {
+                    console.error('[handleCommBroadcast] CRITICAL: refund also failed:', refundErr);
+                }
+                alert('Post failed — your ' + feeAmount.toFixed(1) + '★ has been refunded.\n\n' + e.message);
+            } else {
+                alert('Post failed: ' + e.message);
+            }
         }
     }
     window.handleCommBroadcast = handleCommBroadcast;
