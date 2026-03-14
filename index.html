@@ -4691,44 +4691,73 @@
     //   to          — wallet that RECEIVED the stars (earn rows = own addr; spend rows = counterpart)
     function logTransaction(address, type, amount, description, postId, communityId, opts) {
         if (!window.db) return;
-        // Resolve address: use argument, fall back to global userAddress, then window.userAddress.
-        // This ensures we NEVER write undefined/null to Firestore regardless of call-site mistakes.
+
+        // ── Resolve owner address ─────────────────────────────────────────────
         var resolvedAddr = address
-            || (typeof userAddress !== 'undefined' && userAddress)
+            || (typeof userAddress !== 'undefined' ? userAddress : null)
             || window.userAddress
-            || 'unknown';
-        resolvedAddr = String(resolvedAddr).toLowerCase();
-        if (!resolvedAddr || resolvedAddr === 'unknown') {
-            console.error('[logTransaction] Missing address for type=' + type + ' amount=' + amount);
+            || '';
+        resolvedAddr = String(resolvedAddr || '').toLowerCase().trim();
+        if (!resolvedAddr || resolvedAddr === 'undefined') {
+            console.error('[logTransaction] Missing owner address — type=' + type + ' amount=' + amount);
             return;
         }
 
-        // opts.from / opts.to — counterpart addresses for full traceability.
-        // Fallback chain: opts.from → resolvedAddr → window.userAddress → 'unknown'
-        var fromRaw = (opts && opts.from) ? opts.from
-                    : (type === 'earn' ? 'platform' : resolvedAddr);
-        var toRaw   = (opts && opts.to)   ? opts.to
-                    : (type === 'earn' ? resolvedAddr : 'platform');
-        var from = String(fromRaw || resolvedAddr).toLowerCase();
-        var to   = String(toRaw   || resolvedAddr).toLowerCase();
+        // ── Resolve from / to ─────────────────────────────────────────────────
+        var globalUser = (typeof userAddress !== 'undefined' && userAddress)
+                       ? String(userAddress).toLowerCase()
+                       : (window.userAddress ? String(window.userAddress).toLowerCase() : '');
 
-        if (from === 'undefined' || to === 'undefined') {
-            console.error('[logTransaction] Resolved undefined from/to for type=' + type + '. from=' + from + ' to=' + to);
-        }
+        var fromRaw = (opts && opts.from && opts.from !== 'undefined')
+            ? String(opts.from).toLowerCase()
+            : (type === 'earn' ? 'platform' : (globalUser || resolvedAddr));
+
+        var toRaw = (opts && opts.to && opts.to !== 'undefined')
+            ? String(opts.to).toLowerCase()
+            : (type === 'earn' ? resolvedAddr : 'platform');
+
+        // Final safety: never allow the literal string "undefined"
+        var fromAddress = (fromRaw && fromRaw !== 'undefined') ? fromRaw : resolvedAddr;
+        var toAddress   = (toRaw   && toRaw   !== 'undefined') ? toRaw   : 'admin_vault';
+
+        // ── Sanitise every scalar field — Firestore rejects undefined values ──
+        var safeDescription = (description !== undefined && description !== null)
+            ? String(description)
+            : (type + ' of ' + amount + '\u2605');
+        var safeAmount = (amount !== undefined && amount !== null && !isNaN(amount))
+            ? parseFloat(amount)
+            : 0;
+        var safeType = String(type || 'unknown');
 
         const data = {
             address:     resolvedAddr,
-            type,
-            amount,
-            description,
-            from,
-            to,
+            type:        safeType,
+            amount:      safeAmount,
+            description: safeDescription,
+            fromAddress,
+            toAddress,
+            // Keep legacy from/to fields for backward compat with existing queries
+            from:        fromAddress,
+            to:          toAddress,
             timestamp:   Date.now()
         };
         if (postId)      data.postId      = String(postId);
         if (communityId) data.communityId = String(communityId);
-        window.fs.addDoc(window.fs.collection(window.db, 'user_transactions'), data)
-            .catch(e => console.warn('logTransaction:', e));
+
+        // ── Try/catch so a ledger failure never crashes the calling function ──
+        try {
+            window.fs.addDoc(window.fs.collection(window.db, 'user_transactions'), data)
+                .catch(function(e) {
+                    console.error('[logTransaction] addDoc failed — type=' + safeType
+                        + ' amount=' + safeAmount
+                        + ' addr=' + resolvedAddr
+                        + ' from=' + fromAddress
+                        + ' to=' + toAddress
+                        + ' | ' + (e.message || e));
+                });
+        } catch (syncErr) {
+            console.error('[logTransaction] Unexpected sync error:', syncErr);
+        }
     }
 
     // 100% of post fees + 20% of interactions → admin_revenue
