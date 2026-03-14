@@ -4690,13 +4690,34 @@
     //   from        — wallet that SENT the stars (spend rows = own addr; earn rows = counterpart)
     //   to          — wallet that RECEIVED the stars (earn rows = own addr; spend rows = counterpart)
     function logTransaction(address, type, amount, description, postId, communityId, opts) {
-        if (!address || !window.db) return;
-        // opts = { from, to } — counterpart addresses for earn/spend traceability.
-        // Defaults: spend rows → from=own, to=platform; earn rows → from=counterpart/platform, to=own.
-        var from = (opts && opts.from) ? String(opts.from).toLowerCase() : address.toLowerCase();
-        var to   = (opts && opts.to)   ? String(opts.to).toLowerCase()   : address.toLowerCase();
+        if (!window.db) return;
+        // Resolve address: use argument, fall back to global userAddress, then window.userAddress.
+        // This ensures we NEVER write undefined/null to Firestore regardless of call-site mistakes.
+        var resolvedAddr = address
+            || (typeof userAddress !== 'undefined' && userAddress)
+            || window.userAddress
+            || 'unknown';
+        resolvedAddr = String(resolvedAddr).toLowerCase();
+        if (!resolvedAddr || resolvedAddr === 'unknown') {
+            console.error('[logTransaction] Missing address for type=' + type + ' amount=' + amount);
+            return;
+        }
+
+        // opts.from / opts.to — counterpart addresses for full traceability.
+        // Fallback chain: opts.from → resolvedAddr → window.userAddress → 'unknown'
+        var fromRaw = (opts && opts.from) ? opts.from
+                    : (type === 'earn' ? 'platform' : resolvedAddr);
+        var toRaw   = (opts && opts.to)   ? opts.to
+                    : (type === 'earn' ? resolvedAddr : 'platform');
+        var from = String(fromRaw || resolvedAddr).toLowerCase();
+        var to   = String(toRaw   || resolvedAddr).toLowerCase();
+
+        if (from === 'undefined' || to === 'undefined') {
+            console.error('[logTransaction] Resolved undefined from/to for type=' + type + '. from=' + from + ' to=' + to);
+        }
+
         const data = {
-            address:     address.toLowerCase(),
+            address:     resolvedAddr,
             type,
             amount,
             description,
@@ -5979,7 +6000,8 @@
 
             // Log to private ledger with clear description
             logTransaction(userAddress, "spend", boostCost,
-                `Post Boosted — ${boostCost}★ fee (100% platform) · Post ID: ${postId.slice(0, 8)}…`);
+                `Post Boosted — ${boostCost}★ fee (100% platform) · Post ID: ${postId.slice(0, 8)}…`,
+                null, null, { from: userAddress, to: CONFIG.ADMIN_ADDRESS });
 
             // Update post: mark as boosted WITHOUT touching the original timestamp.
             // The feed sorts by priority key: max(boostedAt, timestamp) desc, so
@@ -7686,7 +7708,7 @@
             // 80% → creator's creatorStars
             if (sData.authorAddr && sData.authorAddr !== 'unknown') {
                 await creditCreatorStars(sData.authorAddr, CONFIG.CREATOR_CUT);
-                logTransaction(sData.authorAddr, 'earn', CONFIG.CREATOR_CUT, 'Earned 0.8★ — someone hyped your Daily Signal');
+                logTransaction(sData.authorAddr, 'earn', CONFIG.CREATOR_CUT, 'Earned 0.8★ — someone hyped your Daily Signal', null, null, { from: userAddress, to: sData.authorAddr });
             }
 
             // Deduct 1★ from sender
@@ -7694,7 +7716,7 @@
 
             // 20% → platform_revenue
             logAdminRevenue(userAddress, 'signal_hype', CONFIG.PLATFORM_CUT);
-            logTransaction(userAddress, 'spend', 1, 'Hyped a Daily Signal (1★ → 0.8 creator, 0.2 platform)');
+            logTransaction(userAddress, 'spend', 1, 'Hyped a Daily Signal (1★ → 0.8 creator, 0.2 platform)', null, null, { from: userAddress, to: sData.authorAddr || CONFIG.ADMIN_ADDRESS });
 
             // ── Fix 2B: Do NOT manually patch the meta line count here.
             // sData.hypes is a point-in-time read taken BEFORE the increment write,
@@ -8026,7 +8048,8 @@
             // 100% of signal fee → platform revenue
             logAdminRevenue(userAddress, 'daily_signal_post', SIGNAL_FEE);
             logTransaction(userAddress, 'spend', SIGNAL_FEE,
-                `Daily Signal posted (24h) — ${SIGNAL_FEE.toFixed(1)}★ fee (100% platform)`);
+                `Daily Signal posted (24h) — ${SIGNAL_FEE.toFixed(1)}★ fee (100% platform)`,
+                null, null, { from: userAddress, to: CONFIG.ADMIN_ADDRESS });
 
             // Write to `signals` collection
             try {
@@ -8129,7 +8152,8 @@
         const firestoreLabel = postType === 1 ? 'text_post' : postType === 2 ? 'photo_post' : 'video_post';
         logAdminRevenue(userAddress, firestoreLabel, feeAmount);
         logTransaction(userAddress, 'spend', feeAmount,
-            `${postTypeLabel} Broadcast — ${feeAmount.toFixed(1)}★ creation fee (100% platform)`);
+            `${postTypeLabel} Broadcast — ${feeAmount.toFixed(1)}★ creation fee (100% platform)`,
+            null, null, { from: userAddress, to: CONFIG.ADMIN_ADDRESS });
 
         // Write post to `posts` Firestore collection
         try {
@@ -8390,7 +8414,8 @@
             // 100% → admin revenue. No creator split for this action.
             logAdminRevenue(userAddress, 'promote_to_signal', SIGNAL_FEE);
             logTransaction(userAddress, 'spend', SIGNAL_FEE,
-                `Promoted post to Signal — ${SIGNAL_FEE.toFixed(1)}★ (100% platform) · Post: ${postId.slice(0,8)}…`);
+                `Promoted post to Signal — ${SIGNAL_FEE.toFixed(1)}★ (100% platform) · Post: ${postId.slice(0,8)}…`,
+                null, null, { from: userAddress, to: CONFIG.ADMIN_ADDRESS });
 
             // Write to `signals` collection — same shape as a Daily Signal post
             await window.fs.addDoc(window.fs.collection(window.db, 'signals'), {
@@ -8647,7 +8672,8 @@
         if (!isAdmin) {
             logAdminRevenue(userAddress, firestoreLabel, feeAmount);
             logTransaction(userAddress, 'spend', feeAmount,
-                `${postTypeLabel} Broadcast in ${_activeCommunity.name} Hub — ${feeAmount.toFixed(1)}★ (100% platform)`);
+                `${postTypeLabel} Broadcast in ${_activeCommunity.name} Hub — ${feeAmount.toFixed(1)}★ (100% platform)`,
+                null, _activeCommunity.id, { from: userAddress, to: CONFIG.ADMIN_ADDRESS });
         }
 
         // ── Write post to Firestore with communityId ─────────────────────────
@@ -9182,7 +9208,8 @@
             }
             logAdminRevenue(userAddress, 'community_startup', effectiveCost);
             logTransaction(userAddress, 'spend', effectiveCost,
-                'Launched Community Hub: "' + name + '" \u2014 ' + (effectiveCost > 0 ? effectiveCost.toLocaleString() + '\u2605 startup cost (100% platform)' : 'FREE (admin bypass)'));
+                'Launched Community Hub: "' + name + '" \u2014 ' + (effectiveCost > 0 ? effectiveCost.toLocaleString() + '\u2605 startup cost (100% platform)' : 'FREE (admin bypass)'),
+                null, null, { from: userAddress, to: CONFIG.ADMIN_ADDRESS });
 
             // Write community doc to Firestore
             var ownerName = localStorage.getItem('hub_userName') || userHandle;
