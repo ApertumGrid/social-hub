@@ -4888,9 +4888,23 @@
             // Derive direction from address ownership — this is the source of truth.
             // tx.type alone is insufficient because a single doc appears in both
             // sender and receiver queries; direction must be resolved per-viewer.
+            //
+            // SELF-DEALING EXCEPTION: when fromAddress === toAddress === myAddr
+            // (e.g. creator follows their own community), address comparison is
+            // ambiguous — both txTo===myAddr AND txFrom===myAddr are true simultaneously.
+            // In this case the stored tx.type field IS the authoritative direction:
+            //   type='spend' → show as debit (the 1★ cost)
+            //   type='earn'  → show as credit (the 0.9★ reward)
+            // Without this guard, the txTo===myAddr branch wins for spend docs and
+            // misclassifies them as "+1 Earned" — the Ghost Debit bug.
             let displayType;
             if (tx.type === 'deposit' || tx.type === 'settle') {
                 displayType = tx.type;  // self-directed — always show as-is
+            } else if (txFrom === myAddr && txTo === myAddr) {
+                // Self-addressed: trust the stored type field — do NOT infer from address
+                displayType = (tx.type === 'spend') ? 'spend'
+                            : (tx.type === 'earn')  ? 'earn'
+                            : tx.type;
             } else if (txTo === myAddr) {
                 displayType = 'earn';   // user is the receiver — incoming
             } else if (txFrom === myAddr) {
@@ -6412,8 +6426,10 @@
         }
 
         try {
-            const isComment = displayId.startsWith('hc-');
-            const entityId  = displayId.replace(isComment ? 'hc-' : 'hp-', '');
+            const isComment    = displayId.startsWith('hc-');
+            const entityId     = displayId.replace(isComment ? 'hc-' : 'hp-', '');
+            const senderAddr   = userAddress.toLowerCase();
+            const recipientNorm = recipientAddress ? recipientAddress.toLowerCase() : null;
 
             if (isComment) {
                 await window.fs.updateDoc(window.fs.doc(window.db, "comments", entityId), { hypes: window.fs.increment(1) });
@@ -6421,76 +6437,83 @@
                 await window.fs.updateDoc(window.fs.doc(window.db, "posts", entityId), { hypes: window.fs.increment(1) });
             }
 
-            // ── STEP A: Deduct 1★ from sender FIRST (debit-before-credit) ──────────
-            // This ensures no stars are credited if the sender has insufficient balance.
+            // ── STEP A: Log spend FIRST — no spend record = no deduction ─────────────────
+            // Satisfies the log-before-deduct contract. The spend is permanently
+            // in Firestore before any balance change, so the ledger always shows
+            // the debit regardless of what happens next. Also fixes self-hype
+            // direction rendering: stored type='spend' is used by renderLedger.
+            await window.fs.addDoc(
+                window.fs.collection(window.db, 'user_transactions'),
+                {
+                    type:           'spend',
+                    amount:         1,
+                    fromAddress:    senderAddr,
+                    toAddress:      recipientNorm || CONFIG.ADMIN_ADDRESS,
+                    address:        senderAddr,
+                    description:    isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype",
+                    postId:         isComment ? null : entityId,
+                    timestamp:      Date.now(),
+                    schema_version: 2
+                }
+            );
+
+            // ── STEP B: Deduct 1★ from sender (spend is now in Firestore) ────────────
             await deductStars(1);
 
-            // ── STEP B: Revenue split ─────────────────────────────────────────────
-            // Comment hype (isComment = true):
-            //   • Global feed  → 80% commenter / 20% platform  (strict 80/20)
-            //   • Inside a Hub → 40% commenter / 40% Hub owner (Landlord Earnings) / 20% platform
-            // Post hype (isComment = false):
-            //   • Global feed or Hub owner’s own post → 80% creator / 20% platform
-            //   • Hub guest post → 40% guest / 40% Hub owner / 20% platform
+            // ── STEP C: Revenue split ─────────────────────────────────────────────────────
             if (isComment) {
-                if (recipientAddress && recipientAddress !== "unknown") {
+                if (recipientNorm && recipientNorm !== "unknown") {
                     if (_activeCommunity) {
-                        await creditCreatorStars(recipientAddress, 0.4);
+                        await creditCreatorStars(recipientNorm, 0.4);
                         logTransaction('earn', 0.4, {
-                            from: userAddress, to: recipientAddress,
+                            from: senderAddr, to: recipientNorm,
                             description: "Earnings from " + _activeCommunity.name + " Hub (comment hype)",
                             communityId: _activeCommunity.id
                         });
                         await creditCreatorStars(_activeCommunity.ownerId, 0.4);
                         logTransaction('earn', 0.4, {
-                            from: userAddress, to: _activeCommunity.ownerId,
+                            from: senderAddr, to: _activeCommunity.ownerId,
                             description: "Landlord Earnings from " + _activeCommunity.name + " Hub (comment hype)",
                             communityId: _activeCommunity.id
                         });
                     } else {
-                        await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
+                        await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
                         logTransaction('earn', CONFIG.CREATOR_CUT, {
-                            from: userAddress, to: recipientAddress,
+                            from: senderAddr, to: recipientNorm,
                             description: "Earnings from Global Feed"
                         });
                     }
                 }
-            } else if (_activeCommunity && recipientAddress &&
-                       recipientAddress.toLowerCase() !== _activeCommunity.ownerId.toLowerCase()) {
-                await creditCreatorStars(recipientAddress, 0.4);
+            } else if (_activeCommunity && recipientNorm &&
+                       recipientNorm !== _activeCommunity.ownerId.toLowerCase()) {
+                await creditCreatorStars(recipientNorm, 0.4);
                 logTransaction('earn', 0.4, {
-                    from: userAddress, to: recipientAddress,
+                    from: senderAddr, to: recipientNorm,
                     description: "Earnings from " + _activeCommunity.name + " Hub (guest post)",
                     postId: entityId, communityId: _activeCommunity.id
                 });
                 await creditCreatorStars(_activeCommunity.ownerId, 0.4);
                 logTransaction('earn', 0.4, {
-                    from: userAddress, to: _activeCommunity.ownerId,
+                    from: senderAddr, to: _activeCommunity.ownerId,
                     description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
                     postId: entityId, communityId: _activeCommunity.id
                 });
             } else {
-                if (recipientAddress && recipientAddress !== "unknown") {
+                if (recipientNorm && recipientNorm !== "unknown") {
                     const lbl = _activeCommunity
                         ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
                         : "Earnings from Global Feed";
-                    await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
+                    await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
                     logTransaction('earn', CONFIG.CREATOR_CUT, {
-                        from: userAddress, to: recipientAddress,
+                        from: senderAddr, to: recipientNorm,
                         description: lbl, postId: entityId,
                         communityId: _activeCommunity ? _activeCommunity.id : null
                     });
                 }
             }
 
-            // ── STEP C: Log sender spend entry with recipient as counterpart ─────
-            logAdminRevenue(userAddress, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
-            logTransaction('spend', 1, {
-                from: userAddress, to: recipientAddress || CONFIG.ADMIN_ADDRESS,
-                description: isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype",
-                postId: isComment ? null : entityId
-            });
-
+            // ── STEP D: Platform revenue ──────────────────────────────────────────────────
+            logAdminRevenue(senderAddr, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
             updateUI();
             updateDrawerUI();
             // ── Counter update ────────────────────────────────────────────────────
@@ -6567,8 +6590,11 @@
         }
 
         try {
-            const authorName = localStorage.getItem('hub_userName') || userHandle;
-            const authorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
+            const authorName  = localStorage.getItem('hub_userName') || userHandle;
+            const authorPic   = localStorage.getItem('hub_userPic')  || userAvatar;
+            const senderAddr  = userAddress.toLowerCase();
+            const recipientNorm = recipientAddress ? recipientAddress.toLowerCase() : null;
+
             const commentData = {
                 text: commentText, author: authorName,
                 authorAddr: userAddress || "unknown", avatar: authorPic,
@@ -6578,54 +6604,64 @@
 
             await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
 
-            // ── STEP A: Deduct 1★ from commenter FIRST (debit-before-credit) ─────
+            // ── STEP A: Log spend FIRST — no spend record = no deduction ─────────────────
+            await window.fs.addDoc(
+                window.fs.collection(window.db, 'user_transactions'),
+                {
+                    type:           'spend',
+                    amount:         1,
+                    fromAddress:    senderAddr,
+                    toAddress:      recipientNorm || CONFIG.ADMIN_ADDRESS,
+                    address:        senderAddr,
+                    description:    isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment",
+                    postId:         postId,
+                    timestamp:      Date.now(),
+                    schema_version: 2
+                }
+            );
+
+            // ── STEP B: Deduct 1★ from commenter (spend is now in Firestore) ────────────
             await deductStars(1);
 
-            // ── STEP B: Revenue split ─────────────────────────────────────────────
+            // ── STEP C: Revenue split ─────────────────────────────────────────────────────
             if (isReply) {
-                if (recipientAddress && recipientAddress !== "unknown") {
-                    await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
+                if (recipientNorm && recipientNorm !== "unknown") {
+                    await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
                     logTransaction('earn', CONFIG.CREATOR_CUT, {
-                        from: userAddress, to: recipientAddress,
+                        from: senderAddr, to: recipientNorm,
                         description: "Earnings from Global Feed", postId: postId
                     });
                 }
-            } else if (_activeCommunity && recipientAddress &&
-                       recipientAddress.toLowerCase() !== _activeCommunity.ownerId.toLowerCase()) {
-                await creditCreatorStars(recipientAddress, 0.4);
+            } else if (_activeCommunity && recipientNorm &&
+                       recipientNorm !== _activeCommunity.ownerId.toLowerCase()) {
+                await creditCreatorStars(recipientNorm, 0.4);
                 logTransaction('earn', 0.4, {
-                    from: userAddress, to: recipientAddress,
+                    from: senderAddr, to: recipientNorm,
                     description: "Earnings from " + _activeCommunity.name + " Hub (guest post)",
                     postId: postId, communityId: _activeCommunity.id
                 });
                 await creditCreatorStars(_activeCommunity.ownerId, 0.4);
                 logTransaction('earn', 0.4, {
-                    from: userAddress, to: _activeCommunity.ownerId,
+                    from: senderAddr, to: _activeCommunity.ownerId,
                     description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
                     postId: postId, communityId: _activeCommunity.id
                 });
             } else {
-                if (recipientAddress && recipientAddress !== "unknown") {
+                if (recipientNorm && recipientNorm !== "unknown") {
                     const lbl = _activeCommunity
                         ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
                         : "Earnings from Global Feed";
-                    await creditCreatorStars(recipientAddress, CONFIG.CREATOR_CUT);
+                    await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
                     logTransaction('earn', CONFIG.CREATOR_CUT, {
-                        from: userAddress, to: recipientAddress,
+                        from: senderAddr, to: recipientNorm,
                         description: lbl, postId: postId,
                         communityId: _activeCommunity ? _activeCommunity.id : null
                     });
                 }
             }
 
-            // ── STEP C: Log sender spend with counterpart ─────────────────────────
-            logAdminRevenue(userAddress, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
-            logTransaction('spend', 1, {
-                from: userAddress, to: recipientAddress || CONFIG.ADMIN_ADDRESS,
-                description: isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment",
-                postId: postId
-            });
-
+            // ── STEP D: Platform revenue ──────────────────────────────────────────────────
+            logAdminRevenue(senderAddr, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
             updateUI();
             updateDrawerUI();
             if (input) input.value = "";
@@ -9995,23 +10031,35 @@
                     return showToast('Not enough Stars to follow! Deposit APTM.');
                 }
 
-                // STEP B: Deduct 1★ from sender
+                // STEP B: Log the spend entry BEFORE deducting.
+                // "No spend record = no deduction" contract — abort if write fails.
+                await window.fs.addDoc(
+                    window.fs.collection(window.db, 'user_transactions'),
+                    {
+                        type:           'spend',
+                        amount:         1,
+                        fromAddress:    senderAddr,
+                        toAddress:      recipientAddr,
+                        address:        senderAddr,
+                        description:    'Followed ' + recipientAddr.slice(0, 8) + '…',
+                        timestamp:      Date.now(),
+                        schema_version: 2
+                    }
+                );
+
+                // STEP C: Deduct 1★ from sender (spend is now in Firestore)
                 await deductStars(1);
 
-                // STEP C: Credit 0.9★ to recipient (creditCreatorStars uses lowercase internally)
+                // STEP D: Credit 0.9★ to recipient
                 await creditCreatorStars(recipientAddr, 0.9);
 
-                // STEP D: Route 0.1★ to platform revenue
+                // STEP E: Route 0.1★ to platform revenue
                 logAdminRevenue(senderAddr, 'follow_fee', 0.1);
 
-                // STEP E: Log both sides of the transaction in the ledger
+                // STEP F: Log earn entry with the correct 90% amount
                 logTransaction('earn', 0.9, {
                     from: senderAddr, to: recipientAddr,
                     description: 'Follow Earnings from ' + senderAddr.slice(0, 8) + '…'
-                });
-                logTransaction('spend', 1, {
-                    from: senderAddr, to: recipientAddr,
-                    description: 'Followed ' + recipientAddr.slice(0, 8) + '…'
                 });
 
                 // Write the social_graph document AFTER payment succeeds
@@ -10122,23 +10170,35 @@
             }
 
             // 90/10 split
-            const creatorCut = 0.9;
+            const creatorCut  = 0.9;
             const platformCut = 0.1;
+            const senderAddr  = userAddress.toLowerCase();
 
-            // STEP A: debit sender first
+            // STEP A: Log spend FIRST — no spend record = no deduction
+            await window.fs.addDoc(
+                window.fs.collection(window.db, 'user_transactions'),
+                {
+                    type:           'spend',
+                    amount:         1,
+                    fromAddress:    senderAddr,
+                    toAddress:      _heroTargetAddr,
+                    address:        senderAddr,
+                    description:    'Profile Like on ' + _heroTargetAddr.slice(0,8) + '…',
+                    timestamp:      Date.now(),
+                    schema_version: 2
+                }
+            );
+
+            // STEP B: Deduct 1★ from sender
             await deductStars(1);
 
-            // STEP B: 90% to creator
+            // STEP C: 90% to creator
             await creditCreatorStars(_heroTargetAddr, creatorCut);
             logTransaction('earn', creatorCut, {
-                from: userAddress, to: _heroTargetAddr,
-                description: 'Profile Like from ' + userAddress.toLowerCase().slice(0,8) + '…'
+                from: senderAddr, to: _heroTargetAddr,
+                description: 'Profile Like from ' + senderAddr.slice(0,8) + '…'
             });
-            logTransaction('spend', 1, {
-                from: userAddress, to: _heroTargetAddr,
-                description: 'Profile Like on ' + _heroTargetAddr.slice(0,8) + '…'
-            });
-            logAdminRevenue(userAddress, 'profile_like', platformCut);
+            logAdminRevenue(senderAddr, 'profile_like', platformCut);
 
             // Star shower animation — small (1 star)
             triggerStarShower(event, 1);
@@ -10229,21 +10289,33 @@
             // 90/10 split
             const creatorCut  = parseFloat((amount * 0.9).toFixed(4));
             const platformCut = parseFloat((amount * 0.1).toFixed(4));
+            const senderAddr  = userAddress.toLowerCase();
 
-            // STEP A: debit sender first
+            // STEP A: Log spend FIRST — no spend record = no deduction
+            await window.fs.addDoc(
+                window.fs.collection(window.db, 'user_transactions'),
+                {
+                    type:           'spend',
+                    amount:         amount,
+                    fromAddress:    senderAddr,
+                    toAddress:      _heroTargetAddr,
+                    address:        senderAddr,
+                    description:    'Profile Tip to ' + _heroTargetAddr.slice(0,8) + '… (' + amount + '★)',
+                    timestamp:      Date.now(),
+                    schema_version: 2
+                }
+            );
+
+            // STEP B: Deduct stars from sender
             await deductStars(amount);
 
-            // STEP B: 90% to creator
+            // STEP C: 90% to creator
             await creditCreatorStars(_heroTargetAddr, creatorCut);
             logTransaction('earn', creatorCut, {
-                from: userAddress, to: _heroTargetAddr,
-                description: 'Profile Tip from ' + userAddress.toLowerCase().slice(0,8) + '… (' + amount + '★)'
+                from: senderAddr, to: _heroTargetAddr,
+                description: 'Profile Tip from ' + senderAddr.slice(0,8) + '… (' + amount + '★ → ' + creatorCut.toFixed(2) + '★ after split)'
             });
-            logTransaction('spend', amount, {
-                from: userAddress, to: _heroTargetAddr,
-                description: 'Profile Tip to ' + _heroTargetAddr.slice(0,8) + '… (' + amount + '★)'
-            });
-            logAdminRevenue(userAddress, 'profile_tip', platformCut);
+            logAdminRevenue(senderAddr, 'profile_tip', platformCut);
 
             // Star shower — intensity scales with amount
             const tipBtn = document.getElementById('hero-tip-btn');
@@ -10377,30 +10449,63 @@
                     return showToast('Not enough Stars to follow! Deposit APTM.');
                 }
 
-                // STEP B: Deduct 1★ from sender
+                // ── SELF-DEALING GUARD ───────────────────────────────────────
+                // When senderAddr === creatorAddr (creator follows their own Hub),
+                // the spend and earn are two SEPARATE database writes to the same
+                // document. We must sequence them carefully:
+                //   1. Log the spend entry first (pre-deduct contract)
+                //   2. Deduct 1★ from balance
+                //   3. Credit 0.9★ back as a SEPARATE write (never skip this)
+                //   4. Log the earn entry
+                // This order ensures the ledger always shows both sides, and the
+                // net balance change is -0.1★ regardless of who owns the community.
+                const isSelfDeal = (senderAddr === creatorAddr);
+
+                // STEP B: Log the spend entry BEFORE deducting.
+                // "No spend record = no deduction" — if this write fails, abort.
+                const spendDocRef = await new Promise((resolve, reject) => {
+                    window.fs.addDoc(
+                        window.fs.collection(window.db, 'user_transactions'),
+                        {
+                            type:           'spend',
+                            amount:         1,
+                            fromAddress:    senderAddr,
+                            toAddress:      creatorAddr || CONFIG.ADMIN_ADDRESS,
+                            address:        senderAddr,
+                            description:    'Followed Hub: ' + (_activeCommunity.name || commId)
+                                            + (isSelfDeal ? ' [self]' : ''),
+                            communityId:    commId,
+                            timestamp:      Date.now(),
+                            schema_version: 2
+                        }
+                    ).then(resolve).catch(reject);
+                });
+                console.log('[commFollowHub] Spend logged:', spendDocRef.id, '— proceeding to deduct.');
+
+                // STEP C: Deduct 1★ from sender (now that spend is in Firestore)
                 await deductStars(1);
 
-                // STEP C: Credit 0.9★ to community creator
+                // STEP D: Credit 0.9★ to community creator.
+                // On self-deal this is a SEPARATE write — must always run.
+                // creditCreatorStars uses its own runTransaction, so it reads the
+                // post-deduct value of the doc and increments creatorStars atomically.
                 if (creatorAddr) {
                     await creditCreatorStars(creatorAddr, 0.9);
                 }
 
-                // STEP D: Route 0.1★ to platform revenue
+                // STEP E: Route 0.1★ to platform revenue
                 logAdminRevenue(senderAddr, 'community_follow_fee', 0.1);
 
-                // STEP E: Log both sides of the transaction
+                // STEP F: Log the earn entry with the CORRECT 90% amount (0.9, not 1.0)
                 if (creatorAddr) {
                     logTransaction('earn', 0.9, {
                         from: senderAddr, to: creatorAddr,
-                        description: 'Hub Follow Earnings — ' + (_activeCommunity.name || commId) + ' (from ' + senderAddr.slice(0, 8) + '…)',
+                        description: 'Hub Follow Earnings — ' + (_activeCommunity.name || commId)
+                                     + ' (from ' + senderAddr.slice(0, 8) + '…)'
+                                     + (isSelfDeal ? ' [self-deal: separate credit applied]' : ''),
                         communityId: commId
                     });
                 }
-                logTransaction('spend', 1, {
-                    from: senderAddr, to: creatorAddr || CONFIG.ADMIN_ADDRESS,
-                    description: 'Followed Hub: ' + (_activeCommunity.name || commId),
-                    communityId: commId
-                });
 
                 // Write social_graph entry — community ID is the 'following' value
                 await window.fs.setDoc(docRef, {
