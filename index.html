@@ -5042,13 +5042,19 @@
             //   earn/deposit  → they must be the toAddress   (they received the stars)
             //
             // CIRCULAR LOOP GUARD: platform fee rows (toAddress = 'admin_vault' or
-            // CONFIG.ADMIN_ADDRESS) must NEVER appear as earned income in any user's
-            // personal ledger — they are platform revenue and belong only in the
-            // Admin Dashboard. This stops the admin's own broadcast fees appearing
-            // as "Earned" events in their personal ledger.
-            const adminAddrLower = (typeof CONFIG !== 'undefined' && CONFIG.ADMIN_ADDRESS)
-                ? CONFIG.ADMIN_ADDRESS.toLowerCase() : '';
-            const PLATFORM_SINKS = new Set(['admin_vault', 'platform', adminAddrLower].filter(Boolean));
+            // 'platform') must NEVER appear as earned income in any user's personal
+            // ledger — they are platform revenue and belong only in the Admin Dashboard.
+            //
+            // CRITICAL: do NOT include adminAddrLower (CONFIG.ADMIN_ADDRESS) in this set.
+            // The admin is also a real user. When another user hypes the admin's post,
+            // logTransaction('earn', 0.8, { to: adminAddr }) is written to user_transactions.
+            // That earn doc must appear in the admin's personal ledger (teal).
+            // Platform fees are routed through logAdminRevenue → `platform_revenue`
+            // collection (a completely separate Firestore collection), so they never
+            // reach user_transactions at all. Adding adminAddr to PLATFORM_SINKS
+            // incorrectly filters out all legitimate admin earn receipts — the exact
+            // bug causing "balance moves but receipt is missing."
+            const PLATFORM_SINKS = new Set(['admin_vault', 'platform']);
 
             const docs = Object.values(_combined).filter(function(tx) {
                 const txFrom = (tx.fromAddress || tx.from || '').toLowerCase();
