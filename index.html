@@ -4786,21 +4786,36 @@
         }
         el.innerHTML = "";
         docs.slice(0, 10).forEach(tx => {
-            const isEarn = tx.type === "earn" || tx.type === "deposit";
-            const prefix = isEarn ? "+" : "−";
-            const amtStr = prefix + parseFloat(tx.amount).toFixed(1) + " ★";
-            const amtCls = isEarn ? "earn" : (tx.type === "settle" ? "neutral" : "spend");
-            const badge  = { earn:"Earned", spend:"Spent", deposit:"Deposit", settle:"Settle" }[tx.type] || tx.type;
-            const date   = new Date(tx.timestamp).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
-            // Use canonical fromAddress/toAddress; fall back to legacy from/to for old docs
-            const txFrom = tx.fromAddress || tx.from || '';
-            const txTo   = tx.toAddress   || tx.to   || '';
-            // Counterpart chip: earn rows show sender, spend rows show receiver
+            const myAddr = userAddress ? userAddress.toLowerCase() : '';
+            const txFrom = (tx.fromAddress || tx.from || '').toLowerCase();
+            const txTo   = (tx.toAddress   || tx.to   || '').toLowerCase();
+
+            // Derive direction from address ownership — this is the source of truth.
+            // tx.type alone is insufficient because a single doc appears in both
+            // sender and receiver queries; direction must be resolved per-viewer.
+            let displayType;
+            if (tx.type === 'deposit' || tx.type === 'settle') {
+                displayType = tx.type;  // self-directed — always show as-is
+            } else if (txTo === myAddr) {
+                displayType = 'earn';   // user is the receiver — incoming
+            } else if (txFrom === myAddr) {
+                displayType = 'spend';  // user is the sender — outgoing
+            } else {
+                return;  // should never reach here after _mergeFire filter, but guard anyway
+            }
+
+            const isEarn = displayType === 'earn' || displayType === 'deposit';
+            const prefix = isEarn ? '+' : '−';
+            const amtStr = prefix + parseFloat(tx.amount).toFixed(1) + ' ★';
+            const amtCls = isEarn ? 'earn' : (displayType === 'settle' ? 'neutral' : 'spend');
+            const badge  = { earn:'Earned', spend:'Spent', deposit:'Deposit', settle:'Settle' }[displayType] || displayType;
+            const date   = new Date(tx.timestamp).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+            // Counterpart chip: earn rows show who sent, spend rows show who received
             let counterpart = '';
-            if (tx.type === 'earn' && txFrom && txFrom !== tx.address && txFrom !== 'undefined') {
+            if (displayType === 'earn' && txFrom && txFrom !== myAddr && txFrom !== 'undefined') {
                 const label = txFrom.startsWith('0x') ? txFrom.slice(0,6) + '\u2026' : txFrom;
                 counterpart = `<span style="font-size:0.58rem;color:var(--text-muted);margin-left:4px;">from ${label}</span>`;
-            } else if (tx.type === 'spend' && txTo && txTo !== tx.address && txTo !== 'undefined') {
+            } else if (displayType === 'spend' && txTo && txTo !== myAddr && txTo !== 'undefined') {
                 const label = txTo.startsWith('0x') ? txTo.slice(0,6) + '\u2026' : txTo;
                 counterpart = `<span style="font-size:0.58rem;color:var(--text-muted);margin-left:4px;">to ${label}</span>`;
             }
@@ -4814,7 +4829,7 @@
                 : '';
             row.innerHTML = `
                 <div class="ledger-desc">${tx.description}${counterpart}${jumpHint}<small>${date}</small></div>
-                <div style="width:58px;text-align:center;flex-shrink:0;"><span class="ledger-badge ${tx.type}">${badge}</span></div>
+                <div style="width:58px;text-align:center;flex-shrink:0;"><span class="ledger-badge ${displayType}">${badge}</span></div>
                 <div class="ledger-amount ${amtCls}">${amtStr}</div>`;
             if (tx.postId) {
                 row.setAttribute('data-post-id', tx.postId);
@@ -4857,14 +4872,20 @@
         try { localStorage.setItem(_NOTIF_LS_KEY, String(Date.now())); } catch (_) {}
     }
 
-    // ── Internal: called from subscribeLedger's onSnapshot with the doc array ──
+    // ── Internal: called from subscribeLedger's onSnapshot with the filtered doc array ──
     function _notifDotCheck(docs) {
-        // Only earned (incoming) events trigger the dot
-        var earnDocs = docs.filter(function(d) { return d.type === 'earn'; });
-        if (earnDocs.length === 0) return;
+        // Only incoming (earn) events where the current user is the receiver trigger the dot.
+        // After _mergeFire's filter, all docs are already user-relevant, but we
+        // re-check toAddress to be certain we only notify on genuine incoming credits.
+        const myAddr = userAddress ? userAddress.toLowerCase() : '';
+        var incomingDocs = docs.filter(function(d) {
+            const txTo = (d.toAddress || d.to || '').toLowerCase();
+            return (d.type === 'earn' || d.type === 'deposit') && txTo === myAddr;
+        });
+        if (incomingDocs.length === 0) return;
 
-        // Most-recent earn timestamp
-        var latestTs = earnDocs.reduce(function(max, d) {
+        // Most-recent incoming timestamp
+        var latestTs = incomingDocs.reduce(function(max, d) {
             return Math.max(max, d.timestamp || 0);
         }, 0);
         if (!latestTs) return;
@@ -4901,7 +4922,28 @@
 
         function _mergeFire(snap) {
             snap.forEach(d => { _combined[d.id] = d.data(); });
-            const docs = Object.values(_combined);
+
+            // ── Security filter: strict directional ownership ─────────────────
+            // A user must only see a transaction if they are the correct party:
+            //   spend/settle  → they must be the fromAddress (they sent the stars)
+            //   earn/deposit  → they must be the toAddress   (they received the stars)
+            // This prevents "circular balance" where a spend entry appears as an
+            // earn entry in the same user's ledger, and stops global leakage where
+            // a user sees transactions they are neither sender nor receiver of.
+            const docs = Object.values(_combined).filter(function(tx) {
+                const txFrom = (tx.fromAddress || tx.from || '').toLowerCase();
+                const txTo   = (tx.toAddress   || tx.to   || '').toLowerCase();
+                const t = tx.type || '';
+                if (t === 'spend' || t === 'settle') {
+                    return txFrom === addr;   // user must be the sender
+                }
+                if (t === 'earn' || t === 'deposit') {
+                    return txTo === addr;     // user must be the receiver
+                }
+                // Unknown type: show only if user is either party
+                return txFrom === addr || txTo === addr;
+            });
+
             docs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
             renderLedger(docs);
             _notifDotCheck(docs);
