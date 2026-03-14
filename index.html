@@ -4238,6 +4238,7 @@
             provider    = new ethers.providers.Web3Provider(window.ethereum);
             const accts = await provider.send("eth_requestAccounts", []);
             userAddress = accts[0];
+            window.userAddress = userAddress;   // keep window in sync for logTransaction fallback
             signer      = provider.getSigner();
             hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
 
@@ -4764,6 +4765,7 @@
     }
 
     // 100% of post fees + 20% of interactions → admin_revenue
+    window.logTransaction = logTransaction;   // expose for console debugging and external calls
     function logAdminRevenue(sourceAddress, actionType, amount) {
         if (!window.db) return;
         window.fs.addDoc(window.fs.collection(window.db, "platform_revenue"), {
