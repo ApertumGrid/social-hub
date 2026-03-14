@@ -374,6 +374,22 @@
         .card:hover { border-color: var(--border-md); box-shadow: 0 2px 8px rgba(0,0,0,0.10); }
 
         .composer-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+
+        /* ── FIX 2: Collapsed composer state — shown after successful broadcast ── */
+        #composer-card.composer-collapsed .composer-body { display: none; }
+        #composer-card.composer-collapsed .composer-row  { margin-bottom: 0; cursor: pointer; }
+        #composer-card.composer-collapsed {
+            cursor: pointer;
+            border-color: var(--border) !important;
+            background: var(--bg-card2);
+        }
+        #composer-card.composer-collapsed .composer-sub::after {
+            content: '  ✦ tap to broadcast again';
+            color: var(--purple-lt);
+        }
+        /* ── FIX 1: Signals bar only visible on home tab ── */
+        #signals-bar.signals-hidden,
+        #category-bar.signals-hidden { display: none !important; }
         .av { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border-md); object-fit: cover; flex-shrink: 0; }
         .composer-name { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
         .composer-sub  { font-size: 0.65rem; color: var(--text-secondary); }
@@ -1522,6 +1538,43 @@
         #preview-video { width: 100%; max-height: 200px; display: block; }
         .page-heading { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; }
         .page-heading span { color: var(--purple-lt); }
+
+        /* ── Profile wall feed ── */
+        #profile-edit-form.hidden { display: none; }
+        #profile-wall-feed .profile-post-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 14px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+        #profile-wall-feed .profile-post-card:hover { border-color: var(--purple-lt); }
+        #profile-wall-feed .profile-post-meta {
+            font-size: 0.62rem; color: var(--text-muted);
+            font-family: var(--font-mono); margin-bottom: 6px;
+            display: flex; gap: 10px; align-items: center;
+        }
+        #profile-wall-feed .profile-post-text {
+            font-size: 0.82rem; color: var(--text-primary); line-height: 1.5;
+            /* clamp to 3 lines with fade */
+            display: -webkit-box; -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical; overflow: hidden;
+        }
+        #profile-wall-feed .profile-post-stats {
+            margin-top: 8px; display: flex; gap: 14px;
+            font-size: 0.65rem; color: var(--text-muted);
+        }
+        #profile-wall-feed .profile-post-media {
+            margin-top: 8px; border-radius: var(--radius-sm);
+            max-width: 100%; max-height: 180px;
+            object-fit: cover; display: block;
+        }
+        #profile-wall-feed .pwf-empty {
+            text-align: center; padding: 32px 0;
+            color: var(--text-muted); font-size: 0.78rem;
+        }
         .info-box { padding: 12px 14px; background: var(--purple-dim); border: 1px solid rgba(124,92,191,0.2); border-radius: var(--radius-md); font-size: 0.78rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 14px; }
         .info-box strong { color: var(--purple-lt); }
         .balance-note { font-size: 0.62rem; color: var(--text-muted); margin-top: 2px; }
@@ -3110,6 +3163,8 @@
                         </div>
                     </div>
 
+                    <!-- composer-body: hidden when card has .composer-collapsed -->
+                    <div class="composer-body">
                     <div id="edit-mode-banner">✎ Editing your post &mdash; hit &ldquo;Update Post&rdquo; to save, or <span style="cursor:pointer;text-decoration:underline;" onclick="cancelEditPost()">Cancel</span> to discard.</div>
                     <textarea id="post-text" class="field" placeholder="What's your signal?"></textarea>
 
@@ -3170,9 +3225,10 @@
                     </div>
 
                     <div class="fee-display" id="post-fee-display"></div>
-                    <div id="vault-liquidity-warning">⚠ Low Liquidity — Vault holds 0 APTM. Broadcast & Post disabled until funded.</div>
+                    <div id="vault-liquidity-warning">⚠ Low Liquidity — Vault holds 0 APTM. Broadcast &amp; Post disabled until funded.</div>
                     <button class="btn btn-purple" id="broadcast-btn" onclick="handleBroadcast()">◈ Broadcast Signal</button>
-                </div>
+                    </div><!-- /composer-body -->
+                </div><!-- /composer-card -->
 
                 <!-- Wall filter header — replaced by Profile Hero in Index 24 -->
                 <div id="profile-hero">
@@ -3271,7 +3327,6 @@
                 <!-- CATEGORY FILTER BAR -->
                 <div id="category-bar">
                     <div class="cat-pill active" data-cat="All" onclick="setCategoryFilter('All')">🌐 All</div>
-                    <div class="cat-pill" data-cat="Global" onclick="setCategoryFilter('Global')">🌐 Global</div>
                     <div class="cat-pill" data-cat="Crypto" onclick="setCategoryFilter('Crypto')">🪙 Crypto</div>
                     <div class="cat-pill" data-cat="Creative" onclick="setCategoryFilter('Creative')">🎨 Creative</div>
                     <div class="cat-pill" data-cat="News" onclick="setCategoryFilter('News')">📰 News</div>
@@ -3280,7 +3335,7 @@
 
                 <div id="feed-items"></div>
                 <button id="load-more-btn" class="btn" onclick="showNextPage()">Load More Signals</button>
-            </div>
+            </div><!-- /page-home -->
 
             <!-- CREATOR STUDIO PAGE -->
             <div id="page-earnings" class="page">
@@ -3438,12 +3493,50 @@
 
             <!-- PROFILE PAGE -->
             <div id="page-profile" class="page">
-                <div class="page-heading">My <span>Identity</span></div>
-                <div class="card">
-                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:14px;">Set your display name and avatar URL. Saved locally, shown on all broadcasts.</div>
-                    <input type="text" id="handle-input" class="field" placeholder="@Username" style="margin-top:0;">
-                    <input type="text" id="avatar-input" class="field" placeholder="Avatar Image URL">
-                    <button class="btn btn-purple" onclick="saveProfile()">Sync Identity</button>
+                <div class="page-heading">My <span>Profile</span></div>
+
+                <!-- Identity card — compact, always at top -->
+                <div class="card" id="profile-identity-card">
+                    <div style="display:flex; align-items:center; gap:14px; margin-bottom:14px;">
+                        <img id="profile-avatar-preview" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub"
+                             style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--purple-lt);flex-shrink:0;">
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-size:0.95rem;font-weight:700;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="profile-display-name">Anonymous_Creator</div>
+                            <div style="font-size:0.62rem;color:var(--text-muted);font-family:var(--font-mono);margin-top:2px;" id="profile-display-addr">— connect wallet —</div>
+                        </div>
+                        <!-- Collapse/expand identity edit form -->
+                        <button id="profile-edit-toggle"
+                                onclick="document.getElementById('profile-edit-form').classList.toggle('hidden')"
+                                style="font-size:0.68rem;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-secondary);cursor:pointer;flex-shrink:0;">
+                            ✎ Edit
+                        </button>
+                    </div>
+
+                    <!-- Collapsible edit form — hidden by default once profile is set -->
+                    <div id="profile-edit-form">
+                        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px;">
+                            Set your display name and avatar URL. Saved locally and synced to Firebase.
+                        </div>
+                        <input type="text" id="handle-input" class="field" placeholder="@Username" style="margin-top:0;"
+                               oninput="(function(v){var el=document.getElementById('profile-display-name');if(el&&v)el.textContent=v;})(this.value)">
+                        <input type="text" id="avatar-input" class="field" placeholder="Avatar Image URL"
+                               oninput="(function(v){var el=document.getElementById('profile-avatar-preview');if(el&&v)el.src=v;})(this.value)">
+                        <button class="btn btn-purple" onclick="saveProfile()">Sync Identity</button>
+                    </div>
+                </div>
+
+                <!-- Personal wall divider -->
+                <div style="display:flex;align-items:center;gap:10px;margin:18px 0 10px;">
+                    <div style="font-size:0.75rem;font-weight:700;color:var(--text-primary);letter-spacing:0.3px;">◉ My Broadcasts</div>
+                    <div style="flex:1;height:1px;background:var(--border);"></div>
+                    <div style="font-size:0.6rem;color:var(--text-muted);" id="profile-wall-count">—</div>
+                </div>
+
+                <!-- Personal wall feed — posts injected here by _loadProfileWallFeed() -->
+                <div id="profile-wall-feed">
+                    <div style="text-align:center;padding:28px 0;color:var(--text-muted);font-size:0.78rem;">
+                        Connect your wallet to see your posts.
+                    </div>
                 </div>
             </div>
 
@@ -4512,6 +4605,14 @@
             const pbH  = document.getElementById('pb-handle');  if (pbH)  pbH.textContent = userHandle;
             const nvH  = document.getElementById('nav-handle');  if (nvH)  nvH.textContent = userHandle;
 
+            // ── Sync My Profile tab identity header ───────────────────────────────
+            const profAv   = document.getElementById('profile-avatar-preview');
+            const profName = document.getElementById('profile-display-name');
+            const profAddr = document.getElementById('profile-display-addr');
+            if (profAv   && userAvatar)  profAv.src           = userAvatar;
+            if (profName && userHandle)  profName.textContent = userHandle;
+            if (profAddr && userAddress) profAddr.textContent = userAddress.slice(0,8) + '…' + userAddress.slice(-4);
+
             // Update settle button text with live APTM amount
             if (typeof updateSettleButtons === 'function') updateSettleButtons();
 
@@ -4587,6 +4688,12 @@
 
         updateUI();
         loadGlobalFeed();
+
+        // ── Refresh the My Profile tab's identity header + wall feed ──
+        if (typeof _loadProfileWallFeed === 'function') _loadProfileWallFeed();
+        // Auto-collapse the edit form after saving
+        const editForm = document.getElementById('profile-edit-form');
+        if (editForm) editForm.classList.add('hidden');
     }
 
     // ── Load profile from Firebase when wallet connects ──────────────
@@ -6112,7 +6219,7 @@
             const fcEl = document.getElementById('feed-col');
             if (fcEl) fcEl.classList.remove('wall-view');
             const sigBar = document.getElementById('signals-bar');
-            if (sigBar) sigBar.style.display = '';
+            if (sigBar) sigBar.classList.remove('signals-hidden');
         }
 
         // 2. Grab all the elements we need to show/hide
@@ -6146,67 +6253,217 @@
         if (activeMobileBtn) { const b = document.getElementById(activeMobileBtn); if (b) b.classList.add('active'); }
 
         // 6. Show the correct content for the active tab
+        // FIX 1: Signals bar and category bar sit outside page-home as feed-col siblings.
+        // They must be explicitly hidden on non-home tabs and restored on home.
+        const signalsBarEl  = document.getElementById('signals-bar');
+        const categoryBarEl = document.getElementById('category-bar');
+
         if (tabName === 'home') {
             if (pageHome)     pageHome.style.display     = 'contents';
             if (composerCard) composerCard.style.display = '';
             if (feedItems)    feedItems.style.display    = '';
             if (feedHeading)  feedHeading.style.display  = '';
             if (loadMoreBtn)  loadMoreBtn.style.display  = '';
+            // Restore signals + category bar on home
+            if (signalsBarEl)  signalsBarEl.classList.remove('signals-hidden');
+            if (categoryBarEl) categoryBarEl.classList.remove('signals-hidden');
+            // Re-expand composer if it was collapsed from a previous broadcast
+            if (typeof _expandComposer === 'function') _expandComposer();
             const feedCol = document.getElementById('feed-col');
             if (feedCol) feedCol.scrollTop = 0;
             window.scrollTo({ top: 0, behavior: 'smooth' });
 
-            // ── Always clear community context when returning to Home ─────────────
-            // Prevents global broadcasts from inheriting a communityId if the user
-            // navigated home via the nav bar without explicitly closing the Hub feed.
+            // Clear community context when returning to Home
             _activeCommunity = null;
-            // Tear down the live communities listener — it will restart next time the
-            // Communities tab is opened via loadCommunities().
             if (_commUnsub) { try { _commUnsub(); } catch (_) {} _commUnsub = null; }
 
-            // ── Reset category filter to All and reload the global feed ──────────
-            // This runs whenever any Home entry point is used (nav-home, bnav-home,
-            // mdash-home, hero-back-btn, wall-back-btn, jumpToPost).
-            // Without this, the feed stays filtered to the last wall/category even
-            // after _wallFilter has been cleared above.
-            const hadWallOrCat = (_wallFilter === null && _categoryFilter !== null);
-            // _wallFilter was already nulled above if it was set; check if we need
-            // a feed reload. We always reload on home-return to guarantee a clean state.
+            // Reset category filter to All and reload the global feed
             _categoryFilter = null;
-            // Sync the category-bar pill UI back to "All"
             document.querySelectorAll('.cat-pill').forEach(function(pill) {
                 pill.classList.toggle('active', pill.getAttribute('data-cat') === 'All');
             });
-            // Reload the feed — loadGlobalFeed tears down the stale listener and
-            // opens a fresh unfiltered onSnapshot. Guard with typeof so this is
-            // safe even if the function hasn't been defined yet on first paint.
             if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
 
         } else {
-            // All non-home tabs: hide the feed content so the page panel shows
+            // All non-home tabs: hide feed content AND home-scoped elements
             if (composerCard) composerCard.style.display = 'none';
             if (feedItems)    feedItems.style.display    = 'none';
             if (feedHeading)  feedHeading.style.display  = 'none';
             if (loadMoreBtn)  loadMoreBtn.style.display  = 'none';
+            // FIX 1: Hide signals bar and category bar on all non-home tabs
+            if (signalsBarEl)  signalsBarEl.classList.add('signals-hidden');
+            if (categoryBarEl) categoryBarEl.classList.add('signals-hidden');
 
-            // Map both desktop ('earnings','info','profile') and mobile ('studio','tokenomics') names
+            // Tear down profile wall listener when navigating away from profile tab
+            if (tabName !== 'profile' && typeof _profileWallUnsub !== 'undefined' && _profileWallUnsub) {
+                try { _profileWallUnsub(); } catch (_) {}
+                _profileWallUnsub = null;
+            }
+
             const pageMap = { earnings: 'earnings', studio: 'earnings', info: 'info', tokenomics: 'info', profile: 'profile', communities: 'communities' };
             const pageId  = pageMap[tabName];
             const pg      = pageId ? document.getElementById('page-' + pageId) : null;
             if (pg) { pg.style.display = 'block'; pg.classList.add('active'); }
             if (tabName === 'communities' && typeof loadCommunities === 'function') loadCommunities();
 
-            // ── Clear ledger notification dot when Creator Studio or Ledger is opened ──
-            // Covers: desktop 'earnings', mobile 'studio', mobile 'ledger' bnav buttons
+            // Clear ledger notification dot when Creator Studio is opened
             if (tabName === 'earnings' || tabName === 'studio' || tabName === 'ledger') {
                 if (typeof _notifDotClear === 'function') _notifDotClear();
             }
+
+            // FIX 3: Profile tab — inject personal wall feed below identity card
+            if (tabName === 'profile') {
+                _loadProfileWallFeed();
+            }
         }
     }
-
     function switchPage(p, el) {
         _activateTab(p, el);
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // FIX 3: _loadProfileWallFeed()
+    //
+    // Renders the current user's own posts into #profile-wall-feed on
+    // the My Profile tab. Completely separate from the main feed-items
+    // div — does NOT disturb global feed state or listeners.
+    // Also syncs the identity header fields (avatar, name, address).
+    // ═══════════════════════════════════════════════════════════════════
+    let _profileWallUnsub = null;   // active onSnapshot unsub for profile wall
+
+    function _loadProfileWallFeed() {
+        const container = document.getElementById('profile-wall-feed');
+        const countEl   = document.getElementById('profile-wall-count');
+        if (!container) return;
+
+        // ── Sync identity header from live state ──────────────────────
+        const avatarPreview = document.getElementById('profile-avatar-preview');
+        const nameDisplay   = document.getElementById('profile-display-name');
+        const addrDisplay   = document.getElementById('profile-display-addr');
+        const handleInput   = document.getElementById('handle-input');
+        const avatarInput   = document.getElementById('avatar-input');
+
+        if (avatarPreview && userAvatar)  avatarPreview.src         = userAvatar;
+        if (nameDisplay   && userHandle)  nameDisplay.textContent   = userHandle;
+        if (addrDisplay   && userAddress) addrDisplay.textContent   = userAddress.slice(0,8) + '…' + userAddress.slice(-4);
+        if (handleInput   && userHandle)  handleInput.value         = userHandle;
+        if (avatarInput   && userAvatar)  avatarInput.value         = userAvatar;
+
+        // Auto-collapse the edit form when the user already has a handle —
+        // experienced users see the storefront directly. New users (no handle
+        // saved) see the form open so they know to fill it in first.
+        const editForm = document.getElementById('profile-edit-form');
+        if (editForm) {
+            const hasProfile = userHandle && userHandle !== 'Anonymous_Creator';
+            editForm.classList.toggle('hidden', !!hasProfile);
+        }
+
+        // ── If no wallet connected, show connect prompt ───────────────
+        if (!userAddress || !window.db) {
+            container.innerHTML = '<div class="pwf-empty">Connect your wallet to see your posts.</div>';
+            if (countEl) countEl.textContent = '';
+            return;
+        }
+
+        container.innerHTML = '<div class="pwf-empty" style="padding:16px 0;">Loading your posts…</div>';
+
+        // ── Tear down any previous listener ──────────────────────────
+        if (_profileWallUnsub) { try { _profileWallUnsub(); } catch (_) {} _profileWallUnsub = null; }
+
+        // ── Subscribe to this user's posts, newest first ──────────────
+        const addr = userAddress.toLowerCase();
+        const q = window.fs.query(
+            window.fs.collection(window.db, 'posts'),
+            window.fs.where('authorAddr', '==', userAddress),
+            window.fs.orderBy('timestamp', 'desc')
+        );
+
+        _profileWallUnsub = window.fs.onSnapshot(q, function(snap) {
+            const posts = [];
+            snap.forEach(function(d) { posts.push({ id: d.id, ...d.data() }); });
+
+            if (countEl) countEl.textContent = posts.length + (posts.length === 1 ? ' post' : ' posts');
+
+            if (posts.length === 0) {
+                container.innerHTML = '<div class="pwf-empty">No broadcasts yet. Share your first signal!</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            posts.forEach(function(post) {
+                const date = post.timestamp
+                    ? new Date(post.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : '';
+                const typeLabel = post.type === 3 ? '🎬 Video' : post.type === 2 ? '🖼 Image' : '📝 Text';
+                const hypes    = post.hypes  || 0;
+                const views    = post.views  || 0;
+                const boosted  = post.isBoosted ? ' 🚀' : '';
+
+                // Thumbnail for image/video posts
+                let mediaHtml = '';
+                if (post.media && post.type === 2) {
+                    mediaHtml = '<img class="profile-post-media" src="' + _esc(post.media) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+                }
+
+                const card = document.createElement('div');
+                card.className = 'profile-post-card';
+                card.setAttribute('data-id', post.id);
+                card.innerHTML =
+                    '<div class="profile-post-meta">' +
+                        '<span>' + typeLabel + boosted + '</span>' +
+                        '<span>' + date + '</span>' +
+                    '</div>' +
+                    (post.text ? '<div class="profile-post-text">' + _esc(post.text) + '</div>' : '') +
+                    mediaHtml +
+                    '<div class="profile-post-stats">' +
+                        '<span>🔥 ' + hypes + ' hypes</span>' +
+                        '<span>👁 ' + views + ' views</span>' +
+                        (post.feePaid ? '<span>' + parseFloat(post.feePaid).toFixed(1) + '★ spent</span>' : '') +
+                    '</div>';
+
+                // Click → jump to the post in the global feed
+                card.addEventListener('click', function() {
+                    if (typeof jumpToPost === 'function') jumpToPost(post.id, post.communityId || null);
+                });
+                container.appendChild(card);
+            });
+        }, function(err) {
+            console.warn('[ProfileWall] Query failed (may need index):', err.message);
+            // Fallback: try without orderBy (no composite index required)
+            const qFallback = window.fs.query(
+                window.fs.collection(window.db, 'posts'),
+                window.fs.where('authorAddr', '==', userAddress)
+            );
+            _profileWallUnsub = window.fs.onSnapshot(qFallback, function(snap) {
+                const posts = [];
+                snap.forEach(function(d) { posts.push({ id: d.id, ...d.data() }); });
+                posts.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+                if (countEl) countEl.textContent = posts.length + ' posts';
+                if (posts.length === 0) {
+                    container.innerHTML = '<div class="pwf-empty">No broadcasts yet.</div>';
+                    return;
+                }
+                container.innerHTML = '<div class="pwf-empty" style="font-size:0.7rem;padding:8px 0;color:var(--text-muted);">Showing unordered results — add Firestore index for sorted view.</div>';
+                posts.forEach(function(post) {
+                    const card = document.createElement('div');
+                    card.className = 'profile-post-card';
+                    card.innerHTML = '<div class="profile-post-text">' + _esc(post.text || '') + '</div>';
+                    card.addEventListener('click', function() { if (typeof jumpToPost === 'function') jumpToPost(post.id); });
+                    container.appendChild(card);
+                });
+            });
+        });
+    }
+
+    // Tiny HTML-escape helper for profile wall (keeps XSS out of innerHTML)
+    function _esc(str) {
+        return String(str || '')
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Expose so external callers can refresh after saveProfile()
+    window._loadProfileWallFeed = _loadProfileWallFeed;
 
     // ═══════════════════════════════════════════════════════════════════
     // JUMP TO POST — destination-aware navigation from the Ledger.
@@ -7879,9 +8136,9 @@
         _wallFilter = targetAddr;
         visibleCount = 50;
 
-        // 4. Show the Profile Hero header — hide signals bar
+        // 4. Show the Profile Hero header — hide signals bar (wall view within home tab)
         const signalsBar = document.getElementById('signals-bar');
-        if (signalsBar) signalsBar.style.display = 'none';
+        if (signalsBar) signalsBar.classList.add('signals-hidden');
 
         // ── INDEX 28 FINAL: Privacy Gate ─────────────────────────────────────────
         // isOwnWall is TRUE only when the connected wallet IS the wall being viewed.
@@ -7940,7 +8197,7 @@
 
         // 5. Restore signals bar with global signals
         const signalsBar = document.getElementById('signals-bar');
-        if (signalsBar) signalsBar.style.display = '';
+        if (signalsBar) signalsBar.classList.remove('signals-hidden');
         loadSignals();
 
         // 6. Restore composer and feed heading
@@ -8475,8 +8732,46 @@
     //   Signal Mode OFF → costs normal post fee (1.2/3/10★) → writes to `posts`
     //   The two paths never run together and costs are NEVER added.
     // ─────────────────────────────────────────────────────────────────────────────
-    async function handleBroadcastWithSignal() {
 
+    // ═══════════════════════════════════════════════════════════════════
+    // FIX 2: COMPOSER COLLAPSE / EXPAND
+    // After a successful broadcast the full composer collapses to a slim
+    // avatar + name row. Clicking it anywhere re-expands it.
+    // The composer-body wrapper (added below) holds everything below the
+    // header row so a single class toggle shows/hides it cleanly.
+    // ═══════════════════════════════════════════════════════════════════
+    function _collapseComposer() {
+        const card = document.getElementById('composer-card');
+        if (!card) return;
+        card.classList.add('composer-collapsed');
+        card.setAttribute('title', 'Click to write a new broadcast');
+    }
+
+    function _expandComposer() {
+        const card = document.getElementById('composer-card');
+        if (!card) return;
+        card.classList.remove('composer-collapsed');
+        card.removeAttribute('title');
+        // Focus the textarea so the user can start typing immediately
+        const ta = document.getElementById('post-text');
+        if (ta) setTimeout(function() { ta.focus(); }, 60);
+    }
+
+    // Wire up click-to-expand on the composer card (delegated, runs once)
+    (function _initComposerCollapse() {
+        const card = document.getElementById('composer-card');
+        if (!card) return;
+        card.addEventListener('click', function(e) {
+            if (!card.classList.contains('composer-collapsed')) return;
+            // Any click on the collapsed card re-expands it
+            _expandComposer();
+        });
+    })();
+    // Also expose for external call (e.g. re-expand when switching back to home)
+    window._expandComposer  = _expandComposer;
+    window._collapseComposer = _collapseComposer;
+
+    async function handleBroadcastWithSignal() {
         const txt = document.getElementById('post-text')?.value.trim();
         if (!txt) return showToast('Write something first!');
         if (!userAddress) return showToast('Connect your wallet first!');
@@ -8622,6 +8917,8 @@
             updateUI();
             loadSignals();   // refresh the signals bar immediately
             showToast('⚡ Daily Signal Live! (24h)');
+            // FIX 2: Collapse the composer tray after successful broadcast
+            _collapseComposer();
             return;
         }
 
@@ -8728,6 +9025,8 @@
 
             updateUI();
             showToast('Signal Live! ◈');
+            // FIX 2: Collapse the composer tray after successful broadcast
+            _collapseComposer();
         } catch (e) {
             console.error('Firebase write failed:', e);
             // ── STAR REFUND: post write failed after deduction — restore stars ──
