@@ -4995,21 +4995,29 @@
                 if (!window.db) return;
                 const s2 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
-                // Step 1: Aggregate user_balances for circulating stars and user-owned debt
+                // Step 1: Aggregate user_balances
+                //   totalPurchased = Σ user_balances.stars        (deposited, unspent — user deposit liability)
+                //   totalEarned    = Σ user_balances.creatorStars  (earned — creator payout liability)
+                //   totalCirculating = totalPurchased + totalEarned  (ALL user-owned stars)
+                // Both pools must be in the liability: if every user settled the contract must cover both.
                 let totalCirculating = 0;
-                let totalPending     = 0;   // sum of creatorStars = what creators can withdraw
+                let totalPurchased   = 0;
+                let totalEarned      = 0;
                 try {
                     const balSnap = await window.fs.getDocs(
                         window.fs.collection(window.db, 'user_balances')
                     );
                     balSnap.forEach(d => {
-                        const data = d.data();
-                        totalCirculating += (parseFloat(data.stars)        || 0) +
-                                            (parseFloat(data.creatorStars) || 0);
-                        totalPending     +=  parseFloat(data.creatorStars) || 0;
+                        const data     = d.data();
+                        const purchased = parseFloat(data.stars)        || 0;
+                        const earned    = parseFloat(data.creatorStars) || 0;
+                        totalPurchased   += purchased;
+                        totalEarned      += earned;
+                        totalCirculating += purchased + earned;
                     });
                     s2('mcd-circulating', totalCirculating.toFixed(2) + ' ★');
-                    s2('mcd-pending',     totalPending.toFixed(2) + ' ★');
+                    // User-Owned Debt metric = ALL user stars (both pools)
+                    s2('mcd-pending', totalCirculating.toFixed(2) + ' ★');
                 } catch (e) { console.warn('[MCD] user_balances fetch failed:', e); }
 
                 // Step 2: Read admin_revenue/global for the withdrawable platform revenue
@@ -5022,9 +5030,14 @@
                 } catch (e) { console.warn('[MCD] admin_revenue fetch failed:', e); }
 
                 // Step 3: Read contract balance via provider (requires wallet connected)
-                // TOTAL_LIABILITY = admin revenue (platform) + user-owned debt (creatorStars)
-                // CONTRACT_BALANCE_STARS = on-chain APTM × livePrice / $0.01
-                const bar = document.getElementById('mcd-solvency-bar');
+                //
+                // TRUE TOTAL LIABILITY:
+                //   Σ user_balances.stars        ← purchased stars (deposit liability)
+                // + Σ user_balances.creatorStars  ← earned stars   (creator payout liability)
+                // + admin_revenue/global.total    ← platform revenue owed to admin
+                //
+                // ASSET: contract APTM balance converted to stars at live price
+                const bar       = document.getElementById('mcd-solvency-bar');
                 const statusEl  = document.getElementById('mcd-sol-status');
                 const detailEl  = document.getElementById('mcd-sol-detail');
                 const ratioEl   = document.getElementById('mcd-sol-ratio');
@@ -5054,11 +5067,11 @@
                                 : (window.aptmPriceUSD > 0 ? window.aptmPriceUSD : 0.3391);
                 const contractBalStars = (contractBalAptm * livePrice) / CONFIG.STAR_USD;
 
-                // Total liability: what the system owes in stars
-                const totalLiabilityStars = adminRevStars + totalPending;
+                // Full liability = ALL user-owned stars + admin platform revenue
+                const totalLiabilityStars = totalPurchased + totalEarned + adminRevStars;
 
-                const isSolvent   = contractBalStars >= totalLiabilityStars;
-                const discrepancy = Math.abs(contractBalStars - totalLiabilityStars);
+                const isSolvent     = contractBalStars >= totalLiabilityStars;
+                const discrepancy   = Math.abs(contractBalStars - totalLiabilityStars);
                 const coverageRatio = totalLiabilityStars > 0
                     ? ((contractBalStars / totalLiabilityStars) * 100).toFixed(1)
                     : '∞';
@@ -5071,17 +5084,28 @@
                 if (isSolvent) {
                     if (statusEl) statusEl.textContent = 'SYSTEM SOLVENT';
                     if (detailEl) detailEl.textContent =
-                        'Contract covers all liabilities. Coverage: ' + coverageRatio + '% · Surplus: ' +
-                        discrepancy.toFixed(2) + ' ★ ($' + (discrepancy * CONFIG.STAR_USD).toFixed(2) + ')';
+                        'Coverage: ' + coverageRatio + '% · Surplus: ' +
+                        discrepancy.toFixed(2) + ' ★ ($' + (discrepancy * CONFIG.STAR_USD).toFixed(2) + ')' +
+                        ' · Purchased: ' + totalPurchased.toFixed(2) + '★  Earned: ' + totalEarned.toFixed(2) + '★  Admin: ' + adminRevStars.toFixed(2) + '★';
                 } else {
                     if (statusEl) statusEl.textContent = 'RESERVE DISCREPANCY';
                     if (detailEl) detailEl.textContent =
                         'Shortfall: ' + discrepancy.toFixed(2) + ' ★ ($' +
                         (discrepancy * CONFIG.STAR_USD).toFixed(2) +
-                        ') · Coverage: ' + coverageRatio + '%';
+                        ') · Coverage: ' + coverageRatio + '%' +
+                        ' · Purchased: ' + totalPurchased.toFixed(2) + '★  Earned: ' + totalEarned.toFixed(2) + '★  Admin: ' + adminRevStars.toFixed(2) + '★';
                 }
 
-                console.log(`[Solvency] Contract: ${contractBalStars.toFixed(4)}★ | Liability: ${totalLiabilityStars.toFixed(4)}★ (admin ${adminRevStars.toFixed(4)}★ + user debt ${totalPending.toFixed(4)}★) | ${isSolvent ? 'SOLVENT' : 'DISCREPANCY'}`);
+                console.log(
+                    '[Solvency] Contract: ' + contractBalStars.toFixed(4) + '★' +
+                    ' | LIABILITY BREAKDOWN:' +
+                    ' purchased=' + totalPurchased.toFixed(4) + '★' +
+                    ' earned=' + totalEarned.toFixed(4) + '★' +
+                    ' admin=' + adminRevStars.toFixed(4) + '★' +
+                    ' TOTAL=' + totalLiabilityStars.toFixed(4) + '★' +
+                    ' | ' + (isSolvent ? 'SOLVENT' : 'DISCREPANCY') +
+                    ' (' + coverageRatio + '% coverage)'
+                );
             })();
 
         }, (err) => {
