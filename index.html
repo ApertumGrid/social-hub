@@ -1337,7 +1337,7 @@
         }
         /* Global metrics row */
         .mcd-metrics {
-            display: grid; grid-template-columns: repeat(3, 1fr);
+            display: grid; grid-template-columns: repeat(4, 1fr);
             gap: 8px; margin-bottom: 18px;
         }
         .mcd-metric {
@@ -3345,8 +3345,12 @@
                     <!-- Global metrics -->
                     <div class="mcd-metrics">
                         <div class="mcd-metric">
-                            <div class="mcd-metric-label">Total Platform Revenue</div>
-                            <div class="mcd-metric-val gold" id="mcd-total-rev">0 ★</div>
+                            <div class="mcd-metric-label">Withdrawable Now</div>
+                            <div class="mcd-metric-val gold" id="mcd-withdrawable">0 ★</div>
+                        </div>
+                        <div class="mcd-metric">
+                            <div class="mcd-metric-label">Lifetime Revenue</div>
+                            <div class="mcd-metric-val" id="mcd-total-rev" style="color:var(--text-secondary);">0 ★</div>
                         </div>
                         <div class="mcd-metric">
                             <div class="mcd-metric-label">Circulating Stars</div>
@@ -4984,12 +4988,14 @@
             const broadcastTotal = seg.broadcast.sum + seg.boost.sum;
             const broadcastCount = seg.broadcast.count + seg.boost.count;
 
-            // Grand total (also update legacy elements for drawer compatibility)
+            // mcd-total-rev = LIFETIME cumulative sum from platform_revenue log (never resets)
+            // mcd-withdrawable = CURRENT balance from admin_revenue/global (fed by globalRef onSnapshot below)
             s('mcd-total-rev',    grandTotal.toFixed(4) + ' ★');
-            s('admin-revenue-display', grandTotal.toFixed(2) + ' ★');
             s('admin-revenue-count',   docs.length + ' fee events');
-            s('drawer-admin-revenue',  grandTotal.toFixed(2) + ' ★');
             s('drawer-admin-count',    docs.length + ' fee events');
+            // Note: drawer-admin-revenue and mcd-withdrawable are set by the globalRef onSnapshot
+            // so they show the withdrawable balance (resets to 0 after each admin withdrawal),
+            // NOT the historical total.
 
             // Stream cards
             s('mcd-s-signal',    seg.signal.sum.toFixed(4) + ' ★');
@@ -5060,15 +5066,19 @@
             });
         });
 
-        // ── admin_revenue/global: live withdrawable balance in drawer ─────────
+        // ── admin_revenue/global: live CURRENT withdrawable balance ──────────
+        // This resets to 0 after each admin withdrawal — it is the authoritative
+        // "how much can I withdraw right now" figure. Distinct from the historical
+        // lifetime sum shown in mcd-total-rev (which sums all platform_revenue docs).
         const globalRef = window.fs.doc(window.db, 'admin_revenue', 'global');
         window.fs.onSnapshot(globalRef, (snap) => {
             const total = snap.exists() ? (snap.data().total || 0) : 0;
             const s = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-            s('drawer-admin-revenue', total.toFixed(2) + ' ★ (withdrawable)');
-
+            // Withdrawable fields — these show the CURRENT balance, not the historical sum
+            s('mcd-withdrawable',      total.toFixed(2) + ' \u2605');
+            s('admin-revenue-display', total.toFixed(2) + ' \u2605');
+            s('drawer-admin-revenue',  total.toFixed(2) + ' \u2605 (withdrawable)');
             // Re-run solvency check whenever the admin balance changes.
-            // Pass the fresh adminRevStars into the solvency updater.
             _updateSolvency(total);
         }, () => {});
 
@@ -5297,7 +5307,8 @@
 
             logTransaction(
                 userAddress, "settle", revenueAptm,
-                `Admin withdrew ${revenueStars.toFixed(2)} ★ = ${revenueAptm.toFixed(6)} APTM at $${livePrice.toFixed(4)}/APTM`
+                `Admin withdrew ${revenueStars.toFixed(2)} ★ = ${revenueAptm.toFixed(6)} APTM at $${livePrice.toFixed(4)}/APTM`,
+                null, null, { from: userAddress, to: 'admin-wallet' }
             );
 
             // ── Step 8: Update revenue displays to 0 ─────────────────────────
@@ -5335,7 +5346,25 @@
             await tx.wait();
             console.log(`[Deposit] On-chain confirmed`);
 
-            const starsReceived = Math.floor(aptmAmount * currentAptmPriceUsd / CONFIG.STAR_USD);
+            // ── Price guard: ensure we have a valid price before minting stars ──
+            // If currentAptmPriceUsd is 0 (price fetch still pending at deposit time),
+            // starsReceived would be 0 and creditPurchasedStars would silently write 0.
+            let depositPrice = currentAptmPriceUsd;
+            if (!(depositPrice > 0)) {
+                console.warn('[Deposit] Price is 0 — fetching fresh price before minting stars');
+                const freshPrice = await getLiveAptmPrice();
+                depositPrice = (freshPrice && freshPrice > 0) ? freshPrice : 0.3391;
+                currentAptmPriceUsd = depositPrice;
+                window.aptmPriceUSD = depositPrice;
+                console.log(`[Deposit] Using price: $${depositPrice.toFixed(4)}`);
+            }
+
+            const starsReceived = Math.floor(aptmAmount * depositPrice / CONFIG.STAR_USD);
+            if (starsReceived <= 0) {
+                console.error('[Deposit] starsReceived=0 after price guard — aborting star mint. Deposit is on-chain.');
+                alert('Deposit confirmed on-chain but star price returned 0.\nPlease use the Reconciliation tool to mint your stars, or retry deposit.');
+                return;
+            }
 
             // Increment the lifetime deposit receipt in Firebase — only ever grows
             if (userAddress && window.db) {
@@ -5351,7 +5380,9 @@
             }
 
             await creditPurchasedStars(userAddress, starsReceived);
-            logTransaction(userAddress, "deposit", starsReceived, `Deposited ${aptmAmount.toFixed(2)} $APTM → ${starsReceived} Stars`);
+            logTransaction(userAddress, "deposit", starsReceived,
+                `Deposited ${aptmAmount.toFixed(2)} $APTM \u2192 ${starsReceived} Stars`,
+                null, null, { from: 'on-chain', to: userAddress });
             showToast("Deposit Successful ✓");
             setTimeout(() => { syncData(); }, 2000);
         } catch (e) { console.error("[Deposit] Failed:", e); alert("Transaction failed: " + (e.reason || e.message).slice(0,100)); }
@@ -5461,7 +5492,9 @@
                 } catch (e) { console.warn("[settleToWallet] Firebase zero failed:", e); }
             }
 
-            logTransaction(addr, "settle", withdrawAptm, `Settled ${totalStars.toFixed(1)}★ → ${withdrawAptm.toFixed(4)} $APTM to wallet`);
+            logTransaction(addr, "settle", withdrawAptm,
+                `Settled ${totalStars.toFixed(1)}★ → ${withdrawAptm.toFixed(4)} $APTM to wallet`,
+                null, null, { from: addr, to: 'wallet' });
             showToast(`Settled! ${withdrawAptm.toFixed(4)} APTM → wallet ✓`);
             updateUI();
             updateDrawerUI();
@@ -10142,20 +10175,51 @@
 
             // Step 2: read all user_balances docs
             const snap = await window.fs.getDocs(window.fs.collection(window.db, 'user_balances'));
+
+            // Step 2b: scan user_transactions for deposit entries — find users who
+            // deposited APTM but received 0 stars (the 0-price bug).
+            // Build a map: addr → total deposited stars from ledger
+            if (btn) btn.textContent = 'Scanning deposit ledger…';
+            const depositLedger = {};   // addr → { totalStarsFromTx, totalAptmFromTx }
+            try {
+                const txSnap = await window.fs.getDocs(
+                    window.fs.query(
+                        window.fs.collection(window.db, 'user_transactions'),
+                        window.fs.where('type', '==', 'deposit')
+                    )
+                );
+                txSnap.forEach(d => {
+                    const tx   = d.data();
+                    const addr = (tx.address || '').toLowerCase();
+                    if (!addr) return;
+                    if (!depositLedger[addr]) depositLedger[addr] = { starsFromTx: 0 };
+                    depositLedger[addr].starsFromTx += parseFloat(tx.amount) || 0;
+                });
+            } catch (e) { console.warn('[Reconcile] deposit ledger scan failed:', e); }
+
             const plan = [];   // { ref, addr, currentStars, currentCreator, newStars, newCreator, newSpent }
             let totalGhostStars = 0;
             let totalGhostCreator = 0;
+            let totalMintedStars = 0;  // stars being added to fix 0-balance accounts
 
             snap.forEach(d => {
                 const data         = d.data();
-                const addr         = data.address || d.id;
-                const deposit      = parseFloat(data.initial_deposit)  || 0;
+                const addr         = (data.address || d.id).toLowerCase();
+                const depositAptm  = parseFloat(data.initial_deposit)  || 0;
                 const curStars     = parseFloat(data.stars)            || 0;
                 const curCreator   = parseFloat(data.creatorStars)     || 0;
                 const spentRaw     = parseFloat(data.spentStarsTotal)  || 0;
 
-                // Stars legitimately earned from deposit
-                const depositStars = Math.floor(deposit * livePrice / CONFIG.STAR_USD);
+                // Stars legitimately earned from deposit.
+                // PRIMARY: initial_deposit × livePrice / $0.01
+                // FALLBACK: sum of deposit entries in user_transactions (fixes 0-price bug victims)
+                const depositStarsPrimary  = Math.floor(depositAptm * livePrice / CONFIG.STAR_USD);
+                const depositStarsFallback = Math.floor(
+                    ((depositLedger[addr] && depositLedger[addr].starsFromTx) || 0)
+                );
+                // Use whichever is larger — protects against both ghost inflation and missing mints
+                const depositStars = Math.max(depositStarsPrimary, depositStarsFallback);
+
                 // Clamp spentStarsTotal to what was actually deposited
                 const spentClamped = Math.min(spentRaw, depositStars);
                 // Remaining unspent deposit stars
@@ -10165,8 +10229,10 @@
 
                 const ghostStars   = curStars   - newStars;
                 const ghostCreator = curCreator - newCreator;
-                totalGhostStars   += Math.max(0, ghostStars);
-                totalGhostCreator += Math.max(0, ghostCreator);
+                if (ghostStars > 0)   totalGhostStars   += ghostStars;
+                if (ghostCreator > 0) totalGhostCreator += ghostCreator;
+                // Negative ghostStars means missing stars (0-price bug) — track separately
+                if (ghostStars < 0)   totalMintedStars  += Math.abs(ghostStars);
 
                 plan.push({
                     ref:         d.ref,
@@ -10185,19 +10251,20 @@
 
             // Step 3: show confirmation dialog
             const preview = plan.slice(0, 8).map(p =>
-                p.addr.slice(0,8) + '…  deposit=' + p.deposit + 'APTM (' + p.depositStars + '\u2605)' +
-                '  cur=' + p.curStars + '+' + p.curCreator + '\u2605  \u2192  new=' + p.newStars + '+0\u2605'
+                p.addr.slice(0,8) + '…  deposit=' + p.deposit + 'APTM (' + p.depositStars + '★)' +
+                '  cur=' + p.curStars + '+' + p.curCreator + '★  →  new=' + p.newStars + '+0★'
             ).join('\n');
 
             const confirmed = confirm(
                 'BALANCE RECONCILIATION\n\n' +
                 'Live APTM price: $' + livePrice.toFixed(4) + '\n' +
                 'Users to update: ' + plan.length + '\n' +
-                'Ghost stars to remove: ' + totalGhost.toFixed(2) + '\u2605\n' +
-                '  (purchased: ' + totalGhostStars.toFixed(2) + '\u2605  earned: ' + totalGhostCreator.toFixed(2) + '\u2605)\n\n' +
+                'Ghost stars to REMOVE: ' + totalGhost.toFixed(2) + '★\n' +
+                '  (purchased: ' + totalGhostStars.toFixed(2) + '★  earned: ' + totalGhostCreator.toFixed(2) + '★)\n' +
+                'Missing stars to MINT: ' + totalMintedStars.toFixed(2) + '★ (0-price deposit fix)\n\n' +
                 'Preview (first 8 users):\n' + preview + '\n\n' +
                 'creatorStars will be set to 0 for all users.\n' +
-                'stars will be recalculated from initial_deposit.\n\n' +
+                'stars recalculated from initial_deposit + deposit ledger.\n\n' +
                 'This CANNOT be undone. Proceed?'
             );
             if (!confirmed) {
