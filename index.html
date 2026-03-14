@@ -1,7 +1,3 @@
-
-
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -4021,31 +4017,50 @@
                 hubContract.starBalances(addr),
                 hubContract.totalAnchors()
             ]);
-            // BLOCKCHAIN IS THE TRUTH — always update currentAptmBalance from the
-            // contract's aptmBalances() value. Never read it from Firebase.
-            // Firebase's aptmBalance field may be stale (it lags the contract)
-            // and was causing the "4.43 APTM shown / 3.48 APTM on-chain" mismatch
-            // that triggers CALL_EXCEPTION on every settlement.
-            const humanBalance  = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
-            initialDepositAptm  = humanBalance;
-            currentAptmBalance  = humanBalance;
+            // BLOCKCHAIN IS THE TRUTH for the on-chain balance.
+            // However, star spending (hype/like/tip) happens off-chain — the
+            // contract balance does NOT decrease until Settle.  We therefore
+            // subtract the durable `spentStarsTotal` field (written to Firestore
+            // on every deduction) to arrive at the correct spendable balance.
+            const onChainAptm   = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
+            initialDepositAptm  = onChainAptm;
 
             totalAnchors = anchors.toNumber();
 
             if (window.db) {
-                const userRef = window.fs.doc(window.db, "user_balances", addr.toLowerCase());
+                const userRef = window.fs.doc(window.db, 'user_balances', addr.toLowerCase());
                 const snap    = await window.fs.getDoc(userRef);
                 if (!snap.exists()) {
-                    await window.fs.setDoc(userRef, { stars: 0, creatorStars: 0, initial_deposit: 0, lastSync: Date.now(), address: addr.toLowerCase() });
+                    await window.fs.setDoc(userRef, { stars: 0, creatorStars: 0, spentStarsTotal: 0, initial_deposit: 0, lastSync: Date.now(), address: addr.toLowerCase() });
+                    currentAptmBalance = onChainAptm;
                 } else {
-                    purchasedStars     = snap.data().stars        || 0;
-                    creatorEarnings    = snap.data().creatorStars  || 0;
+                    purchasedStars     = snap.data().stars         || 0;
+                    creatorEarnings    = snap.data().creatorStars   || 0;
                     totalDepositedAptm = parseFloat(snap.data().initial_deposit) || 0;
+
+                    // ── BUG FIX: derive spendable APTM from on-chain balance minus
+                    // accumulated off-chain spend.  This survives hard refreshes because
+                    // spentStarsTotal is persisted in Firestore on every deductStars call.
+                    const spentStars   = parseFloat(snap.data().spentStarsTotal) || 0;
+                    const livePrice    = currentAptmPriceUsd > 0 ? currentAptmPriceUsd
+                                       : (window.aptmPriceUSD || 0);
+                    if (livePrice > 0 && spentStars > 0) {
+                        const spentAptm    = (spentStars * CONFIG.STAR_USD) / livePrice;
+                        currentAptmBalance = Math.max(0, onChainAptm - spentAptm);
+                        console.log(`[syncData] onChain=${onChainAptm.toFixed(6)} APTM | spentStars=${spentStars.toFixed(4)}★ | spentAptm=${spentAptm.toFixed(6)} | spendable=${currentAptmBalance.toFixed(6)}`);
+                    } else {
+                        // Price not yet loaded or no spend recorded — use on-chain value
+                        currentAptmBalance = onChainAptm;
+                    }
+
                     await window.fs.updateDoc(userRef, { lastSync: Date.now() });
                 }
+            } else {
+                currentAptmBalance = onChainAptm;
             }
             updateUI();
-        } catch (e) { console.error("Sync Failed:", e); }
+            console.log('Database successfully updated');
+        } catch (e) { console.error('Sync Failed:', e); }
     }
 
     // Refresh the on-chain APTM balance every 30 s while a wallet is connected.
@@ -4812,13 +4827,14 @@
                             creatorStars:       0,
                             aptmBalance:        0,
                             currentAptmBalance: 0,
+                            spentStarsTotal:    0,   // reset accumulator — on-chain balance is now 0
                             initial_deposit:    0,
                             lastWithdraw:       Date.now(),
                             lastUpdated:        Date.now()
                         },
                         { merge: true }
                     );
-                    console.log("[settleToWallet] Firebase zeroed — stars, creatorStars, aptmBalance, initial_deposit all → 0");
+                    console.log("[settleToWallet] Firebase zeroed — stars, creatorStars, aptmBalance, spentStarsTotal, initial_deposit all → 0");
                 } catch (e) { console.warn("[settleToWallet] Firebase zero failed:", e); }
             }
 
@@ -5751,26 +5767,39 @@
         _lastSpendTime = Date.now();   // arm the spend lock
         updateUI();   // instant display — stars drop immediately on click
 
-        // Persist updated aptmBalance to Firebase so onSnapshot stays in sync
+        // ── Persist aptmBalance AND increment spentStarsTotal atomically ──
+        // spentStarsTotal is the durable accumulator that survives hard refreshes.
+        // syncData reads it back and subtracts the equivalent APTM from the on-chain
+        // balance to derive the correct spendable value — closing the infinite-money bug.
         try {
-            const userRef = window.fs.doc(window.db, "user_balances", userAddress.toLowerCase());
-            await window.fs.updateDoc(userRef, { aptmBalance: currentAptmBalance, lastUpdated: Date.now() });
-        } catch (_) {}
+            const userRef = window.fs.doc(window.db, 'user_balances', userAddress.toLowerCase());
+            await window.fs.runTransaction(window.db, async (txn) => {
+                const snap = await txn.get(userRef);
+                const prevSpent = snap.exists() ? (parseFloat(snap.data().spentStarsTotal) || 0) : 0;
+                const newSpent  = prevSpent + amount;
+                txn.set(userRef, {
+                    aptmBalance:     currentAptmBalance,
+                    spentStarsTotal: newSpent,
+                    lastUpdated:     Date.now()
+                }, { merge: true });
+                console.log(`[deductStars] Database successfully updated — spentStarsTotal: ${prevSpent.toFixed(4)} → ${newSpent.toFixed(4)}★`);
+            });
+        } catch (e) { console.warn('[deductStars] Firestore write failed:', e); }
 
         // Flag so deductSpendableStars skips its own APTM deduction (already done above)
         deductSpendableStars._calledFromDeductStars = true;
         await deductSpendableStars(userAddress, amount);
         deductSpendableStars._calledFromDeductStars = false;
 
-        // Refresh star counts from Firebase (purchased/earned pools)
+        // Re-fetch star counts from Firebase to confirm atomic write landed
         try {
-            const snap = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", userAddress.toLowerCase()));
+            const snap = await window.fs.getDoc(window.fs.doc(window.db, 'user_balances', userAddress.toLowerCase()));
             if (snap.exists()) {
                 purchasedStars  = snap.data().stars        || 0;
                 creatorEarnings = snap.data().creatorStars  || 0;
             }
         } catch (_) {}
-        updateUI();   // final confirmed refresh — lock still active so balance won't snap back
+        updateUI();   // final confirmed refresh — spend lock still active
     }
 
     // ═══════════════════════════════════════════════════════════════════
