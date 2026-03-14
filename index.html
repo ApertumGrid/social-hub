@@ -3404,7 +3404,25 @@
                     </div>
 
                     <!-- Withdraw -->
-                    <button id="admin-withdraw-btn" onclick="adminWithdraw()">⬇ Settle Platform Revenue to Admin Wallet</button>
+                    <!-- IDENTITY SEPARATION: this button calls adminWithdraw() which routes to
+                         hubContract.adminWithdraw() (no args) — the platform revenue pool.
+                         It is completely separate from userWithdraw() / personal star balance. -->
+                    <div style="
+                        background: rgba(240,180,41,0.06);
+                        border: 1px solid rgba(240,180,41,0.2);
+                        border-radius: var(--radius-sm);
+                        padding: 8px 12px;
+                        margin-bottom: 8px;
+                        font-size: 0.58rem;
+                        color: var(--gold);
+                        font-family: var(--font-mono);
+                        letter-spacing: 1px;
+                        text-transform: uppercase;
+                        font-weight: 700;
+                    ">
+                        ⚠ Platform Revenue — Separate Account · Source: admin_revenue/global · Contract: adminWithdraw()
+                    </div>
+                    <button id="admin-withdraw-btn" onclick="adminWithdraw()">⬇ Settle Platform Revenue → Admin Wallet (adminWithdraw)</button>
                     <button id="admin-reconcile-btn" onclick="adminReconcile()"
                             style="display:flex;align-items:center;justify-content:center;gap:8px;
                                    width:100%;margin-top:8px;padding:10px 18px;
@@ -3754,7 +3772,21 @@
 
             <!-- CREATOR STUDIO -->
             <div class="rp-card">
-                <div class="drawer-section-label" style="margin-bottom:10px;">Creator Studio</div>
+                <div class="drawer-section-label" style="margin-bottom:6px;">Creator Studio</div>
+                <!-- IDENTITY SEPARATION: personal star balance — userWithdraw() path -->
+                <div style="
+                    background: rgba(45,212,191,0.06);
+                    border: 1px solid rgba(45,212,191,0.2);
+                    border-radius: 6px;
+                    padding: 5px 10px;
+                    margin-bottom:10px;
+                    font-size: 0.57rem;
+                    color: var(--teal);
+                    font-family: var(--font-mono);
+                    letter-spacing: 1px;
+                    text-transform: uppercase;
+                    font-weight: 700;
+                ">Personal Account · Contract: userWithdraw(amount)</div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
                     <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px;">
                         <div style="font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700;">Earned Stars</div>
@@ -3765,16 +3797,53 @@
                         <div style="font-family:var(--font-mono); font-size:0.85rem; font-weight:700; color:var(--teal); margin-top:4px;" id="drawer-vault-aptm">0.0000</div>
                     </div>
                 </div>
-                <button class="btn btn-teal" style="margin-top:0;" onclick="settleStarsToWallet(event); closeWalletDrawer();">Settle Total Balance to Wallet →</button>
+                <button class="btn btn-teal" style="margin-top:0;" onclick="settleStarsToWallet(event); closeWalletDrawer();">Settle Personal Balance to Wallet →</button>
             </div>
 
-            <!-- ADMIN DASHBOARD (conditional) -->
-            <div class="rp-card" id="drawer-admin-section" style="border-color:rgba(240,180,41,0.25);">
-                <div class="drawer-admin-header">🔐 Admin Dashboard</div>
-                <div style="font-size:0.68rem; color:var(--text-secondary); margin-bottom:6px;">Total Platform Revenue</div>
+            <!-- ADMIN DASHBOARD (conditional) — PLATFORM REVENUE ONLY, not personal balance -->
+            <div class="rp-card" id="drawer-admin-section" style="border-color:rgba(240,180,41,0.35); border-width:2px;">
+                <div class="drawer-admin-header">🔐 Platform Revenue Dashboard</div>
+
+                <!-- IDENTITY SEPARATOR: explicit label preventing visual merge with personal balance -->
+                <div style="
+                    background: rgba(240,180,41,0.08);
+                    border: 1px solid rgba(240,180,41,0.25);
+                    border-radius: 8px;
+                    padding: 7px 10px;
+                    margin-bottom: 10px;
+                    font-size: 0.6rem;
+                    color: var(--gold);
+                    font-family: var(--font-mono);
+                    letter-spacing: 1.2px;
+                    text-transform: uppercase;
+                    font-weight: 700;
+                ">
+                    ⚠ Platform Account — Separate from Personal Balance
+                </div>
+
+                <div style="font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">
+                    Accumulated Platform Fees
+                </div>
                 <div class="drawer-revenue-num" id="drawer-admin-revenue">0 ★</div>
-                <div style="font-size:0.62rem; color:var(--text-muted); margin-bottom:14px;" id="drawer-admin-count">0 fee events</div>
-                <button class="btn btn-gold btn-sm" style="width:100%; margin-top:0;" onclick="adminWithdraw(); closeWalletDrawer();">⬇ Admin Withdraw</button>
+                <div style="font-size:0.62rem; color:var(--text-muted); margin-bottom:4px;" id="drawer-admin-count">0 fee events</div>
+
+                <!-- Explicit source-of-truth label -->
+                <div style="font-size:0.58rem; color:var(--text-muted); margin-bottom:12px; font-family:var(--font-mono);">
+                    Source: <span style="color:var(--gold);">admin_revenue/global</span>
+                </div>
+
+                <!-- Separator rule between revenue and contract call info -->
+                <div style="border-top: 1px solid rgba(240,180,41,0.15); margin-bottom:10px;"></div>
+
+                <div style="font-size:0.58rem; color:var(--text-muted); margin-bottom:10px; line-height:1.5;">
+                    Contract call: <span style="font-family:var(--font-mono); color:var(--gold); font-weight:700;">adminWithdraw()</span><br>
+                    No args — contract resolves amount internally.<br>
+                    Does <strong>not</strong> touch user <code style="font-size:0.55rem;">starBalances</code>.
+                </div>
+
+                <button class="btn btn-gold btn-sm" style="width:100%; margin-top:0;" onclick="adminWithdraw(); closeWalletDrawer();">
+                    ⬇ Settle Platform Revenue → Admin Wallet
+                </button>
             </div>
 
             <!-- Connect prompt if no wallet -->
@@ -4719,22 +4788,42 @@
         if (fromAddress === 'undefined') fromAddress = globalUser || '0x_unknown';
         if (toAddress   === 'undefined') toAddress   = 'admin_vault';
 
+        // ── LEDGER GAP GUARD: earn docs must have a real recipient address ────
+        // If toAddress is a sentinel ('admin_vault', 'platform', 'unknown', or
+        // empty), the earn doc will be invisible in the recipient's ledger query
+        // (Q3: where toAddress == addr). Reject silently rather than write a
+        // phantom earn entry that nobody can see.
+        var SENTINELS = new Set(['admin_vault', 'platform', 'unknown', '0x_unknown', '']);
+        if (type === 'earn' && SENTINELS.has(toAddress)) {
+            console.warn('[logTransaction] EARN rejected — toAddress is a sentinel, not a real recipient:',
+                toAddress, '| amount:', amount, '| desc:', opts.description || '');
+            return;
+        }
+
         // ── Sanitise every scalar field ──────────────────────────────────
         var finalRecord = {
-            type:        String(type  || 'unknown'),
-            amount:      Number(isNaN(amount) ? 0 : amount),
-            fromAddress: fromAddress,
-            toAddress:   toAddress,
-            description: String(opts.description || type + ' of ' + amount + '\u2605'),
-            timestamp:   Date.now()
+            type:           String(type  || 'unknown'),
+            amount:         Number(isNaN(amount) ? 0 : amount),
+            fromAddress:    fromAddress,
+            toAddress:      toAddress,
+            description:    String(opts.description || type + ' of ' + amount + '\u2605'),
+            timestamp:      Date.now(),
+            schema_version: 2   // v2 = fromAddress/toAddress schema; v1 = legacy address-only
         };
         if (opts.postId)      finalRecord.postId      = String(opts.postId);
         if (opts.communityId) finalRecord.communityId = String(opts.communityId);
 
-        // Legacy `address` field kept so existing Firestore queries
-        // (where("address","==",addr)) continue to work on old documents.
-        // New queries use fromAddress / toAddress directly.
-        finalRecord.address = (type === 'earn') ? toAddress : fromAddress;
+        // ── DUAL-LEDGER ROUTING: `address` field ─────────────────────────────
+        // Legacy Q1 query: where('address', '==', addr)
+        //   earn    → address = toAddress   (recipient sees it in Q1 + Q3)
+        //   spend   → address = fromAddress (sender sees it in Q1 + Q2)
+        //   settle  → address = fromAddress (settler sees it in Q1 + Q2)
+        //   deposit → address = toAddress   (depositor sees it in Q1 + Q3)
+        //
+        // IDENTITY SEPARATION: a platform_fee/settle doc with toAddress='admin-wallet'
+        // routes address=fromAddress so it appears only in the sender's ledger,
+        // never in any "platform revenue" personal ledger view.
+        finalRecord.address = (type === 'earn' || type === 'deposit') ? toAddress : fromAddress;
 
         // ── Write — try/catch so failure never crashes the caller ────────
         try {
@@ -5416,72 +5505,106 @@
             revenueAptm = contractBalAptm;
         }
 
-        // ── Step 5: Build Wei value — parseEther on a safe fixed string ─────────
-        const revenueWei = ethers.utils.parseEther(revenueAptm.toFixed(18));
-        console.log(`[AdminWithdraw] Will withdraw: ${revenueAptm.toFixed(8)} APTM = ${revenueWei.toString()} Wei`);
+        // ── Step 5: DISPLAY-ONLY estimate — NOT passed to the contract ──────────
+        // revenueAptm is used only for the confirmation dialog.
+        // The contract's adminWithdraw() is a no-arg function that resolves the
+        // withdrawable amount internally from the platform revenue pool.
+        // NEVER pass revenueWei to userWithdraw() — that pulls from the per-user
+        // starBalances mapping and causes the Reserve Discrepancy.
+        console.log(`[AdminWithdraw] Display estimate: ${revenueAptm.toFixed(8)} APTM ` +
+            `(${revenueStars.toFixed(4)}★ × $${CONFIG.STAR_USD} / $${livePrice.toFixed(4)})`);
 
+        // ── IDENTITY SEPARATION: modal explicitly labels this as PLATFORM REVENUE ─
+        // Distinct from the admin's personal star balance — even if the same wallet.
         const confirmed = confirm(
-            `Admin Revenue Withdrawal\n\n` +
+            `Platform Revenue Withdrawal\n` +
+            `${'─'.repeat(34)}\n` +
+            `SOURCE:  admin_revenue/global (Firebase)\n` +
+            `         ≠ your personal star balance\n\n` +
             `Accumulated Revenue:  ${revenueStars.toFixed(2)} ★\n` +
             `Live APTM Price:      $${livePrice.toFixed(4)}\n` +
-            `Will Withdraw:        ${revenueAptm.toFixed(6)} APTM\n` +
+            `Est. Withdrawal:      ~${revenueAptm.toFixed(6)} APTM\n` +
             `Contract Balance:     ${contractBalAptm.toFixed(6)} APTM\n` +
-            `Remaining in vault:   ${(contractBalAptm - revenueAptm).toFixed(6)} APTM\n\n` +
-            `userWithdraw() will transfer ONLY the revenue-equivalent APTM.\n` +
-            `User deposits are NOT touched. Firebase counter resets to 0.\n\n` +
+            `Est. Remaining:       ~${Math.max(0, contractBalAptm - revenueAptm).toFixed(6)} APTM\n\n` +
+            `Contract call: adminWithdraw()  [no args]\n` +
+            `Firebase counter resets to 0 ONLY after on-chain confirmation.\n` +
+            `User deposits and personal balances are NOT touched.\n\n` +
             `Proceed?`
         );
         if (!confirmed) { console.log("[AdminWithdraw] Cancelled by user"); return; }
 
-        showToast("Calling userWithdraw() for revenue amount…");
+        showToast("Calling adminWithdraw() on contract…");
 
         try {
-            // ── Step 6: Execute on-chain withdrawal ───────────────────────────
-            console.log("[AdminWithdraw] Sending userWithdraw tx…");
-            const tx = await hubContract.userWithdraw(revenueWei, { gasLimit: 500000 });
+            // ── Step 6: PLATFORM EXIT — adminWithdraw() with NO arguments ────────
+            // This is the correct contract function for platform revenue withdrawal.
+            // The contract handles amount resolution internally from its revenue pool.
+            // DO NOT substitute userWithdraw(revenueWei) — wrong mapping, wrong pool.
+            console.log("[AdminWithdraw] Sending adminWithdraw() tx (no args)…");
+            const tx = await hubContract.adminWithdraw({ gasLimit: 500000 });
             console.log("[AdminWithdraw] Tx submitted:", tx.hash);
-            showToast("Withdrawal submitted — waiting for confirmation…");
+            showToast("Withdrawal submitted — waiting for on-chain confirmation…");
 
+            // ── RECEIPT LOGIC: reset Firebase ONLY after status === 1 ────────────
             const receipt = await tx.wait();
             if (!receipt || receipt.status !== 1) {
                 console.error("[AdminWithdraw] Tx reverted. Receipt:", receipt);
-                return alert("Admin withdraw reverted on-chain.\nBlock: " + (receipt ? receipt.blockNumber : "unknown") + "\nNo funds moved.");
+                return alert(
+                    "Platform revenue withdrawal reverted on-chain.\n" +
+                    "Block: " + (receipt ? receipt.blockNumber : "unknown") + "\n\n" +
+                    "No funds moved. Firebase counter unchanged.\n" +
+                    "Check that the contract has claimable platform revenue."
+                );
             }
             console.log(`[AdminWithdraw] Confirmed. Block: ${receipt.blockNumber}, Gas: ${receipt.gasUsed.toString()}`);
 
-            // ── Step 7: Reset admin_revenue/global to 0 in Firebase ───────────
+            // ── Step 7: Reset admin_revenue/global ONLY after receipt.status===1 ──
             if (window.db) {
                 try {
                     await window.fs.setDoc(
                         window.fs.doc(window.db, "admin_revenue", "global"),
-                        { total: 0, lastWithdraw: Date.now(), lastUpdated: Date.now() },
+                        {
+                            total:        0,
+                            lastWithdraw: Date.now(),
+                            lastUpdated:  Date.now()
+                        },
                         { merge: true }
                     );
-                    console.log("[AdminWithdraw] Firebase admin_revenue/global reset to 0");
-                } catch (e) { console.warn("[AdminWithdraw] Firebase admin_revenue reset failed:", e); }
+                    console.log("[AdminWithdraw] Firebase admin_revenue/global reset to 0 after confirmed receipt.");
+                } catch (e) {
+                    console.error("[AdminWithdraw] CRITICAL: on-chain OK but Firebase reset failed:", e);
+                }
             }
 
+            // Log as platform settle — distinct from personal user settle entries
             logTransaction('settle', revenueAptm, {
                 from: userAddress, to: 'admin-wallet',
-                description: `Admin withdrew ${revenueStars.toFixed(2)} ★ = ${revenueAptm.toFixed(6)} APTM at $${livePrice.toFixed(4)}/APTM`
+                description: `Platform Revenue Settled — ${revenueStars.toFixed(2)} ★ ≈ ${revenueAptm.toFixed(6)} APTM via adminWithdraw()`
             });
 
-            // ── Step 8: Update revenue displays to 0 ─────────────────────────
+            // ── Step 8: Update all revenue display elements to 0 ─────────────────
             const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
             s('admin-revenue-display', "0.00 ★");
             s('admin-revenue-count',   "0 fee events");
             s('drawer-admin-revenue',  "0.00 ★");
             s('drawer-admin-count',    "0 fee events");
 
-            console.log(`[AdminWithdraw] ── Complete. Withdrew ${revenueAptm.toFixed(6)} APTM ──`);
-            showToast(`✓ Withdrawn ${revenueAptm.toFixed(6)} APTM to admin wallet`);
+            console.log(`[AdminWithdraw] ── Complete. adminWithdraw() confirmed on block ${receipt.blockNumber} ──`);
+            showToast(`✓ Platform revenue withdrawn via adminWithdraw() — block ${receipt.blockNumber}`);
             updateUI();
             updateDrawerUI();
             syncData();
 
         } catch (e) {
             console.error("[AdminWithdraw] Threw:", e);
-            alert("Admin withdraw failed: " + (e.reason || e.message || String(e)).slice(0, 300));
+            alert(
+                "Admin withdraw failed:\n\n" +
+                (e.reason || e.message || String(e)).slice(0, 300) + "\n\n" +
+                "Ensure:\n" +
+                "  • Connected wallet is PLATFORM_ADMIN on the contract\n" +
+                "  • Contract has claimable platform revenue\n" +
+                "  • You are calling adminWithdraw() — not userWithdraw()"
+            );
         }
     }
 
@@ -10672,10 +10795,18 @@
 
                 // Clamp spentStarsTotal to what was actually deposited
                 const spentClamped = Math.min(spentRaw, depositStars);
-                // Remaining unspent deposit stars
+                // Remaining unspent deposit stars (purchased balance)
                 const newStars     = Math.max(0, depositStars - spentClamped);
-                // Earned (creatorStars) cannot exceed deposit total — zero ghost credits
-                const newCreator   = 0;
+
+                // PRESERVE creatorStars — they are earned from OTHER users' actions
+                // (hypes, follows, tips) and are NOT derived from initial_deposit.
+                // Zeroing them wholesale would destroy legitimate earned income.
+                // Only cap to a sane ceiling: creatorStars cannot exceed total platform
+                // star supply (depositStars × 10 as a very generous upper bound).
+                // Ghost creatorStars are those that exceed 10× the deposit — a clear sign
+                // of inflation, not a legitimate earn.
+                const creatorCeiling = depositStars * 10;
+                const newCreator     = Math.min(curCreator, Math.max(0, creatorCeiling));
 
                 const ghostStars   = curStars   - newStars;
                 const ghostCreator = curCreator - newCreator;
@@ -10687,7 +10818,7 @@
                 plan.push({
                     ref:         d.ref,
                     addr,
-                    deposit:     deposit.toFixed(4),
+                    deposit:     depositAptm.toFixed(4),   // FIX: was `deposit` (ReferenceError)
                     depositStars,
                     curStars:    curStars.toFixed(2),
                     curCreator:  curCreator.toFixed(2),
@@ -10702,7 +10833,8 @@
             // Step 3: show confirmation dialog
             const preview = plan.slice(0, 8).map(p =>
                 p.addr.slice(0,8) + '…  deposit=' + p.deposit + 'APTM (' + p.depositStars + '★)' +
-                '  cur=' + p.curStars + '+' + p.curCreator + '★  →  new=' + p.newStars + '+0★'
+                '  cur=' + p.curStars + '+' + p.curCreator + '★' +
+                '  →  new=' + p.newStars.toFixed(2) + '+' + p.newCreator.toFixed(2) + '★'
             ).join('\n');
 
             const confirmed = confirm(
@@ -10713,8 +10845,9 @@
                 '  (purchased: ' + totalGhostStars.toFixed(2) + '★  earned: ' + totalGhostCreator.toFixed(2) + '★)\n' +
                 'Missing stars to MINT: ' + totalMintedStars.toFixed(2) + '★ (0-price deposit fix)\n\n' +
                 'Preview (first 8 users):\n' + preview + '\n\n' +
-                'creatorStars will be set to 0 for all users.\n' +
-                'stars recalculated from initial_deposit + deposit ledger.\n\n' +
+                'Purchased stars recalculated from initial_deposit + deposit ledger.\n' +
+                'Earned stars (creatorStars) preserved unless clearly inflated (>10× deposit).\n' +
+                'spentStarsTotal clamped to depositStars.\n\n' +
                 'This CANNOT be undone. Proceed?'
             );
             if (!confirmed) {
@@ -10765,10 +10898,14 @@
             alert(
                 'Reconciliation complete.\n\n' +
                 'Updated: ' + plan.length + ' accounts\n' +
-                'Ghost stars removed: ' + totalGhost.toFixed(2) + '\u2605\n\n' +
+                'Ghost purchased stars removed: ' + totalGhostStars.toFixed(2) + ' \u2605\n' +
+                'Ghost earned stars removed:    ' + totalGhostCreator.toFixed(2) + ' \u2605\n' +
+                'Missing stars minted (0-price): ' + totalMintedStars.toFixed(2) + ' \u2605\n\n' +
+                'Legitimate creatorStars preserved.\n' +
                 'The dashboard will refresh automatically.'
             );
-            console.log('[Reconciliation] Complete. Ghost stars removed:', totalGhost.toFixed(4));
+            console.log('[Reconciliation] Complete. ghostPurchased:', totalGhostStars.toFixed(4),
+                'ghostEarned:', totalGhostCreator.toFixed(4), 'minted:', totalMintedStars.toFixed(4));
 
         } catch (e) {
             console.error('[Reconciliation] Failed:', e);
