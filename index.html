@@ -1436,6 +1436,70 @@
             .mcd-tick-date { display: none; }
         }
 
+        /* ── Solvency Light ─────────────────────────────────────────────────── */
+        .mcd-solvency {
+            display: flex; align-items: center; justify-content: space-between;
+            flex-wrap: wrap; gap: 10px;
+            padding: 12px 14px; border-radius: 10px;
+            margin-bottom: 16px;
+            border: 1px solid rgba(255,255,255,0.08);
+            transition: background 0.3s, border-color 0.3s;
+        }
+        .mcd-solvency.solvent {
+            background: rgba(34,197,94,0.08);
+            border-color: rgba(34,197,94,0.35);
+        }
+        .mcd-solvency.insolvent {
+            background: rgba(239,68,68,0.08);
+            border-color: rgba(239,68,68,0.4);
+        }
+        .mcd-solvency.loading {
+            background: rgba(255,255,255,0.03);
+            border-color: var(--border);
+        }
+        .mcd-sol-left  { display: flex; align-items: center; gap: 10px; }
+        .mcd-sol-dot {
+            width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+        }
+        .mcd-solvency.solvent   .mcd-sol-dot {
+            background: #22c55e;
+            box-shadow: 0 0 0 3px rgba(34,197,94,0.2), 0 0 10px rgba(34,197,94,0.5);
+            animation: sol-pulse-green 2.4s ease-in-out infinite;
+        }
+        .mcd-solvency.insolvent .mcd-sol-dot {
+            background: #ef4444;
+            box-shadow: 0 0 0 3px rgba(239,68,68,0.2), 0 0 10px rgba(239,68,68,0.6);
+            animation: sol-blink-red 0.9s step-end infinite;
+        }
+        .mcd-solvency.loading   .mcd-sol-dot {
+            background: var(--text-muted);
+        }
+        @keyframes sol-pulse-green {
+            0%,100% { box-shadow: 0 0 0 3px rgba(34,197,94,0.2), 0 0 10px rgba(34,197,94,0.4); }
+            50%      { box-shadow: 0 0 0 5px rgba(34,197,94,0.1), 0 0 18px rgba(34,197,94,0.7); }
+        }
+        @keyframes sol-blink-red {
+            0%,49% { opacity: 1; }
+            50%,100%{ opacity: 0.15; }
+        }
+        .mcd-sol-status {
+            font-family: var(--font-mono); font-size: 0.72rem; font-weight: 800;
+            letter-spacing: 1px; text-transform: uppercase;
+        }
+        .mcd-solvency.solvent   .mcd-sol-status { color: #22c55e; }
+        .mcd-solvency.insolvent .mcd-sol-status { color: #ef4444; }
+        .mcd-solvency.loading   .mcd-sol-status { color: var(--text-muted); }
+        .mcd-sol-detail {
+            font-size: 0.65rem; color: var(--text-muted); margin-top: 1px;
+        }
+        .mcd-sol-right { text-align: right; flex-shrink: 0; }
+        .mcd-sol-ratio {
+            font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700;
+        }
+        .mcd-solvency.solvent   .mcd-sol-ratio { color: #22c55e; }
+        .mcd-solvency.insolvent .mcd-sol-ratio { color: #ef4444; }
+        .mcd-sol-sub { font-size: 0.6rem; color: var(--text-muted); margin-top: 1px; }
+
         /* Tokenomics */
         .tok-section { font-family: var(--font-mono); font-size: 0.56rem; color: var(--gold); letter-spacing: 2.5px; text-transform: uppercase; margin: 18px 0 8px; font-weight: 700; }
         .tok-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 0.84rem; }
@@ -3263,6 +3327,21 @@
                         <div class="mcd-live-badge"><span class="mcd-live-dot"></span> LIVE</div>
                     </div>
 
+                    <!-- Solvency Light -->
+                    <div class="mcd-solvency loading" id="mcd-solvency-bar">
+                        <div class="mcd-sol-left">
+                            <div class="mcd-sol-dot"></div>
+                            <div>
+                                <div class="mcd-sol-status" id="mcd-sol-status">CHECKING SOLVENCY…</div>
+                                <div class="mcd-sol-detail" id="mcd-sol-detail">Fetching contract balance…</div>
+                            </div>
+                        </div>
+                        <div class="mcd-sol-right">
+                            <div class="mcd-sol-ratio" id="mcd-sol-ratio">— / —</div>
+                            <div class="mcd-sol-sub">Contract ★ / Liability ★</div>
+                        </div>
+                    </div>
+
                     <!-- Global metrics -->
                     <div class="mcd-metrics">
                         <div class="mcd-metric">
@@ -3274,7 +3353,7 @@
                             <div class="mcd-metric-val teal" id="mcd-circulating">— ★</div>
                         </div>
                         <div class="mcd-metric">
-                            <div class="mcd-metric-label">Pending Withdrawals</div>
+                            <div class="mcd-metric-label">User-Owned Debt ⚠</div>
                             <div class="mcd-metric-val" id="mcd-pending">— ★</div>
                         </div>
                     </div>
@@ -4910,26 +4989,99 @@
             snap.forEach(d => docs.push(d.data()));
             _renderMCD(docs);
 
-            // ── Global metrics: query user_balances for circulating/pending ──
-            // Run async in background so the ticker renders immediately.
+            // ── Global metrics + Solvency Light ──────────────────────────────
+            // Runs async in background so the ticker renders immediately.
             (async () => {
                 if (!window.db) return;
+                const s2 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+                // Step 1: Aggregate user_balances for circulating stars and user-owned debt
+                let totalCirculating = 0;
+                let totalPending     = 0;   // sum of creatorStars = what creators can withdraw
                 try {
                     const balSnap = await window.fs.getDocs(
                         window.fs.collection(window.db, 'user_balances')
                     );
-                    let totalCirculating = 0;
-                    let totalPending     = 0;
                     balSnap.forEach(d => {
                         const data = d.data();
-                        totalCirculating += (parseFloat(data.stars) || 0) +
+                        totalCirculating += (parseFloat(data.stars)        || 0) +
                                             (parseFloat(data.creatorStars) || 0);
-                        totalPending     += parseFloat(data.creatorStars) || 0;
+                        totalPending     +=  parseFloat(data.creatorStars) || 0;
                     });
-                    const s2 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
                     s2('mcd-circulating', totalCirculating.toFixed(2) + ' ★');
                     s2('mcd-pending',     totalPending.toFixed(2) + ' ★');
-                } catch (e) { console.warn('[MCD] global metrics failed:', e); }
+                } catch (e) { console.warn('[MCD] user_balances fetch failed:', e); }
+
+                // Step 2: Read admin_revenue/global for the withdrawable platform revenue
+                let adminRevStars = 0;
+                try {
+                    const gSnap = await window.fs.getDoc(
+                        window.fs.doc(window.db, 'admin_revenue', 'global')
+                    );
+                    if (gSnap.exists()) adminRevStars = parseFloat(gSnap.data().total) || 0;
+                } catch (e) { console.warn('[MCD] admin_revenue fetch failed:', e); }
+
+                // Step 3: Read contract balance via provider (requires wallet connected)
+                // TOTAL_LIABILITY = admin revenue (platform) + user-owned debt (creatorStars)
+                // CONTRACT_BALANCE_STARS = on-chain APTM × livePrice / $0.01
+                const bar = document.getElementById('mcd-solvency-bar');
+                const statusEl  = document.getElementById('mcd-sol-status');
+                const detailEl  = document.getElementById('mcd-sol-detail');
+                const ratioEl   = document.getElementById('mcd-sol-ratio');
+
+                if (!provider) {
+                    if (bar) bar.className = 'mcd-solvency loading';
+                    if (statusEl) statusEl.textContent = 'WALLET NOT CONNECTED';
+                    if (detailEl) detailEl.textContent = 'Connect wallet to run solvency check.';
+                    if (ratioEl)  ratioEl.textContent  = '— / —';
+                    return;
+                }
+
+                let contractBalAptm = 0;
+                try {
+                    const raw = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
+                    contractBalAptm = parseFloat(ethers.utils.formatEther(raw)) || 0;
+                } catch (e) {
+                    console.warn('[MCD] Contract balance fetch failed:', e);
+                    if (bar) bar.className = 'mcd-solvency loading';
+                    if (statusEl) statusEl.textContent = 'CONTRACT READ ERROR';
+                    if (detailEl) detailEl.textContent = 'Could not fetch on-chain balance.';
+                    return;
+                }
+
+                // Convert contract APTM → stars using live price (fall back to $0.3391)
+                const livePrice = (currentAptmPriceUsd > 0) ? currentAptmPriceUsd
+                                : (window.aptmPriceUSD > 0 ? window.aptmPriceUSD : 0.3391);
+                const contractBalStars = (contractBalAptm * livePrice) / CONFIG.STAR_USD;
+
+                // Total liability: what the system owes in stars
+                const totalLiabilityStars = adminRevStars + totalPending;
+
+                const isSolvent   = contractBalStars >= totalLiabilityStars;
+                const discrepancy = Math.abs(contractBalStars - totalLiabilityStars);
+                const coverageRatio = totalLiabilityStars > 0
+                    ? ((contractBalStars / totalLiabilityStars) * 100).toFixed(1)
+                    : '∞';
+
+                // Update solvency bar
+                if (bar) bar.className = 'mcd-solvency ' + (isSolvent ? 'solvent' : 'insolvent');
+                if (ratioEl) ratioEl.textContent =
+                    contractBalStars.toFixed(1) + ' ★ / ' + totalLiabilityStars.toFixed(1) + ' ★';
+
+                if (isSolvent) {
+                    if (statusEl) statusEl.textContent = 'SYSTEM SOLVENT';
+                    if (detailEl) detailEl.textContent =
+                        'Contract covers all liabilities. Coverage: ' + coverageRatio + '% · Surplus: ' +
+                        discrepancy.toFixed(2) + ' ★ ($' + (discrepancy * CONFIG.STAR_USD).toFixed(2) + ')';
+                } else {
+                    if (statusEl) statusEl.textContent = 'RESERVE DISCREPANCY';
+                    if (detailEl) detailEl.textContent =
+                        'Shortfall: ' + discrepancy.toFixed(2) + ' ★ ($' +
+                        (discrepancy * CONFIG.STAR_USD).toFixed(2) +
+                        ') · Coverage: ' + coverageRatio + '%';
+                }
+
+                console.log(`[Solvency] Contract: ${contractBalStars.toFixed(4)}★ | Liability: ${totalLiabilityStars.toFixed(4)}★ (admin ${adminRevStars.toFixed(4)}★ + user debt ${totalPending.toFixed(4)}★) | ${isSolvent ? 'SOLVENT' : 'DISCREPANCY'}`);
             })();
 
         }, (err) => {
