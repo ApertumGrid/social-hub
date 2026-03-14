@@ -3322,6 +3322,8 @@
                         <strong>How it works:</strong> Stars power instant interactions on the internal ledger. Click <strong>Settle Total Balance to Wallet</strong> to convert your <strong>entire</strong> balance — both purchased and earned stars — into $APTM at the live price. Both balances are wiped to zero after the transaction mines.
                     </div>
                     <button class="btn btn-teal" style="width:auto; padding:10px 24px;" onclick="settleStarsToWallet(event)">Settle Total Balance to Wallet →</button>
+                    <button id="manual-sync-btn" class="btn btn-outline" style="width:auto; padding:8px 18px; margin-top:8px; font-size:0.75rem;" onclick="manualProviderSync()">⟳ Re-verify Wallet Connection</button>
+                    <div id="manual-sync-status" style="display:none; font-size:0.68rem; color:var(--text-muted); font-family:var(--font-mono); margin-top:6px;"></div>
                 </div>
 
                 <div class="card">
@@ -4315,18 +4317,45 @@
     // ═══════════════════════════════════════════════════════════════════
     // WALLET — MetaMask only for Deposit, Withdraw, Admin Withdraw
     // ═══════════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
+    // MOBILE PROVIDER GUARD — waits for window.ethereum to be injected
+    // The MetaMask in-app browser can take a tick or two before ethereum
+    // is fully ready; polling avoids the "address error" on starBalance.
+    // ═══════════════════════════════════════════════════════════════════
+    function _waitForEthereum(timeoutMs = 3000) {
+        return new Promise((resolve, reject) => {
+            if (window.ethereum) return resolve(window.ethereum);
+            let elapsed = 0;
+            const iv = setInterval(() => {
+                elapsed += 100;
+                if (window.ethereum) { clearInterval(iv); return resolve(window.ethereum); }
+                if (elapsed >= timeoutMs) { clearInterval(iv); reject(new Error('window.ethereum not available')); }
+            }, 100);
+        });
+    }
+
+    // Safe contract call wrapper — returns null instead of throwing on RPC error.
+    // Used for starBalances / provider.getBalance so callers can distinguish
+    // "returned 0" from "call failed / provider not ready".
+    async function _safeCall(fn) {
+        try { return await fn(); }
+        catch (e) { console.warn('[SafeCall] RPC error (non-fatal):', e.message || e); return null; }
+    }
+
     async function connectWallet() {
-        if (!window.ethereum) return alert("MetaMask not found. Please install it.");
         try {
-            provider    = new ethers.providers.Web3Provider(window.ethereum);
+            const eth = await _waitForEthereum(4000);
+            provider    = new ethers.providers.Web3Provider(eth);
             const accts = await provider.send("eth_requestAccounts", []);
             userAddress = accts[0];
-            window.userAddress = userAddress;   // keep window in sync for logTransaction fallback
+            window.userAddress = userAddress;
             signer      = provider.getSigner();
             hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
+            // Expose contracts globally so mobile scope can always reach them
+            window.hubContract = hubContract;
+            window.provider    = provider;
+            window.signer      = signer;
 
-            // Zero module-level balance cache immediately so the UI never shows
-            // stale values from a previous session while Firestore catches up.
             purchasedStars  = 0;
             creatorEarnings = 0;
             updateUI();
@@ -4334,14 +4363,12 @@
             const statusEl = document.getElementById('wallet-status');
             if (statusEl) statusEl.textContent = userAddress.slice(0, 6) + '…' + userAddress.slice(-4);
 
-            // Update wallet button to connected state (remove pulse, add green dot)
             const walletBtn = document.getElementById('wallet-btn');
             const walletDot = document.getElementById('wallet-indicator-dot');
             if (walletBtn) { walletBtn.classList.remove('not-connected'); }
             if (walletDot) { walletDot.className = 'wallet-online-dot'; }
 
             await syncData();
-            // Fetch live price immediately on connect so Available Stars are accurate
             const freshPrice = await getLiveAptmPrice();
             if (freshPrice !== null) {
                 currentAptmPriceUsd = freshPrice;
@@ -4351,9 +4378,8 @@
             subscribeToEarnings(userAddress);
             subscribeLedger(userAddress);
             subscribeAdminRevenue(userAddress);
-            startChainRefresh();  // Poll aptmBalances() every 30s — keeps UI in sync with chain
+            startChainRefresh();
 
-            // ── Load Firebase profile (name + avatar) for this wallet ──
             await loadProfileFromFirebase(userAddress);
 
             if (typeof loadGlobalFeed === "function") loadGlobalFeed();
@@ -4361,27 +4387,31 @@
             showToast("Connected & Synced ✓");
         } catch (err) {
             console.error(err);
-            showToast("Connection Failed");
+            showToast("Connection Failed — " + (err.message || ''));
         }
     }
 
     async function syncData() {
+        // Re-resolve module vars from window in case mobile scope lost references
+        if (!hubContract && window.hubContract) hubContract = window.hubContract;
+        if (!signer     && window.signer)      signer      = window.signer;
+        if (!provider   && window.provider)    provider    = window.provider;
         if (!hubContract || !signer) return;
         try {
-            const addr              = await signer.getAddress();
-            const [balRaw, anchors] = await Promise.all([
-                hubContract.starBalances(addr),
-                hubContract.totalAnchors()
-            ]);
-            // BLOCKCHAIN IS THE TRUTH for the on-chain balance.
-            // However, star spending (hype/like/tip) happens off-chain — the
-            // contract balance does NOT decrease until Settle.  We therefore
-            // subtract the durable `spentStarsTotal` field (written to Firestore
-            // on every deduction) to arrive at the correct spendable balance.
-            const onChainAptm   = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
-            initialDepositAptm  = onChainAptm;
+            const addr   = await signer.getAddress();
+            const balRaw = await _safeCall(() => hubContract.starBalances(addr));
+            const anchRaw = await _safeCall(() => hubContract.totalAnchors());
 
-            totalAnchors = anchors.toNumber();
+            // If the contract call failed (provider not ready), bail silently —
+            // startChainRefresh will retry in 30 s.
+            if (balRaw === null) {
+                console.warn('[syncData] starBalances returned null — provider may not be ready yet');
+                return;
+            }
+
+            const onChainAptm  = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
+            initialDepositAptm = onChainAptm;
+            if (anchRaw !== null) totalAnchors = anchRaw.toNumber();
 
             if (window.db) {
                 const userRef = window.fs.doc(window.db, 'user_balances', addr.toLowerCase());
@@ -4394,21 +4424,15 @@
                     creatorEarnings    = snap.data().creatorStars   || 0;
                     totalDepositedAptm = parseFloat(snap.data().initial_deposit) || 0;
 
-                    // ── BUG FIX: derive spendable APTM from on-chain balance minus
-                    // accumulated off-chain spend.  This survives hard refreshes because
-                    // spentStarsTotal is persisted in Firestore on every deductStars call.
-                    const spentStars   = parseFloat(snap.data().spentStarsTotal) || 0;
-                    const livePrice    = currentAptmPriceUsd > 0 ? currentAptmPriceUsd
-                                       : (window.aptmPriceUSD || 0);
+                    const spentStars = parseFloat(snap.data().spentStarsTotal) || 0;
+                    const livePrice  = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
                     if (livePrice > 0 && spentStars > 0) {
                         const spentAptm    = (spentStars * CONFIG.STAR_USD) / livePrice;
                         currentAptmBalance = Math.max(0, onChainAptm - spentAptm);
                         console.log(`[syncData] onChain=${onChainAptm.toFixed(6)} APTM | spentStars=${spentStars.toFixed(4)}★ | spentAptm=${spentAptm.toFixed(6)} | spendable=${currentAptmBalance.toFixed(6)}`);
                     } else {
-                        // Price not yet loaded or no spend recorded — use on-chain value
                         currentAptmBalance = onChainAptm;
                     }
-
                     await window.fs.updateDoc(userRef, { lastSync: Date.now() });
                 }
             } else {
@@ -4427,33 +4451,37 @@
     function startChainRefresh() {
         stopChainRefresh();
         _chainRefreshTimer = setInterval(async function() {
+            // Re-resolve from window globals — mobile scope may lose closure refs
+            if (!hubContract && window.hubContract) hubContract = window.hubContract;
+            if (!signer     && window.signer)      signer      = window.signer;
             if (!hubContract || !signer || !userAddress) return;
             try {
-                const addr        = await signer.getAddress();
-                const balRaw      = await hubContract.starBalances(addr);
+                const addr   = await signer.getAddress();
+                const balRaw = await _safeCall(() => hubContract.starBalances(addr));
+
+                // If RPC returned null (provider error), skip this tick — don't zero the balance
+                if (balRaw === null) {
+                    console.warn('[ChainRefresh] starBalances returned null — skipping tick');
+                    return;
+                }
+
                 const onChainAptm = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
 
-                // Fetch spentStarsTotal from Firestore to compute net spendable balance.
-                // Never write raw on-chain balance — it does not reflect off-chain spend.
                 let spentStars = 0;
                 if (window.db) {
                     try {
                         const snap = await window.fs.getDoc(
                             window.fs.doc(window.db, 'user_balances', addr.toLowerCase())
                         );
-                        if (snap.exists()) {
-                            spentStars = parseFloat(snap.data().spentStarsTotal) || 0;
-                        }
+                        if (snap.exists()) spentStars = parseFloat(snap.data().spentStarsTotal) || 0;
                     } catch (_) {}
                 }
 
-                const livePrice = currentAptmPriceUsd > 0 ? currentAptmPriceUsd
-                                : (window.aptmPriceUSD || 0);
+                const livePrice = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
                 const netAptm   = livePrice > 0 && spentStars > 0
                     ? Math.max(0, onChainAptm - (spentStars * CONFIG.STAR_USD) / livePrice)
                     : onChainAptm;
 
-                // Spend lock: skip if a deduction just fired (avoids overwriting optimistic UI)
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
                 if (!spendLockActive) {
                     currentAptmBalance = netAptm;
@@ -4465,6 +4493,69 @@
     function stopChainRefresh() {
         if (_chainRefreshTimer) { clearInterval(_chainRefreshTimer); _chainRefreshTimer = null; }
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // MANUAL SYNC — "Re-verify Wallet Connection" button in Creator Studio
+    // Useful in MetaMask mobile browser when starBalance shows 0 after
+    // the in-app browser finishes injecting window.ethereum.
+    // ═══════════════════════════════════════════════════════════════════
+    async function manualProviderSync() {
+        const btn    = document.getElementById('manual-sync-btn');
+        const status = document.getElementById('manual-sync-status');
+        const setStatus = (msg, colour) => {
+            if (!status) return;
+            status.style.display = 'block';
+            status.style.color   = colour || 'var(--text-muted)';
+            status.textContent   = msg;
+        };
+
+        if (btn) { btn.disabled = true; btn.textContent = '⟳ Syncing…'; }
+        setStatus('Checking provider…', 'var(--teal)');
+
+        try {
+            // Step 1 — wait for ethereum to be injected (handles slow mobile browsers)
+            const eth = await _waitForEthereum(4000);
+            setStatus('Provider found — re-initialising contract…', 'var(--teal)');
+
+            // Step 2 — rebuild provider/signer/contract if they were lost
+            if (!provider || !signer || !hubContract) {
+                provider    = new ethers.providers.Web3Provider(eth);
+                const accts = await provider.send("eth_requestAccounts", []);
+                if (!userAddress) {
+                    userAddress        = accts[0];
+                    window.userAddress = userAddress;
+                }
+                signer      = provider.getSigner();
+                hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
+                window.hubContract = hubContract;
+                window.provider    = provider;
+                window.signer      = signer;
+                setStatus('Contract re-initialised — fetching balance…', 'var(--teal)');
+            } else {
+                setStatus('Provider OK — fetching balance…', 'var(--teal)');
+            }
+
+            // Step 3 — safe balance read
+            const addr   = await signer.getAddress();
+            const balRaw = await _safeCall(() => hubContract.starBalances(addr));
+
+            if (balRaw === null) {
+                setStatus('⚠ Contract read failed — RPC may be congested. Try again.', 'var(--gold)');
+            } else {
+                const onChainAptm = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
+                setStatus(`✓ On-chain: ${onChainAptm.toFixed(4)} APTM — running full sync…`, '#22c55e');
+                await syncData();
+                showToast('Wallet re-verified & synced ✓');
+                setTimeout(() => { if (status) status.style.display = 'none'; }, 4000);
+            }
+        } catch (e) {
+            console.error('[ManualSync]', e);
+            setStatus('⚠ ' + (e.message || 'Sync failed — check MetaMask.'), 'var(--red)');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '⟳ Re-verify Wallet Connection'; }
+        }
+    }
+    window.manualProviderSync = manualProviderSync;
 
     function updateUI() {
         try {
@@ -5421,14 +5512,20 @@
                 return;
             }
 
-            let contractBalAptm = 0;
-            try {
-                const raw = await provider.getBalance(CONFIG.CONTRACT_ADDRESS);
+            let contractBalAptm = null;  // null = call failed, distinct from 0
+            const raw = await _safeCall(() => provider.getBalance(CONFIG.CONTRACT_ADDRESS));
+            if (raw !== null) {
                 contractBalAptm = parseFloat(ethers.utils.formatEther(raw)) || 0;
-            } catch (e) {
+            }
+
+            // ── Red Flash suppression: only show DISCREPANCY when BOTH sides
+            // returned valid numbers. A null from the chain means the provider
+            // isn't ready — show a neutral "waiting" state instead of a false alarm.
+            if (contractBalAptm === null) {
                 if (bar) bar.className = 'mcd-solvency loading';
-                if (statusEl) statusEl.textContent = 'CONTRACT READ ERROR';
-                if (detailEl) detailEl.textContent = 'Could not fetch on-chain balance: ' + (e.message || '');
+                if (statusEl) statusEl.textContent = 'CHAIN READ PENDING';
+                if (detailEl) detailEl.textContent = 'Waiting for provider response — will retry automatically.';
+                if (ratioEl)  ratioEl.textContent  = '— / —';
                 return;
             }
 
