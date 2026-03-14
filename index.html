@@ -8870,8 +8870,8 @@
                 console.warn('[handleCommBroadcast] postCount increment failed:', e);
             }
 
-            // Refresh the community feed to show the new post
-            await openCommunityFeed(_activeCommunity);
+            // Refresh the community feed to show the new post (no URL update — user is already here)
+            await openCommunityFeed(_activeCommunity, { updateUrl: false });
 
         } catch (e) {
             console.error('[handleCommBroadcast] write failed:', e);
@@ -8980,16 +8980,25 @@
     window.filterCommunities = filterCommunities;
 
     // ─── Open a specific Community Hub feed ───────────────────────────────────────
-    async function openCommunityFeed(comm) {
+    async function openCommunityFeed(comm, opts) {
         _activeCommunity = comm;
+        // opts.updateUrl = false suppresses pushState (used for post-broadcast refresh
+        // and popstate handler where the URL is already correct)
+        var shouldUpdateUrl = !(opts && opts.updateUrl === false);
 
-        // Push ?hub=<alias|id> into the URL so this view is bookmarkable / shareable
-        try {
-            const hubSlug = (comm.alias && comm.alias.trim()) ? comm.alias.trim() : comm.id;
-            const url = new URL(window.location.href);
-            url.searchParams.set('hub', hubSlug);
-            window.history.pushState({ hub: hubSlug }, '', url.toString());
-        } catch (_) {}
+        // Push ?hub=<alias|id> into the URL so this view is bookmarkable / shareable.
+        // Only push when this is a user-initiated navigation, not a background refresh.
+        if (shouldUpdateUrl) {
+            try {
+                const hubSlug = (comm.alias && comm.alias.trim()) ? comm.alias.trim() : comm.id;
+                const url = new URL(window.location.href);
+                // Only push if the param has actually changed — avoids duplicate history entries
+                if (url.searchParams.get('hub') !== hubSlug) {
+                    url.searchParams.set('hub', hubSlug);
+                    window.history.pushState({ hub: hubSlug }, '', url.toString());
+                }
+            } catch (_) {}
+        }
 
         // Sync the community composer identity and fee display
         if (typeof syncCommComposerIdentity === 'function') syncCommComposerIdentity();
@@ -10150,10 +10159,23 @@
     //   2. _allCommunities.length (loadCommunities onSnapshot has fired)
     // Then matches by exact Firestore doc ID, or by slugified name as fallback.
     // Shows the loading overlay during the wait.
+    //
+    // SESSION GUARD: runs at most once per browser session so that normal
+    // in-app navigation (which adds ?hub= to the URL via pushState) does NOT
+    // re-trigger this resolver on every subsequent page load or hot-reload.
     async function resolveHubDeepLink() {
         const params = new URLSearchParams(window.location.search);
         const hubParam = params.get('hub');
         if (!hubParam) return;   // no deep-link — normal load, nothing to do
+
+        // If we already resolved a deep-link this session, skip.
+        // This prevents the resolver from hijacking navigation when the user
+        // simply has ?hub= in their URL from a previous hub visit.
+        const sessionKey = 'hub_deeplink_resolved_' + hubParam;
+        if (sessionStorage.getItem(sessionKey)) {
+            console.log('[deepLink] already resolved this session — skipping');
+            return;
+        }
 
         _deepLinkEntry = true;
 
@@ -10257,6 +10279,9 @@
 
             await openCommunityFeed(comm);
 
+            // Mark resolved so this session doesn't re-trigger on balance/ledger updates
+            try { sessionStorage.setItem(sessionKey, '1'); } catch (_) {}
+
         } catch (e) {
             console.warn('[deepLink]', e.message);
             // Clear bad param and land on Global Feed
@@ -10292,9 +10317,9 @@
         var params = new URLSearchParams(window.location.search);
         var hubParam = params.get('hub');
         if (hubParam) {
-            // Forward into a hub — find and open it
+            // Forward into a hub — URL is already set by browser, don't push again
             var comm = _allCommunities.find(function(c) { return c.id === hubParam; });
-            if (comm) openCommunityFeed(comm);
+            if (comm) openCommunityFeed(comm, { updateUrl: false });
         } else if (_activeCommunity) {
             // Back out of a hub — close it without modifying history again
             _activeCommunity = null;
