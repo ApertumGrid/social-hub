@@ -1,3 +1,7 @@
+
+
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -4064,23 +4068,46 @@
     }
 
     // Refresh the on-chain APTM balance every 30 s while a wallet is connected.
-    // This keeps the UI in sync with the contract without requiring a page reload.
+    // MUST apply spentStarsTotal debt from Firestore before updating the UI —
+    // raw on-chain balance never decreases from off-chain spending (hype/tip/follow),
+    // so writing it directly was the tug-of-war causing the 30-second balance snap-back.
     let _chainRefreshTimer = null;
     function startChainRefresh() {
         stopChainRefresh();
         _chainRefreshTimer = setInterval(async function() {
-            if (!hubContract || !signer) return;
+            if (!hubContract || !signer || !userAddress) return;
             try {
-                const addr   = await signer.getAddress();
-                const balRaw = await hubContract.starBalances(addr);
-                const bal    = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
-                // Only update if we're outside the post-spend lock window
+                const addr        = await signer.getAddress();
+                const balRaw      = await hubContract.starBalances(addr);
+                const onChainAptm = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
+
+                // Fetch spentStarsTotal from Firestore to compute net spendable balance.
+                // Never write raw on-chain balance — it does not reflect off-chain spend.
+                let spentStars = 0;
+                if (window.db) {
+                    try {
+                        const snap = await window.fs.getDoc(
+                            window.fs.doc(window.db, 'user_balances', addr.toLowerCase())
+                        );
+                        if (snap.exists()) {
+                            spentStars = parseFloat(snap.data().spentStarsTotal) || 0;
+                        }
+                    } catch (_) {}
+                }
+
+                const livePrice = currentAptmPriceUsd > 0 ? currentAptmPriceUsd
+                                : (window.aptmPriceUSD || 0);
+                const netAptm   = livePrice > 0 && spentStars > 0
+                    ? Math.max(0, onChainAptm - (spentStars * CONFIG.STAR_USD) / livePrice)
+                    : onChainAptm;
+
+                // Spend lock: skip if a deduction just fired (avoids overwriting optimistic UI)
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
                 if (!spendLockActive) {
-                    currentAptmBalance = bal;
+                    currentAptmBalance = netAptm;
                     updateUI();
                 }
-            } catch (e) { console.warn("[ChainRefresh] aptmBalances poll failed:", e); }
+            } catch (e) { console.warn('[ChainRefresh] poll failed:', e); }
         }, 30000);
     }
     function stopChainRefresh() {
