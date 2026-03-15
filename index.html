@@ -10,7 +10,7 @@
     <script>try{if(localStorage.getItem('sh_theme')==='dark')document.documentElement.classList.add('dark');}catch(e){}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>SOCIALHUB — The Future of Social</title>
-    <link rel="icon" href="data:,">
+    <link rel="icon" href="https://i.postimg.cc/W3zPV3FC/Screenshot-2026-03-15-130632.png" type="image/png">
 
     <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
@@ -1122,6 +1122,69 @@
         .pact.views:hover { background: transparent; color: var(--text-secondary); border-color: transparent; }
         .pact.signal:hover { color: var(--teal); border-color: rgba(45,212,191,0.3); background: rgba(45,212,191,0.06); }
         .pact-num { font-family: var(--font-mono); font-size: 0.7rem; }
+
+        /* ── HARVEST HOVER — cost tooltip (desktop) ─────────────────────────
+           A small badge appears above economic action buttons on hover.
+           Uses the data-cost attribute on the .pact element.
+        ──────────────────────────────────────────────────────────────────── */
+        .pact[data-cost] { position: relative; }
+        .pact[data-cost]::before {
+            content: attr(data-cost);
+            position: absolute;
+            bottom: calc(100% + 7px);
+            left: 50%; transform: translateX(-50%) scale(0.85);
+            background: var(--bg-card);
+            border: 1px solid var(--border-md);
+            color: var(--text-primary);
+            font-size: 0.62rem; font-weight: 700;
+            font-family: var(--font-mono);
+            padding: 3px 8px; border-radius: 20px;
+            white-space: nowrap; pointer-events: none;
+            opacity: 0; transition: opacity 0.15s, transform 0.15s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+            z-index: 10;
+        }
+        .pact[data-cost]:hover::before {
+            opacity: 1; transform: translateX(-50%) scale(1);
+        }
+
+        /* ── Glow on hover for economic action pacts ─────────────────────── */
+        .pact.pact-like:hover {
+            color: #ff4d6d !important;
+            border-color: rgba(255,77,109,0.35) !important;
+            background: rgba(255,77,109,0.07) !important;
+            box-shadow: 0 0 10px rgba(255,77,109,0.20);
+        }
+        .pact.pact-comment:hover {
+            color: var(--purple-lt) !important;
+            border-color: rgba(124,92,191,0.35) !important;
+            background: var(--purple-dim) !important;
+            box-shadow: 0 0 10px rgba(124,92,191,0.18);
+        }
+        .pact.signal:hover {
+            color: var(--teal) !important;
+            border-color: rgba(45,212,191,0.35) !important;
+            background: rgba(45,212,191,0.07) !important;
+            box-shadow: 0 0 10px rgba(45,212,191,0.18);
+        }
+
+        /* ── MOBILE PRICE LABELS — static cost shown beneath icon ──────────
+           Hidden on desktop (hover available), shown on mobile via media query.
+           Uses the data-mobile-cost attribute.
+        ──────────────────────────────────────────────────────────────────── */
+        .pact-mobile-cost {
+            display: none; /* hidden on desktop */
+            font-size: 10px;
+            font-family: var(--font-mono);
+            font-weight: 700;
+            opacity: 0.6;
+            color: var(--text-secondary);
+            line-height: 1;
+            margin-top: 1px;
+            letter-spacing: 0.3px;
+        }
+        /* Dark mode: slightly brighter for readability */
+        html.dark .pact-mobile-cost { opacity: 0.75; color: var(--text-muted); }
 
         /* ── CATEGORY FILTER BAR ─────────────────────────────────────── */
         #category-bar {
@@ -3114,6 +3177,16 @@
         @media (max-width: 600px) {
             .comm-share-btn { min-height: 44px; }
         }
+
+        /* Mobile: show static cost labels, stack pact vertically */
+        @media (max-width: 768px) {
+            .pact-mobile-cost { display: block; }
+            /* Suppress the hover tooltip on touch devices */
+            .pact[data-cost]::before { display: none; }
+            /* Tighten post actions so they fit on small screens */
+            .post-actions { gap: 2px; }
+            .pact { flex-direction: column; padding: 5px 8px; gap: 2px; font-size: 0.7rem; }
+        }
     
         /* ══════════════════════════════════════════════════════════════════
            DARK MODE — activated by adding class="dark" to <html>
@@ -3214,20 +3287,19 @@
     <div id="topnav">
         <div class="brand">
             <div class="brand-icon">
-                <svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <img src="https://i.postimg.cc/W3zPV3FC/Screenshot-2026-03-15-130632.png"
+                     alt="SocialHub"
+                     style="width:30px;height:30px;object-fit:contain;border-radius:6px;"
+                     onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                <!-- Fallback star shown if image fails to load -->
+                <svg style="display:none" width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <defs>
                         <linearGradient id="star-grad" x1="0%" y1="0%" x2="100%" y2="100%">
                             <stop offset="0%" stop-color="#6a11cb"/>
                             <stop offset="100%" stop-color="#2575fc"/>
                         </linearGradient>
-                        <filter id="star-glow">
-                            <feGaussianBlur stdDeviation="1.2" result="blur"/>
-                            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                        </filter>
                     </defs>
-                    <!-- 4-pointed North Star: two overlapping slim diamonds -->
-                    <path d="M15 2 L17.2 13 L28 15 L17.2 17 L15 28 L12.8 17 L2 15 L12.8 13 Z"
-                          fill="url(#star-grad)" filter="url(#star-glow)"/>
+                    <path d="M15 2 L17.2 13 L28 15 L17.2 17 L15 28 L12.8 17 L2 15 L12.8 13 Z" fill="url(#star-grad)"/>
                 </svg>
             </div>
             <span class="brand-name">SOCIALHUB</span><span class="brand-tagline" style="color:var(--text-secondary); font-weight:500; letter-spacing:0; font-size:0.9rem;"> — The Future of Social</span>
@@ -8142,10 +8214,10 @@
                 ${post.category && post.category !== 'Global' ? `<span class="cat-badge">${post.category}</span>` : ''}
                 <div class="post-body">${linkify(post.text)}</div>
                 <div class="post-actions">
-                    <div class="pact${_isLiked(postId) ? ' pact-liked' : ''}" id="like-btn-${postId}" onclick="triggerLikeAnimation(event); hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span> Like</div>
-                    <div class="pact" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comment<span class="pact-num" id="cc-${postId}" style="color:var(--teal);"></span></div>
-                    <div class="pact signal" onclick="promoteToSignal('${postId}')" title="Promote to Daily Signals bar (1★ — 24h)">📡 Signal (1★)</div>
-                    <div class="pact boost" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
+                    <div class="pact pact-like${_isLiked(postId) ? ' pact-liked' : ''}" id="like-btn-${postId}" data-cost="Costs 1 ★" onclick="triggerLikeAnimation(event); hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span> Like<span class="pact-mobile-cost">1★</span></div>
+                    <div class="pact pact-comment" data-cost="Costs 1 ★" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comment<span class="pact-num" id="cc-${postId}" style="color:var(--teal);"></span><span class="pact-mobile-cost">1★</span></div>
+                    <div class="pact signal" data-cost="Costs 1 ★" onclick="promoteToSignal('${postId}')" title="Promote to Daily Signals bar (1★ — 24h)">📡 Signal (1★)<span class="pact-mobile-cost">1★</span></div>
+                    <div class="pact boost" data-cost="Costs 10 ★" onclick="boostPost('${postId}')">🚀 Boost (10★)<span class="pact-mobile-cost">10★</span></div>
                     <div class="pact views" title="Impressions">👁 <span class="pact-num" id="views-${postId}">${(post.views || 0).toLocaleString()}</span></div>
                 </div>
                 <div class="comment-tray" id="tray-${postId}">
@@ -10211,11 +10283,11 @@
                     mediaHtml +
                     '<div class="post-body">' + (typeof linkify === 'function' ? linkify(post.text) : escHtml(post.text)) + '</div>' +
                     '<div class="post-actions">' +
-                        '<div class="pact' + (_isLiked(postId) ? ' pact-liked' : '') + '" id="like-btn-' + postId + '" onclick="triggerLikeAnimation(event); hypeElement(\'' + (post.authorAddr||'') + '\',\'hp-' + postId + '\')">' +
-                            '\u2764 <span class="pact-num" id="hp-' + postId + '">' + (post.hypes || 0) + '</span> Like' +
+                        '<div class="pact pact-like' + (_isLiked(postId) ? ' pact-liked' : '') + '" id="like-btn-' + postId + '" data-cost="Costs 1 \u2605" onclick="triggerLikeAnimation(event); hypeElement(\'' + (post.authorAddr||'') + '\',\'hp-' + postId + '\')">' +
+                            '\u2764 <span class="pact-num" id="hp-' + postId + '">' + (post.hypes || 0) + '</span> Like<span class="pact-mobile-cost">1\u2605</span>' +
                         '</div>' +
-                        '<div class="pact" onclick="toggleTray(\'' + postId + '\'); loadComments(\'' + postId + '\')">' +
-                            '\ud83d\udcac Comment' +
+                        '<div class="pact pact-comment" data-cost="Costs 1 \u2605" onclick="toggleTray(\'' + postId + '\'); loadComments(\'' + postId + '\')">' +
+                            '\ud83d\udcac Comment<span class="pact-mobile-cost">1\u2605</span>' +
                         '</div>' +
                         '<div class="pact views">\ud83d\udc41 <span class="pact-num">' + ((post.views || 0).toLocaleString()) + '</span></div>' +
                     '</div>' +
