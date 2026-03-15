@@ -3397,6 +3397,26 @@
 
                 <div id="feed-items"></div>
                 <button id="load-more-btn" class="btn" onclick="showNextPage()">Load More Signals</button>
+
+                <!-- MY NETWORK — only visible when viewing own profile wall -->
+                <div id="my-network-card" style="display:none; margin-top:8px;">
+                    <div class="card">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+                            <div style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">◉ My Network</div>
+                            <button onclick="loadMyNetwork()" style="font-size:0.6rem; padding:4px 10px; border-radius:20px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-muted); cursor:pointer;">⟳ Refresh</button>
+                        </div>
+                        <div class="network-tabs">
+                            <button class="network-tab active" id="net-tab-creators" onclick="switchNetworkTab('creators')">👤 Creators</button>
+                            <button class="network-tab" id="net-tab-hubs" onclick="switchNetworkTab('hubs')">⬡ Hubs</button>
+                        </div>
+                        <div id="network-list-creators" class="network-list">
+                            <div class="network-empty">Loading your network…</div>
+                        </div>
+                        <div id="network-list-hubs" class="network-list" style="display:none;">
+                            <div class="network-empty">Loading your followed hubs…</div>
+                        </div>
+                    </div>
+                </div>
             </div><!-- /page-home -->
 
             <!-- CREATOR STUDIO PAGE -->
@@ -3557,26 +3577,6 @@
 
             <!-- PROFILE PAGE — delegates immediately to viewUserWall(userAddress) -->
             <div id="page-profile" class="page"></div>
-
-            <!-- MY NETWORK PAGE — injected below the wall view on the profile tab -->
-            <div id="page-network" class="page" style="padding: 16px 0;">
-                <div class="card" id="my-network-card">
-                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-                        <div style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">◉ My Network</div>
-                        <button onclick="loadMyNetwork()" style="font-size:0.6rem; padding:4px 10px; border-radius:20px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-muted); cursor:pointer;">⟳ Refresh</button>
-                    </div>
-                    <div class="network-tabs">
-                        <button class="network-tab active" id="net-tab-creators" onclick="switchNetworkTab('creators')">👤 Creators</button>
-                        <button class="network-tab" id="net-tab-hubs" onclick="switchNetworkTab('hubs')">⬡ Hubs</button>
-                    </div>
-                    <div id="network-list-creators" class="network-list">
-                        <div class="network-empty">Connect wallet to view your network.</div>
-                    </div>
-                    <div id="network-list-hubs" class="network-list" style="display:none;">
-                        <div class="network-empty">Connect wallet to view your followed hubs.</div>
-                    </div>
-                </div>
-            </div>
 
             <!-- TOKENOMICS PAGE -->
             <div id="page-info" class="page">
@@ -6385,8 +6385,9 @@
         if (pageProfile)     { pageProfile.style.display     = 'none'; pageProfile.classList.remove('active'); }
         if (pageInfo)        { pageInfo.style.display         = 'none'; pageInfo.classList.remove('active'); }
         if (pageCommunities) { pageCommunities.style.display  = 'none'; pageCommunities.classList.remove('active'); }
-        const pageNetwork = document.getElementById('page-network');
-        if (pageNetwork)     { pageNetwork.style.display      = 'none'; pageNetwork.classList.remove('active'); }
+        // Always hide My Network when switching tabs — shown only by viewUserWall on own wall
+        const networkCard = document.getElementById('my-network-card');
+        if (networkCard) networkCard.style.display = 'none';
 
         // 4. Reset desktop nav active states
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -6454,14 +6455,10 @@
                 if (typeof _notifDotClear === 'function') _notifDotClear();
             }
 
-            // Profile tab — wall view + My Network card below it
+            // Profile tab — delegates to viewUserWall which shows own wall + My Network card
             if (tabName === 'profile') {
                 if (userAddress) {
                     viewUserWall(userAddress);
-                    // Show the network card beneath the wall
-                    const pn = document.getElementById('page-network');
-                    if (pn) { pn.style.display = 'block'; pn.classList.add('active'); }
-                    if (typeof loadMyNetwork === 'function') loadMyNetwork();
                 } else {
                     showToast('Connect your wallet to view your profile.');
                     _activateTab('home', document.getElementById('nav-home'));
@@ -8252,6 +8249,13 @@
         if (loadMore)  loadMore.style.display  = 'none';
         if (feedHead)  feedHead.style.display  = 'none';
 
+        // 9. Show My Network card only on own wall; hide it on others' walls
+        const networkCard = document.getElementById('my-network-card');
+        if (networkCard) {
+            networkCard.style.display = isOwnWall ? 'block' : 'none';
+            if (isOwnWall && typeof loadMyNetwork === 'function') loadMyNetwork();
+        }
+
         // 7. Re-render the feed filtered by wall
         loadGlobalFeed();
 
@@ -8299,6 +8303,10 @@
         const feedHead = document.querySelector('.feed-heading');
         if (composer) composer.style.display = '';
         if (feedHead) feedHead.style.display = '';
+
+        // Hide My Network card — only visible on own wall
+        const networkCard = document.getElementById('my-network-card');
+        if (networkCard) networkCard.style.display = 'none';
 
         // 6b. Sync category-bar pill back to "All" so the UI matches _categoryFilter = null
         document.querySelectorAll('.cat-pill').forEach(function(pill) {
