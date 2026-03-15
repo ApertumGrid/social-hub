@@ -3555,7 +3555,11 @@
             </div>
 
 
-                <!-- MY NETWORK -->
+            <!-- PROFILE PAGE — delegates immediately to viewUserWall(userAddress) -->
+            <div id="page-profile" class="page"></div>
+
+            <!-- MY NETWORK PAGE — injected below the wall view on the profile tab -->
+            <div id="page-network" class="page" style="padding: 16px 0;">
                 <div class="card" id="my-network-card">
                     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
                         <div style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">◉ My Network</div>
@@ -3572,9 +3576,7 @@
                         <div class="network-empty">Connect wallet to view your followed hubs.</div>
                     </div>
                 </div>
-
-            <!-- PROFILE PAGE — delegates immediately to viewUserWall(userAddress) -->
-            <div id="page-profile" class="page"></div>
+            </div>
 
             <!-- TOKENOMICS PAGE -->
             <div id="page-info" class="page">
@@ -6383,6 +6385,8 @@
         if (pageProfile)     { pageProfile.style.display     = 'none'; pageProfile.classList.remove('active'); }
         if (pageInfo)        { pageInfo.style.display         = 'none'; pageInfo.classList.remove('active'); }
         if (pageCommunities) { pageCommunities.style.display  = 'none'; pageCommunities.classList.remove('active'); }
+        const pageNetwork = document.getElementById('page-network');
+        if (pageNetwork)     { pageNetwork.style.display      = 'none'; pageNetwork.classList.remove('active'); }
 
         // 4. Reset desktop nav active states
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -6448,13 +6452,16 @@
             // Clear ledger notification dot when Creator Studio is opened
             if (tabName === 'earnings' || tabName === 'studio' || tabName === 'ledger') {
                 if (typeof _notifDotClear === 'function') _notifDotClear();
-                if (typeof loadMyNetwork === 'function') loadMyNetwork();
             }
 
-            // Profile tab — delegate to the full wall view (identical to public wall)
+            // Profile tab — wall view + My Network card below it
             if (tabName === 'profile') {
                 if (userAddress) {
                     viewUserWall(userAddress);
+                    // Show the network card beneath the wall
+                    const pn = document.getElementById('page-network');
+                    if (pn) { pn.style.display = 'block'; pn.classList.add('active'); }
+                    if (typeof loadMyNetwork === 'function') loadMyNetwork();
                 } else {
                     showToast('Connect your wallet to view your profile.');
                     _activateTab('home', document.getElementById('nav-home'));
@@ -10836,8 +10843,10 @@
         const addr = userAddress.toLowerCase();
         const creatorsList = document.getElementById('network-list-creators');
         const hubsList     = document.getElementById('network-list-hubs');
-        if (creatorsList) creatorsList.innerHTML = '<div class="network-empty" style="color:var(--teal);">Loading…</div>';
-        if (hubsList)     hubsList.innerHTML     = '<div class="network-empty" style="color:var(--teal);">Loading…</div>';
+
+        // Fix 3: always reset both lists on every refresh so stale entries are cleared
+        if (creatorsList) creatorsList.innerHTML = '<div class="network-empty" style="color:var(--teal);">Loading creators…</div>';
+        if (hubsList)     hubsList.innerHTML     = '<div class="network-empty" style="color:var(--teal);">Loading hubs…</div>';
 
         try {
             const q = window.fs.query(
@@ -10862,7 +10871,6 @@
                     creatorsList.innerHTML = '';
                     for (const entry of creators) {
                         const targetAddr = entry.following;
-                        // Fetch profile from users collection
                         let name   = targetAddr.slice(0,6) + '…' + targetAddr.slice(-4);
                         let avatar = 'https://api.dicebear.com/7.x/identicon/svg?seed=' + targetAddr;
                         try {
@@ -10900,17 +10908,21 @@
                     hubsList.innerHTML = '';
                     for (const entry of hubs) {
                         const commId = entry.following;
-                        let hubName  = commId;
+                        // Fix 1: default to commId but will be overwritten with .name from Firestore
+                        let hubName   = commId;
                         let hubBanner = '';
-                        let hubDesc  = '';
+                        let hubDesc   = '';
                         try {
                             const cSnap = await window.fs.getDoc(
                                 window.fs.doc(window.db, 'communities', commId)
                             );
                             if (cSnap.exists()) {
-                                if (cSnap.data().name)        hubName   = cSnap.data().name;
-                                if (cSnap.data().bannerImage) hubBanner = cSnap.data().bannerImage;
-                                if (cSnap.data().description) hubDesc   = cSnap.data().description;
+                                const cd = cSnap.data();
+                                // Fix 1: use .name field (matches submitStartCommunity write)
+                                if (cd.name)      hubName   = cd.name;
+                                // Fix 1: correct field is headerImg, not bannerImage
+                                if (cd.headerImg) hubBanner = cd.headerImg;
+                                if (cd.description) hubDesc = cd.description;
                             }
                         } catch (_) {}
                         const item = document.createElement('div');
@@ -10932,7 +10944,6 @@
                                 openCommunityFeed(comm, {});
                                 switchPage('communities', document.getElementById('nav-communities'));
                             } else {
-                                // Fallback: navigate to communities tab
                                 switchPage('communities', document.getElementById('nav-communities'));
                                 showToast('Opening Communities…');
                             }
