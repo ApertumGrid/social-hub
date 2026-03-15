@@ -1104,7 +1104,8 @@
         @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.2;} }
 
         .post-actions {
-            display: flex; align-items: center; gap: 4px;
+            display: flex; align-items: center;
+            gap: 6px;                           /* Task 3: uniform spacing */
             padding-top: 12px;
             border-top: 1px solid var(--border);
         }
@@ -1114,77 +1115,103 @@
             font-size: 0.76rem; font-weight: 500;
             cursor: pointer; color: var(--text-secondary);
             background: transparent; border: 1px solid transparent;
-            transition: all 0.13s;
+            transition: all 0.15s;
+            position: relative;                 /* needed for tooltip ::before */
         }
         .pact:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border); }
-        .pact.boost:hover { color: var(--gold); border-color: rgba(240,180,41,0.3); background: rgba(240,180,41,0.06); }
-        .pact.views { cursor: default; opacity: 0.6; margin-left: auto; }
-        .pact.views:hover { background: transparent; color: var(--text-secondary); border-color: transparent; }
-        .pact.signal:hover { color: var(--teal); border-color: rgba(45,212,191,0.3); background: rgba(45,212,191,0.06); }
-        .pact-num { font-family: var(--font-mono); font-size: 0.7rem; }
-
-        /* ── HARVEST HOVER — cost tooltip (desktop) ─────────────────────────
-           A small badge appears above economic action buttons on hover.
-           Uses the data-cost attribute on the .pact element.
-        ──────────────────────────────────────────────────────────────────── */
-        .pact[data-cost] { position: relative; }
-        .pact[data-cost]::before {
-            content: attr(data-cost);
-            position: absolute;
-            bottom: calc(100% + 7px);
-            left: 50%; transform: translateX(-50%) scale(0.85);
-            background: var(--bg-card);
-            border: 1px solid var(--border-md);
-            color: var(--text-primary);
-            font-size: 0.62rem; font-weight: 700;
-            font-family: var(--font-mono);
-            padding: 3px 8px; border-radius: 20px;
-            white-space: nowrap; pointer-events: none;
-            opacity: 0; transition: opacity 0.15s, transform 0.15s;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-            z-index: 10;
-        }
-        .pact[data-cost]:hover::before {
-            opacity: 1; transform: translateX(-50%) scale(1);
-        }
-
-        /* ── Glow on hover for economic action pacts ─────────────────────── */
+        /* Task 3: teal/purple standardized glows */
         .pact.pact-like:hover {
-            color: #ff4d6d !important;
-            border-color: rgba(255,77,109,0.35) !important;
-            background: rgba(255,77,109,0.07) !important;
-            box-shadow: 0 0 10px rgba(255,77,109,0.20);
+            color: #ff4d6d;
+            border-color: rgba(255,77,109,0.35);
+            background: rgba(255,77,109,0.07);
+            box-shadow: 0 0 10px rgba(255,77,109,0.22);
         }
         .pact.pact-comment:hover {
-            color: var(--purple-lt) !important;
-            border-color: rgba(124,92,191,0.35) !important;
-            background: var(--purple-dim) !important;
-            box-shadow: 0 0 10px rgba(124,92,191,0.18);
+            color: var(--purple-lt);
+            border-color: rgba(124,92,191,0.35);
+            background: var(--purple-dim);
+            box-shadow: 0 0 10px rgba(124,92,191,0.20);
         }
         .pact.signal:hover {
-            color: var(--teal) !important;
-            border-color: rgba(45,212,191,0.35) !important;
-            background: rgba(45,212,191,0.07) !important;
-            box-shadow: 0 0 10px rgba(45,212,191,0.18);
+            color: var(--teal);
+            border-color: rgba(45,212,191,0.35);
+            background: rgba(45,212,191,0.07);
+            box-shadow: 0 0 10px rgba(45,212,191,0.20);
+        }
+        .pact.boost:hover { color: var(--gold); border-color: rgba(240,180,41,0.3); background: rgba(240,180,41,0.06); }
+        .pact.views { cursor: default; opacity: 0.6; margin-left: auto; }
+        .pact.views:hover { background: transparent; color: var(--text-secondary); border-color: transparent; box-shadow: none; }
+        .pact-num { font-family: var(--font-mono); font-size: 0.7rem; }
+
+        /* ── UNIFIED HARVEST TOOLTIP (desktop only) ──────────────────────────
+           Shared by .pact[data-cost] AND .hero-action-btn[data-cost] AND
+           .comm-follow-btn[data-cost]. Dark bubble, white 11px text.
+        ──────────────────────────────────────────────────────────────────── */
+        .pact[data-cost],
+        .hero-action-btn[data-cost],
+        .comm-follow-btn[data-cost] { position: relative; }
+
+        .pact[data-cost]::before,
+        .hero-action-btn[data-cost]::before,
+        .comm-follow-btn[data-cost]::before {
+            content: attr(data-cost);
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%; transform: translateX(-50%) translateY(4px);
+            background: #1a1a1d;
+            border: 1px solid rgba(255,255,255,0.12);
+            color: #ffffff;
+            font-size: 11px; font-weight: 600;
+            font-family: var(--font-mono);
+            padding: 4px 9px; border-radius: 20px;
+            white-space: nowrap; pointer-events: none;
+            opacity: 0; transition: opacity 0.14s, transform 0.14s;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.30);
+            z-index: 50;
+        }
+        .pact[data-cost]:hover::before,
+        .hero-action-btn[data-cost]:hover::before,
+        .comm-follow-btn[data-cost]:hover::before {
+            opacity: 1; transform: translateX(-50%) translateY(0);
         }
 
-        /* ── MOBILE PRICE LABELS — static cost shown beneath icon ──────────
-           Hidden on desktop (hover available), shown on mobile via media query.
-           Uses the data-mobile-cost attribute.
+        /* ── COMPACT MOBILE PACT: icon + count on one row, 9px cost beneath ──
+           On ≤768px: no text labels, layout stays horizontal.
         ──────────────────────────────────────────────────────────────────── */
         .pact-mobile-cost {
-            display: none; /* hidden on desktop */
-            font-size: 10px;
+            display: none;                      /* hidden on desktop */
+            font-size: 9px;
             font-family: var(--font-mono);
             font-weight: 700;
-            opacity: 0.6;
+            opacity: 0.5;
             color: var(--text-secondary);
             line-height: 1;
-            margin-top: 1px;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.2px;
         }
-        /* Dark mode: slightly brighter for readability */
-        html.dark .pact-mobile-cost { opacity: 0.75; color: var(--text-muted); }
+        html.dark .pact-mobile-cost { opacity: 0.65; color: var(--text-muted); }
+
+        /* ── PACT LABEL: the text like "Like", "Comment" — hidden on mobile ── */
+        .pact-label { display: inline; }
+
+        @media (max-width: 768px) {
+            /* Suppress hover tooltip on touch */
+            .pact[data-cost]::before,
+            .hero-action-btn[data-cost]::before,
+            .comm-follow-btn[data-cost]::before { display: none; }
+
+            /* Compact post action bar: stay horizontal, icon+count stacked over cost */
+            .post-actions { gap: 2px; padding-top: 10px; }
+            .pact {
+                flex-direction: column;
+                align-items: center;
+                padding: 4px 8px;
+                gap: 1px;
+                font-size: 0.72rem;
+            }
+            /* Hide text labels on mobile, show cost label */
+            .pact-label { display: none; }
+            .pact-mobile-cost { display: block; }
+        }
 
         /* ── CATEGORY FILTER BAR ─────────────────────────────────────── */
         #category-bar {
@@ -3178,15 +3205,7 @@
             .comm-share-btn { min-height: 44px; }
         }
 
-        /* Mobile: show static cost labels, stack pact vertically */
-        @media (max-width: 768px) {
-            .pact-mobile-cost { display: block; }
-            /* Suppress the hover tooltip on touch devices */
-            .pact[data-cost]::before { display: none; }
-            /* Tighten post actions so they fit on small screens */
-            .post-actions { gap: 2px; }
-            .pact { flex-direction: column; padding: 5px 8px; gap: 2px; font-size: 0.7rem; }
-        }
+
     
         /* ══════════════════════════════════════════════════════════════════
            DARK MODE — activated by adding class="dark" to <html>
@@ -3541,9 +3560,9 @@
 
                     <!-- Action buttons — hidden on own wall, shown on others' walls -->
                     <div class="hero-actions" id="hero-actions" style="display:none;">
-                        <button class="hero-action-btn btn-like"   id="hero-like-btn"   onclick="heroLike(event)">❤ Like</button>
+                        <button class="hero-action-btn btn-like"   id="hero-like-btn"   data-cost="Costs 1 ★" onclick="heroLike(event)">❤ <span class="pact-label">Like</span></button>
                         <button class="hero-action-btn btn-tip"    id="hero-tip-btn"    onclick="toggleTipTray()">★ Tip</button>
-                        <button class="hero-action-btn btn-follow" id="hero-follow-btn" onclick="heroFollow()">+ Follow</button>
+                        <button class="hero-action-btn btn-follow" id="hero-follow-btn" data-cost="Costs 1 ★" onclick="heroFollow()"><span class="pact-label">+ Follow</span></button>
                     </div>
 
                     <!-- Tip tray — slides open under actions -->
@@ -3844,7 +3863,7 @@
                             </div>
                         </div>
                         <div class="comm-member-chip" id="comm-member-chip">⬡ 0 Members</div>
-                        <button class="comm-follow-btn" id="comm-follow-btn" onclick="commFollowHub()">+ Follow Hub</button>
+                        <button class="comm-follow-btn" id="comm-follow-btn" data-cost="Costs 1 ★" onclick="commFollowHub()"><span class="pact-label">+ Follow Hub</span></button>
                     </div> -->
                     <div class="card" id="comm-composer-card" style="border-color:rgba(45,212,191,0.28); margin-bottom:16px;">
                         <div class="composer-row">
@@ -8214,10 +8233,10 @@
                 ${post.category && post.category !== 'Global' ? `<span class="cat-badge">${post.category}</span>` : ''}
                 <div class="post-body">${linkify(post.text)}</div>
                 <div class="post-actions">
-                    <div class="pact pact-like${_isLiked(postId) ? ' pact-liked' : ''}" id="like-btn-${postId}" data-cost="Costs 1 ★" onclick="triggerLikeAnimation(event); hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span> Like<span class="pact-mobile-cost">1★</span></div>
-                    <div class="pact pact-comment" data-cost="Costs 1 ★" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comment<span class="pact-num" id="cc-${postId}" style="color:var(--teal);"></span><span class="pact-mobile-cost">1★</span></div>
-                    <div class="pact signal" data-cost="Costs 1 ★" onclick="promoteToSignal('${postId}')" title="Promote to Daily Signals bar (1★ — 24h)">📡 Signal (1★)<span class="pact-mobile-cost">1★</span></div>
-                    <div class="pact boost" data-cost="Costs 10 ★" onclick="boostPost('${postId}')">🚀 Boost (10★)<span class="pact-mobile-cost">10★</span></div>
+                    <div class="pact pact-like${_isLiked(postId) ? ' pact-liked' : ''}" id="like-btn-${postId}" data-cost="Costs 1 ★" onclick="triggerLikeAnimation(event); hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span><span class="pact-label"> Like</span><span class="pact-mobile-cost">1★</span></div>
+                    <div class="pact pact-comment" data-cost="Costs 1 ★" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 <span class="pact-num" id="cc-${postId}" style="color:var(--teal);"></span><span class="pact-label"> Comment</span><span class="pact-mobile-cost">1★</span></div>
+                    <div class="pact signal" data-cost="Costs 1 ★" onclick="promoteToSignal('${postId}')" title="Promote to Daily Signals bar (1★ — 24h)">📡<span class="pact-label"> Signal</span><span class="pact-mobile-cost">1★</span></div>
+                    <div class="pact boost" data-cost="Costs 10 ★" onclick="boostPost('${postId}')">🚀<span class="pact-label"> Boost</span><span class="pact-mobile-cost">10★</span></div>
                     <div class="pact views" title="Impressions">👁 <span class="pact-num" id="views-${postId}">${(post.views || 0).toLocaleString()}</span></div>
                 </div>
                 <div class="comment-tray" id="tray-${postId}">
@@ -10284,10 +10303,10 @@
                     '<div class="post-body">' + (typeof linkify === 'function' ? linkify(post.text) : escHtml(post.text)) + '</div>' +
                     '<div class="post-actions">' +
                         '<div class="pact pact-like' + (_isLiked(postId) ? ' pact-liked' : '') + '" id="like-btn-' + postId + '" data-cost="Costs 1 \u2605" onclick="triggerLikeAnimation(event); hypeElement(\'' + (post.authorAddr||'') + '\',\'hp-' + postId + '\')">' +
-                            '\u2764 <span class="pact-num" id="hp-' + postId + '">' + (post.hypes || 0) + '</span> Like<span class="pact-mobile-cost">1\u2605</span>' +
+                            '\u2764 <span class="pact-num" id="hp-' + postId + '">' + (post.hypes || 0) + '</span><span class="pact-label"> Like</span><span class="pact-mobile-cost">1\u2605</span>' +
                         '</div>' +
                         '<div class="pact pact-comment" data-cost="Costs 1 \u2605" onclick="toggleTray(\'' + postId + '\'); loadComments(\'' + postId + '\')">' +
-                            '\ud83d\udcac Comment<span class="pact-mobile-cost">1\u2605</span>' +
+                            '\ud83d\udcac <span class="pact-label">Comment</span><span class="pact-mobile-cost">1\u2605</span>' +
                         '</div>' +
                         '<div class="pact views">\ud83d\udc41 <span class="pact-num">' + ((post.views || 0).toLocaleString()) + '</span></div>' +
                     '</div>' +
