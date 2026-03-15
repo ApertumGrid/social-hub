@@ -3377,7 +3377,7 @@
                     <span class="notif-dot nav-earnings-dot" id="notif-dot-sidebar" aria-label="New activity"></span>
                 </div>
                 <div class="nav-item" id="nav-profile" onclick="switchPage('profile', this)"><span class="nav-icon">◉</span> My Profile</div>
-                <div class="nav-item" id="nav-inbox"   onclick="switchPage('inbox', this)"><span class="nav-icon">✉</span> Inbox</div>
+                <div class="nav-item" id="nav-inbox"   onclick="switchPage('inbox', this)"><span class="nav-icon">✉</span> Inbox<span class="notif-dot" id="notif-dot-inbox" style="position:relative;top:-1px;margin-left:5px;" aria-label="New message"></span></div>
                 <div class="nav-item" id="nav-info" onclick="switchPage('info', this)"><span class="nav-icon">◎</span> Tokenomics</div>
                 <div class="nav-item" id="nav-communities" onclick="switchPage('communities', this)"><span class="nav-icon">⬡</span> Communities</div>
             </div>
@@ -3501,6 +3501,7 @@
                     <button id="hero-edit-identity-btn" style="display:none; font-size:0.68rem; padding:5px 14px; border-radius:20px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-secondary); cursor:pointer; margin-left:8px;" onclick="openHeroEditForm()">✎ Edit Identity</button>
                     <button id="hero-network-btn" style="display:none; font-size:0.68rem; padding:5px 14px; border-radius:20px; border:1px solid rgba(45,212,191,0.5); background:rgba(45,212,191,0.08); color:var(--teal); cursor:pointer; margin-left:8px; font-weight:700;" onclick="toggleNetworkDrawer()">🌐 My Network</button>
                     <button id="hero-mailbox-btn" style="display:none; margin-left:8px;" onclick="activateMailbox()"></button>
+                    <button id="hero-msg-btn" style="display:none; font-size:0.68rem; padding:5px 14px; border-radius:20px; border:1px solid rgba(45,212,191,0.45); background:rgba(45,212,191,0.08); color:var(--teal); cursor:pointer; margin-left:8px; font-weight:700;" onclick="startConversation()">✉ Message</button>
                     <div class="hero-top">
                         <img id="hero-avatar" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub">
                         <div class="hero-info">
@@ -4769,6 +4770,7 @@
             updateUI();
             subscribeToEarnings(userAddress);
             subscribeLedger(userAddress);
+            if (typeof _subscribeInboxDot === 'function') _subscribeInboxDot(userAddress);
             subscribeAdminRevenue(userAddress);
             startChainRefresh();
 
@@ -6743,6 +6745,7 @@
 
             // Inbox tab — show splash or active UI based on mailbox status
             if (tabName === 'inbox') {
+                if (typeof _inboxDotClear === 'function') _inboxDotClear();
                 if (typeof loadInbox === 'function') loadInbox();
             }
 
@@ -8981,6 +8984,25 @@
                 }
             } else {
                 heroMailboxBtn.style.display = 'none';
+            }
+        }
+
+        // Message button: only visible on OTHER's wall when BOTH users have mailboxes
+        // Store the target address on the button so startConversation() can read it
+        const heroMsgBtn = document.getElementById('hero-msg-btn');
+        if (heroMsgBtn) {
+            heroMsgBtn.style.display = 'none'; // hidden by default; revealed async below
+            heroMsgBtn.dataset.targetAddr = addrLower;
+            heroMsgBtn.dataset.targetName = wallName || addrLower;
+            if (!ownWall && userHasMailbox && window.db) {
+                // Async check: does the target user also have a mailbox?
+                window.fs.getDoc(window.fs.doc(window.db, 'users', addrLower))
+                    .then(snap => {
+                        if (snap.exists() && snap.data().hasMailbox === true) {
+                            heroMsgBtn.style.display = '';
+                        }
+                    })
+                    .catch(() => {});
             }
         }
         // Load follow state and social counts
@@ -11559,6 +11581,17 @@
     function _openThread(threadId, otherAddr, otherName) {
         const main = document.getElementById('inbox-main');
         if (!main || !window.db) return;
+
+        // Feature 3: clear unread flag for current user when they open the thread
+        if (userAddress) {
+            const myAddr = userAddress.toLowerCase();
+            window.fs.setDoc(
+                window.fs.doc(window.db, 'messages', threadId),
+                { unreadFor: { [myAddr]: false } },
+                { merge: true }
+            ).catch(() => {});
+        }
+
         main.innerHTML = `
             <div class="inbox-msg-head">
                 <div class="inbox-msg-head-name">${_escNet(otherName)}</div>
@@ -11569,7 +11602,7 @@
                 <button class="btn btn-purple btn-sm" onclick="sendMessage('${threadId}','${otherAddr}','${_escNet(otherName)}')">Send</button>
             </div>`;
         // Load messages
-        const addr = userAddress.toLowerCase();
+        const addr = userAddress ? userAddress.toLowerCase() : '';
         window.fs.getDocs(window.fs.query(
             window.fs.collection(window.db, 'messages', threadId, 'msgs'),
             window.fs.orderBy('ts', 'asc')
@@ -11597,13 +11630,15 @@
         const now  = Date.now();
         inp.value  = '';
         try {
+            // Update thread doc: lastMessage, updatedAt, and mark recipient as having unread
             await window.fs.setDoc(
                 window.fs.doc(window.db, 'messages', threadId),
                 {
                     participants: [addr, to],
                     participantNames: { [addr]: userHandle || addr, [to]: toName },
                     lastMessage: text.slice(0, 80),
-                    updatedAt: now
+                    updatedAt:   now,
+                    unreadFor:   { [to]: true }   // Feature 3: red dot for recipient
                 },
                 { merge: true }
             );
@@ -11623,6 +11658,91 @@
         } catch (e) { console.error('[sendMessage]', e); showToast('Message failed — try again.'); }
     }
     window.sendMessage = sendMessage;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // startConversation — called from the ✉ Message button on a profile wall
+    // Deterministic thread ID = sorted addresses joined with '_'
+    // Creates the thread doc if it doesn't exist, then opens the inbox.
+    // ═══════════════════════════════════════════════════════════════════
+    async function startConversation(targetAddr, targetName) {
+        // Read from button data-attributes if args not passed directly
+        const btn = document.getElementById('hero-msg-btn');
+        const toAddr = (targetAddr || (btn && btn.dataset.targetAddr) || '').toLowerCase();
+        const toName = targetName  || (btn && btn.dataset.targetName) || toAddr.slice(0,6) + '…' + toAddr.slice(-4);
+
+        if (!toAddr)       return showToast('Could not identify recipient.');
+        if (!userAddress)  return showToast('Connect your wallet first.');
+        if (!userHasMailbox) return showToast('You need an active mailbox to send messages.');
+        if (!window.db)    return showToast('Firebase not ready — try again.');
+
+        const fromAddr = userAddress.toLowerCase();
+        if (fromAddr === toAddr) return showToast('You cannot message yourself.');
+
+        // Deterministic, collision-free thread ID
+        const threadId = [fromAddr, toAddr].sort().join('_');
+
+        try {
+            // Create thread doc if it doesn't exist (merge: true is idempotent)
+            await window.fs.setDoc(
+                window.fs.doc(window.db, 'messages', threadId),
+                {
+                    participants:     [fromAddr, toAddr],
+                    participantNames: {
+                        [fromAddr]: userHandle || fromAddr,
+                        [toAddr]:   toName
+                    },
+                    lastMessage:  '',
+                    updatedAt:    Date.now(),
+                    unreadFor:    {}          // cleared per-user after they open the thread
+                },
+                { merge: true }
+            );
+        } catch (e) {
+            console.warn('[startConversation] thread init failed:', e);
+        }
+
+        // Navigate to inbox and open the thread
+        _activateTab('inbox', document.getElementById('nav-inbox'));
+        // Wait a tick for the inbox to render before opening the thread
+        setTimeout(() => {
+            loadInbox().then(() => _openThread(threadId, toAddr, toName));
+        }, 150);
+    }
+    window.startConversation = startConversation;
+
+    // ── Inbox notification dot helpers ───────────────────────────────────────
+    function _inboxDotShow() {
+        const el = document.getElementById('notif-dot-inbox');
+        if (el) el.classList.add('visible');
+    }
+    function _inboxDotClear() {
+        const el = document.getElementById('notif-dot-inbox');
+        if (el) el.classList.remove('visible');
+    }
+    window._inboxDotShow  = _inboxDotShow;
+    window._inboxDotClear = _inboxDotClear;
+
+    // ── Subscribe to unread messages for the current user ────────────────────
+    let _inboxUnsub = null;
+    function _subscribeInboxDot(walletAddr) {
+        if (_inboxUnsub) { try { _inboxUnsub(); } catch (_) {} _inboxUnsub = null; }
+        if (!walletAddr || !window.db) return;
+        const addr = walletAddr.toLowerCase();
+        // Listen for any thread where this user has an unread message
+        const q = window.fs.query(
+            window.fs.collection(window.db, 'messages'),
+            window.fs.where('participants', 'array-contains', addr)
+        );
+        _inboxUnsub = window.fs.onSnapshot(q, snap => {
+            const hasUnread = snap.docs.some(d => {
+                const unreadFor = d.data().unreadFor || {};
+                return unreadFor[addr] === true;
+            });
+            if (hasUnread) _inboxDotShow();
+            else           _inboxDotClear();
+        }, () => {});
+    }
+    window._subscribeInboxDot = _subscribeInboxDot;
 
 
 
