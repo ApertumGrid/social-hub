@@ -3627,6 +3627,16 @@
                             title="One-time: reset all balances to match actual APTM deposits">
                         ⚠ Run Balance Reconciliation
                     </button>
+                    <button id="admin-recalc-posts-btn" onclick="adminRecalcPostCounts()"
+                            style="display:flex;align-items:center;justify-content:center;gap:8px;
+                                   width:100%;margin-top:8px;padding:10px 18px;
+                                   background:rgba(45,212,191,0.06);border:1px solid rgba(45,212,191,0.35);
+                                   border-radius:var(--radius-md);color:var(--teal);
+                                   font-family:var(--font-body);font-size:0.78rem;font-weight:700;
+                                   cursor:pointer;letter-spacing:0.3px;"
+                            title="Recount posts per Hub from the posts collection and update postCount">
+                        ↻ Recalculate Hub Post Counts
+                    </button>
                 </div>
             </div>
 
@@ -9279,6 +9289,14 @@
             if (fPrev)    fPrev.style.display    = 'none';
             if (progWrap) progWrap.style.display = 'none';
 
+            // Increment postCount on the community doc if posted inside a Hub
+            if (communityId) {
+                window.fs.updateDoc(
+                    window.fs.doc(window.db, 'communities', communityId),
+                    { postCount: window.fs.increment(1) }
+                ).catch(e => console.warn('[handleBroadcast] postCount increment failed:', e));
+            }
+
             updateUI();
             showToast('Signal Live! ◈');
             // FIX 2: Collapse the composer tray after successful broadcast
@@ -11072,24 +11090,41 @@
                 } else {
                     hubsList.innerHTML = '';
                     for (const entry of hubs) {
-                        const commId = entry.following;
-                        // Fix 1: default to commId but will be overwritten with .name from Firestore
-                        let hubName   = commId;
-                        let hubBanner = '';
-                        let hubDesc   = '';
-                        try {
-                            const cSnap = await window.fs.getDoc(
-                                window.fs.doc(window.db, 'communities', commId)
-                            );
-                            if (cSnap.exists()) {
-                                const cd = cSnap.data();
-                                // Fix 1: use .name field (matches submitStartCommunity write)
-                                if (cd.name)      hubName   = cd.name;
-                                // Fix 1: correct field is headerImg, not bannerImage
-                                if (cd.headerImg) hubBanner = cd.headerImg;
-                                if (cd.description) hubDesc = cd.description;
-                            }
-                        } catch (_) {}
+                        const commId = entry.following;  // may be lowercased
+                        // Fix 1: check _allCommunities cache first (has the real doc ID and .name)
+                        // Community doc IDs from Firestore addDoc are mixed-case; the social_graph
+                        // stores a lowercased copy, so we match case-insensitively against the cache.
+                        let cachedComm = _allCommunities.find(c =>
+                            c.id === commId || c.id.toLowerCase() === commId.toLowerCase()
+                        );
+                        let hubName   = cachedComm ? (cachedComm.name || commId) : commId;
+                        let hubBanner = cachedComm ? (cachedComm.headerImg || '') : '';
+                        let hubDesc   = cachedComm ? (cachedComm.description || '') : '';
+                        let realId    = cachedComm ? cachedComm.id : commId;
+
+                        // If not in cache, fall back to Firestore (try original case, then lowercased)
+                        if (!cachedComm) {
+                            try {
+                                let cSnap = await window.fs.getDoc(
+                                    window.fs.doc(window.db, 'communities', commId)
+                                );
+                                // If not found with lowercase ID, try a query by original fields
+                                if (!cSnap.exists()) {
+                                    const fallbackQ = window.fs.query(
+                                        window.fs.collection(window.db, 'communities'),
+                                        window.fs.where('ownerId', '==', entry.ownerId || ''),
+                                        window.fs.orderBy('createdAt', 'desc')
+                                    );
+                                    // Just use what we have from the snap if it exists
+                                }
+                                if (cSnap.exists()) {
+                                    const cd = cSnap.data();
+                                    if (cd.name)        hubName   = cd.name;
+                                    if (cd.headerImg)   hubBanner = cd.headerImg;
+                                    if (cd.description) hubDesc   = cd.description;
+                                }
+                            } catch (_) {}
+                        }
                         const item = document.createElement('div');
                         item.className = 'network-item';
                         const iconHtml = hubBanner
@@ -11099,12 +11134,13 @@
                             iconHtml +
                             '<div class="network-info">' +
                                 '<div class="network-name">' + _escNet(hubName) + '</div>' +
-                                '<div class="network-sub">' + (hubDesc ? _escNet(hubDesc.slice(0,40)) + (hubDesc.length > 40 ? '…' : '') : commId) + '</div>' +
+                                '<div class="network-sub">' + (hubDesc ? _escNet(hubDesc.slice(0,40)) + (hubDesc.length > 40 ? '…' : '') : realId) + '</div>' +
                             '</div>' +
-                            '<button class="network-visit-btn" data-comm="' + _escNet(commId) + '">Visit →</button>';
+                            '<button class="network-visit-btn" data-comm="' + _escNet(realId) + '">Visit →</button>';
                         item.querySelector('.network-visit-btn').addEventListener('click', function() {
                             const cid = this.getAttribute('data-comm');
-                            const comm = _allCommunities.find(c => c.id === cid);
+                            // Match by exact ID or case-insensitive fallback
+                            const comm = _allCommunities.find(c => c.id === cid || c.id.toLowerCase() === cid.toLowerCase());
                             if (comm) {
                                 openCommunityFeed(comm, {});
                                 switchPage('communities', document.getElementById('nav-communities'));
@@ -12055,7 +12091,86 @@
     }
     window.adminReconcile = adminReconcile;
 
-    // Close HIW on Escape key
+    // ═══════════════════════════════════════════════════════════════════
+    // ADMIN: RECALCULATE HUB POST COUNTS
+    // Iterates every community doc, counts posts in the `posts` collection
+    // filtered by communityId, then writes the accurate postCount back.
+    // ═══════════════════════════════════════════════════════════════════
+    async function adminRecalcPostCounts() {
+        if (!userAddress || userAddress.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) {
+            return alert('Admin only.');
+        }
+        if (!window.db) return alert('Firebase not connected.');
+
+        const btn = document.getElementById('admin-recalc-posts-btn');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Recalculating…'; }
+
+        try {
+            // 1. Load all community docs
+            const commSnap = await window.fs.getDocs(
+                window.fs.collection(window.db, 'communities')
+            );
+            if (commSnap.empty) {
+                alert('No community hubs found.');
+                return;
+            }
+
+            const results = [];
+            let updated = 0;
+
+            // 2. For each hub, count posts where communityId == hub doc ID
+            for (const commDoc of commSnap.docs) {
+                const commId = commDoc.id;
+                const commName = commDoc.data().name || commId;
+                try {
+                    const postSnap = await window.fs.getDocs(
+                        window.fs.query(
+                            window.fs.collection(window.db, 'posts'),
+                            window.fs.where('communityId', '==', commId)
+                        )
+                    );
+                    // Also check posts that may have stored the lowercased ID
+                    let count = postSnap.size;
+                    if (commId !== commId.toLowerCase()) {
+                        const postSnapLower = await window.fs.getDocs(
+                            window.fs.query(
+                                window.fs.collection(window.db, 'posts'),
+                                window.fs.where('communityId', '==', commId.toLowerCase())
+                            )
+                        );
+                        count += postSnapLower.size;
+                    }
+
+                    const storedCount = commDoc.data().postCount || 0;
+                    results.push(`${commName}: ${storedCount} → ${count}`);
+
+                    // 3. Write accurate count back if different
+                    if (count !== storedCount) {
+                        await window.fs.updateDoc(
+                            window.fs.doc(window.db, 'communities', commId),
+                            { postCount: count }
+                        );
+                        updated++;
+                    }
+                } catch (e) {
+                    console.warn('[adminRecalcPostCounts] failed for', commId, e);
+                    results.push(`${commName}: ERROR — ${e.message}`);
+                }
+            }
+
+            alert(
+                '↻ Post Count Recalculation Complete\n\n' +
+                results.join('\n') + '\n\n' +
+                updated + ' hub(s) updated.'
+            );
+        } catch (e) {
+            console.error('[adminRecalcPostCounts]', e);
+            alert('Recalculation failed: ' + (e.message || String(e)));
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '↻ Recalculate Hub Post Counts'; }
+        }
+    }
+    window.adminRecalcPostCounts = adminRecalcPostCounts;
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             closeHIW();
