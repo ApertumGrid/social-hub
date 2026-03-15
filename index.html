@@ -3270,6 +3270,70 @@
         }
         #theme-toggle:hover { border-color: var(--purple-lt); background: var(--purple-dim); color: var(--purple-lt); }
 
+        
+        /* ── REPORT BUTTON ──────────────────────────────────────────── */
+        .report-btn {
+            background: none; border: none; cursor: pointer;
+            font-size: 0.62rem; color: var(--text-muted); padding: 2px 6px;
+            border-radius: 20px; opacity: 0.55; transition: all 0.14s;
+            font-family: var(--font-body); margin-left: auto;
+            display: flex; align-items: center; gap: 3px;
+        }
+        .report-btn:hover { opacity: 1; color: #ef4444; background: rgba(239,68,68,0.08); }
+
+        /* ── LEGAL MODAL ────────────────────────────────────────────── */
+        #legal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.72); z-index: 9999;
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        #legal-overlay.open { display: flex; }
+        #legal-modal {
+            background: #12151f; border: 1px solid rgba(45,212,191,0.25);
+            border-radius: 16px; padding: 28px 28px 20px;
+            max-width: 600px; width: 100%; max-height: 82vh;
+            overflow-y: auto; position: relative; color: #c8cdd6;
+            font-size: 0.82rem; line-height: 1.7;
+        }
+        #legal-modal::-webkit-scrollbar { width: 4px; }
+        #legal-modal::-webkit-scrollbar-thumb { background: var(--teal); border-radius: 4px; }
+        .legal-close-btn {
+            position: absolute; top: 14px; right: 16px;
+            background: none; border: none; color: #8892a4;
+            font-size: 1.2rem; cursor: pointer; line-height: 1;
+        }
+        .legal-close-btn:hover { color: #fff; }
+        .legal-tabs {
+            display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap;
+        }
+        .legal-tab {
+            padding: 5px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.12);
+            background: none; color: #8892a4; font-size: 0.72rem; font-weight: 600;
+            cursor: pointer; font-family: var(--font-body); transition: all 0.14s;
+        }
+        .legal-tab.active { background: rgba(45,212,191,0.12); border-color: var(--teal); color: var(--teal); }
+        .legal-section { display: none; }
+        .legal-section.active { display: block; }
+        .legal-section h2 { font-size: 0.95rem; font-weight: 700; color: #fff; margin: 0 0 14px; }
+        .legal-section h3 { font-size: 0.78rem; font-weight: 700; color: var(--teal); margin: 16px 0 6px; text-transform: uppercase; letter-spacing: 0.8px; }
+        .legal-section p, .legal-section li { margin-bottom: 8px; }
+        .legal-section ul { padding-left: 18px; }
+        .legal-section strong { color: #e0e0e0; }
+
+        /* ── SITE FOOTER ────────────────────────────────────────────── */
+        #site-footer {
+            text-align: center; padding: 18px 16px 28px;
+            border-top: 1px solid var(--border);
+            font-size: 0.68rem; color: var(--text-muted);
+            margin-top: 24px;
+        }
+        .footer-links { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
+        .footer-link {
+            color: var(--text-muted); text-decoration: none; cursor: pointer;
+            transition: color 0.13s; font-weight: 600;
+        }
+        .footer-link:hover { color: var(--teal); }
+
         </style>
 </head>
 <body>
@@ -8230,7 +8294,7 @@
                             ? `<div class="post-owner-actions">
                                    <button class="post-own-btn hide-btn" onclick="deletePost('${postId}',event)" title="Admin: hide this post">✕ Hide</button>
                                </div>`
-                            : '<span class="post-more">···</span>'
+                            : `<button class="report-btn" onclick="reportPost('${postId}',event)" title="Report this post">🚩</button>`
                     }
                 </div>
                 ${mediaHtml}
@@ -10332,6 +10396,7 @@
                             '\ud83d\udcac <span class="pact-label">Comment</span><span class="pact-mobile-cost">1\u2605</span>' +
                         '</div>' +
                         '<div class="pact views">\ud83d\udc41 <span class="pact-num">' + ((post.views || 0).toLocaleString()) + '</span></div>' +
+                        (isOwnPost ? '' : '<button class="report-btn" onclick="reportPost(\'' + postId + '\',event)" title="Report this post">\ud83d\udea9</button>') +
                     '</div>' +
                     '<div class="comment-tray" id="tray-' + postId + '" style="display:none;">' +
                         '<div class="comment-list" id="list-' + postId + '"></div>' +
@@ -12462,8 +12527,82 @@
         if (e.key === 'Escape') {
             closeHIW();
             closeCommHIW();
+            closeLegal();
         }
     });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // REPORT POST
+    // Saves a report to the 'reports' Firestore collection and immediately
+    // hides the post from the reporter's view (local only — not deleted).
+    // ═══════════════════════════════════════════════════════════════════
+    async function reportPost(postId, event) {
+        if (event) event.stopPropagation();
+        if (!postId) return;
+
+        const confirmed = confirm('Report this post?\n\nIt will be hidden from your view and flagged for admin review.');
+        if (!confirmed) return;
+
+        // Immediately hide from reporter's UI
+        const card = document.getElementById('post-' + postId) ||
+                     (event && event.target ? event.target.closest('.post-card') : null);
+        if (card) {
+            card.style.display = 'none';
+        }
+
+        showToast('Post reported and hidden from your feed. ✓');
+
+        // Write to Firestore reports collection (fire-and-forget)
+        if (window.db) {
+            window.fs.addDoc(window.fs.collection(window.db, 'reports'), {
+                postId:       postId,
+                reportedBy:   userAddress ? userAddress.toLowerCase() : 'anonymous',
+                reportedAt:   Date.now(),
+                status:       'pending',   // pending | reviewed | dismissed
+                type:         'post'
+            }).catch(e => console.warn('[reportPost] Firestore write failed:', e));
+        }
+    }
+    window.reportPost = reportPost;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // LEGAL MODAL — Whitepaper / Terms of Service / Privacy Policy
+    // ═══════════════════════════════════════════════════════════════════
+    function openLegal(section) {
+        const overlay = document.getElementById('legal-overlay');
+        if (overlay) overlay.classList.add('open');
+        document.body.style.overflow = 'hidden';
+        if (section) showLegal(section);
+    }
+    window.openLegal = openLegal;
+
+    function closeLegal() {
+        const overlay = document.getElementById('legal-overlay');
+        if (overlay) overlay.classList.remove('open');
+        document.body.style.overflow = '';
+    }
+    window.closeLegal = closeLegal;
+
+    function showLegal(section) {
+        // Hide all sections, deactivate all tabs
+        document.querySelectorAll('.legal-section').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.legal-tab').forEach(t => t.classList.remove('active'));
+        // Show selected section
+        const sec = document.getElementById('legal-' + section);
+        if (sec) sec.classList.add('active');
+        // Activate matching tab
+        const tabs = document.querySelectorAll('.legal-tab');
+        const labels = { whitepaper: 0, terms: 1, privacy: 2 };
+        const idx = labels[section];
+        if (idx !== undefined && tabs[idx]) tabs[idx].classList.add('active');
+        // Open the modal if not already open
+        const overlay = document.getElementById('legal-overlay');
+        if (overlay && !overlay.classList.contains('open')) {
+            overlay.classList.add('open');
+            document.body.style.overflow = 'hidden';
+        }
+    }
+    window.showLegal = showLegal;
 
     // ═══════════════════════════════════════════════════════════════════
     // DARK MODE TOGGLE
@@ -12751,6 +12890,103 @@
             <button class="hiw-footer-close" onclick="closeHIW()">✓ Got it — Let me Broadcast</button>
         </div>
     </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     LEGAL MODAL (Whitepaper / Terms / Privacy)
+══════════════════════════════════════════════════════════════════ -->
+<div id="legal-overlay" onclick="if(event.target===this)closeLegal()">
+    <div id="legal-modal">
+        <button class="legal-close-btn" onclick="closeLegal()">✕</button>
+        <div class="legal-tabs">
+            <button class="legal-tab active" onclick="showLegal('whitepaper')">📄 Whitepaper</button>
+            <button class="legal-tab" onclick="showLegal('terms')">📋 Terms of Service</button>
+            <button class="legal-tab" onclick="showLegal('privacy')">🔒 Privacy Policy</button>
+        </div>
+
+        <!-- WHITEPAPER -->
+        <div class="legal-section active" id="legal-whitepaper">
+            <h2>Social Hub Ecosystem: The Sovereign Creator Protocol</h2>
+            <h3>Mission</h3>
+            <p>Returning financial sovereignty to creators. SocialHub is a decentralized social protocol built on the Apertum blockchain, designed to ensure creators are fairly compensated for every interaction on the platform.</p>
+            <h3>The Star Economy</h3>
+            <ul>
+                <li><strong>80/20 Split:</strong> Creators keep 80% of all Hype (like) revenue. The platform takes 20% to sustain infrastructure.</li>
+                <li><strong>90/10 Split:</strong> Users keep 90% of engagement revenue from comments and follows. The platform takes 10%.</li>
+                <li><strong>Hub Landlord Model:</strong> Community Hub owners earn 40% of all guest post interaction revenue inside their Hub.</li>
+            </ul>
+            <h3>Entry Filter</h3>
+            <p>Community Hub creation requires a one-time <strong>1,000 Star</strong> fee to ensure high-quality content and committed creators. This fee is 100% platform revenue and funds ecosystem development.</p>
+            <h3>Mailbox &amp; Communications</h3>
+            <p>A one-time <strong>25 Star</strong> Mailbox activation fee unlocks private direct messaging between any two sovereign users. Only activated mailbox holders can send or receive messages.</p>
+            <h3>Global Future</h3>
+            <p>SocialHub is moving toward a USDT-based (BEP-20) stable economy, allowing creators to settle earnings in a stable asset pegged to the US dollar. The $APTM token serves as the current settlement layer during the growth phase.</p>
+            <h3>The $APTM Token</h3>
+            <p>Stars are backed by $APTM deposited to the on-chain vault contract. The live price is fetched from the Apertum DEX pair. All star settlements are converted to $APTM at the live price at time of withdrawal.</p>
+        </div>
+
+        <!-- TERMS OF SERVICE -->
+        <div class="legal-section" id="legal-terms">
+            <h2>Terms of Service</h2>
+            <h3>Transactions</h3>
+            <ul>
+                <li>All Star transactions — Hypes, Comments, Hub Creations, Mailbox Activations — are <strong>final and irreversible</strong>.</li>
+                <li>Stars have no monetary value outside of the SocialHub protocol and cannot be refunded.</li>
+            </ul>
+            <h3>User Responsibility</h3>
+            <ul>
+                <li>SocialHub is a decentralized protocol. Users are <strong>solely responsible</strong> for their own wallet security, seed phrases, and private keys.</li>
+                <li>The platform cannot recover lost wallets, reverse transactions, or restore access to compromised accounts.</li>
+                <li>By connecting your wallet, you confirm you are the rightful owner of that address.</li>
+            </ul>
+            <h3>Conduct</h3>
+            <ul>
+                <li>Malicious content, bots, spam, or harassment will result in a <strong>community-led shadow-ban or account suspension</strong>.</li>
+                <li>Users may report posts using the 🚩 Report button. All reports are reviewed by platform administrators.</li>
+                <li>The platform reserves the right to hide any content that violates community standards without prior notice.</li>
+            </ul>
+            <h3>Platform Fees</h3>
+            <p>Platform fees (20% on Hypes, 10% on Comments and Follows) are <strong>automated via the protocol</strong> and applied at the time of transaction. These fees cannot be waived or negotiated.</p>
+            <h3>Disclaimer</h3>
+            <p>SocialHub is provided "as is." The protocol makes no guarantees regarding uptime, token price, or earning potential. Participation in the Star economy carries inherent financial risk.</p>
+        </div>
+
+        <!-- PRIVACY POLICY -->
+        <div class="legal-section" id="legal-privacy">
+            <h2>Privacy Policy</h2>
+            <h3>Data Hosting</h3>
+            <p>All platform data — posts, profiles, transactions, messages — is hosted on <strong>Google Firebase infrastructure</strong> (Firestore and Firebase Storage), subject to Google's data processing terms.</p>
+            <h3>What We Store</h3>
+            <ul>
+                <li>Your public wallet address (your primary identifier)</li>
+                <li>Your chosen display name and avatar URL</li>
+                <li>Posts, comments, and hype interactions you create</li>
+                <li>Star transaction ledger entries</li>
+                <li>Direct messages (if you have an active Mailbox)</li>
+            </ul>
+            <h3>Message Privacy</h3>
+            <p>While the UI provides <strong>private inboxes</strong> visible only to conversation participants, users should be aware that digital communications reside on Firebase hosting infrastructure. SocialHub implements Firestore security rules to restrict access, but users should treat all digital communications accordingly.</p>
+            <h3>Blockchain Transparency</h3>
+            <p>Your <strong>public wallet address is your primary identifier</strong> and is permanently visible on the Apertum blockchain. All on-chain transactions (APTM deposits, withdrawals) are publicly auditable. There is no way to make blockchain transactions private.</p>
+            <h3>No Advertising</h3>
+            <p>SocialHub does not sell your data to advertisers. The platform's revenue model is entirely based on protocol transaction fees.</p>
+            <h3>Contact</h3>
+            <p>For data requests or privacy concerns, contact the platform administrator via the SocialHub community channels.</p>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SITE FOOTER
+══════════════════════════════════════════════════════════════════ -->
+<div id="site-footer">
+    <div class="footer-links">
+        <span class="footer-link" onclick="openLegal('whitepaper')">📄 Whitepaper</span>
+        <span class="footer-link" onclick="openLegal('terms')">📋 Terms of Service</span>
+        <span class="footer-link" onclick="openLegal('privacy')">🔒 Privacy Policy</span>
+    </div>
+    <div>© 2025 SocialHub Protocol · Built on Apertum · <span style="color:var(--teal);">$APTM</span></div>
 </div>
 
 </body>
