@@ -11133,25 +11133,126 @@
     // ═══════════════════════════════════════════════════════════════════
     // MAILBOX — Activation (25 ★, 100% platform) + Inbox loader
     // ═══════════════════════════════════════════════════════════════════
+    // ── Module-level mutex: prevents any re-entry before the first call finishes ──
+    let _mailboxActivating = false;
+
     async function activateMailbox() {
-        if (!userAddress) return showToast('Connect your wallet first!');
-        if (userHasMailbox)  return showToast('Your mailbox is already active!');
-        if (!window.db)      return showToast('Firebase not ready — try again.');
+        // ── 1. BUTTON LOCK: block re-entry immediately, before any await ──────────
+        if (_mailboxActivating) return;
+        _mailboxActivating = true;
 
-        const MAILBOX_FEE = 25;
-        const total = getTotalSpendableStars();
-        if (total < MAILBOX_FEE) {
-            return showToast(`Insufficient Stars! Need ${MAILBOX_FEE}★, have ${total.toFixed(1)}★.`);
-        }
-
-        const btn = document.getElementById('hero-mailbox-btn');
-        if (btn) { btn.disabled = true; btn.textContent = 'Activating…'; }
+        const btn      = document.getElementById('hero-mailbox-btn');
+        const inboxBtn = document.getElementById('inbox-activate-btn');
+        const _lockBtn = (el, loading) => {
+            if (!el) return;
+            el.disabled = loading;
+            if (loading) {
+                el.dataset.origText = el.textContent;
+                el.textContent = '⏳ Activating…';
+            } else {
+                el.textContent = el.dataset.origText || '📫 Activate Mailbox (25 ★)';
+            }
+        };
+        _lockBtn(btn,      true);
+        _lockBtn(inboxBtn, true);
 
         try {
-            const addr = userAddress.toLowerCase();
+            if (!userAddress) throw new Error('Connect your wallet first.');
+            if (!window.db)   throw new Error('Firebase not ready — try again.');
 
-            // 1. Log spend entry BEFORE deducting (pre-deduct contract)
-            await window.fs.addDoc(window.fs.collection(window.db, 'user_transactions'), {
+            const MAILBOX_FEE = 25;
+            const addr        = userAddress.toLowerCase();
+            const userRef     = window.fs.doc(window.db, 'users', addr);
+            const balRef      = window.fs.doc(window.db, 'user_balances', addr);
+            const adminRevRef = window.fs.doc(window.db, 'admin_revenue', 'global');
+
+            // ── 2. SERVER-SIDE PRE-CHECK inside a runTransaction ─────────────────
+            // Even if called concurrently, only one write can set hasMailbox: true.
+            // The second caller sees hasMailbox already true and aborts cleanly.
+            const alreadyActive = await window.fs.runTransaction(window.db, async (txn) => {
+                const uSnap = await txn.get(userRef);
+                if (uSnap.exists() && uSnap.data().hasMailbox === true) return true;
+                return false;
+            });
+
+            if (alreadyActive) {
+                userHasMailbox = true;
+                showToast('Your mailbox is already active!');
+                _lockBtn(btn,      false);
+                _lockBtn(inboxBtn, false);
+                _mailboxActivating = false;
+                return;
+            }
+
+            // ── Client-side balance fast-fail ─────────────────────────────────────
+            const balSnap   = await window.fs.getDoc(balRef);
+            const purchased = balSnap.exists() ? (parseFloat(balSnap.data().stars)        || 0) : 0;
+            const earned    = balSnap.exists() ? (parseFloat(balSnap.data().creatorStars)  || 0) : 0;
+            if (purchased + earned < MAILBOX_FEE) {
+                throw new Error('Insufficient Stars! Need ' + MAILBOX_FEE + '\u2605, have ' + (purchased + earned).toFixed(1) + '\u2605.');
+            }
+
+            // ── 3. ATOMIC BUNDLE: writeBatch for A+B+C ───────────────────────────
+            // A. user_balances  \u2014 deduct 25\u2605 (drain purchased first, overflow to earned)
+            // B. users          \u2014 set hasMailbox: true
+            // C. admin_revenue/global \u2014 increment total
+            // D+E are append-only addDocs (fire-and-forget \u2014 idempotency-safe)
+            const fromPurchased = Math.min(purchased, MAILBOX_FEE);
+            const fromEarned    = Math.min(earned, Math.max(0, MAILBOX_FEE - fromPurchased));
+            const newPurchased  = Math.max(0, purchased - fromPurchased);
+            const newEarned     = Math.max(0, earned    - fromEarned);
+            const prevSpent     = balSnap.exists() ? (parseFloat(balSnap.data().spentStarsTotal) || 0) : 0;
+
+            // Optimistic UI — update immediately so the display drops on click
+            if (currentAptmPriceUsd > 0) {
+                const aptmCost     = (MAILBOX_FEE * CONFIG.STAR_USD) / currentAptmPriceUsd;
+                currentAptmBalance = Math.max(0, (parseFloat(currentAptmBalance) || 0) - aptmCost);
+            }
+            purchasedStars  = newPurchased;
+            creatorEarnings = newEarned;
+            _lastSpendTime  = Date.now();
+            updateUI();
+
+            // Fetch current admin revenue total for the batch
+            const adminRevSnap = await window.fs.getDoc(adminRevRef);
+            const prevAdminRev = adminRevSnap.exists() ? (parseFloat(adminRevSnap.data().total) || 0) : 0;
+
+            const batch = window.fs.writeBatch(window.db);
+
+            // A
+            batch.set(balRef, {
+                stars:           newPurchased,
+                creatorStars:    newEarned,
+                spentStarsTotal: prevSpent + MAILBOX_FEE,
+                aptmBalance:     currentAptmBalance,
+                lastUpdated:     Date.now()
+            }, { merge: true });
+
+            // B
+            batch.set(userRef, {
+                hasMailbox:         true,
+                mailboxActivatedAt: Date.now(),
+                walletAddress:      addr
+            }, { merge: true });
+
+            // C
+            batch.set(adminRevRef, {
+                total:       prevAdminRev + MAILBOX_FEE,
+                lastUpdated: Date.now()
+            }, { merge: true });
+
+            await batch.commit();
+
+            // D \u2014 platform_revenue event (append-only, fire-and-forget)
+            window.fs.addDoc(window.fs.collection(window.db, 'platform_revenue'), {
+                actionType: 'mailbox_activation',
+                amount:     MAILBOX_FEE,
+                address:    addr,
+                timestamp:  Date.now()
+            }).catch(e => console.warn('[activateMailbox] platform_revenue:', e));
+
+            // E \u2014 user ledger spend entry (append-only, fire-and-forget)
+            window.fs.addDoc(window.fs.collection(window.db, 'user_transactions'), {
                 type:           'spend',
                 amount:         MAILBOX_FEE,
                 fromAddress:    addr,
@@ -11160,47 +11261,35 @@
                 description:    'Mailbox Activation — 25★ (100% platform)',
                 timestamp:      Date.now(),
                 schema_version: 2
-            });
+            }).catch(e => console.warn('[activateMailbox] user_transactions:', e));
 
-            // 2. Deduct 25★ from sender
-            await deductStars(MAILBOX_FEE);
-
-            // 3. Route 100% to platform revenue
-            logAdminRevenue(addr, 'mailbox_activation', MAILBOX_FEE);
-            logTransaction('spend', MAILBOX_FEE, {
-                from: addr,
-                to:   CONFIG.ADMIN_ADDRESS,
-                description: 'Mailbox Activation — 25★ (100% platform)'
-            });
-
-            // 4. Set hasMailbox: true on the user's profile doc
-            const userRef = window.fs.doc(window.db, 'users', addr);
-            await window.fs.setDoc(userRef, {
-                hasMailbox:    true,
-                mailboxActivatedAt: Date.now(),
-                walletAddress: addr
-            }, { merge: true });
-
-            // 5. Update local state
+            // ── Success: update state and UI ──────────────────────────────────────
             userHasMailbox = true;
 
-            // 6. Refresh the mailbox button and inbox view
             if (btn) {
-                btn.disabled  = false;
-                btn.textContent = '📫 Mailbox Active';
-                btn.className   = 'mailbox-active-badge';
-                btn.onclick     = null;
-                btn.style.cursor = 'default';
+                btn.disabled      = false;
+                btn.textContent   = '📫 Mailbox Active';
+                btn.className     = 'mailbox-active-badge';
+                btn.onclick       = null;
+                btn.style.cursor  = 'default';
+            }
+            if (inboxBtn) {
+                inboxBtn.disabled     = false;
+                inboxBtn.textContent  = '📫 Mailbox Active';
+                inboxBtn.className    = 'mailbox-active-badge';
+                inboxBtn.onclick      = null;
+                inboxBtn.style.cursor = 'default';
             }
             showToast('📫 Mailbox activated! You can now send and receive messages.');
-
-            // Auto-navigate to inbox
             _activateTab('inbox', document.getElementById('nav-inbox'));
 
         } catch (e) {
             console.error('[activateMailbox]', e);
-            showToast('Activation failed: ' + (e.message || 'try again.'));
-            if (btn) { btn.disabled = false; btn.textContent = '📫 Activate Mailbox (25 ★)'; }
+            showToast(e.message || 'Activation failed — try again.');
+            _lockBtn(btn,      false);
+            _lockBtn(inboxBtn, false);
+        } finally {
+            _mailboxActivating = false;
         }
     }
     window.activateMailbox = activateMailbox;
