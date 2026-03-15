@@ -3295,6 +3295,7 @@
                 <div id="profile-hero">
                     <button id="hero-back-btn" onclick="clearWall()">← Home Feed</button>
                     <button id="hero-edit-identity-btn" style="display:none; font-size:0.68rem; padding:5px 14px; border-radius:20px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-secondary); cursor:pointer; margin-left:8px;" onclick="openHeroEditForm()">✎ Edit Identity</button>
+                    <button id="hero-network-btn" style="display:none; font-size:0.68rem; padding:5px 14px; border-radius:20px; border:1px solid rgba(45,212,191,0.5); background:rgba(45,212,191,0.08); color:var(--teal); cursor:pointer; margin-left:8px; font-weight:700;" onclick="toggleNetworkDrawer()">🌐 My Network</button>
                     <div class="hero-top">
                         <img id="hero-avatar" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub">
                         <div class="hero-info">
@@ -3373,6 +3374,27 @@
                             <button class="tip-send-btn" id="hero-tip-send-btn" onclick="sendHeroTip()">Send ★</button>
                         </div>
                     </div>
+
+                    <!-- ── MY NETWORK DRAWER — collapsed by default, toggled by hero button ── -->
+                    <div id="network-drawer" style="display:none; margin-top:14px; border-top:1px solid rgba(255,255,255,0.12); padding-top:14px;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                            <div style="font-size:0.82rem; font-weight:700; color:#fff; letter-spacing:0.2px;">🌐 My Network</div>
+                            <div style="display:flex; gap:8px; align-items:center;">
+                                <button onclick="loadMyNetwork()" style="font-size:0.6rem; padding:3px 9px; border-radius:20px; border:1px solid rgba(45,212,191,0.4); background:rgba(45,212,191,0.08); color:var(--teal); cursor:pointer;">⟳ Refresh</button>
+                                <button onclick="toggleNetworkDrawer()" style="font-size:0.6rem; padding:3px 9px; border-radius:20px; border:1px solid rgba(255,255,255,0.2); background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.7); cursor:pointer;">✕ Hide</button>
+                            </div>
+                        </div>
+                        <div class="network-tabs">
+                            <button class="network-tab active" id="net-tab-creators" onclick="switchNetworkTab('creators')">👤 Creators</button>
+                            <button class="network-tab" id="net-tab-hubs" onclick="switchNetworkTab('hubs')">⬡ Hubs</button>
+                        </div>
+                        <div id="network-list-creators" class="network-list">
+                            <div class="network-empty">Loading your network…</div>
+                        </div>
+                        <div id="network-list-hubs" class="network-list" style="display:none;">
+                            <div class="network-empty">Loading your followed hubs…</div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Legacy wall header hidden — Profile Hero replaces it -->
@@ -3398,25 +3420,6 @@
                 <div id="feed-items"></div>
                 <button id="load-more-btn" class="btn" onclick="showNextPage()">Load More Signals</button>
 
-                <!-- MY NETWORK — only visible when viewing own profile wall -->
-                <div id="my-network-card" style="display:none; margin-top:8px;">
-                    <div class="card">
-                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-                            <div style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">◉ My Network</div>
-                            <button onclick="loadMyNetwork()" style="font-size:0.6rem; padding:4px 10px; border-radius:20px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-muted); cursor:pointer;">⟳ Refresh</button>
-                        </div>
-                        <div class="network-tabs">
-                            <button class="network-tab active" id="net-tab-creators" onclick="switchNetworkTab('creators')">👤 Creators</button>
-                            <button class="network-tab" id="net-tab-hubs" onclick="switchNetworkTab('hubs')">⬡ Hubs</button>
-                        </div>
-                        <div id="network-list-creators" class="network-list">
-                            <div class="network-empty">Loading your network…</div>
-                        </div>
-                        <div id="network-list-hubs" class="network-list" style="display:none;">
-                            <div class="network-empty">Loading your followed hubs…</div>
-                        </div>
-                    </div>
-                </div>
             </div><!-- /page-home -->
 
             <!-- CREATOR STUDIO PAGE -->
@@ -4514,7 +4517,7 @@
 
             if (typeof loadGlobalFeed === "function") loadGlobalFeed();
             if (typeof loadFollowingSet === "function") loadFollowingSet();
-            if (typeof loadMyNetwork === "function") loadMyNetwork();
+            // loadMyNetwork is called lazily when the drawer is opened
             showToast("Connected & Synced ✓");
         } catch (err) {
             console.error(err);
@@ -6386,8 +6389,11 @@
         if (pageInfo)        { pageInfo.style.display         = 'none'; pageInfo.classList.remove('active'); }
         if (pageCommunities) { pageCommunities.style.display  = 'none'; pageCommunities.classList.remove('active'); }
         // Always hide My Network when switching tabs — shown only by viewUserWall on own wall
-        const networkCard = document.getElementById('my-network-card');
-        if (networkCard) networkCard.style.display = 'none';
+        // Hide network drawer and button when leaving home tab
+        const _nd = document.getElementById('network-drawer');
+        if (_nd) _nd.style.display = 'none';
+        const _nb = document.getElementById('hero-network-btn');
+        if (_nb) _nb.style.display = 'none';
 
         // 4. Reset desktop nav active states
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -8249,12 +8255,12 @@
         if (loadMore)  loadMore.style.display  = 'none';
         if (feedHead)  feedHead.style.display  = 'none';
 
-        // 9. Show My Network card only on own wall; hide it on others' walls
-        const networkCard = document.getElementById('my-network-card');
-        if (networkCard) {
-            networkCard.style.display = isOwnWall ? 'block' : 'none';
-            if (isOwnWall && typeof loadMyNetwork === 'function') loadMyNetwork();
-        }
+        // 9. Show 'My Network' button only on own wall
+        const heroNetBtn = document.getElementById('hero-network-btn');
+        if (heroNetBtn) heroNetBtn.style.display = isOwnWall ? '' : 'none';
+        // Collapse the drawer whenever we switch walls
+        const netDrawer = document.getElementById('network-drawer');
+        if (netDrawer) netDrawer.style.display = 'none';
 
         // 7. Re-render the feed filtered by wall
         loadGlobalFeed();
@@ -8304,9 +8310,11 @@
         if (composer) composer.style.display = '';
         if (feedHead) feedHead.style.display = '';
 
-        // Hide My Network card — only visible on own wall
-        const networkCard = document.getElementById('my-network-card');
-        if (networkCard) networkCard.style.display = 'none';
+        // Hide network drawer and button on clearWall
+        const _nd2 = document.getElementById('network-drawer');
+        if (_nd2) _nd2.style.display = 'none';
+        const _nb2 = document.getElementById('hero-network-btn');
+        if (_nb2) _nb2.style.display = 'none';
 
         // 6b. Sync category-bar pill back to "All" so the UI matches _categoryFilter = null
         document.querySelectorAll('.cat-pill').forEach(function(pill) {
@@ -10839,6 +10847,18 @@
         if (listHubs)     listHubs.style.display     = tab === 'hubs'     ? 'flex' : 'none';
     }
     window.switchNetworkTab = switchNetworkTab;
+
+    function toggleNetworkDrawer() {
+        const drawer = document.getElementById('network-drawer');
+        const btn    = document.getElementById('hero-network-btn');
+        if (!drawer) return;
+        const isOpen = drawer.style.display !== 'none';
+        drawer.style.display = isOpen ? 'none' : 'block';
+        if (btn) btn.textContent = isOpen ? '🌐 My Network' : '🌐 My Network ▲';
+        // Load data the first time the drawer opens
+        if (!isOpen && typeof loadMyNetwork === 'function') loadMyNetwork();
+    }
+    window.toggleNetworkDrawer = toggleNetworkDrawer;
 
     async function loadMyNetwork() {
         if (!userAddress || !window.db) {
