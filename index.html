@@ -1555,6 +1555,24 @@
         .info-box { padding: 12px 14px; background: var(--purple-dim); border: 1px solid rgba(124,92,191,0.2); border-radius: var(--radius-md); font-size: 0.78rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 14px; }
         .info-box strong { color: var(--purple-lt); }
         .balance-note { font-size: 0.62rem; color: var(--text-muted); margin-top: 2px; }
+        /* ── MY NETWORK ──────────────────────────────────────────────────── */
+        .network-tabs { display:flex; gap:6px; margin-bottom:14px; }
+        .network-tab { flex:1; padding:8px 6px; border-radius:var(--radius-sm); font-size:0.72rem; font-weight:700; cursor:pointer; text-align:center; border:1px solid var(--border); color:var(--text-secondary); background:var(--bg-input); transition:all 0.14s; }
+        .network-tab.active { background:var(--purple-dim); border-color:rgba(124,92,191,0.4); color:var(--purple-lt); }
+        .network-list { display:flex; flex-direction:column; gap:8px; max-height:340px; overflow-y:auto; }
+        .network-list::-webkit-scrollbar { width:3px; }
+        .network-list::-webkit-scrollbar-thumb { background:rgba(0,0,0,0.10); border-radius:3px; }
+        .network-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:var(--radius-md); background:var(--bg-card2); border:1px solid var(--border); transition:border-color 0.14s; }
+        .network-item:hover { border-color:var(--border-md); }
+        .network-avatar { width:36px; height:36px; border-radius:50%; object-fit:cover; flex-shrink:0; border:1px solid var(--border-md); background:var(--bg-input); }
+        .network-avatar-hub { width:36px; height:36px; border-radius:10px; flex-shrink:0; border:1px solid rgba(45,212,191,0.35); background:var(--teal-dim); display:flex; align-items:center; justify-content:center; font-size:1.1rem; overflow:hidden; }
+        .network-avatar-hub img { width:100%; height:100%; object-fit:cover; }
+        .network-info { flex:1; min-width:0; }
+        .network-name { font-size:0.78rem; font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .network-sub { font-size:0.6rem; color:var(--text-muted); font-family:var(--font-mono); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .network-visit-btn { padding:5px 12px; border-radius:50px; font-size:0.65rem; font-weight:600; cursor:pointer; border:1px solid var(--border-md); color:var(--text-secondary); background:transparent; flex-shrink:0; transition:all 0.14s; }
+        .network-visit-btn:hover { border-color:var(--purple-lt); color:var(--purple-lt); background:var(--purple-dim); }
+        .network-empty { text-align:center; padding:24px 0; font-size:0.75rem; color:var(--text-muted); }
 
         /* Sparkline */
         .sparkline { height: 50px; border-radius: var(--radius-sm); background: var(--bg-input); margin: 10px 0 4px; position: relative; overflow: hidden; }
@@ -2580,6 +2598,29 @@
         /* Spring-back is handled by the existing transition:all 0.13s when
            :active is released — no extra rule needed. */
 
+        /* ── STATE 1: Liked — solid red fill ── */
+        .pact.pact-liked {
+            color: #fff !important;
+            background: linear-gradient(135deg, #ff4d6d, #ff1744) !important;
+            border-color: rgba(255,23,68,0.5) !important;
+            font-weight: 700 !important;
+        }
+        .pact.pact-liked:hover {
+            background: linear-gradient(135deg, #ff6b81, #ff4d6d) !important;
+            border-color: rgba(255,77,109,0.7) !important;
+        }
+
+        /* ── STATE 2+: Mega Hype — pulse glow animation ── */
+        @keyframes megaHypePulse {
+            0%   { box-shadow: 0 0 0 0 rgba(255,23,68,0.7); transform: scale(1); }
+            40%  { box-shadow: 0 0 0 8px rgba(255,23,68,0.25); transform: scale(1.08); }
+            70%  { box-shadow: 0 0 0 14px rgba(255,23,68,0.08); transform: scale(1.04); }
+            100% { box-shadow: 0 0 0 0 rgba(255,23,68,0); transform: scale(1); }
+        }
+        .pact.pact-mega-hype {
+            animation: megaHypePulse 0.55s ease-out forwards;
+        }
+
         /* Comment Like button — same tactile pop, tighter scale */
         .cbtn:active {
             transform: scale(0.82);
@@ -3513,6 +3554,25 @@
                 </div>
             </div>
 
+
+                <!-- MY NETWORK -->
+                <div class="card" id="my-network-card">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+                        <div style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">◉ My Network</div>
+                        <button onclick="loadMyNetwork()" style="font-size:0.6rem; padding:4px 10px; border-radius:20px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-muted); cursor:pointer;">⟳ Refresh</button>
+                    </div>
+                    <div class="network-tabs">
+                        <button class="network-tab active" id="net-tab-creators" onclick="switchNetworkTab('creators')">👤 Creators</button>
+                        <button class="network-tab" id="net-tab-hubs" onclick="switchNetworkTab('hubs')">⬡ Hubs</button>
+                    </div>
+                    <div id="network-list-creators" class="network-list">
+                        <div class="network-empty">Connect wallet to view your network.</div>
+                    </div>
+                    <div id="network-list-hubs" class="network-list" style="display:none;">
+                        <div class="network-empty">Connect wallet to view your followed hubs.</div>
+                    </div>
+                </div>
+
             <!-- PROFILE PAGE — delegates immediately to viewUserWall(userAddress) -->
             <div id="page-profile" class="page"></div>
 
@@ -3979,6 +4039,18 @@
     let _allCommunities    = [];     // in-memory cache of community docs for client-side search
     let _commUnsub         = null;   // teardown fn for the communities onSnapshot listener
 
+    // ── Like state tracking ───────────────────────────────────────────
+    // Persisted in sessionStorage so state survives feed re-renders.
+    // Key: postId, Value: number of times liked this session.
+    const _likedPosts = new Set(
+        JSON.parse(sessionStorage.getItem('_likedPosts') || '[]')
+    );
+    function _markLiked(postId) {
+        _likedPosts.add(postId);
+        sessionStorage.setItem('_likedPosts', JSON.stringify([..._likedPosts]));
+    }
+    function _isLiked(postId) { return _likedPosts.has(postId); }
+
     // ── Social graph state ────────────────────────────────────────────
     let _followingSet      = new Set();  // set of addresses current user follows
     let _followMode        = 'global';   // 'global' | 'following' — controls feed filter
@@ -4440,6 +4512,7 @@
 
             if (typeof loadGlobalFeed === "function") loadGlobalFeed();
             if (typeof loadFollowingSet === "function") loadFollowingSet();
+            if (typeof loadMyNetwork === "function") loadMyNetwork();
             showToast("Connected & Synced ✓");
         } catch (err) {
             console.error(err);
@@ -4748,6 +4821,15 @@
 
         // Close edit modal and refresh the hero with updated identity
         closeHeroEditForm();
+        // Hide gate hint for next open
+        const hint = document.getElementById('edit-identity-gate-hint');
+        if (hint) hint.style.display = 'none';
+        // If save was triggered by a profile gate (broadcast/comment), fire the callback
+        if (typeof _profileGateCb === 'function') {
+            const cb = _profileGateCb;
+            _profileGateCb = null;
+            setTimeout(cb, 300); // brief delay so modal closes cleanly first
+        }
         if (userAddress && typeof viewUserWall === 'function' && _wallFilter && _wallFilter.toLowerCase() === userAddress.toLowerCase()) {
             viewUserWall(userAddress);
         }
@@ -6366,6 +6448,7 @@
             // Clear ledger notification dot when Creator Studio is opened
             if (tabName === 'earnings' || tabName === 'studio' || tabName === 'ledger') {
                 if (typeof _notifDotClear === 'function') _notifDotClear();
+                if (typeof loadMyNetwork === 'function') loadMyNetwork();
             }
 
             // Profile tab — delegate to the full wall view (identical to public wall)
@@ -6410,6 +6493,27 @@
         const overlay = document.getElementById('edit-identity-overlay');
         if (overlay) overlay.style.display = 'none';
     }
+
+    // ── Profile completeness gate ───────────────────────────────────────────────
+    // Returns true if user has a name and avatar saved (Firebase or localStorage).
+    // Used by broadcast and comment to prompt identity setup before first post.
+    function _hasCompleteProfile() {
+        const name = userHandle && userHandle !== 'Anonymous_Creator' && userHandle.trim() !== '';
+        const pic  = userAvatar && userAvatar.trim() !== '';
+        return !!(name && pic);
+    }
+
+    // Show the edit modal with a contextual prompt, then call cb() after save.
+    // cb is stored globally so saveProfile() can invoke it after syncing.
+    let _profileGateCb = null;
+    function _requireProfile(cb) {
+        _profileGateCb = cb || null;
+        openHeroEditForm();
+        // Add a hint banner inside the modal
+        const hint = document.getElementById('edit-identity-gate-hint');
+        if (hint) hint.style.display = 'block';
+    }
+
     window.openHeroEditForm  = openHeroEditForm;
     window.closeHeroEditForm = closeHeroEditForm;
 
@@ -6740,7 +6844,34 @@
                     hypeSpan.textContent = String((parseInt(hypeSpan.textContent, 10) || 0) + 1);
                 }
             }
-            showToast("Hyped! Creator +0.8★");
+
+            // ── Like state update ────────────────────────────────────────────────────
+            if (!isComment) {
+                const wasAlreadyLiked = _isLiked(entityId);
+                _markLiked(entityId);
+                // Find the like button for this post — it contains the span id="hp-{entityId}"
+                const hypeSpan = document.getElementById('hp-' + entityId);
+                const likeBtn  = hypeSpan ? hypeSpan.closest('.pact') : null;
+                if (likeBtn) {
+                    if (!wasAlreadyLiked) {
+                        // STATE 1 → Solid red
+                        likeBtn.classList.add('pact-liked');
+                        likeBtn.classList.remove('like-active');
+                    } else {
+                        // STATE 2+ → Mega Hype pulse (retains pact-liked base)
+                        likeBtn.classList.remove('pact-mega-hype'); // force reflow
+                        void likeBtn.offsetWidth;
+                        likeBtn.classList.add('pact-mega-hype');
+                        // Remove animation class after it plays so it can re-trigger
+                        likeBtn.addEventListener('animationend', () => {
+                            likeBtn.classList.remove('pact-mega-hype');
+                        }, { once: true });
+                    }
+                }
+                showToast(wasAlreadyLiked ? "⚡ Mega Hype! Creator +0.8★" : "Hyped! Creator +0.8★");
+            } else {
+                showToast("Hyped! Creator +0.8★");
+            }
         } catch (e) {
             console.error(e);
             showToast("Hype failed.");
@@ -6771,6 +6902,14 @@
             isActionPending = false;
             if (feedEl) feedEl.style.pointerEvents = '';
             return showToast("Connect wallet first!");
+        }
+
+        // ── Profile gate: require name + avatar before first comment ─────────────
+        if (!_hasCompleteProfile()) {
+            isActionPending = false;
+            if (feedEl) feedEl.style.pointerEvents = '';
+            _requireProfile(() => addComment(recipientAddress, postId, isReply, parentId));
+            return;
         }
 
         // V14: Check combined total spendable balance
@@ -7799,7 +7938,7 @@
                 ${post.category && post.category !== 'Global' ? `<span class="cat-badge">${post.category}</span>` : ''}
                 <div class="post-body">${linkify(post.text)}</div>
                 <div class="post-actions">
-                    <div class="pact" onclick="triggerLikeAnimation(event); hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span> Like</div>
+                    <div class="pact${_isLiked(postId) ? ' pact-liked' : ''}" id="like-btn-${postId}" onclick="triggerLikeAnimation(event); hypeElement('${post.authorAddr}','hp-${postId}')">❤ <span class="pact-num" id="hp-${postId}">${post.hypes || 0}</span> Like</div>
                     <div class="pact" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 Comment<span class="pact-num" id="cc-${postId}" style="color:var(--teal);"></span></div>
                     <div class="pact signal" onclick="promoteToSignal('${postId}')" title="Promote to Daily Signals bar (1★ — 24h)">📡 Signal (1★)</div>
                     <div class="pact boost" onclick="boostPost('${postId}')">🚀 Boost (10★)</div>
@@ -8726,6 +8865,12 @@
         const txt = document.getElementById('post-text')?.value.trim();
         if (!txt) return showToast('Write something first!');
         if (!userAddress) return showToast('Connect your wallet first!');
+
+        // ── Profile gate: require name + avatar before first broadcast ───────────
+        if (!_hasCompleteProfile()) {
+            _requireProfile(() => handleBroadcastWithSignal());
+            return;
+        }
 
         // ══════════════════════════════════════════════════════════════════════════
         // PATH E — EDIT MODE (free, no star deduction, updates existing post doc)
@@ -9822,7 +9967,7 @@
                     mediaHtml +
                     '<div class="post-body">' + (typeof linkify === 'function' ? linkify(post.text) : escHtml(post.text)) + '</div>' +
                     '<div class="post-actions">' +
-                        '<div class="pact" onclick="triggerLikeAnimation(event); hypeElement(\'' + (post.authorAddr||'') + '\',\'hp-' + postId + '\')">' +
+                        '<div class="pact' + (_isLiked(postId) ? ' pact-liked' : '') + '" id="like-btn-' + postId + '" onclick="triggerLikeAnimation(event); hypeElement(\'' + (post.authorAddr||'') + '\',\'hp-' + postId + '\')">' +
                             '\u2764 <span class="pact-num" id="hp-' + postId + '">' + (post.hypes || 0) + '</span> Like' +
                         '</div>' +
                         '<div class="pact" onclick="toggleTray(\'' + postId + '\'); loadComments(\'' + postId + '\')">' +
@@ -10275,6 +10420,7 @@
                 _followingSet.delete(recipientAddr);
                 if (followBtn) { followBtn.textContent = '+ Follow'; followBtn.classList.remove('following'); }
                 showToast('Unfollowed.');
+                if (typeof loadMyNetwork === 'function') loadMyNetwork();
 
             } else {
                 // ── FOLLOW — atomic 90/10 split ───────────────────────────
@@ -10328,6 +10474,7 @@
                 _followingSet.add(recipientAddr);
                 if (followBtn) { followBtn.textContent = '✓ Following'; followBtn.classList.add('following'); }
                 showToast('Following! 0.9★ sent to creator.');
+                if (typeof loadMyNetwork === 'function') loadMyNetwork();
             }
 
             // Refresh follower/following counts on the hero
@@ -10658,6 +10805,160 @@
     window.showFollowList    = showFollowList;
 
     // ═══════════════════════════════════════════════════════════════════
+    // MY NETWORK — Dual-tab directory of followed Creators and Hubs
+    // Reads from social_graph:
+    //   - Creator follows: docs where follower == me, type != 'community'
+    //   - Hub follows:     docs where follower == me, type == 'community'
+    // ═══════════════════════════════════════════════════════════════════
+    let _networkTab = 'creators';
+
+    function switchNetworkTab(tab) {
+        _networkTab = tab;
+        const tabCreators = document.getElementById('net-tab-creators');
+        const tabHubs     = document.getElementById('net-tab-hubs');
+        const listCreators = document.getElementById('network-list-creators');
+        const listHubs     = document.getElementById('network-list-hubs');
+        if (tabCreators)  tabCreators.classList.toggle('active',  tab === 'creators');
+        if (tabHubs)      tabHubs.classList.toggle('active',      tab === 'hubs');
+        if (listCreators) listCreators.style.display = tab === 'creators' ? 'flex' : 'none';
+        if (listHubs)     listHubs.style.display     = tab === 'hubs'     ? 'flex' : 'none';
+    }
+    window.switchNetworkTab = switchNetworkTab;
+
+    async function loadMyNetwork() {
+        if (!userAddress || !window.db) {
+            ['network-list-creators','network-list-hubs'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = '<div class="network-empty">Connect wallet to view your network.</div>';
+            });
+            return;
+        }
+        const addr = userAddress.toLowerCase();
+        const creatorsList = document.getElementById('network-list-creators');
+        const hubsList     = document.getElementById('network-list-hubs');
+        if (creatorsList) creatorsList.innerHTML = '<div class="network-empty" style="color:var(--teal);">Loading…</div>';
+        if (hubsList)     hubsList.innerHTML     = '<div class="network-empty" style="color:var(--teal);">Loading…</div>';
+
+        try {
+            const q = window.fs.query(
+                window.fs.collection(window.db, 'social_graph'),
+                window.fs.where('follower', '==', addr)
+            );
+            const snap = await window.fs.getDocs(q);
+
+            const creators = [];
+            const hubs     = [];
+            snap.forEach(d => {
+                const data = d.data();
+                if (data.type === 'community') hubs.push(data);
+                else creators.push(data);
+            });
+
+            // ── Render Creators ────────────────────────────────────────────
+            if (creatorsList) {
+                if (creators.length === 0) {
+                    creatorsList.innerHTML = '<div class="network-empty">No creators followed yet.<br>Visit a profile and tap + Follow.</div>';
+                } else {
+                    creatorsList.innerHTML = '';
+                    for (const entry of creators) {
+                        const targetAddr = entry.following;
+                        // Fetch profile from users collection
+                        let name   = targetAddr.slice(0,6) + '…' + targetAddr.slice(-4);
+                        let avatar = 'https://api.dicebear.com/7.x/identicon/svg?seed=' + targetAddr;
+                        try {
+                            const uSnap = await window.fs.getDoc(
+                                window.fs.doc(window.db, 'users', targetAddr)
+                            );
+                            if (uSnap.exists()) {
+                                if (uSnap.data().displayName) name   = uSnap.data().displayName;
+                                if (uSnap.data().avatarUrl)   avatar = uSnap.data().avatarUrl;
+                            }
+                        } catch (_) {}
+                        const item = document.createElement('div');
+                        item.className = 'network-item';
+                        const fallbackAvatar = 'https://api.dicebear.com/7.x/identicon/svg?seed=' + encodeURIComponent(targetAddr);
+                        item.innerHTML =
+                            '<img class="network-avatar" src="' + _escNet(avatar) + '" onerror="this.onerror=null;this.src=\'' + fallbackAvatar + '\'">' +
+                            '<div class="network-info">' +
+                                '<div class="network-name">' + _escNet(name) + '</div>' +
+                                '<div class="network-sub">' + targetAddr.slice(0,8) + '…' + targetAddr.slice(-4) + '</div>' +
+                            '</div>' +
+                            '<button class="network-visit-btn" data-addr="' + _escNet(targetAddr) + '">Visit →</button>';
+                        item.querySelector('.network-visit-btn').addEventListener('click', function() {
+                            viewUserWall(this.getAttribute('data-addr'));
+                        });
+                        creatorsList.appendChild(item);
+                    }
+                }
+            }
+
+            // ── Render Hubs ────────────────────────────────────────────────
+            if (hubsList) {
+                if (hubs.length === 0) {
+                    hubsList.innerHTML = '<div class="network-empty">No hubs followed yet.<br>Browse Communities and tap + Follow Hub.</div>';
+                } else {
+                    hubsList.innerHTML = '';
+                    for (const entry of hubs) {
+                        const commId = entry.following;
+                        let hubName  = commId;
+                        let hubBanner = '';
+                        let hubDesc  = '';
+                        try {
+                            const cSnap = await window.fs.getDoc(
+                                window.fs.doc(window.db, 'communities', commId)
+                            );
+                            if (cSnap.exists()) {
+                                if (cSnap.data().name)        hubName   = cSnap.data().name;
+                                if (cSnap.data().bannerImage) hubBanner = cSnap.data().bannerImage;
+                                if (cSnap.data().description) hubDesc   = cSnap.data().description;
+                            }
+                        } catch (_) {}
+                        const item = document.createElement('div');
+                        item.className = 'network-item';
+                        const iconHtml = hubBanner
+                            ? '<div class="network-avatar-hub"><img src="' + _escNet(hubBanner) + '" onerror="this.style.display=\'none\'"></div>'
+                            : '<div class="network-avatar-hub">⬡</div>';
+                        item.innerHTML =
+                            iconHtml +
+                            '<div class="network-info">' +
+                                '<div class="network-name">' + _escNet(hubName) + '</div>' +
+                                '<div class="network-sub">' + (hubDesc ? _escNet(hubDesc.slice(0,40)) + (hubDesc.length > 40 ? '…' : '') : commId) + '</div>' +
+                            '</div>' +
+                            '<button class="network-visit-btn" data-comm="' + _escNet(commId) + '">Visit →</button>';
+                        item.querySelector('.network-visit-btn').addEventListener('click', function() {
+                            const cid = this.getAttribute('data-comm');
+                            const comm = _allCommunities.find(c => c.id === cid);
+                            if (comm) {
+                                openCommunityFeed(comm, {});
+                                switchPage('communities', document.getElementById('nav-communities'));
+                            } else {
+                                // Fallback: navigate to communities tab
+                                switchPage('communities', document.getElementById('nav-communities'));
+                                showToast('Opening Communities…');
+                            }
+                        });
+                        hubsList.appendChild(item);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[loadMyNetwork]', e);
+            ['network-list-creators','network-list-hubs'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = '<div class="network-empty">Failed to load — check connection.</div>';
+            });
+        }
+    }
+    window.loadMyNetwork = loadMyNetwork;
+
+    // Tiny escape helper for network item innerHTML
+    function _escNet(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+
+
+    // ═══════════════════════════════════════════════════════════════════
     // COMMUNITY FOLLOW — costs 1★, 90% to community creator, 10% platform
     // Uses community doc ID (lowercased) as the 'following' value in
     // social_graph so the Following Feed filter can match communityId.
@@ -10693,6 +10994,7 @@
                 _followingSet.delete(commId);
                 if (followBtn) { followBtn.textContent = '+ Follow Hub'; followBtn.classList.remove('following'); }
                 showToast('Unfollowed ' + (_activeCommunity.name || 'Hub') + '.');
+                if (typeof loadMyNetwork === 'function') loadMyNetwork();
 
             } else {
                 // ── FOLLOW — atomic 90/10 split ───────────────────────────
@@ -10774,6 +11076,7 @@
                 _followingSet.add(commId);
                 if (followBtn) { followBtn.textContent = '✓ Following Hub'; followBtn.classList.add('following'); }
                 showToast('Following ' + (_activeCommunity.name || 'Hub') + '! 0.9★ sent to creator.');
+                if (typeof loadMyNetwork === 'function') loadMyNetwork();
             }
 
             // Refresh member count display
@@ -11302,10 +11605,11 @@
 <!-- ════════════════════════════════════════════════════════════════
      EDIT IDENTITY MODAL — triggered from hero ✎ Edit Identity button
 ════════════════════════════════════════════════════════════════ -->
-<div id="edit-identity-overlay" style="display:none; position:fixed; inset:0; z-index:6000; background:rgba(0,0,0,0.55); display:flex; align-items:center; justify-content:center;" onclick="if(event.target===this) closeHeroEditForm()">
+<div id="edit-identity-overlay" style="display:none; position:fixed; inset:0; z-index:6000; background:rgba(0,0,0,0.55); align-items:center; justify-content:center;" onclick="if(event.target===this) closeHeroEditForm()">
     <div style="background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius-lg); padding:24px; width:min(420px,90vw); box-shadow:0 8px 32px rgba(0,0,0,0.25); position:relative;">
         <button onclick="closeHeroEditForm()" style="position:absolute;top:14px;right:14px;background:none;border:none;font-size:1rem;color:var(--text-muted);cursor:pointer;" title="Close">✕</button>
         <div style="font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:4px;">✎ Edit Identity</div>
+        <div id="edit-identity-gate-hint" style="display:none; font-size:0.72rem; color:var(--teal); background:var(--teal-dim); border:1px solid rgba(45,212,191,0.3); border-radius:8px; padding:8px 10px; margin-bottom:10px;">⚡ Set your display name &amp; avatar to start broadcasting.</div>
         <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:16px;">Set your display name and avatar URL. Synced to Firebase.</div>
         <input type="text" id="handle-input" class="field" placeholder="@Username" style="margin-top:0;">
         <input type="text" id="avatar-input" class="field" placeholder="Avatar Image URL">
