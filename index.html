@@ -4826,8 +4826,6 @@
             const balRaw = await _safeCall(() => hubContract.starBalances(addr));
             const anchRaw = await _safeCall(() => hubContract.totalAnchors());
 
-            // If the contract call failed (provider not ready), bail silently —
-            // startChainRefresh will retry in 30 s.
             if (balRaw === null) {
                 console.warn('[syncData] starBalances returned null — provider may not be ready yet');
                 return;
@@ -4844,66 +4842,73 @@
                     await window.fs.setDoc(userRef, { stars: 0, creatorStars: 0, spentStarsTotal: 0, initial_deposit: 0, lastSync: Date.now(), address: addr.toLowerCase() });
                     currentAptmBalance = onChainAptm;
                 } else {
-                    purchasedStars     = snap.data().stars         || 0;
-                    creatorEarnings    = snap.data().creatorStars   || 0;
-                    totalDepositedAptm = parseFloat(snap.data().initial_deposit) || 0;
+                    const d = snap.data();
+                    // stars is already net-of-spend — deductSpendableStars reduces it atomically.
+                    // Do NOT subtract spentStarsTotal again — that is the double-subtraction bug.
+                    purchasedStars     = Math.max(0, parseFloat(d.stars         || 0));
+                    creatorEarnings    = Math.max(0, parseFloat(d.creatorStars   || 0));
+                    totalDepositedAptm = Math.max(0, parseFloat(d.initial_deposit || 0));
 
-                    const spentStars = parseFloat(snap.data().spentStarsTotal) || 0;
-                    const livePrice  = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
-                    if (livePrice > 0 && spentStars > 0) {
-                        const spentAptm    = (spentStars * CONFIG.STAR_USD) / livePrice;
-                        currentAptmBalance = Math.max(0, onChainAptm - spentAptm);
-                        console.log(`[syncData] onChain=${onChainAptm.toFixed(6)} APTM | spentStars=${spentStars.toFixed(4)}★ | spentAptm=${spentAptm.toFixed(6)} | spendable=${currentAptmBalance.toFixed(6)}`);
+                    // currentAptmBalance = what the user can spend RIGHT NOW.
+                    // Derived from Firebase net stars (not from onChain - spentAptm).
+                    // purchasedStars already has all spending deducted, so:
+                    //   spendable APTM = (purchasedStars × $0.01) / livePrice
+                    // Cap at onChainAptm so we never show more than the contract holds.
+                    const livePrice = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
+                    if (livePrice > 0 && purchasedStars > 0) {
+                        const aptmFromStars = (purchasedStars * CONFIG.STAR_USD) / livePrice;
+                        currentAptmBalance  = Math.min(aptmFromStars, onChainAptm);
                     } else {
-                        currentAptmBalance = onChainAptm;
+                        currentAptmBalance  = onChainAptm;
                     }
+                    console.log(`[syncData] onChain=${onChainAptm.toFixed(6)} APTM | fbStars(net)=${purchasedStars.toFixed(4)}★ | fbEarned=${creatorEarnings.toFixed(4)}★ | spendable=${currentAptmBalance.toFixed(6)} APTM`);
                     await window.fs.updateDoc(userRef, { lastSync: Date.now() });
                 }
             } else {
                 currentAptmBalance = onChainAptm;
             }
             updateUI();
-            console.log('Database successfully updated');
+            console.log('[syncData] complete');
         } catch (e) { console.error('Sync Failed:', e); }
     }
 
     // Refresh the on-chain APTM balance every 30 s while a wallet is connected.
-    // MUST apply spentStarsTotal debt from Firestore before updating the UI —
-    // raw on-chain balance never decreases from off-chain spending (hype/tip/follow),
-    // so writing it directly was the tug-of-war causing the 30-second balance snap-back.
+    // Uses Firebase net stars (already spend-deducted) as the source of truth,
+    // capped at the on-chain balance. Never subtracts spentStarsTotal again.
     let _chainRefreshTimer = null;
     function startChainRefresh() {
         stopChainRefresh();
         _chainRefreshTimer = setInterval(async function() {
-            // Re-resolve from window globals — mobile scope may lose closure refs
             if (!hubContract && window.hubContract) hubContract = window.hubContract;
             if (!signer     && window.signer)      signer      = window.signer;
             if (!hubContract || !signer || !userAddress) return;
             try {
                 const addr   = await signer.getAddress();
                 const balRaw = await _safeCall(() => hubContract.starBalances(addr));
-
-                // If RPC returned null (provider error), skip this tick — don't zero the balance
                 if (balRaw === null) {
                     console.warn('[ChainRefresh] starBalances returned null — skipping tick');
                     return;
                 }
-
                 const onChainAptm = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
 
-                let spentStars = 0;
+                // Read net stars from Firebase — already spend-deducted, no subtraction needed
+                let fbStarsNet = 0;
                 if (window.db) {
                     try {
                         const snap = await window.fs.getDoc(
                             window.fs.doc(window.db, 'user_balances', addr.toLowerCase())
                         );
-                        if (snap.exists()) spentStars = parseFloat(snap.data().spentStarsTotal) || 0;
+                        if (snap.exists()) {
+                            fbStarsNet    = Math.max(0, parseFloat(snap.data().stars || 0));
+                            purchasedStars = fbStarsNet;
+                            creatorEarnings = Math.max(0, parseFloat(snap.data().creatorStars || 0));
+                        }
                     } catch (_) {}
                 }
 
                 const livePrice = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
-                const netAptm   = livePrice > 0 && spentStars > 0
-                    ? Math.max(0, onChainAptm - (spentStars * CONFIG.STAR_USD) / livePrice)
+                const netAptm = (livePrice > 0 && fbStarsNet > 0)
+                    ? Math.min((fbStarsNet * CONFIG.STAR_USD) / livePrice, onChainAptm)
                     : onChainAptm;
 
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
@@ -8028,14 +8033,44 @@
                     "\n\nYour Firebase stars are UNCHANGED. Try again.");
             }
 
-            // ── Zero local state AFTER confirmed receipt ──────────────────────
+            // ── STEP C: Write settlement_syncs record BEFORE zeroing Firebase ─────
+            // This creates the audit trail. Firebase zero only happens after this write
+            // succeeds, so if the write fails the user's stars are fully preserved.
+            const settlementSyncDoc = {
+                userAddr:       addr,
+                txHash:         receipt.transactionHash || tx.hash || '',
+                aptmPriceUsd:   livePriceForModal,
+                netStarsSettled: netStarsForModal,
+                aptmSent:       finalWithdrawAptm,
+                timestamp:      Date.now(),
+                blockNumber:    receipt.blockNumber || null,
+                gasUsed:        receipt.gasUsed ? receipt.gasUsed.toString() : null
+            };
+
+            if (window.db) {
+                try {
+                    await window.fs.addDoc(
+                        window.fs.collection(window.db, 'settlement_syncs'),
+                        settlementSyncDoc
+                    );
+                    console.log("[Settlement] settlement_syncs record written ✓");
+                } catch (syncWriteErr) {
+                    // Non-fatal: log the error but don't block zeroing — the on-chain
+                    // tx is already confirmed. The audit record is best-effort.
+                    console.error("[Settlement] settlement_syncs write failed (non-fatal):", syncWriteErr);
+                }
+            }
+
+            // ── STEP D: Zero local state AFTER confirmed receipt + sync write ─────
             purchasedStars     = 0;
             creatorEarnings    = 0;
             currentAptmBalance = 0;
             totalDepositedAptm = 0;
-            _lastSpendTime      = Date.now();
+            _lastSpendTime     = Date.now();
 
-            // ── Zero Firebase ONLY after receipt.status === 1 ────────────────
+            // ── STEP E: Zero Firebase ONLY after receipt.status === 1 ─────────────
+            // If this write fails, the user still got their APTM — show a warning
+            // but do NOT revert local state (the blockchain is the truth).
             if (window.db) {
                 try {
                     await window.fs.setDoc(
@@ -8052,9 +8087,10 @@
                         },
                         { merge: true }
                     );
-                    console.log("[Settlement] Firebase zeroed after receipt.status===1 confirmed.");
+                    console.log("[Settlement] Firebase user_balances zeroed after receipt.status===1 ✓");
                 } catch (fbErr) {
                     console.error("[Settlement] CRITICAL: on-chain OK, Firebase zero failed:", fbErr);
+                    showToast("⚠ APTM sent to wallet, but Firebase balance reset failed. Contact support with tx: " + (receipt.transactionHash || ''));
                 }
             }
 
