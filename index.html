@@ -1610,7 +1610,34 @@
         }
 
         /* ── Solvency Light ─────────────────────────────────────────────────── */
-        .mcd-solvency {
+        .mcd-seed-btn {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            width: 100%; margin-top: 8px; padding: 11px 18px;
+            background: linear-gradient(135deg, rgba(45,212,191,0.12) 0%, rgba(45,212,191,0.06) 100%);
+            border: 1px solid rgba(45,212,191,0.55);
+            border-radius: var(--radius-md);
+            color: var(--teal);
+            font-family: var(--font-body); font-size: 0.78rem; font-weight: 700;
+            cursor: pointer; letter-spacing: 0.5px;
+            transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
+        }
+        .mcd-seed-btn:hover {
+            background: rgba(45,212,191,0.18);
+            border-color: var(--teal);
+            box-shadow: 0 0 14px rgba(45,212,191,0.22);
+        }
+        .mcd-seed-btn:disabled {
+            opacity: 0.45; cursor: not-allowed;
+        }
+        .mcd-seed-notice {
+            margin-top: 6px; padding: 7px 10px;
+            background: rgba(45,212,191,0.05);
+            border: 1px solid rgba(45,212,191,0.18);
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono); font-size: 0.56rem;
+            color: var(--teal); letter-spacing: 0.8px; text-transform: uppercase;
+            line-height: 1.6;
+        }
             display: flex; align-items: center; justify-content: space-between;
             flex-wrap: wrap; gap: 10px;
             padding: 12px 14px; border-radius: 10px;
@@ -3825,6 +3852,20 @@
                             title="Recount posts per Hub from the posts collection and update postCount">
                         ↻ Recalculate Hub Post Counts
                     </button>
+
+                    <!-- ── SEED PROTOCOL VAULT ─────────────────────────────────────── -->
+                    <!-- Sends APTM directly to the contract WITHOUT minting stars.      -->
+                    <!-- Use this to cover reserve shortfalls without inflating supply.  -->
+                    <div style="margin-top:14px; padding-top:12px; border-top:1px solid rgba(45,212,191,0.15);">
+                        <div class="mcd-seed-notice">
+                            ✦ Protocol Liquidity Tool · Sends APTM to contract · Zero star mint · Vault health reconciliation only
+                        </div>
+                        <button id="seed-vault-btn" class="mcd-seed-btn" onclick="seedProtocolVault()"
+                                title="Deposit APTM to the contract to cover reserve shortfalls — no stars are minted">
+                            ✦ SEED PROTOCOL LIQUIDITY
+                        </button>
+                        <div id="seed-vault-status" style="display:none; margin-top:6px; font-family:var(--font-mono); font-size:0.6rem; color:var(--teal); letter-spacing:0.8px; text-transform:uppercase; line-height:1.7;"></div>
+                    </div>
                 </div>
             </div>
 
@@ -12321,6 +12362,170 @@
     //   spentTotal   = min(spentStarsTotal, correctStars)  ← clamp to real deposit
     //
     // platform_revenue total in admin_revenue/global is NOT touched here —
+    // ═══════════════════════════════════════════════════════════════════
+    // SEED PROTOCOL VAULT
+    // ─────────────────────────────────────────────────────────────────
+    // Sends APTM directly to the contract's depositAPTM() function
+    // WITHOUT minting stars or updating any user balance in Firestore.
+    //
+    // Use case: cover a reserve shortfall (e.g. a 42-star discrepancy)
+    // so that the Vault Health indicator turns green without artificially
+    // inflating any user's spendable star balance.
+    //
+    // What this function DOES:
+    //   1. Prompts admin for APTM amount to seed
+    //   2. Calls hubContract.depositAPTM() with that value (payable)
+    //   3. Waits for on-chain confirmation
+    //   4. Logs to Firestore collection 'system_logs' with type SYSTEM_SEED
+    //   5. Calls syncData() + startChainRefresh() so Vault Health re-checks
+    //
+    // What this function DOES NOT:
+    //   • Does NOT call creditPurchasedStars()
+    //   • Does NOT write to user_balances.stars or any user field
+    //   • Does NOT mint any stars for any wallet
+    // ═══════════════════════════════════════════════════════════════════
+    async function seedProtocolVault() {
+        // ── Auth guard ──────────────────────────────────────────────────
+        if (!userAddress || userAddress.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) {
+            return alert('Admin only — seed function is restricted to the protocol admin wallet.');
+        }
+        if (!hubContract || !signer || !provider) {
+            return alert('Wallet not connected. Connect MetaMask first.');
+        }
+
+        const btn       = document.getElementById('seed-vault-btn');
+        const statusEl  = document.getElementById('seed-vault-status');
+        const setStatus = (msg, colour) => {
+            if (!statusEl) return;
+            statusEl.style.display = 'block';
+            statusEl.style.color   = colour || 'var(--teal)';
+            statusEl.textContent   = msg;
+        };
+
+        // ── Prompt for amount ───────────────────────────────────────────
+        const input = window.prompt(
+            '✦ SEED PROTOCOL LIQUIDITY\n\n' +
+            'Enter the amount of APTM to deposit into the contract.\n' +
+            'NO stars will be minted. This is a pure reserve top-up.\n\n' +
+            'APTM amount:'
+        );
+        if (input === null) return;   // cancelled
+        const aptmAmount = parseFloat(input);
+        if (isNaN(aptmAmount) || aptmAmount <= 0) {
+            return alert('Invalid amount. Enter a positive number.');
+        }
+
+        // ── Final confirmation ──────────────────────────────────────────
+        const confirmed = window.confirm(
+            `CONFIRM PROTOCOL SEED\n\n` +
+            `Amount:   ${aptmAmount.toFixed(6)} APTM\n` +
+            `To:       ${CONFIG.CONTRACT_ADDRESS}\n` +
+            `Function: depositAPTM() [payable]\n` +
+            `Stars:    0 — NO stars will be minted\n\n` +
+            `Proceed?`
+        );
+        if (!confirmed) return;
+
+        if (btn) { btn.disabled = true; btn.textContent = '⟳ Broadcasting…'; }
+        setStatus('Preparing transaction…', 'var(--teal)');
+
+        try {
+            // ── Fetch live price for log metadata ───────────────────────
+            let seedPrice = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
+            if (seedPrice <= 0) {
+                const fresh = await getLiveAptmPrice();
+                seedPrice   = fresh && fresh > 0 ? fresh : 0;
+            }
+
+            // ── Convert APTM → wei ──────────────────────────────────────
+            const aptmWei = ethers.utils.parseEther(aptmAmount.toFixed(18));
+
+            setStatus('Sending to MetaMask — confirm the transaction…', 'var(--teal)');
+            console.log(`[SeedVault] Calling depositAPTM() with ${aptmAmount.toFixed(6)} APTM (${aptmWei.toString()} wei)`);
+
+            // ── On-chain call: depositAPTM() payable ────────────────────
+            // CRITICAL: value= is the APTM sent; gasLimit gives headroom for the payable path.
+            // This is IDENTICAL to the regular deposit call EXCEPT we never call
+            // creditPurchasedStars() or touch user_balances afterwards.
+            const tx = await hubContract.depositAPTM({
+                value:    aptmWei,
+                gasLimit: 300000
+            });
+
+            setStatus(`Tx sent — waiting for confirmation… (${tx.hash.slice(0,12)}…)`, 'var(--teal)');
+            console.log(`[SeedVault] Tx hash: ${tx.hash} — awaiting receipt…`);
+
+            const receipt = await tx.wait();
+            console.log(`[SeedVault] Confirmed on block ${receipt.blockNumber} ✓`);
+
+            setStatus(`✓ Confirmed block ${receipt.blockNumber} — logging & re-syncing vault…`, '#22c55e');
+
+            // ── Firestore log — system_logs collection ──────────────────
+            // Also writes a user_transactions entry with type SYSTEM_SEED
+            // so it appears in the admin's own ledger for auditability.
+            if (window.db && window.fs) {
+                const logEntry = {
+                    type:            'SYSTEM_SEED',
+                    subtype:         'protocol_liquidity',
+                    aptmAmount:      aptmAmount,
+                    aptmWei:         aptmWei.toString(),
+                    txHash:          tx.hash,
+                    blockNumber:     receipt.blockNumber,
+                    contractAddress: CONFIG.CONTRACT_ADDRESS,
+                    seedPrice:       seedPrice,
+                    starsMinted:     0,          // always 0 — no star mint
+                    adminAddress:    userAddress.toLowerCase(),
+                    timestamp:       Date.now(),
+                    note:            'Pure reserve top-up via seedProtocolVault() — no stars minted'
+                };
+
+                // system_logs — permanent protocol audit trail
+                await window.fs.addDoc(
+                    window.fs.collection(window.db, 'system_logs'),
+                    logEntry
+                ).catch(e => console.warn('[SeedVault] system_logs write failed:', e));
+
+                // user_transactions — visible in admin ledger
+                logTransaction('SYSTEM_SEED', aptmAmount, {
+                    from:        userAddress,
+                    to:          CONFIG.CONTRACT_ADDRESS,
+                    description: `Protocol seed: ${aptmAmount.toFixed(6)} APTM → contract reserve (0 stars minted) · block ${receipt.blockNumber}`
+                });
+
+                console.log('[SeedVault] Firestore log written ✓');
+            }
+
+            // ── Re-sync so Vault Health sees the new on-chain balance ───
+            // syncData refreshes currentAptmBalance; startChainRefresh arms
+            // the 30s poll; updateMCDSolvency re-evaluates coverage ratio.
+            setStatus('Re-syncing vault health…', 'var(--teal)');
+            try {
+                if (typeof syncData           === 'function') await syncData();
+                if (typeof startChainRefresh  === 'function') startChainRefresh();
+                if (typeof updateMCDSolvency  === 'function') await updateMCDSolvency();
+            } catch (syncErr) {
+                console.warn('[SeedVault] Post-seed sync warning:', syncErr);
+            }
+
+            setStatus(
+                `✦ SEED COMPLETE · ${aptmAmount.toFixed(6)} APTM deposited · 0 stars minted · Block ${receipt.blockNumber}`,
+                '#22c55e'
+            );
+            showToast(`✦ Protocol seeded: ${aptmAmount.toFixed(6)} APTM added to reserve ✓`);
+
+        } catch (err) {
+            console.error('[SeedVault] Error:', err);
+            const msg = err?.reason || err?.message || String(err);
+            setStatus('⚠ Seed failed: ' + msg.slice(0, 120), '#ef4444');
+            showToast('Seed failed — ' + msg.slice(0, 80));
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '✦ SEED PROTOCOL LIQUIDITY'; }
+        }
+    }
+    window.seedProtocolVault = seedProtocolVault;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // BALANCE RECONCILIATION (admin only)
     // the admin should withdraw then reconcile so the on-chain contract
     // balance and Firebase are in sync after the script runs.
     //
