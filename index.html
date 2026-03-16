@@ -5983,8 +5983,14 @@
 
             const livePrice = (currentAptmPriceUsd > 0) ? currentAptmPriceUsd
                             : (window.aptmPriceUSD > 0 ? window.aptmPriceUSD : 0.3391);
-            const contractBalStars    = (contractBalAptm * livePrice) / CONFIG.STAR_USD;
-            // Full liability = ALL user-owned stars + admin platform revenue
+            const contractBalStars = (contractBalAptm * livePrice) / CONFIG.STAR_USD;
+
+            // NET LIABILITY = net purchased stars (already spend-deducted in Firestore)
+            //               + creator earnings (owed to creators)
+            //               + admin platform revenue (owed to admin)
+            // This is the exact amount the contract must be able to pay out.
+            // _mcdPurchased comes from user_balances.stars which deductSpendableStars
+            // reduces atomically — so it is already the correct net figure.
             const totalLiabilityStars = totalPurchased + totalEarned + adminRevStars;
 
             const isSolvent     = contractBalStars >= totalLiabilityStars;
@@ -7831,46 +7837,51 @@
         }
 
         // ── MODAL DESYNC FIX ────────────────────────────────────────────────────
-        // The raw on-chain starBalances() value (exactBalWei) is the ORIGINAL
-        // deposit and must NEVER be presented to the user as their withdrawal
-        // amount — it ignores all Spend transactions.
+        // stars field in Firestore IS already net-of-spend — deductSpendableStars
+        // reduces it atomically on every transaction. There is no need to subtract
+        // spentStarsTotal again here. The correct net payout is simply:
         //
-        // The correct net balance is:
-        //   netAptm = (fbStars + fbEarned) × $0.01 / livePrice
-        // where fbStars has already had spentStarsTotal subtracted by syncData().
-        // We then cap at the on-chain value as a hard reserve guard.
+        //   netStars = purchasedStars (already spent-deducted) + creatorEarnings
+        //   netAptm  = netStars × $0.01 / livePrice
+        //
+        // We then cap at the on-chain balance as a hard reserve guard.
         let fbSnapForModal = null;
-        let fbStarsForModal = 0, fbEarnedForModal = 0, fbSpentForModal = 0;
+        let fbStarsForModal = 0, fbEarnedForModal = 0;
         try {
             fbSnapForModal = await window.fs.getDoc(window.fs.doc(window.db, "user_balances", addr));
             if (fbSnapForModal.exists()) {
                 const d = fbSnapForModal.data();
-                fbStarsForModal  = parseFloat(d.stars           || 0);
-                fbEarnedForModal = parseFloat(d.creatorStars    || 0);
-                fbSpentForModal  = parseFloat(d.spentStarsTotal || 0);
+                // stars = net purchased balance (all spending already deducted)
+                fbStarsForModal  = Math.max(0, parseFloat(d.stars        || 0));
+                fbEarnedForModal = Math.max(0, parseFloat(d.creatorStars || 0));
             }
         } catch (_) { /* non-fatal — fall back to module-level vars */ }
 
-        // If the Firebase read silently failed (all zeros), fall back to the
-        // module-level vars that syncData() already populated.
-        const livePriceForModal = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : 0;
-        const _fbStars  = fbStarsForModal  > 0 ? fbStarsForModal  : (parseFloat(purchasedStars)  || 0);
-        const _fbEarned = fbEarnedForModal > 0 ? fbEarnedForModal : (parseFloat(creatorEarnings) || 0);
-        const _fbSpent  = fbSpentForModal;   // already 0 if read failed — safe default
-        const netStarsForModal  = Math.max(0, _fbStars + _fbEarned);
-        // Re-assign for use in modal display strings
-        fbStarsForModal  = _fbStars;
-        fbEarnedForModal = _fbEarned;
-        fbSpentForModal  = _fbSpent;
+        // Fall back to module-level vars if Firebase read failed
+        const _fbStars  = fbStarsForModal  > 0 || fbSnapForModal?.exists()
+            ? fbStarsForModal
+            : Math.max(0, parseFloat(purchasedStars)  || 0);
+        const _fbEarned = fbEarnedForModal > 0 || fbSnapForModal?.exists()
+            ? fbEarnedForModal
+            : Math.max(0, parseFloat(creatorEarnings) || 0);
 
-        // ATOMIC WITHDRAWAL: dynamicAptmAmount is the authoritative withdraw figure —
-        // derived from Firebase net stars, NOT from the raw on-chain deposit.
+        // NET TOTAL = purchased (net of spend) + creator earnings
+        const netStarsForModal = _fbStars + _fbEarned;
+
+        const livePriceForModal = currentAptmPriceUsd > 0 ? currentAptmPriceUsd
+            : (window.aptmPriceUSD > 0 ? window.aptmPriceUSD : 0);
+
+        // APTM equivalent of net stars
         const dynamicAptmAmount = livePriceForModal > 0
             ? (netStarsForModal * CONFIG.STAR_USD) / livePriceForModal
             : 0;
-        // Hard cap: never withdraw more than the contract holds for this user
+        // Hard cap: never withdraw more than the contract holds
         const onChainAptmCap = parseFloat(ethers.utils.formatEther(exactBalWei));
         const safeModalAptm  = Math.min(dynamicAptmAmount, onChainAptmCap);
+
+        // Re-assign for clarity in logging
+        fbStarsForModal  = _fbStars;
+        fbEarnedForModal = _fbEarned;
 
         // Guard: if price isn't loaded yet, block confirm and surface the problem
         if (livePriceForModal <= 0 || safeModalAptm <= 0) {
@@ -7883,29 +7894,27 @@
             );
         }
 
-        console.log("[settleStarsToWallet] Modal calc" +
-            " | fbStars="   + fbStarsForModal.toFixed(4) +
-            " | fbEarned="  + fbEarnedForModal.toFixed(4) +
-            " | fbSpent="   + fbSpentForModal.toFixed(4) +
-            " | netStars="  + netStarsForModal.toFixed(4) +
-            " | dynamic="   + dynamicAptmAmount.toFixed(6) +
-            " | onChainCap=" + onChainAptmCap.toFixed(6) +
-            " | willSend="  + safeModalAptm.toFixed(6));
+        console.log("[settleStarsToWallet] Net Balance calc" +
+            " | purchasedStars(net)=" + fbStarsForModal.toFixed(4) +
+            " | creatorEarnings="     + fbEarnedForModal.toFixed(4) +
+            " | netStars="            + netStarsForModal.toFixed(4) +
+            " | dynamicAptm="         + dynamicAptmAmount.toFixed(6) +
+            " | onChainCap="          + onChainAptmCap.toFixed(6) +
+            " | willSend="            + safeModalAptm.toFixed(6));
 
         const syncLine = liveCreatorStars > 0
             ? ("Step 1 \u2014 " + liveCreatorStars.toFixed(2) + " earned \u2605 will be synced to the contract.\nStep 2 \u2014 MetaMask opens to withdraw your net balance.\n")
             : "MetaMask will open to withdraw your net balance.\n";
 
         const confirmed = confirm(
-            "Settle Balance to Wallet\n\n" +
-            "Purchased Stars:  " + fbStarsForModal.toFixed(2)  + " \u2605\n" +
-            "Earned Stars:     " + fbEarnedForModal.toFixed(2) + " \u2605\n" +
-            "Spent (deducted): " + fbSpentForModal.toFixed(2)  + " \u2605\n" +
-            "Net Stars:        " + netStarsForModal.toFixed(2) + " \u2605\n" +
-            "\u2500".repeat(30) + "\n" +
-            "Live Price:       $" + (livePriceForModal).toFixed(4) + " / APTM\n" +
+            "Settle Net Balance to Wallet\n\n" +
+            "Purchased Stars (net of spend): " + fbStarsForModal.toFixed(2)  + " \u2605\n" +
+            "Creator Earnings:               " + fbEarnedForModal.toFixed(2) + " \u2605\n" +
+            "\u2500".repeat(34) + "\n" +
+            "Net Total:                      " + netStarsForModal.toFixed(2) + " \u2605\n\n" +
+            "Live Price:       $" + livePriceForModal.toFixed(4) + " / APTM\n" +
             "You Will Receive: " + safeModalAptm.toFixed(6) + " APTM\n" +
-            "\u2500".repeat(30) + "\n\n" +
+            "\u2500".repeat(34) + "\n\n" +
             syncLine +
             "Firebase balances zeroed ONLY after on-chain confirmation.\nProceed?"
         );
@@ -12862,7 +12871,6 @@
     window.showLegal = showLegal;
     window.reportPost = reportPost;
 </script>
-    
 
 </body>
 </html>
