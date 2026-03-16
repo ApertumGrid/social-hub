@@ -3421,7 +3421,7 @@
                 <div class="vault-label">My APTM Value</div>
                 <div class="vault-aptm" id="sidebar-equity-value">0.0000 APTM</div>
                 <div class="vault-label" style="margin-top:8px;">Live APTM Price</div>
-                <div class="vault-rate" id="live-price-display">$0.3391 / APTM</div>
+                <div class="vault-rate" id="live-price-display">Fetching price…</div>
                 <button class="btn btn-purple btn-sm" style="margin-top:12px; width:100%; font-size:0.72rem;" onclick="convertAPTM()">DEPOSIT $APTM</button>
             </div>
             <div style="padding: 10px 0 4px; border-top: 1px solid var(--border); margin-top: 12px;">
@@ -4157,7 +4157,7 @@
             <div class="rp-card">
                 <div class="drawer-section-label">Available Stars to Settle</div>
                 <div class="drawer-stars-display" id="drawer-stars">0 ★</div>
-                <div class="drawer-price-display" id="drawer-price">APTM @ $0.3391</div>
+                <div class="drawer-price-display" id="drawer-price">APTM @ Fetching…</div>
                 <div style="margin-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:8px;">
                     <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 10px;">
                         <div style="font-size:0.56rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:2px;">Available</div>
@@ -4317,7 +4317,9 @@
     // for SPEND_LOCK_MS milliseconds after any deduction — prevents the rubber-band snap-back.
     const SPEND_LOCK_MS = 10000;   // 10 seconds — enough for Firebase write + heartbeat cycle
     let _lastSpendTime  = 0;       // timestamp of last deduction; 0 = no recent spend
-    let currentAptmPriceUsd   = 0.3391;
+    // Start at 0 — the price oracle MUST fetch a live value before any APTM math runs.
+    // A stale hard-coded fallback was causing the $0.302774 ghost price in the console.
+    let currentAptmPriceUsd   = 0;
     let totalAnchors          = 0;
     let provider, signer, hubContract;
     let userAddress  = "";
@@ -4403,6 +4405,8 @@
     ];
 
     // Singleton read-only RPC provider — separate from MetaMask signer
+    // NOTE: intentionally NOT cached — getLiveAptmPrice creates a fresh instance
+    // each call so ethers cannot serve stale reserve data from an internal cache.
     let rpcProvider = null;
     function getRpcProvider() {
         if (!rpcProvider) rpcProvider = new ethers.providers.JsonRpcProvider(APERTUM_RPC);
@@ -4410,10 +4414,13 @@
     }
 
     // ─── Pull exact price from DEX pair reserves ─────────────────────────────────
+    // A brand-new JsonRpcProvider is created on every invocation so there is zero
+    // chance of ethers returning cached reserve snapshots from a previous call.
     async function getLiveAptmPrice() {
         try {
-            const rpc  = getRpcProvider();
-            const pair = new ethers.Contract(DEX_PAIR_V24, PAIR_ABI_V24, rpc);
+            // Fresh provider every call — eliminates any internal ethers.js block/state cache
+            const freshRpc  = new ethers.providers.JsonRpcProvider(APERTUM_RPC);
+            const pair = new ethers.Contract(DEX_PAIR_V24, PAIR_ABI_V24, freshRpc);
 
             const reserves = await Promise.race([
                 pair.getReserves(),
@@ -4424,15 +4431,23 @@
             const waptmAmount = parseFloat(ethers.utils.formatUnits(reserves[0], 18)); // wAPTM
             const wusdtAmount = parseFloat(ethers.utils.formatUnits(reserves[1], 18)); // wUSDT
 
+            if (waptmAmount <= 0 || wusdtAmount <= 0) {
+                console.warn('[Price Oracle] Zero reserve returned — discarding tick');
+                return null;
+            }
+
             const price = wusdtAmount / waptmAmount;
 
-            console.log('[V24 Heartbeat] wAPTM:', waptmAmount.toFixed(4),
+            console.log('[Price Oracle] LIVE FETCH — wAPTM:', waptmAmount.toFixed(4),
                         '| wUSDT:', wusdtAmount.toFixed(4),
                         '| Price: $' + price.toFixed(6));
 
+            // Destroy the transient provider so it doesn't accumulate listeners
+            try { freshRpc.removeAllListeners(); } catch (_) {}
+
             return price;
         } catch (err) {
-            console.warn('[V24 Heartbeat] DEX pair unreachable —', err.message || err);
+            console.warn('[Price Oracle] DEX pair unreachable —', err.message || err);
             return null;
         }
     }
@@ -4471,17 +4486,13 @@
 
     // ─── Unconditional heartbeat — fires immediately on script load, then every 30s ────
     async function runPriceHeartbeat() {
-        // On first call, immediately render the UI with the fallback price ($0.3391)
-        // so stars are never shown as 0 while waiting for the DEX fetch to resolve.
-        // This ensures: if the user has 5.0 APTM and price = $0.3391, they see ~169 stars
-        // right away rather than a blank 0.
-        updateUI();
-
+        // Fetch live price immediately — do NOT render with a stale fallback first.
+        // A stale hard-coded price was the root cause of the $0.302774 ghost reading.
         const price = await getLiveAptmPrice();
 
         if (price === null) {
-            // DEX unreachable — log and retry once after 5 seconds before giving up
-            console.warn('[Heartbeat] Live price fetch failed — retrying in 5s with fallback $' + currentAptmPriceUsd.toFixed(4));
+            // DEX unreachable — log and retry once after 5 seconds
+            console.warn('[Heartbeat] Live price fetch failed — retrying in 5s (current: $' + (currentAptmPriceUsd > 0 ? currentAptmPriceUsd.toFixed(6) : 'none') + ')');
             setTimeout(async () => {
                 const retry = await getLiveAptmPrice();
                 applyPriceUpdate(retry);   // applyPriceUpdate handles null gracefully
@@ -4855,19 +4866,17 @@
                     creatorEarnings    = Math.max(0, parseFloat(d.creatorStars   || 0));
                     totalDepositedAptm = Math.max(0, parseFloat(d.initial_deposit || 0));
 
-                    // currentAptmBalance = what the user can spend RIGHT NOW.
-                    // Derived from Firebase net stars (not from onChain - spentAptm).
-                    // purchasedStars already has all spending deducted, so:
-                    //   spendable APTM = (purchasedStars × $0.01) / livePrice
-                    // Cap at onChainAptm so we never show more than the contract holds.
-                    const livePrice = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
-                    if (livePrice > 0 && purchasedStars > 0) {
-                        const aptmFromStars = (purchasedStars * CONFIG.STAR_USD) / livePrice;
-                        currentAptmBalance  = Math.min(aptmFromStars, onChainAptm);
-                    } else {
-                        currentAptmBalance  = onChainAptm;
-                    }
-                    console.log(`[syncData] onChain=${onChainAptm.toFixed(6)} APTM | fbStars(net)=${purchasedStars.toFixed(4)}★ | fbEarned=${creatorEarnings.toFixed(4)}★ | spendable=${currentAptmBalance.toFixed(6)} APTM`);
+                    // currentAptmBalance = UNCAPPED spendable APTM value.
+                    // Formula: (fbStars + fbEarned) × $0.01 / livePrice
+                    // DO NOT cap at onChainAptm — the on-chain value is denominated at
+                    // the DEPOSIT price; at the current (lower) price the same stars are
+                    // worth MORE APTM, so capping silently truncates legitimate value.
+                    const livePrice    = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
+                    const totalStars   = purchasedStars + creatorEarnings;
+                    currentAptmBalance = (livePrice > 0 && totalStars > 0)
+                        ? (totalStars * CONFIG.STAR_USD) / livePrice
+                        : onChainAptm;
+                    console.log(`[syncData] onChain=${onChainAptm.toFixed(6)} APTM | fbStars=${purchasedStars.toFixed(4)}★ | fbEarned=${creatorEarnings.toFixed(4)}★ | livePrice=$${livePrice.toFixed(6)} | spendable(UNCAPPED)=${currentAptmBalance.toFixed(6)} APTM`);
                     await window.fs.updateDoc(userRef, { lastSync: Date.now() });
                 }
             } else {
@@ -4879,8 +4888,8 @@
     }
 
     // Refresh the on-chain APTM balance every 30 s while a wallet is connected.
-    // Uses Firebase net stars (already spend-deducted) as the source of truth,
-    // capped at the on-chain balance. Never subtracts spentStarsTotal again.
+    // Uses Firebase net stars (already spend-deducted) as the source of truth.
+    // UNCAPPED — never clamps to onChainAptm (deposit was at a different price).
     let _chainRefreshTimer = null;
     function startChainRefresh() {
         stopChainRefresh();
@@ -4898,23 +4907,29 @@
                 const onChainAptm = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
 
                 // Read net stars from Firebase — already spend-deducted, no subtraction needed
-                let fbStarsNet = 0;
+                let fbStarsNet  = 0;
+                let fbEarnedNet = 0;
                 if (window.db) {
                     try {
                         const snap = await window.fs.getDoc(
                             window.fs.doc(window.db, 'user_balances', addr.toLowerCase())
                         );
                         if (snap.exists()) {
-                            fbStarsNet    = Math.max(0, parseFloat(snap.data().stars || 0));
-                            purchasedStars = fbStarsNet;
-                            creatorEarnings = Math.max(0, parseFloat(snap.data().creatorStars || 0));
+                            fbStarsNet      = Math.max(0, parseFloat(snap.data().stars        || 0));
+                            fbEarnedNet     = Math.max(0, parseFloat(snap.data().creatorStars || 0));
+                            purchasedStars  = fbStarsNet;
+                            creatorEarnings = fbEarnedNet;
                         }
                     } catch (_) {}
                 }
 
-                const livePrice = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
-                const netAptm = (livePrice > 0 && fbStarsNet > 0)
-                    ? Math.min((fbStarsNet * CONFIG.STAR_USD) / livePrice, onChainAptm)
+                // UNCAPPED: spendable APTM = (fbStars + fbEarned) × $0.01 / livePrice
+                // Do NOT clamp to onChainAptm — price drift means stars may be worth
+                // more APTM than was originally deposited, and clamping hides that.
+                const livePrice   = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
+                const totalStars  = fbStarsNet + fbEarnedNet;
+                const netAptm     = (livePrice > 0 && totalStars > 0)
+                    ? (totalStars * CONFIG.STAR_USD) / livePrice
                     : onChainAptm;
 
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
@@ -6031,7 +6046,7 @@
             }
 
             const livePrice = (currentAptmPriceUsd > 0) ? currentAptmPriceUsd
-                            : (window.aptmPriceUSD > 0 ? window.aptmPriceUSD : 0.3391);
+                            : (window.aptmPriceUSD > 0 ? window.aptmPriceUSD : 0);
             const contractBalStars = (contractBalAptm * livePrice) / CONFIG.STAR_USD;
 
             // NET LIABILITY = net purchased stars (already spend-deducted in Firestore)
@@ -6087,14 +6102,14 @@
 
         console.log("[AdminWithdraw] ── Starting admin withdrawal ──");
 
-        // ── Step 1: Ensure live price is valid — use $0.3391 fallback if zero ────
+        // ── Step 1: Ensure live price is valid — fetch fresh if zero ─────────────
         let livePrice = currentAptmPriceUsd;
         if (!livePrice || livePrice <= 0) {
             console.warn("[AdminWithdraw] Price is $0.00 — fetching fresh price");
             const freshPrice = await getLiveAptmPrice();
-            livePrice = (freshPrice && freshPrice > 0) ? freshPrice : 0.3391;
+            livePrice = (freshPrice && freshPrice > 0) ? freshPrice : 0;
             currentAptmPriceUsd = livePrice;
-            console.log(`[AdminWithdraw] Using price: $${livePrice.toFixed(4)} (${freshPrice ? 'live' : 'fallback'})`);
+            console.log(`[AdminWithdraw] Using price: $${livePrice.toFixed(4)} (${freshPrice ? 'live' : 'still pending'})`);
         } else {
             console.log(`[AdminWithdraw] Current price: $${livePrice.toFixed(4)}`);
         }
@@ -6272,7 +6287,7 @@
             if (!(depositPrice > 0)) {
                 console.warn('[Deposit] Price is 0 — fetching fresh price before minting stars');
                 const freshPrice = await getLiveAptmPrice();
-                depositPrice = (freshPrice && freshPrice > 0) ? freshPrice : 0.3391;
+                depositPrice = (freshPrice && freshPrice > 0) ? freshPrice : 0;
                 currentAptmPriceUsd = depositPrice;
                 window.aptmPriceUSD = depositPrice;
                 console.log(`[Deposit] Using price: $${depositPrice.toFixed(4)}`);
@@ -8501,8 +8516,8 @@
     // DEPOSIT ESTIMATE LIVE UPDATE (drawer)
     // ═══════════════════════════════════════════════════════════════════
     document.addEventListener('DOMContentLoaded', () => {
-        // ── Render UI immediately with fallback price ($0.3391) so stars are never 0
-        // while waiting for the DEX price fetch. The heartbeat will overwrite with live price.
+        // ── Render UI on load — price oracle fires immediately in runPriceHeartbeat
+        // and will push the live price before the first user interaction.
         updateUI();
 
         // ── Drawer deposit estimate ──
@@ -12327,7 +12342,7 @@
             let livePrice = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
             if (livePrice <= 0) {
                 const p = await getLiveAptmPrice();
-                livePrice = (p && p > 0) ? p : 0.3391;
+                livePrice = (p && p > 0) ? p : 0;
             }
 
             // Step 2: read all user_balances docs
