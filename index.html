@@ -13174,27 +13174,55 @@
             listEl.innerHTML = '<div style="font-size:0.65rem;color:var(--text-muted);text-align:center;padding:10px 0;">No hubs yet — be the first!</div>';
             return;
         }
-        listEl.innerHTML = hubs.map(function(hub) {
-            var name    = hub.name    || 'Unnamed Hub';
-            var avatar  = hub.avatar  || 'https://api.dicebear.com/7.x/identicon/svg?seed=' + encodeURIComponent(hub.id);
-            var posts   = hub.postCount || 0;
-            var members = hub.memberCount || hub.anchors || 0;
-            var stars   = typeof hub.totalHypes !== 'undefined' ? hub.totalHypes : (posts * 2);
+        // Build rows via DOM so closures capture the full hub object for openCommunityFeed()
+        // and avatar onerror is a real JS handler — not an escaped inline string
+        listEl.innerHTML = '';
+        hubs.forEach(function(hub) {
+            var name     = hub.name || 'Unnamed Hub';
+            var posts    = hub.postCount   || 0;
+            var members  = hub.memberCount || hub.anchors || 0;
             var metaParts = [];
             if (posts)   metaParts.push(posts + ' posts');
             if (members) metaParts.push(members + ' members');
-            var meta = metaParts.length ? metaParts.join(' · ') : 'New hub';
-            return (
-                '<div class="rp-hub-row" onclick="openCommunityById(\'' + hub.id + '\')" title="' + name + '">' +
-                    '<img class="rp-hub-avatar" src="' + avatar + '" alt="" onerror="this.src=\'https://api.dicebear.com/7.x/identicon/svg?seed=' + encodeURIComponent(hub.id) + '\'">' +
-                    '<div class="rp-hub-info">' +
-                        '<div class="rp-hub-name">' + name + '</div>' +
-                        '<div class="rp-hub-meta">' + meta + '</div>' +
-                    '</div>' +
-                    '<div class="rp-hub-stars">' + (posts > 0 ? posts + '★' : '') + '</div>' +
-                '</div>'
-            );
-        }).join('');
+            var meta        = metaParts.length ? metaParts.join(' · ') : 'New hub';
+            var fallbackSrc = 'https://api.dicebear.com/7.x/identicon/svg?seed=' + encodeURIComponent(hub.id || hub.name || 'hub');
+
+            var row = document.createElement('div');
+            row.className = 'rp-hub-row';
+            row.title     = name;
+            row.addEventListener('click', function() {
+                if (typeof openCommunityFeed === 'function') openCommunityFeed(hub);
+            });
+
+            var img = document.createElement('img');
+            img.className = 'rp-hub-avatar';
+            img.alt       = name;
+            img.src       = hub.headerImg || hub.avatar || fallbackSrc;
+            img.onerror   = function() { this.onerror = null; this.src = fallbackSrc; };
+
+            var info = document.createElement('div');
+            info.className = 'rp-hub-info';
+
+            var nameEl = document.createElement('div');
+            nameEl.className   = 'rp-hub-name';
+            nameEl.textContent = name;
+
+            var metaEl = document.createElement('div');
+            metaEl.className   = 'rp-hub-meta';
+            metaEl.textContent = meta;
+
+            info.appendChild(nameEl);
+            info.appendChild(metaEl);
+
+            var starsEl = document.createElement('div');
+            starsEl.className   = 'rp-hub-stars';
+            starsEl.textContent = posts > 0 ? posts + '★' : '';
+
+            row.appendChild(img);
+            row.appendChild(info);
+            row.appendChild(starsEl);
+            listEl.appendChild(row);
+        });
     }
 
     // Expose so it can be called after communities load
