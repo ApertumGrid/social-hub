@@ -1750,6 +1750,56 @@
         .sparkline::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--purple-lt), var(--teal), transparent); opacity: 0.4; }
         .sparkline-line { position: absolute; bottom: 10px; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, var(--purple-lt), var(--teal)); clip-path: polygon(0 60%, 15% 30%, 30% 55%, 45% 20%, 60% 40%, 75% 15%, 90% 35%, 100% 25%, 100% 100%, 0 100%); }
 
+        /* ── SESSION ACTIVITY TICKER ─────────────────────────────────────────── */
+        @keyframes ticker-live-pulse {
+            0%, 100% { box-shadow: 0 0 4px rgba(34,197,94,0.5); opacity:1; }
+            50%       { box-shadow: 0 0 10px rgba(34,197,94,0.9); opacity:0.7; }
+        }
+        @keyframes ticker-row-in {
+            from { opacity:0; transform:translateX(10px); }
+            to   { opacity:1; transform:translateX(0); }
+        }
+        /* Ticker card must always be visible — never collapses */
+        #session-ticker-card {
+            min-height: 130px !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+        #session-ticker-list {
+            flex: 1;
+            min-height: 60px;
+        }
+        #session-ticker-list::-webkit-scrollbar { width:3px; }
+        #session-ticker-list::-webkit-scrollbar-thumb { background:rgba(0,0,0,0.12); border-radius:3px; }
+        .t-row {
+            display:grid; grid-template-columns:22px 1fr auto;
+            align-items:center; gap:8px;
+            padding:5px 12px; border-bottom:1px solid var(--border);
+            animation:ticker-row-in 0.2s ease-out;
+        }
+        .t-row:last-child { border-bottom:none; }
+        .t-row:hover { background:var(--bg-hover); }
+        .t-icon {
+            width:20px; height:20px; border-radius:50%;
+            display:flex; align-items:center; justify-content:center;
+            font-size:0.6rem; flex-shrink:0; font-weight:700;
+        }
+        .t-icon.earn  { background:rgba(34,197,94,0.15);  color:#22c55e; }
+        .t-icon.spend { background:rgba(239,68,68,0.15);   color:#ef4444; }
+        .t-icon.info  { background:rgba(124,92,191,0.15);  color:var(--purple-lt); }
+        .t-label {
+            font-size:0.61rem; color:var(--text-secondary); line-height:1.3;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;
+        }
+        .t-label b { color:var(--text-primary); font-weight:600; }
+        .t-label small { display:block; font-size:0.52rem; color:var(--text-muted); margin-top:1px; }
+        .t-amt {
+            font-family:var(--font-mono); font-size:0.64rem; font-weight:700; white-space:nowrap;
+        }
+        .t-amt.earn  { color:#22c55e; }
+        .t-amt.spend { color:#ef4444; }
+        .t-amt.info  { color:var(--purple-lt); }
+
         /* ── V18: Low-Liquidity Vault Warning ── */
         #vault-liquidity-warning {
             display: none;
@@ -4094,12 +4144,51 @@
 
         <!-- RIGHT PANEL -->
         <div id="right-panel">
-            <div class="rp-card">
-                <div class="rp-heading">Star Balance</div>
-                <div style="font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--gold); margin-bottom:2px;" id="rp-stars">0 ★</div>
-                <div style="font-size:0.7rem; color:var(--text-muted);">Spending power</div>
-                <div class="sparkline"><div class="sparkline-line"></div></div>
-                <div style="font-size:0.62rem; color:var(--text-muted);">Earnings this session</div>
+            <!-- ── SESSION ACTIVITY TICKER ────────────────────────────────────── -->
+            <div class="rp-card" id="session-ticker-card" style="padding:0; border-color:var(--border-md); min-height:120px; display:flex; flex-direction:column;">
+                <!-- Header -->
+                <div style="display:flex; align-items:center; justify-content:space-between;
+                            padding:10px 14px 8px; border-bottom:1px solid var(--border);
+                            background:linear-gradient(135deg,rgba(124,92,191,0.04) 0%,rgba(45,212,191,0.03) 100%);">
+                    <div style="display:flex; align-items:center; gap:7px;">
+                        <span id="ticker-live-dot" style="width:7px; height:7px; border-radius:50%;
+                                     background:#6b7280; flex-shrink:0; display:inline-block;
+                                     transition:background 0.3s;"></span>
+                        <span style="font-size:0.58rem; font-weight:700; color:var(--text-muted);
+                                     text-transform:uppercase; letter-spacing:1.5px;">Live Activity</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span id="ticker-session-stars" style="font-family:var(--font-mono);
+                              font-size:0.65rem; font-weight:700; color:var(--text-muted);">Session</span>
+                    </div>
+                </div>
+                <!-- Feed list -->
+                <div id="session-ticker-list" style="max-height:200px; overflow-y:auto; padding:4px 0; flex:1;">
+                    <div id="ticker-empty-state" style="padding:16px 14px; text-align:center; line-height:1.9;">
+                        <div style="font-size:0.7rem; margin-bottom:4px;">&#128307;</div>
+                        <div id="ticker-empty-msg" style="font-size:0.63rem; color:var(--text-muted); font-weight:600;">
+                            Connect wallet to go live
+                        </div>
+                        <div style="font-size:0.56rem; color:var(--text-muted); opacity:0.6; margin-top:3px;">
+                            Hypes · likes · earnings stream here
+                        </div>
+                    </div>
+                </div>
+                <!-- Footer totals -->
+                <div style="display:grid; grid-template-columns:1fr 1fr; border-top:1px solid var(--border);">
+                    <div style="text-align:center; border-right:1px solid var(--border); padding:6px 0;">
+                        <div style="font-family:var(--font-mono); font-size:0.7rem; font-weight:700;
+                                    color:#22c55e;" id="ticker-total-earned">+0.0 ★</div>
+                        <div style="font-size:0.52rem; color:var(--text-muted); text-transform:uppercase;
+                                    letter-spacing:1px; margin-top:1px;">Earned</div>
+                    </div>
+                    <div style="text-align:center; padding:6px 0;">
+                        <div style="font-family:var(--font-mono); font-size:0.7rem; font-weight:700;
+                                    color:#ef4444;" id="ticker-total-spent">-0.0 ★</div>
+                        <div style="font-size:0.52rem; color:var(--text-muted); text-transform:uppercase;
+                                    letter-spacing:1px; margin-top:1px;">Spent</div>
+                    </div>
+                </div>
             </div>
             <div class="rp-card" style="padding:0;">
                 <div style="padding:10px 14px 8px; font-size:0.58rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px;">Featured Partner</div>
@@ -4211,6 +4300,48 @@
                 </div>
                 <div style="margin-top:8px; font-size:0.72rem; color:var(--text-muted);">
                     My APTM Value: <span style="color:var(--teal); font-family:var(--font-mono); font-weight:600;" id="drawer-aptm-val">0.0000 APTM</span>
+                </div>
+            </div>
+
+            <!-- DRAWER LIVE TICKER (compact, mirrors desktop right-panel ticker) -->
+            <div class="rp-card" id="drawer-ticker-card" style="padding:0; overflow:hidden;">
+                <div style="display:flex; align-items:center; justify-content:space-between;
+                            padding:9px 14px 7px; border-bottom:1px solid var(--border);">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span style="width:6px; height:6px; border-radius:50%; background:#22c55e;
+                                     display:inline-block; animation:ticker-live-pulse 1.8s ease-in-out infinite;"></span>
+                        <span style="font-size:0.56rem; font-weight:700; color:var(--text-muted);
+                                     text-transform:uppercase; letter-spacing:1.5px;">Live Activity</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:5px;">
+                        <span id="drawer-ticker-net"
+                              style="font-family:var(--font-mono); font-size:0.63rem; font-weight:700; color:var(--gold);">0 ★</span>
+                        <span style="font-size:0.5rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">net</span>
+                    </div>
+                </div>
+                <!-- Shared list — same DOM node as desktop ticker, re-used via JS sync -->
+                <div id="drawer-ticker-list"
+                     style="max-height:160px; overflow-y:auto; padding:4px 0;">
+                    <div id="drawer-ticker-empty"
+                         style="padding:14px; text-align:center; font-size:0.62rem;
+                                color:var(--text-muted); line-height:1.7;">
+                        No activity yet…<br>
+                        <span style="font-size:0.56rem; opacity:0.6;">Actions stream here in real time</span>
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; border-top:1px solid var(--border);">
+                    <div style="text-align:center; border-right:1px solid var(--border); padding:5px 0;">
+                        <div style="font-family:var(--font-mono); font-size:0.68rem; font-weight:700;
+                                    color:#22c55e;" id="drawer-ticker-earned">+0.0 ★</div>
+                        <div style="font-size:0.5rem; color:var(--text-muted); text-transform:uppercase;
+                                    letter-spacing:1px; margin-top:1px;">Earned</div>
+                    </div>
+                    <div style="text-align:center; padding:5px 0;">
+                        <div style="font-family:var(--font-mono); font-size:0.68rem; font-weight:700;
+                                    color:#ef4444;" id="drawer-ticker-spent">-0.0 ★</div>
+                        <div style="font-size:0.5rem; color:var(--text-muted); text-transform:uppercase;
+                                    letter-spacing:1px; margin-top:1px;">Spent</div>
+                    </div>
                 </div>
             </div>
 
@@ -5116,6 +5247,28 @@
             // Update settle button text with live APTM amount
             if (typeof updateSettleButtons === 'function') updateSettleButtons();
 
+            // Ticker live dot: grey when no wallet, pulsing green when connected
+            var dot = document.getElementById('ticker-live-dot');
+            var emptyMsg = document.getElementById('ticker-empty-msg');
+            if (dot) {
+                if (userAddress) {
+                    dot.style.background  = '#22c55e';
+                    dot.style.boxShadow   = '0 0 6px rgba(34,197,94,0.7)';
+                    dot.style.animation   = 'ticker-live-pulse 1.8s ease-in-out infinite';
+                    if (emptyMsg) emptyMsg.textContent = 'Waiting for activity…';
+                    var netEl = document.getElementById('ticker-session-stars');
+                    if (netEl && netEl.textContent === 'Session') {
+                        netEl.textContent = '0 ★';
+                        netEl.style.color = 'var(--gold)';
+                    }
+                } else {
+                    dot.style.background = '#6b7280';
+                    dot.style.boxShadow  = 'none';
+                    dot.style.animation  = 'none';
+                    if (emptyMsg) emptyMsg.textContent = 'Connect wallet to go live';
+                }
+            }
+
             // Admin panel — OWNER ONLY. !important prevents any stylesheet override.
             const isAdmin = userAddress && userAddress.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase();
             const adminPanel = document.getElementById('admin-revenue-panel');
@@ -5325,6 +5478,10 @@
                 console.log(`[creditCreatorStars] ${addr.slice(0,8)}… +${amount}★ creatorStars: ${current.toFixed(4)} → ${updated.toFixed(4)}`);
                 txn.set(ref, { creatorStars: updated, lastUpdated: Date.now() }, { merge: true });
             });
+            // Ticker: only log for the connected user's own wallet
+            if (walletAddr && userAddress && walletAddr.toLowerCase() === userAddress.toLowerCase()) {
+                if (typeof window.tickerLog === 'function') window.tickerLog('earn', 'Stars earned', amount, '★');
+            }
         } catch (e) { console.error("creditCreatorStars failed:", e); }
     }
 
@@ -6355,6 +6512,7 @@
             }
 
             await creditPurchasedStars(userAddress, starsReceived);
+            if (typeof window.tickerLog === 'function') window.tickerLog('info', 'Deposit: +' + starsReceived + ' Stars', starsReceived, '↓');
             logTransaction('deposit', starsReceived, {
                 from: 'on-chain', to: userAddress,
                 description: `Deposited ${aptmAmount.toFixed(2)} $APTM → ${starsReceived} Stars`
@@ -7225,6 +7383,7 @@
 
             // ── STEP B: Deduct 1★ from sender (spend is now in Firestore) ────────────
             await deductStars(1);
+            if (typeof window.tickerLog === 'function') window.tickerLog('spend', isComment ? 'Comment Like' : 'Post Like', 1, '❤');
 
             // ── STEP C: Revenue split ─────────────────────────────────────────────────────
             if (isComment) {
@@ -7727,6 +7886,7 @@
 
             // STEP A: debit sender first
             await deductStars(1);
+            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Comment Like', 1, '❤');
 
             // STEP B: 80% → commenter's creatorStars
             if (commenterAddress && commenterAddress !== "unknown") {
@@ -7797,6 +7957,7 @@
 
             // STEP A: debit sender first
             await deductStars(1);
+            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Reply', 1, '↩');
 
             // STEP B: 80% → original commenter's creatorStars
             if (commenterAddress && commenterAddress !== "unknown") {
@@ -9140,6 +9301,7 @@
 
             // Deduct 1★ from sender
             await deductStars(1);
+            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Signal Hype', 1, '⚡');
 
             // 20% → platform_revenue
             logAdminRevenue(userAddress, 'signal_hype', CONFIG.PLATFORM_CUT);
@@ -11055,6 +11217,7 @@
 
                 // STEP C: Deduct 1★ from sender (spend is now in Firestore)
                 await deductStars(1);
+                if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Follow', 1, '+');
 
                 // STEP D: Credit 0.9★ to recipient
                 await creditCreatorStars(recipientAddr, 0.9);
@@ -11198,6 +11361,7 @@
 
             // STEP B: Deduct 1★ from sender
             await deductStars(1);
+            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Profile Like', 1, '❤');
 
             // STEP C: 90% to creator
             await creditCreatorStars(_heroTargetAddr, creatorCut);
@@ -11315,6 +11479,7 @@
 
             // STEP B: Deduct stars from sender
             await deductStars(amount);
+            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Tip', amount, '✦');
 
             // STEP C: 90% to creator
             await creditCreatorStars(_heroTargetAddr, creatorCut);
@@ -12086,6 +12251,7 @@
 
                 // STEP C: Deduct 1★ from sender (now that spend is in Firestore)
                 await deductStars(1);
+                if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Hub Comment', 1, '■');
 
                 // STEP D: Credit 0.9★ to community creator.
                 // On self-deal this is a SEPARATE write — must always run.
@@ -12590,6 +12756,128 @@
             if (btn) { btn.disabled = false; btn.textContent = '✦ SEED PROTOCOL LIQUIDITY'; }
         }
     }
+    // ═══════════════════════════════════════════════════════════════════
+    // SESSION ACTIVITY TICKER
+    // ─────────────────────────────────────────────────────────────────
+    // Streams all star activity for the current session in a trading-terminal
+    // style red/green ticker in the right panel.
+    //
+    // window.tickerLog(type, label, amount, icon)
+    //   type   : 'earn' | 'spend' | 'info'
+    //   label  : short string shown in the row
+    //   amount : star amount (always positive — type determines colour)
+    //   icon   : single char shown in the circle (optional)
+    // ═══════════════════════════════════════════════════════════════════
+    let _tickerEarned = 0;
+    let _tickerSpent  = 0;
+    const _TICKER_MAX = 50;
+
+    function _tickerNow() {
+        var d = new Date();
+        return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+':'+('0'+d.getSeconds()).slice(-2);
+    }
+
+    window.tickerLog = function(type, label, amount, icon) {
+        var list    = document.getElementById('session-ticker-list');
+        var emptyEl = document.getElementById('ticker-empty-state');
+        var earnEl  = document.getElementById('ticker-total-earned');
+        var spentEl = document.getElementById('ticker-total-spent');
+        var netEl   = document.getElementById('ticker-session-stars');
+        if (!list) return;
+
+        if (emptyEl) emptyEl.style.display = 'none';
+
+        var amt = Math.abs(parseFloat(amount) || 0);
+        if (type === 'earn')       _tickerEarned += amt;
+        else if (type === 'spend') _tickerSpent  += amt;
+
+        if (earnEl)  earnEl.textContent  = '+' + _tickerEarned.toFixed(1) + ' ★';
+        if (spentEl) spentEl.textContent = '-' + _tickerSpent.toFixed(1)  + ' ★';
+        if (netEl) {
+            var net = _tickerEarned - _tickerSpent;
+            netEl.textContent = (net >= 0 ? '+' : '') + net.toFixed(1) + ' ★';
+            netEl.style.color = net >= 0 ? '#22c55e' : '#ef4444';
+        }
+
+        var row = document.createElement('div');
+        row.className = 't-row';
+
+        var ic = document.createElement('div');
+        ic.className = 't-icon ' + type;
+        ic.textContent = icon || (type === 'earn' ? '▲' : type === 'spend' ? '▼' : '◈');
+
+        var lb = document.createElement('div');
+        lb.className = 't-label';
+        lb.innerHTML = '<b>' + label + '</b><small>' + _tickerNow() + '</small>';
+
+        var am = document.createElement('div');
+        am.className = 't-amt ' + type;
+        am.textContent = (type === 'earn' ? '+' : type === 'spend' ? '-' : '') + amt.toFixed(1) + '★';
+
+        row.appendChild(ic);
+        row.appendChild(lb);
+        row.appendChild(am);
+        list.insertBefore(row, list.firstChild);
+
+        // Cap rows
+        var rows = list.querySelectorAll('.t-row');
+        if (rows.length > _TICKER_MAX) list.removeChild(rows[rows.length - 1]);
+
+        // Flash card border
+        var card = document.getElementById('session-ticker-card');
+        if (card) {
+            card.style.transition  = 'border-color 0.1s';
+            card.style.borderColor = type === 'earn' ? 'rgba(34,197,94,0.55)'
+                                   : type === 'spend' ? 'rgba(239,68,68,0.45)'
+                                   : 'rgba(124,92,191,0.45)';
+            setTimeout(function() {
+                card.style.transition  = 'border-color 0.8s';
+                card.style.borderColor = '';
+            }, 350);
+        }
+
+        // ── Mirror same entry to drawer ticker (mobile) ─────────────────────
+        (function() {
+            var dList    = document.getElementById('drawer-ticker-list');
+            var dEmpty   = document.getElementById('drawer-ticker-empty');
+            var dEarnEl  = document.getElementById('drawer-ticker-earned');
+            var dSpentEl = document.getElementById('drawer-ticker-spent');
+            var dNetEl   = document.getElementById('drawer-ticker-net');
+            if (!dList) return;
+            if (dEmpty) dEmpty.style.display = 'none';
+            if (dEarnEl)  dEarnEl.textContent  = '+' + _tickerEarned.toFixed(1) + ' ★';
+            if (dSpentEl) dSpentEl.textContent = '-' + _tickerSpent.toFixed(1)  + ' ★';
+            if (dNetEl) {
+                var dn = _tickerEarned - _tickerSpent;
+                dNetEl.textContent = (dn >= 0 ? '+' : '') + dn.toFixed(1) + ' ★';
+                dNetEl.style.color = dn >= 0 ? '#22c55e' : '#ef4444';
+            }
+            var dr = document.createElement('div'); dr.className = 't-row';
+            var di = document.createElement('div'); di.className = 't-icon ' + type;
+            di.textContent = icon || (type==='earn' ? '▲' : type==='spend' ? '▼' : '◈');
+            var dl = document.createElement('div'); dl.className = 't-label';
+            dl.innerHTML = '<b>' + label + '</b><small>' + _tickerNow() + '</small>';
+            var da = document.createElement('div'); da.className = 't-amt ' + type;
+            da.textContent = (type==='earn' ? '+' : type==='spend' ? '-' : '') + amt.toFixed(1) + '★';
+            dr.appendChild(di); dr.appendChild(dl); dr.appendChild(da);
+            dList.insertBefore(dr, dList.firstChild);
+            var drs = dList.querySelectorAll('.t-row');
+            if (drs.length > _TICKER_MAX) dList.removeChild(drs[drs.length - 1]);
+            var dc = document.getElementById('drawer-ticker-card');
+            if (dc) {
+                dc.style.transition  = 'border-color 0.1s';
+                dc.style.borderColor = type==='earn' ? 'rgba(34,197,94,0.55)'
+                                     : type==='spend' ? 'rgba(239,68,68,0.45)'
+                                     : 'rgba(124,92,191,0.45)';
+                setTimeout(function(){ dc.style.transition='border-color 0.8s'; dc.style.borderColor=''; }, 350);
+            }
+        })();
+    };
+
+    window.tickerSpend = function(l,a,i){ window.tickerLog('spend',l,a,i); };
+    window.tickerEarn  = function(l,a,i){ window.tickerLog('earn', l,a,i); };
+    window.tickerInfo  = function(l,a,i){ window.tickerLog('info', l,a,i); };
+
     window.seedProtocolVault = seedProtocolVault;
 
     // ═══════════════════════════════════════════════════════════════════
