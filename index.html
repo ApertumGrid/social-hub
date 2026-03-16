@@ -4566,14 +4566,20 @@
             ? (aptmBal * currentAptmPriceUsd) / CONFIG.STAR_USD
             : 0;
         const availStars = Math.floor((aptmStarsDr + earnedDr) * 10) / 10;
-        const aptmStr  = aptmBal.toFixed(4) + " APTM";
+
+        // My APTM Value: pure live math — (totalStars × $0.01) / livePrice
+        // This is the number that moves when stars go up/down OR when price moves.
+        const myAptmVal = (currentAptmPriceUsd > 0)
+            ? ((availStars * CONFIG.STAR_USD) / currentAptmPriceUsd)
+            : 0;
+        const myAptmStr = myAptmVal.toFixed(4) + " APTM";
 
         // Big balance display: Available Stars (live, market-responsive)
         s('drawer-stars',           availStars.toFixed(1) + " ★");
         s('drawer-price',           `APTM @ $${fmt}`);
 
-        // APTM value (source of truth)
-        s('drawer-aptm-val',        aptmStr);
+        // APTM value — live formula (not raw aptmBal)
+        s('drawer-aptm-val',        myAptmStr);
 
         // Receipt tiles — Purchased is static (initial deposit record); Earned accumulates
         s('drawer-purchased-stars', purchasedStars.toFixed(1) + " ★");
@@ -4581,7 +4587,7 @@
 
         // Creator Studio section
         s('drawer-earned-stars',    creatorEarnings.toFixed(1) + " ★");
-        s('drawer-vault-aptm',      aptmBal.toFixed(4));
+        s('drawer-vault-aptm',      myAptmVal.toFixed(4));
 
         // Show/hide connect prompt
         const prompt = document.getElementById('drawer-connect-prompt');
@@ -5003,11 +5009,18 @@
             const availStr     = availStars.toFixed(1) + " ★";
             const aptmStr      = aptmBal.toFixed(4) + " APTM";
 
+            // ── My APTM Value: pure live math — (totalStars × $0.01) / livePrice ──
+            // Never uses hard-coded 0.3024. Moves up/down with both star count AND price.
+            const myAptmValue = (currentAptmPriceUsd > 0)
+                ? ((availStars * CONFIG.STAR_USD) / currentAptmPriceUsd)
+                : 0;
+            const myAptmStr = myAptmValue.toFixed(4) + " APTM";
+
             // Sidebar — Available Stars (live), Total Deposited (from Firebase, user-specific)
             s('user-stars',              availStr);
             s('sidebar-purchased-stars', totalDepositedAptm.toFixed(4));  // lifetime receipt from Firebase
             s('sidebar-earned-stars',    earnedStars.toFixed(1));
-            s('sidebar-equity-value',    aptmStr);
+            s('sidebar-equity-value',    myAptmStr);
             s('live-price-display',      fmt + ' / APTM');
 
             // Studio nav badge
@@ -5026,7 +5039,8 @@
             // the module-level purchasedStars var which may lag on first load.
             s('studio-purchased-stars',  '…');
             s('studio-earned-stars',     earnedStars.toFixed(1));
-            s('earnings-aptm-value',     aptmStr);
+            // earnings-aptm-value = My APTM Value: live stars → APTM, same formula as sidebar
+            s('earnings-aptm-value',     myAptmStr);
             if (userAddress && window.db) {
                 window.fs.getDoc(window.fs.doc(window.db, 'user_balances', userAddress.toLowerCase()))
                     .then(function(snap) {
@@ -5185,9 +5199,11 @@
         const addr = walletAddr.toLowerCase();
         const ref  = window.fs.doc(window.db, "user_balances", addr);
 
-        // For direct-call spend paths (boost, signal, post fee) that bypass deductStars,
-        // deduct APTM immediately and arm the spend lock so the heartbeat can't snap back.
+        // ── Arm the onSnapshot write-lock for direct-call spend paths ─────
+        // (deductStars arms it above; this covers boost/signal/post-fee paths
+        //  that call deductSpendableStars directly without going through deductStars)
         const isCurrentUser = userAddress && addr === userAddress.toLowerCase();
+        if (isCurrentUser && typeof armSpendLock === 'function') armSpendLock();
         if (isCurrentUser && !deductSpendableStars._calledFromDeductStars && currentAptmPriceUsd > 0) {
             const aptmCost     = (amount * CONFIG.STAR_USD) / currentAptmPriceUsd;
             currentAptmBalance = Math.max(0, (parseFloat(currentAptmBalance) || 0) - aptmCost);
@@ -5280,13 +5296,41 @@
         }
     }
 
+    // ── WRITE-LOCK for subscribeToEarnings onSnapshot ─────────────────────────
+    // isSpending: set true the moment a hype/comment/spend starts; cleared after 3s.
+    // While true, the onSnapshot listener silently skips the incoming DB update so
+    // Firebase can't overwrite the local star subtraction before the write settles.
+    let isSpending = false;
+    let _spendLockTimer = null;
+    function armSpendLock() {
+        isSpending = true;
+        if (_spendLockTimer) clearTimeout(_spendLockTimer);
+        _spendLockTimer = setTimeout(function() {
+            isSpending = false;
+            _spendLockTimer = null;
+        }, 3000);
+    }
+    // Expose so deductStars / deductSpendableStars can arm it
+    window.armSpendLock = armSpendLock;
+
     function subscribeToEarnings(walletAddr) {
         if (!walletAddr || !window.db) return;
         const ref = window.fs.doc(window.db, "user_balances", walletAddr.toLowerCase());
         window.fs.onSnapshot(ref, (snap) => {
+            // ── WRITE-LOCK GUARD ─────────────────────────────────────────────
+            // If a spend is in flight, the incoming snapshot may still carry the
+            // pre-deduction star count. Ignore it for 3 seconds so the local
+            // subtraction is not rubber-banded back to the old value.
+            if (isSpending) {
+                console.log('[subscribeToEarnings] onSnapshot skipped — spend lock active');
+                return;
+            }
             if (snap.exists()) {
-                purchasedStars     = snap.data().stars        || 0;
-                creatorEarnings    = snap.data().creatorStars  || 0;
+                // Available Stars = stars + creatorStars, pulled directly from
+                // user_balances. Do NOT subtract spentStarsTotal — it is already
+                // baked into the `stars` field by deductSpendableStars.
+                purchasedStars     = Math.max(0, parseFloat(snap.data().stars        || 0));
+                creatorEarnings    = Math.max(0, parseFloat(snap.data().creatorStars  || 0));
                 // Sync lifetime deposit receipt from Firebase
                 totalDepositedAptm = parseFloat(snap.data().initial_deposit) || 0;
             } else {
@@ -7533,6 +7577,11 @@
     // ═══════════════════════════════════════════════════════════════════
     async function deductStars(amount) {
         if (!userAddress || !window.db) return;
+
+        // ── Arm the onSnapshot write-lock immediately ──────────────────────
+        // This stops subscribeToEarnings from rubber-banding stars back to
+        // the old DB value before the Firestore write finishes.
+        if (typeof armSpendLock === 'function') armSpendLock();
 
         // ── Deduct APTM and set spend lock ──
         // The spend lock (SPEND_LOCK_MS) prevents syncData and onSnapshot from
