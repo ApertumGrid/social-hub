@@ -6377,10 +6377,14 @@
     // every Settle button so users always see what they'll receive before clicking.
     // If balance cannot be determined, disables the button (never shows a fake amount).
     function updateSettleButtons() {
-        var livePrice = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : 0;
-        var aptmBal   = parseFloat(currentAptmBalance) || 0;
-        var earned    = parseFloat(creatorEarnings) || 0;
-        var btns      = document.querySelectorAll('button[onclick*="settleStarsToWallet"]');
+        var livePrice  = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : 0;
+        // Use purchasedStars + creatorEarnings — the EXACT same source as the
+        // settlement modal reads from Firestore. This guarantees the button label
+        // always matches the "You Will Receive" line in the confirmation dialog.
+        // Do NOT derive stars from currentAptmBalance (round-trip introduces drift).
+        var totalStars = Math.max(0, parseFloat(purchasedStars)  || 0)
+                       + Math.max(0, parseFloat(creatorEarnings) || 0);
+        var btns       = document.querySelectorAll('button[onclick*="settleStarsToWallet"]');
 
         if (!userAddress) {
             btns.forEach(function(b) {
@@ -6390,18 +6394,17 @@
             return;
         }
 
-        if (livePrice <= 0 || (aptmBal <= 0 && earned <= 0)) {
+        if (livePrice <= 0 || totalStars <= 0) {
             btns.forEach(function(b) {
                 b.textContent = 'Settle Total Balance to Wallet →';
-                b.disabled    = (aptmBal <= 0 && earned <= 0 && !!userAddress);
+                b.disabled    = (totalStars <= 0 && !!userAddress);
             });
             return;
         }
 
-        // DYNAMIC: convert live spendable balance to APTM
-        var totalStars  = ((aptmBal * livePrice) / CONFIG.STAR_USD) + earned;
+        // UNCAPPED: (stars × $0.01) / livePrice — identical formula to the modal
         var withdrawAptm = (totalStars * CONFIG.STAR_USD) / livePrice;
-        var label = 'Settle ' + withdrawAptm.toFixed(4) + ' APTM →';
+        var label        = 'Settle ' + withdrawAptm.toFixed(4) + ' APTM →';
         btns.forEach(function(b) {
             if (!b.disabled || b.textContent.indexOf('progress') === -1) {
                 b.textContent = label;
@@ -6475,8 +6478,12 @@
             }
             var onChainAptm = onChainWei ? parseFloat(ethers.utils.formatEther(onChainWei)) : withdrawAptm;
 
-            // Cap at on-chain balance so we never pull from admin/platform reserves
-            var safeWithdrawAptm = Math.min(withdrawAptm, Math.max(onChainAptm, 0));
+            // UNCAPPED: use the full star-derived APTM value.
+            // Do NOT cap at onChainAptm — at a lower price than deposit, stars are worth
+            // more APTM than the contract stored, and capping shortchanges the user.
+            // The contract's userWithdraw() reverts if genuinely insolvent — that is
+            // the correct safety net. onChainAptm is kept for logging only.
+            var safeWithdrawAptm = withdrawAptm;
             if (safeWithdrawAptm <= 0) {
                 settleAllBtns.forEach(function(b) {
                     b.disabled    = false;
@@ -7981,13 +7988,18 @@
         const livePriceForModal = currentAptmPriceUsd > 0 ? currentAptmPriceUsd
             : (window.aptmPriceUSD > 0 ? window.aptmPriceUSD : 0);
 
-        // APTM equivalent of net stars
+        // APTM equivalent of net stars — UNCAPPED.
+        // The on-chain balance is denominated at the DEPOSIT price. At the current
+        // (lower) price, the same stars are worth MORE APTM than was deposited, so
+        // capping at onChainAptm silently shortchanges the user.
+        // The vault solvency check (MCD) is the correct place to flag shortfalls —
+        // not the user-facing settlement flow.
         const dynamicAptmAmount = livePriceForModal > 0
             ? (netStarsForModal * CONFIG.STAR_USD) / livePriceForModal
             : 0;
-        // Hard cap: never withdraw more than the contract holds
-        const onChainAptmCap = parseFloat(ethers.utils.formatEther(exactBalWei));
-        const safeModalAptm  = Math.min(dynamicAptmAmount, onChainAptmCap);
+        const onChainAptmCap = parseFloat(ethers.utils.formatEther(exactBalWei)); // kept for logging only
+        // safeModalAptm is the UNCAPPED amount — what the user will actually receive
+        const safeModalAptm  = dynamicAptmAmount;
 
         // Re-assign for clarity in logging
         fbStarsForModal  = _fbStars;
@@ -8104,11 +8116,15 @@
                 return alert("Ledger not updated yet.\n\nYour on-chain balance is still 0 APTM. Please wait a moment and try again.");
             }
 
-            // safeModalAptm was calculated before the confirm() — it is the net
-            // dynamic amount.  Re-cap against the freshly-read post-sync balance
-            // in case the sync added credits that push the on-chain total higher.
-            const postSyncAptm      = parseFloat(ethers.utils.formatEther(postSyncBalanceWei));
-            const finalWithdrawAptm = Math.min(safeModalAptm, postSyncAptm);
+            // finalWithdrawAptm = UNCAPPED safeModalAptm.
+            // We intentionally do NOT re-cap against postSyncAptm here.
+            // Reason: stars convert to MORE APTM at a lower price than deposit price.
+            // Capping at the on-chain stored value shortchanges the user by exactly
+            // the difference shown in the discrepancy (8.2147 button vs 6.5 modal).
+            // The contract's userWithdraw() will revert if the vault is genuinely
+            // insolvent — that is the correct safety net, not a client-side cap.
+            const postSyncAptm      = parseFloat(ethers.utils.formatEther(postSyncBalanceWei)); // logged only
+            const finalWithdrawAptm = safeModalAptm;
             if (finalWithdrawAptm <= 0) {
                 _unlockSettle();
                 return alert("Withdraw amount resolved to 0 after sync.\n\nPlease try again.");
