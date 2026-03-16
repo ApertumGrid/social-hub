@@ -6402,9 +6402,15 @@
             return;
         }
 
-        // UNCAPPED: (stars × $0.01) / livePrice — identical formula to the modal
-        var withdrawAptm = (totalStars * CONFIG.STAR_USD) / livePrice;
-        var label        = 'Settle ' + withdrawAptm.toFixed(4) + ' APTM →';
+        // Withdrawal amount = on-chain spendable APTM (currentAptmBalance, set by syncData).
+        // This matches what the contract will actually pay — not the star-derived fantasy value
+        // which can exceed the contract balance when price has moved since deposit.
+        // currentAptmBalance is already capped at the on-chain value by syncData.
+        var starDerivedAptm = (totalStars * CONFIG.STAR_USD) / livePrice;
+        var withdrawAptm    = Math.min(starDerivedAptm, Math.max(parseFloat(currentAptmBalance) || 0, 0));
+        // If currentAptmBalance not yet loaded, fall back to star-derived (will be corrected on sync)
+        if (withdrawAptm <= 0 && starDerivedAptm > 0) withdrawAptm = starDerivedAptm;
+        var label = 'Settle ' + withdrawAptm.toFixed(4) + ' APTM →';
         btns.forEach(function(b) {
             if (!b.disabled || b.textContent.indexOf('progress') === -1) {
                 b.textContent = label;
@@ -7988,18 +7994,19 @@
         const livePriceForModal = currentAptmPriceUsd > 0 ? currentAptmPriceUsd
             : (window.aptmPriceUSD > 0 ? window.aptmPriceUSD : 0);
 
-        // APTM equivalent of net stars — UNCAPPED.
-        // The on-chain balance is denominated at the DEPOSIT price. At the current
-        // (lower) price, the same stars are worth MORE APTM than was deposited, so
-        // capping at onChainAptm silently shortchanges the user.
-        // The vault solvency check (MCD) is the correct place to flag shortfalls —
-        // not the user-facing settlement flow.
+        // APTM equivalent of net stars at live price
         const dynamicAptmAmount = livePriceForModal > 0
             ? (netStarsForModal * CONFIG.STAR_USD) / livePriceForModal
             : 0;
-        const onChainAptmCap = parseFloat(ethers.utils.formatEther(exactBalWei)); // kept for logging only
-        // safeModalAptm is the UNCAPPED amount — what the user will actually receive
-        const safeModalAptm  = dynamicAptmAmount;
+        // onChainAptmCap = what the contract ACTUALLY holds for this address right now.
+        // This is the hard ceiling for userWithdraw() — passing more causes a revert.
+        const onChainAptmCap = parseFloat(ethers.utils.formatEther(exactBalWei));
+        // safeModalAptm = what will actually be sent to MetaMask.
+        // Must be capped at onChainAptmCap — the contract enforces this and reverts
+        // if you ask for more than it holds. Any gap (dynamicAptm > onChain) means
+        // the vault needs topping up via Seed Protocol Liquidity before full withdrawal.
+        const safeModalAptm  = Math.min(dynamicAptmAmount, onChainAptmCap);
+        const aptmShortfall  = Math.max(0, dynamicAptmAmount - onChainAptmCap);
 
         // Re-assign for clarity in logging
         fbStarsForModal  = _fbStars;
@@ -8028,6 +8035,13 @@
             ? ("Step 1 \u2014 " + liveCreatorStars.toFixed(2) + " earned \u2605 will be synced to the contract.\nStep 2 \u2014 MetaMask opens to withdraw your net balance.\n")
             : "MetaMask will open to withdraw your net balance.\n";
 
+        // Build the gap warning line if vault is underfunded for this user
+        const shortfallLine = aptmShortfall > 0.0001
+            ? ("\u26a0 Vault gap: " + aptmShortfall.toFixed(6) + " APTM shortfall\n" +
+               "  (Stars worth " + dynamicAptmAmount.toFixed(6) + " APTM but contract holds " + onChainAptmCap.toFixed(6) + ")\n" +
+               "  Use ‘Seed Protocol Liquidity’ in MCD to cover the gap.\n\n")
+            : "";
+
         const confirmed = confirm(
             "Settle Net Balance to Wallet\n\n" +
             "Purchased Stars (net of spend): " + fbStarsForModal.toFixed(2)  + " \u2605\n" +
@@ -8035,8 +8049,10 @@
             "\u2500".repeat(34) + "\n" +
             "Net Total:                      " + netStarsForModal.toFixed(2) + " \u2605\n\n" +
             "Live Price:       $" + livePriceForModal.toFixed(4) + " / APTM\n" +
-            "You Will Receive: " + safeModalAptm.toFixed(6) + " APTM\n" +
+            "Star Value:       " + dynamicAptmAmount.toFixed(6) + " APTM\n" +
+            "You Will Receive: " + safeModalAptm.toFixed(6) + " APTM  (on-chain balance)\n" +
             "\u2500".repeat(34) + "\n\n" +
+            shortfallLine +
             syncLine +
             "Firebase balances zeroed ONLY after on-chain confirmation.\nProceed?"
         );
@@ -8063,6 +8079,9 @@
         // ══════════════════════════════════════════════════════════════════════
         // STEP A — Sync earned stars to the contract via Cloud Function.
         // ══════════════════════════════════════════════════════════════════════
+        // ── Capture pre-sync on-chain balance to detect if Step A actually credits earned stars ──
+        const preSyncAptm = parseFloat(ethers.utils.formatEther(exactBalWei));
+
         if (liveCreatorStars > 0) {
             showToast("Step 1/2 \u2014 Syncing " + liveCreatorStars.toFixed(2) + " earned \u2605 to the contract\u2026");
             try {
@@ -8074,8 +8093,6 @@
                         amount:      liveCreatorStars
                     })
                 });
-                // Wait 5 seconds for the blockchain to see the new stars
-                await new Promise(r => setTimeout(r, 5000));
                 let payload;
                 try { payload = await resp.json(); } catch (_) { payload = {}; }
 
@@ -8088,8 +8105,43 @@
                         "\n\nNo funds moved. Your balances are unchanged.\nPlease try again."
                     );
                 }
-                console.log("[Settlement] Step A confirmed. Sync tx:", payload.txHash);
-                showToast("Ledger synced \u2713 \u2014 reading exact on-chain balance\u2026");
+                console.log("[Settlement] Step A CF confirmed. Sync tx:", payload.txHash,
+                    "| Polling chain for balance increase...");
+                showToast("Cloud function confirmed \u2713 \u2014 waiting for chain to update...");
+
+                // ── POLL: wait up to 20s for chain to reflect the earned star credit ──
+                // The old blind 5s sleep caused Step B to read the PRE-sync balance.
+                // We poll every 2s and proceed as soon as the balance increases.
+                // This is the root cause of why users only got their deposit back.
+                let pollAttempts = 0;
+                const maxPolls   = 10;
+                let chainUpdated = false;
+                while (pollAttempts < maxPolls) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    pollAttempts++;
+                    try {
+                        const pollWei  = await hubContract.starBalances(finalAddr);
+                        const pollAptm = parseFloat(ethers.utils.formatEther(pollWei));
+                        console.log("[Settlement] Poll " + pollAttempts + "/" + maxPolls +
+                            " onChain=" + pollAptm.toFixed(6) +
+                            " (was " + preSyncAptm.toFixed(6) + ")");
+                        showToast("Confirming on chain... (" + pollAttempts + "/" + maxPolls + ") " + pollAptm.toFixed(4) + " APTM");
+                        if (pollAptm > preSyncAptm + 0.001) {
+                            chainUpdated = true;
+                            console.log("[Settlement] Chain updated \u2713 new balance: " + pollAptm.toFixed(6) + " APTM");
+                            showToast("Earned stars confirmed on-chain \u2713 opening MetaMask...");
+                            break;
+                        }
+                    } catch (pollErr) {
+                        console.warn("[Settlement] Poll " + pollAttempts + " read failed:", pollErr.message);
+                    }
+                }
+                if (!chainUpdated) {
+                    console.warn("[Settlement] Chain balance did not increase after " + (maxPolls * 2) + "s." +
+                        " syncStarsToBlockchain CF may not be crediting backendInteract() correctly." +
+                        " Proceeding with current on-chain balance only.");
+                    showToast("\u26a0 Chain slow to update \u2014 withdrawing available on-chain balance...");
+                }
             } catch (networkErr) {
                 console.error("[Settlement] Network error:", networkErr);
                 _unlockSettle();
@@ -8100,44 +8152,44 @@
         }
 
        // ══════════════════════════════════════════════════════════════════════
-        // STEP B — Withdrawal
+        // STEP B \u2014 Withdrawal
+        // Read on-chain balance FRESH after the poll loop — this is the only
+        // number the contract will accept without reverting.
+        // If Step A worked: this = deposit + earned stars value in APTM.
+        // If Step A was slow: this = deposit only; earned stars stay in Firebase.
         // ══════════════════════════════════════════════════════════════════════
         try {
-            // ── ATOMIC WITHDRAWAL FIX ────────────────────────────────────────
-            // Re-read the on-chain balance AFTER the sync delay.
-            // Then compute the final withdraw Wei from safeModalAptm (the
-            // dynamicAptmAmount already capped at the on-chain balance).
-            // This ensures the contract call passes the SPECIFIC calculated
-            // value (e.g. 4.14 APTM) and never the raw deposit total (5.0 APTM).
             const postSyncBalanceWei = await hubContract.starBalances(finalAddr);
 
             if (postSyncBalanceWei.isZero()) {
                 _unlockSettle();
-                return alert("Ledger not updated yet.\n\nYour on-chain balance is still 0 APTM. Please wait a moment and try again.");
+                return alert("On-chain balance is 0. Nothing to withdraw.");
             }
 
-            // finalWithdrawAptm = UNCAPPED safeModalAptm.
-            // We intentionally do NOT re-cap against postSyncAptm here.
-            // Reason: stars convert to MORE APTM at a lower price than deposit price.
-            // Capping at the on-chain stored value shortchanges the user by exactly
-            // the difference shown in the discrepancy (8.2147 button vs 6.5 modal).
-            // The contract's userWithdraw() will revert if the vault is genuinely
-            // insolvent — that is the correct safety net, not a client-side cap.
-            const postSyncAptm      = parseFloat(ethers.utils.formatEther(postSyncBalanceWei)); // logged only
-            const finalWithdrawAptm = safeModalAptm;
+            const postSyncAptm      = parseFloat(ethers.utils.formatEther(postSyncBalanceWei));
+            const finalWithdrawAptm = postSyncAptm;  // EXACT on-chain amount — never reverts
+
             if (finalWithdrawAptm <= 0) {
                 _unlockSettle();
-                return alert("Withdraw amount resolved to 0 after sync.\n\nPlease try again.");
+                return alert("Withdraw amount is 0. Please try again.");
             }
 
-            // Convert to Wei — parse from the truncated string to avoid float drift
+            const aptmGap = dynamicAptmAmount - finalWithdrawAptm;
+            if (aptmGap > 0.0001) {
+                console.warn("[Settlement] Gap after sync: starValue=" + dynamicAptmAmount.toFixed(6) +
+                    " onChain=" + finalWithdrawAptm.toFixed(6) + " gap=" + aptmGap.toFixed(6) +
+                    " APTM \u2014 check syncStarsToBlockchain Cloud Function is calling backendInteract() correctly.");
+            } else {
+                console.log("[Settlement] Full value on-chain \u2713 " + finalWithdrawAptm.toFixed(6) + " APTM");
+            }
+
             const withdrawWei = ethers.utils.parseEther(finalWithdrawAptm.toFixed(18));
 
             showToast("Step 2/2 \u2014 Opening MetaMask\u2026");
-            console.log("[Settlement] ATOMIC userWithdraw(" + withdrawWei.toString() +
+            console.log("[Settlement] userWithdraw(" + withdrawWei.toString() +
                 ") = " + finalWithdrawAptm.toFixed(6) + " APTM" +
-                " (dynamic=" + safeModalAptm.toFixed(6) +
-                " postSync=" + postSyncAptm.toFixed(6) + ")");
+                " | starValue=" + dynamicAptmAmount.toFixed(6) +
+                " | gap=" + aptmGap.toFixed(6) + " APTM");
 
             const tx = await hubContract.userWithdraw(withdrawWei, { gasLimit: 500000 });
             showToast("Transaction submitted \u2014 waiting for on-chain confirmation\u2026");
@@ -12539,6 +12591,87 @@
         }
     }
     window.seedProtocolVault = seedProtocolVault;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // EMERGENCY CONSOLE TOOLS  (admin / debug use only)
+    // ═══════════════════════════════════════════════════════════════════
+    //
+    // window.adminZeroMyBalance()
+    //   Call this from the browser console AFTER a confirmed on-chain
+    //   withdrawal to force-zero this wallet's Firebase balance when the
+    //   automatic post-settlement zero failed (e.g. network error).
+    //
+    //   Usage: adminZeroMyBalance()
+    //   Or with a specific address: adminZeroMyBalance('0x123...')
+    //
+    // window.adminZeroAddress('0x123...')
+    //   Force-zero any address. Admin-wallet only.
+    // ═══════════════════════════════════════════════════════════════════
+    window.adminZeroMyBalance = async function(overrideAddr) {
+        const addr = (overrideAddr || userAddress || '').toLowerCase();
+        if (!addr) { console.error('[adminZeroMyBalance] No wallet connected.'); return; }
+        if (!window.db || !window.fs) { console.error('[adminZeroMyBalance] Firebase not ready.'); return; }
+
+        const confirmed = window.confirm(
+            'FORCE-ZERO FIREBASE BALANCE\n\n' +
+            'Address: ' + addr + '\n\n' +
+            'This will set stars, creatorStars, spentStarsTotal, initial_deposit,\n' +
+            'aptmBalance and currentAptmBalance to 0 in Firestore.\n\n' +
+            'Only do this AFTER a confirmed on-chain withdrawal.\n\n' +
+            'Proceed?'
+        );
+        if (!confirmed) { console.log('[adminZeroMyBalance] Cancelled.'); return; }
+
+        try {
+            await window.fs.setDoc(
+                window.fs.doc(window.db, 'user_balances', addr),
+                {
+                    stars:              0,
+                    creatorStars:       0,
+                    aptmBalance:        0,
+                    currentAptmBalance: 0,
+                    spentStarsTotal:    0,
+                    initial_deposit:    0,
+                    lastWithdraw:       Date.now(),
+                    lastUpdated:        Date.now(),
+                    _manualZero:        true,
+                    _manualZeroAt:      new Date().toISOString()
+                },
+                { merge: true }
+            );
+            // Also log to system_logs for audit trail
+            await window.fs.addDoc(window.fs.collection(window.db, 'system_logs'), {
+                type:        'MANUAL_BALANCE_ZERO',
+                address:     addr,
+                performedBy: (userAddress || 'unknown').toLowerCase(),
+                timestamp:   Date.now(),
+                note:        'Manual Firebase zero via adminZeroMyBalance() console tool'
+            }).catch(function(e) { console.warn('[adminZeroMyBalance] system_log write failed:', e); });
+
+            // Reset local module vars
+            if (!overrideAddr || overrideAddr.toLowerCase() === (userAddress || '').toLowerCase()) {
+                purchasedStars     = 0;
+                creatorEarnings    = 0;
+                currentAptmBalance = 0;
+                totalDepositedAptm = 0;
+                updateUI();
+            }
+            console.log('%c[adminZeroMyBalance] DONE — Firebase balance zeroed for ' + addr, 'color:#2dd4bf; font-weight:700;');
+            alert('Firebase balance zeroed for ' + addr + '.\nUI has been refreshed.');
+        } catch (e) {
+            console.error('[adminZeroMyBalance] FAILED:', e);
+            alert('Zero failed: ' + (e.message || String(e)));
+        }
+    };
+
+    // Zero any address — admin wallet only
+    window.adminZeroAddress = async function(targetAddr) {
+        if (!userAddress || userAddress.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) {
+            console.error('[adminZeroAddress] Admin wallet only.');
+            return;
+        }
+        await window.adminZeroMyBalance(targetAddr);
+    };
 
     // ═══════════════════════════════════════════════════════════════════
     // BALANCE RECONCILIATION (admin only)
