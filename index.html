@@ -10,6 +10,19 @@
     <script>try{if(localStorage.getItem('sh_theme')==='dark')document.documentElement.classList.add('dark');}catch(e){}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>SOCIALHUB — The Future of Social</title>
+
+    <!-- Open Graph / Social Share Meta Tags (updated dynamically by sharePostTo) -->
+    <meta property="og:type"        content="website" id="og-type">
+    <meta property="og:site_name"   content="SocialHub">
+    <meta property="og:title"       content="SOCIALHUB — The Future of Social" id="og-title">
+    <meta property="og:description" content="A decentralised social platform where every interaction has real value." id="og-desc">
+    <meta property="og:image"       content="https://i.postimg.cc/W3zPV3FC/Screenshot-2026-03-15-130632.png" id="og-image">
+    <meta property="og:url"         content="" id="og-url">
+    <meta name="twitter:card"       content="summary_large_image">
+    <meta name="twitter:title"      content="SOCIALHUB — The Future of Social" id="tw-title">
+    <meta name="twitter:description" content="A decentralised social platform where every interaction has real value." id="tw-desc">
+    <meta name="twitter:image"      content="https://i.postimg.cc/W3zPV3FC/Screenshot-2026-03-15-130632.png" id="tw-image">
+
     <link rel="icon" href="https://i.postimg.cc/W3zPV3FC/Screenshot-2026-03-15-130632.png" type="image/png">
 
     <!-- 1. Ethers.js -->
@@ -1175,10 +1188,10 @@
         /* ── SHARE BUTTON & DROPDOWN ── */
         .pact.share { position: relative; }
         .pact.share:hover {
-            color: #25d366;
-            border-color: rgba(37,211,102,0.35);
-            background: rgba(37,211,102,0.07);
-            box-shadow: 0 0 10px rgba(37,211,102,0.18);
+            color: var(--text-primary);
+            border-color: rgba(124,92,191,0.35);
+            background: var(--purple-dim);
+            box-shadow: 0 0 10px rgba(124,92,191,0.18);
         }
         .share-dropdown {
             display: none;
@@ -1189,7 +1202,7 @@
             border: 1px solid var(--border-md);
             border-radius: var(--radius-md);
             box-shadow: 0 8px 24px rgba(0,0,0,0.14);
-            min-width: 170px;
+            min-width: 175px;
             z-index: 999;
             overflow: hidden;
             animation: fadeUp 0.15s ease both;
@@ -1198,17 +1211,26 @@
         .share-opt {
             display: flex; align-items: center; gap: 10px;
             padding: 10px 14px;
-            font-size: 0.78rem; font-weight: 500;
+            font-size: 0.8rem; font-weight: 500;
             color: var(--text-primary);
             cursor: pointer;
             transition: background 0.12s;
             white-space: nowrap;
         }
         .share-opt:hover { background: var(--bg-hover); }
-        .share-opt-icon { font-size: 1rem; flex-shrink: 0; }
+        .share-opt svg { flex-shrink: 0; }
         .share-opt.tg:hover   { color: #229ed9; }
         .share-opt.wa:hover   { color: #25d366; }
         .share-opt.copy:hover { color: var(--purple-lt); }
+
+        /* ── DEEP-LINK POST HIGHLIGHT ── */
+        @keyframes postDeepLinkFlash {
+            0%   { box-shadow: 0 0 0 0 rgba(124,92,191,0);      border-color: var(--border); }
+            15%  { box-shadow: 0 0 0 6px rgba(124,92,191,0.45); border-color: var(--purple); background: rgba(124,92,191,0.07); }
+            50%  { box-shadow: 0 0 0 10px rgba(124,92,191,0.25); border-color: var(--purple-lt); background: rgba(124,92,191,0.05); }
+            100% { box-shadow: 0 0 0 0 rgba(124,92,191,0);      border-color: var(--border); background: var(--bg-card); }
+        }
+        .post-card.deep-link-highlight { animation: postDeepLinkFlash 2.4s ease forwards; }
 
         /* ── UNIFIED HARVEST TOOLTIP (desktop only) ──────────────────────────
            Shared by .pact[data-cost] AND .hero-action-btn[data-cost] AND
@@ -8762,11 +8784,21 @@
                     <div class="pact signal" data-cost="Costs 1 ★" onclick="promoteToSignal('${postId}')" title="Promote to Daily Signals bar (1★ — 24h)">📡<span class="pact-label"> Signal</span><span class="pact-mobile-cost">1★</span></div>
                     <div class="pact boost" data-cost="Costs 10 ★" onclick="boostPost('${postId}')">🚀<span class="pact-label"> Boost</span><span class="pact-mobile-cost">10★</span></div>
                     <div class="pact share" onclick="toggleShareDropdown('${postId}',event)" title="Share this post">
-                        🔗<span class="pact-label"> Share</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                        <span class="pact-label"> Share</span>
                         <div class="share-dropdown" id="share-dd-${postId}">
-                            <div class="share-opt tg"   onclick="sharePostTo('telegram','${postId}',event)"><span class="share-opt-icon">✈️</span> Telegram</div>
-                            <div class="share-opt wa"   onclick="sharePostTo('whatsapp','${postId}',event)"><span class="share-opt-icon">💬</span> WhatsApp</div>
-                            <div class="share-opt copy" onclick="sharePostTo('copy','${postId}',event)"><span class="share-opt-icon">📋</span> Copy Link</div>
+                            <div class="share-opt tg" onclick="sharePostTo('telegram','${postId}',event)">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="#229ed9"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.32 14.617l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.828.942z"/></svg>
+                                Telegram
+                            </div>
+                            <div class="share-opt wa" onclick="sharePostTo('whatsapp','${postId}',event)">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="#25d366"><path d="M12.004 0C5.374 0 .006 5.368.006 11.997c0 2.117.554 4.103 1.522 5.83L.057 24l6.304-1.654a11.964 11.964 0 0 0 5.643 1.424h.005C18.634 23.77 24 18.4 24 11.772 24 5.368 18.634 0 12.004 0zm0 21.786a9.926 9.926 0 0 1-5.064-1.386l-.363-.216-3.762.986 1.004-3.665-.237-.376a9.918 9.918 0 0 1-1.52-5.302c0-5.484 4.463-9.946 9.947-9.946 5.483 0 9.944 4.462 9.944 9.946 0 5.483-4.461 9.96-9.949 9.96zm5.45-7.448c-.298-.149-1.766-.872-2.04-.97-.273-.1-.472-.149-.671.149-.198.297-.771.97-.945 1.17-.174.198-.347.223-.645.074-.298-.149-1.258-.464-2.396-1.48-.885-.79-1.483-1.765-1.657-2.063-.173-.298-.019-.459.13-.607.133-.133.298-.347.447-.52.149-.174.198-.298.298-.497.099-.198.05-.372-.025-.52-.074-.149-.671-1.617-.919-2.213-.242-.58-.488-.501-.671-.51l-.571-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.29.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>
+                                WhatsApp
+                            </div>
+                            <div class="share-opt copy" onclick="sharePostTo('copy','${postId}',event)">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                                Copy Link
+                            </div>
                         </div>
                     </div>
                     <div class="pact views" title="Impressions">👁 <span class="pact-num" id="views-${postId}">${(post.views || 0).toLocaleString()}</span></div>
@@ -10950,11 +10982,21 @@
                             '\ud83d\udcac <span class="pact-label">Comment</span><span class="pact-mobile-cost">1\u2605</span>' +
                         '</div>' +
                         '<div class="pact share" onclick="toggleShareDropdown(\'' + postId + '\',event)" title="Share this post">' +
-                            '\ud83d\udd17<span class="pact-label"> Share</span>' +
+                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
+                            '<span class="pact-label"> Share</span>' +
                             '<div class="share-dropdown" id="share-dd-' + postId + '">' +
-                                '<div class="share-opt tg"   onclick="sharePostTo(\'telegram\',\'' + postId + '\',event)"><span class="share-opt-icon">\u2708\ufe0f</span> Telegram</div>' +
-                                '<div class="share-opt wa"   onclick="sharePostTo(\'whatsapp\',\'' + postId + '\',event)"><span class="share-opt-icon">\ud83d\udcac</span> WhatsApp</div>' +
-                                '<div class="share-opt copy" onclick="sharePostTo(\'copy\',\'' + postId + '\',event)"><span class="share-opt-icon">\ud83d\udccb</span> Copy Link</div>' +
+                                '<div class="share-opt tg" onclick="sharePostTo(\'telegram\',\'' + postId + '\',event)">' +
+                                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="#229ed9"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.32 14.617l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.828.942z"/></svg>' +
+                                    'Telegram' +
+                                '</div>' +
+                                '<div class="share-opt wa" onclick="sharePostTo(\'whatsapp\',\'' + postId + '\',event)">' +
+                                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="#25d366"><path d="M12.004 0C5.374 0 .006 5.368.006 11.997c0 2.117.554 4.103 1.522 5.83L.057 24l6.304-1.654a11.964 11.964 0 0 0 5.643 1.424h.005C18.634 23.77 24 18.4 24 11.772 24 5.368 18.634 0 12.004 0zm0 21.786a9.926 9.926 0 0 1-5.064-1.386l-.363-.216-3.762.986 1.004-3.665-.237-.376a9.918 9.918 0 0 1-1.52-5.302c0-5.484 4.463-9.946 9.947-9.946 5.483 0 9.944 4.462 9.944 9.946 0 5.483-4.461 9.96-9.949 9.96zm5.45-7.448c-.298-.149-1.766-.872-2.04-.97-.273-.1-.472-.149-.671.149-.198.297-.771.97-.945 1.17-.174.198-.347.223-.645.074-.298-.149-1.258-.464-2.396-1.48-.885-.79-1.483-1.765-1.657-2.063-.173-.298-.019-.459.13-.607.133-.133.298-.347.447-.52.149-.174.198-.298.298-.497.099-.198.05-.372-.025-.52-.074-.149-.671-1.617-.919-2.213-.242-.58-.488-.501-.671-.51l-.571-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.29.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>' +
+                                    'WhatsApp' +
+                                '</div>' +
+                                '<div class="share-opt copy" onclick="sharePostTo(\'copy\',\'' + postId + '\',event)">' +
+                                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>' +
+                                    'Copy Link' +
+                                '</div>' +
                             '</div>' +
                         '</div>' +
                         '<div class="pact views">\ud83d\udc41 <span class="pact-num">' + ((post.views || 0).toLocaleString()) + '</span></div>' +
@@ -13654,13 +13696,22 @@
 
     // ═══════════════════════════════════════════════════════════════════
     // ═══════════════════════════════════════════════════════════════════
-    // SHARE POST — Telegram / WhatsApp / Copy Link
+    // SHARE POST — Telegram / WhatsApp / Copy Link  +  Deep-link resolver
     // ═══════════════════════════════════════════════════════════════════
-    function _buildPostShareUrl(postId) {
+
+    function _buildPostShareUrl(postId, postText, postImage) {
         try {
             var url = new URL(window.location.href);
             url.searchParams.set('post', postId);
-            return url.toString();
+            var shareUrl = url.toString();
+            var desc = (postText || 'Check out this post on SocialHub!')
+                        .replace(/<[^>]*>/g, '').substring(0, 160);
+            var img = postImage || 'https://i.postimg.cc/W3zPV3FC/Screenshot-2026-03-15-130632.png';
+            var setMeta = function(id, val) { var el = document.getElementById(id); if (el) el.setAttribute('content', val); };
+            setMeta('og-title', 'SocialHub Post'); setMeta('og-desc', desc);
+            setMeta('og-image', img);              setMeta('og-url',  shareUrl);
+            setMeta('tw-title', 'SocialHub Post'); setMeta('tw-desc', desc); setMeta('tw-image', img);
+            return shareUrl;
         } catch (_) {
             return window.location.href + '?post=' + encodeURIComponent(postId);
         }
@@ -13671,10 +13722,7 @@
         var dd = document.getElementById('share-dd-' + postId);
         if (!dd) return;
         var isOpen = dd.classList.contains('open');
-        // Close all other open dropdowns first
-        document.querySelectorAll('.share-dropdown.open').forEach(function(d) {
-            d.classList.remove('open');
-        });
+        document.querySelectorAll('.share-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
         if (!isOpen) {
             dd.classList.add('open');
             var _closeHandler = function(e) {
@@ -13689,25 +13737,22 @@
 
     function sharePostTo(platform, postId, event) {
         if (event) { event.stopPropagation(); event.preventDefault(); }
-        var shareUrl  = _buildPostShareUrl(postId);
+        var card     = document.querySelector('[data-id="' + postId + '"]');
+        var postText = card ? (card.querySelector('.post-body') || {}).textContent : '';
+        var postImg  = card ? ((card.querySelector('.post-media img') || {}).src || '') : '';
+        var shareUrl = _buildPostShareUrl(postId, postText, postImg);
         var shareText = '🌐 Check out this post on SocialHub!\n' + shareUrl;
+
         if (platform === 'telegram') {
-            var tgUrl = 'https://t.me/share/url?url=' + encodeURIComponent(shareUrl) +
-                        '&text=' + encodeURIComponent('🌐 Check out this post on SocialHub!');
-            window.open(tgUrl, '_blank', 'noopener,noreferrer,width=600,height=500');
-            showToast('✈️ Opening Telegram…');
+            window.open('https://t.me/share/url?url=' + encodeURIComponent(shareUrl) + '&text=' + encodeURIComponent('🌐 Check out this post on SocialHub!'), '_blank', 'noopener,noreferrer,width=600,height=500');
+            showToast('Opening Telegram…');
         } else if (platform === 'whatsapp') {
-            var waUrl = 'https://api.whatsapp.com/send?text=' + encodeURIComponent(shareText);
-            window.open(waUrl, '_blank', 'noopener,noreferrer,width=600,height=500');
-            showToast('💬 Opening WhatsApp…');
+            window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(shareText), '_blank', 'noopener,noreferrer,width=600,height=500');
+            showToast('Opening WhatsApp…');
         } else if (platform === 'copy') {
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(shareUrl).then(function() {
-                    showToast('📋 Post link copied!');
-                }).catch(function() { _fallbackCopyShareLink(shareUrl); });
-            } else {
-                _fallbackCopyShareLink(shareUrl);
-            }
+                navigator.clipboard.writeText(shareUrl).then(function() { showToast('📋 Post link copied!'); }).catch(function() { _fallbackCopyShareLink(shareUrl); });
+            } else { _fallbackCopyShareLink(shareUrl); }
         }
         var dd = document.getElementById('share-dd-' + postId);
         if (dd) dd.classList.remove('open');
@@ -13716,15 +13761,35 @@
     function _fallbackCopyShareLink(text) {
         try {
             var ta = document.createElement('textarea');
-            ta.value = text;
-            ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
-            document.body.appendChild(ta);
-            ta.focus(); ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
+            ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+            document.body.appendChild(ta); ta.focus(); ta.select();
+            document.execCommand('copy'); document.body.removeChild(ta);
             showToast('📋 Post link copied!');
         } catch (_) { showToast('Link: ' + text); }
     }
+
+    // Deep-link: read ?post=<id>, wait for card, scroll + highlight
+    (function resolvePostDeepLink() {
+        var postId = new URLSearchParams(window.location.search).get('post');
+        if (!postId) return;
+        var elapsed = 0;
+        var poll = setInterval(function() {
+            elapsed += 200;
+            var card = document.querySelector('[data-id="' + postId + '"]');
+            if (card) {
+                clearInterval(poll);
+                setTimeout(function() {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    card.classList.remove('deep-link-highlight');
+                    void card.offsetWidth;
+                    card.classList.add('deep-link-highlight');
+                    showToast('📌 Jumped to shared post');
+                }, 150);
+            } else if (elapsed >= 8000) {
+                clearInterval(poll);
+            }
+        }, 200);
+    })();
 
     window.toggleShareDropdown = toggleShareDropdown;
     window.sharePostTo         = sharePostTo;
