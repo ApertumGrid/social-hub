@@ -1271,22 +1271,27 @@
             position: fixed;
             pointer-events: none;
             user-select: none;
-            font-size: 1.1rem;
+            font-size: 1.8rem;
             line-height: 1;
             color: var(--gold);
-            text-shadow: 0 0 10px rgba(240,180,41,0.95), 0 0 20px rgba(255,200,50,0.5);
+            text-shadow: 0 0 14px rgba(240,180,41,1), 0 0 28px rgba(255,200,50,0.7), 0 0 48px rgba(255,180,0,0.4);
             z-index: 99999;
             will-change: transform, opacity;
             animation: rain-fall var(--rd) ease-in var(--rdelay) forwards;
         }
         .rain-drop.big {
-            font-size: 1.5rem;
-            text-shadow: 0 0 14px rgba(240,180,41,1), 0 0 30px rgba(255,200,50,0.7);
+            font-size: 2.8rem;
+            text-shadow: 0 0 18px rgba(240,180,41,1), 0 0 36px rgba(255,200,50,0.9), 0 0 60px rgba(255,180,0,0.6);
+        }
+        .rain-drop.massive {
+            font-size: 3.8rem;
+            text-shadow: 0 0 22px rgba(240,180,41,1), 0 0 44px rgba(255,200,50,1), 0 0 80px rgba(255,180,0,0.8);
         }
         @keyframes rain-fall {
-            0%   { transform: translateY(-30px) translateX(var(--rx)) scale(1) rotate(0deg); opacity: 1; }
-            70%  { opacity: 1; }
-            100% { transform: translateY(var(--ry)) translateX(var(--rx)) scale(0.3) rotate(var(--rrot)); opacity: 0; }
+            0%   { transform: translateY(0px) translateX(0px) scale(1) rotate(0deg); opacity: 1; }
+            60%  { opacity: 1; }
+            85%  { opacity: 0.7; }
+            100% { transform: translateY(var(--ry)) translateX(var(--rx)) scale(0.5) rotate(var(--rrot)); opacity: 0; }
         }
 
         /* Post card gold glow flash when it receives rain */
@@ -14068,45 +14073,73 @@
     }
 
     function triggerRainAnimation(postId, amount) {
-        // Find card position to anchor rain drops above it
-        var card = document.querySelector('[data-id="' + postId + '"]');
-        var rect = card ? card.getBoundingClientRect() : null;
-        var cx   = rect ? rect.left + rect.width  / 2 : window.innerWidth  / 2;
-        var cy   = rect ? rect.top                    : window.innerHeight  / 3;
+        var vw = window.innerWidth;
+        var vh = window.innerHeight;
 
-        // Scale drop count: 5★=8 drops, 10★=16 drops, 20★=28 drops
-        var count = amount >= 20 ? 28 : amount >= 10 ? 16 : 8;
-        var isBig = amount >= 10;
+        // Scale count and size by amount
+        // 5★  → 20 drops, big
+        // 10★ → 35 drops, big + massive mix
+        // 20★ → 55 drops, massive dominant
+        var count    = amount >= 20 ? 55 : amount >= 10 ? 35 : 20;
+        var isBig    = amount >= 10;
+        var isMassive = amount >= 20;
+
+        // Stagger drops over 1.2 seconds so they don't all appear at once
+        var staggerWindow = 1200;
 
         for (var i = 0; i < count; i++) {
             (function(idx) {
+                // Spread the launch time evenly across stagger window
+                var launchDelay = Math.floor((idx / count) * staggerWindow);
+
                 setTimeout(function() {
                     var drop = document.createElement('span');
-                    drop.className = 'rain-drop' + (isBig ? ' big' : '');
+
+                    // Mix sizes: massive drops are 40% of count for 20★
+                    var sizeClass;
+                    if (isMassive && Math.random() < 0.45) {
+                        sizeClass = 'rain-drop massive';
+                    } else if (isBig) {
+                        sizeClass = 'rain-drop big';
+                    } else {
+                        sizeClass = Math.random() < 0.3 ? 'rain-drop big' : 'rain-drop';
+                    }
+                    drop.className   = sizeClass;
                     drop.textContent = '\u2605';
 
-                    // Spread across card width, fall downward into the card
-                    var spreadX  = (Math.random() - 0.5) * (rect ? rect.width * 1.1 : 260);
-                    var fallDist = 80 + Math.random() * (rect ? rect.height * 0.9 : 120);
-                    var dur      = (0.5 + Math.random() * 0.5).toFixed(2) + 's';
-                    var delay    = (idx * 0.045).toFixed(2) + 's';
-                    var rot      = (Math.random() - 0.5) * 180 + 'deg';
+                    // Start position: spread fully across the screen width, spawn at top
+                    var startX = Math.random() * vw;
+                    var startY = -30 - Math.random() * 60; // spawn above viewport
+
+                    // Fall the full height of the screen + a little extra
+                    var fallDist = vh + 80 + Math.random() * 100;
+
+                    // Slight horizontal drift during fall
+                    var driftX = (Math.random() - 0.5) * 120;
+
+                    // Duration: 1.8s – 3.2s so drops fall at different speeds
+                    var dur   = (1.8 + Math.random() * 1.4).toFixed(2) + 's';
+                    // Small per-drop delay for natural spread within the batch
+                    var delay = (Math.random() * 0.3).toFixed(2) + 's';
+                    var rot   = (Math.random() - 0.5) * 300 + 'deg';
 
                     drop.style.cssText = [
-                        'left:' + (cx + spreadX - 8) + 'px',
-                        'top:'  + (cy - 20) + 'px',
-                        '--rx:0px',
-                        '--ry:' + fallDist.toFixed(0) + 'px',
-                        '--rd:' + dur,
+                        'left:'     + startX.toFixed(0) + 'px',
+                        'top:'      + startY.toFixed(0) + 'px',
+                        '--rx:'     + driftX.toFixed(0) + 'px',
+                        '--ry:'     + fallDist.toFixed(0) + 'px',
+                        '--rd:'     + dur,
                         '--rdelay:' + delay,
-                        '--rrot:' + rot
+                        '--rrot:'   + rot
                     ].join(';');
 
                     document.body.appendChild(drop);
+
+                    // Remove after animation completes: max duration + delay + buffer
                     setTimeout(function() {
                         if (drop.parentNode) drop.parentNode.removeChild(drop);
-                    }, 1800);
-                }, 0);
+                    }, 3800);
+                }, launchDelay);
             })(i);
         }
     }
