@@ -667,23 +667,13 @@
             min-height: 40px;
             -webkit-tap-highlight-color: transparent;
             text-shadow: 0 1px 2px rgba(0,0,0,0.18);
-            animation: guide-pulse 2.8s ease-in-out infinite;
-        }
-        @keyframes guide-pulse {
-            0%, 100% {
-                box-shadow: 0 2px 14px rgba(255,0,204,0.40), 0 0 0 1px rgba(255,0,204,0.15);
-            }
-            50% {
-                box-shadow: 0 2px 22px rgba(255,0,204,0.75), 0 0 0 3px rgba(255,0,204,0.30), 0 0 32px rgba(255,0,204,0.25);
-            }
         }
         .how-it-works-btn:hover {
             background: linear-gradient(135deg, #ff33d6 0%, #ff66b2 100%);
             box-shadow: 0 4px 22px rgba(255,0,204,0.55), 0 0 0 1px rgba(255,0,204,0.25);
             transform: translateY(-1px);
-            animation: none;
         }
-        .how-it-works-btn:active { transform: translateY(0); box-shadow: 0 1px 8px rgba(255,0,204,0.35); animation: none; }
+        .how-it-works-btn:active { transform: translateY(0); box-shadow: 0 1px 8px rgba(255,0,204,0.35); }
 
         /* Fix 2 — Header Guide button: 40% smaller than full how-it-works-btn */
         #hiw-btn {
@@ -1194,6 +1184,119 @@
         .pact.views { cursor: default; opacity: 0.6; margin-left: auto; }
         .pact.views:hover { background: transparent; color: var(--text-secondary); border-color: transparent; box-shadow: none; }
         .pact-num { font-family: var(--font-mono); font-size: 0.7rem; }
+
+        /* ══════════════════════════════════════════════════════
+           🌧️ RAIN BUTTON — post-level tipping with animation
+        ══════════════════════════════════════════════════════ */
+        .pact.rain { position: relative; }
+        .pact.rain:hover {
+            color: var(--gold);
+            border-color: rgba(240,180,41,0.4);
+            background: rgba(240,180,41,0.07);
+            box-shadow: 0 0 12px rgba(240,180,41,0.22);
+        }
+        .pact.rain > svg, .pact.rain > span { pointer-events: none; }
+
+        /* Rain amount picker dropdown */
+        .rain-picker {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%; transform: translateX(-50%);
+            background: var(--bg-panel);
+            border: 1px solid var(--border-md);
+            border-radius: var(--radius-md);
+            box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+            min-width: 190px;
+            z-index: 9999;
+            overflow: hidden;
+            animation: fadeUp 0.15s ease both;
+            pointer-events: auto;
+        }
+        .rain-picker.open { display: block; }
+        .rain-picker-header {
+            padding: 9px 14px 6px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            border-bottom: 1px solid var(--border);
+        }
+        .rain-picker-amounts {
+            display: flex;
+            gap: 6px;
+            padding: 10px 12px;
+        }
+        .rain-amount-btn {
+            flex: 1;
+            padding: 7px 4px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-md);
+            background: var(--bg-card2);
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: var(--gold);
+            cursor: pointer;
+            transition: all 0.13s;
+            text-align: center;
+        }
+        .rain-amount-btn:hover {
+            background: rgba(240,180,41,0.12);
+            border-color: rgba(240,180,41,0.5);
+            box-shadow: 0 0 10px rgba(240,180,41,0.2);
+            transform: translateY(-1px);
+        }
+        .rain-amount-btn:active { transform: translateY(0); }
+        .rain-picker-split {
+            padding: 0 12px 10px;
+            font-size: 0.58rem;
+            color: var(--text-muted);
+            text-align: center;
+            font-family: var(--font-mono);
+        }
+
+        /* Rain total counter badge on post */
+        .rain-total-badge {
+            display: inline-flex; align-items: center; gap: 3px;
+            font-family: var(--font-mono);
+            font-size: 0.6rem; font-weight: 700;
+            color: var(--gold);
+            opacity: 0.85;
+        }
+
+        /* Falling rain drops — attached to the post card */
+        .rain-drop {
+            position: fixed;
+            pointer-events: none;
+            user-select: none;
+            font-size: 1.1rem;
+            line-height: 1;
+            color: var(--gold);
+            text-shadow: 0 0 10px rgba(240,180,41,0.95), 0 0 20px rgba(255,200,50,0.5);
+            z-index: 99999;
+            will-change: transform, opacity;
+            animation: rain-fall var(--rd) ease-in var(--rdelay) forwards;
+        }
+        .rain-drop.big {
+            font-size: 1.5rem;
+            text-shadow: 0 0 14px rgba(240,180,41,1), 0 0 30px rgba(255,200,50,0.7);
+        }
+        @keyframes rain-fall {
+            0%   { transform: translateY(-30px) translateX(var(--rx)) scale(1) rotate(0deg); opacity: 1; }
+            70%  { opacity: 1; }
+            100% { transform: translateY(var(--ry)) translateX(var(--rx)) scale(0.3) rotate(var(--rrot)); opacity: 0; }
+        }
+
+        /* Post card gold glow flash when it receives rain */
+        @keyframes rain-card-flash {
+            0%   { box-shadow: var(--shadow-card); border-color: var(--border); }
+            20%  { box-shadow: 0 0 0 3px rgba(240,180,41,0.5), 0 4px 24px rgba(240,180,41,0.35); border-color: var(--gold); }
+            60%  { box-shadow: 0 0 0 2px rgba(240,180,41,0.3), 0 2px 16px rgba(240,180,41,0.20); border-color: rgba(240,180,41,0.6); }
+            100% { box-shadow: var(--shadow-card); border-color: var(--border); }
+        }
+        .post-card.rain-flash { animation: rain-card-flash 1.6s ease forwards; }
 
         /* ── SHARE BUTTON & DROPDOWN ── */
         .pact.share { position: relative; }
@@ -4317,11 +4420,9 @@
                     </div>
                 </div>
                 <div id="session-ticker-list" style="max-height:200px; overflow-y:auto; padding:4px 0; flex:1;">
-                    <div id="ticker-empty-state" style="padding:16px 14px; text-align:center; font-size:0.65rem; color:var(--text-muted); line-height:1.9;">
-                        <div style="font-size:1.1rem; margin-bottom:6px; opacity:0.5;">⚡</div>
-                        <strong style="color:var(--text-secondary); font-size:0.68rem;">Make your first broadcast</strong><br>
-                        <span style="font-size:0.6rem; opacity:0.7;">to start earning Stars.</span><br>
-                        <span style="font-size:0.58rem; opacity:0.5; margin-top:4px; display:block;">Likes &amp; earnings stream here in real time</span>
+                    <div id="ticker-empty-state" style="padding:18px 14px; text-align:center; font-size:0.65rem; color:var(--text-muted); line-height:1.8;">
+                        Waiting for activity…<br>
+                        <span style="font-size:0.58rem; opacity:0.6;">Hypes, likes &amp; earnings<br>stream here in real time</span>
                     </div>
                 </div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; border-top:1px solid var(--border);">
@@ -8799,6 +8900,20 @@
                     <div class="pact pact-comment" data-cost="Costs 1 ★" onclick="toggleTray('${postId}'); loadComments('${postId}')">💬 <span class="pact-num" id="cc-${postId}" style="color:var(--teal);"></span><span class="pact-label"> Comment</span><span class="pact-mobile-cost">1★</span></div>
                     <div class="pact signal" data-cost="Costs 1 ★" onclick="promoteToSignal('${postId}')" title="Promote to Daily Signals bar (1★ — 24h)">📡<span class="pact-label"> Signal</span><span class="pact-mobile-cost">1★</span></div>
                     <div class="pact boost" data-cost="Costs 10 ★" onclick="boostPost('${postId}')">🚀<span class="pact-label"> Boost</span><span class="pact-mobile-cost">10★</span></div>
+                    <div class="pact rain" onclick="toggleRainPicker('${postId}',event)" title="Rain Stars on this post">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="pointer-events:none"><path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><line x1="8" y1="16" x2="8" y2="21"/><line x1="8" y1="21" x2="6" y2="19"/><line x1="8" y1="21" x2="10" y2="19"/><line x1="12" y1="18" x2="12" y2="23"/><line x1="12" y1="23" x2="10" y2="21"/><line x1="12" y1="23" x2="14" y2="21"/><line x1="16" y1="16" x2="16" y2="21"/><line x1="16" y1="21" x2="14" y2="19"/><line x1="16" y1="21" x2="18" y2="19"/></svg>
+                        <span class="pact-label" style="pointer-events:none"> Rain</span>
+                        <span class="rain-total-badge" id="rain-total-${postId}" style="${(post.rainTotal||0)>0?'':'display:none'}">★${parseFloat(post.rainTotal||0).toFixed(0)}</span>
+                        <div class="rain-picker" id="rain-picker-${postId}">
+                            <div class="rain-picker-header">🌧️ Rain Stars on this post</div>
+                            <div class="rain-picker-amounts">
+                                <div class="rain-amount-btn" onclick="sendRain('${postId}','${safeAddr}',5,event)">5★</div>
+                                <div class="rain-amount-btn" onclick="sendRain('${postId}','${safeAddr}',10,event)">10★</div>
+                                <div class="rain-amount-btn" onclick="sendRain('${postId}','${safeAddr}',20,event)">20★</div>
+                            </div>
+                            <div class="rain-picker-split">Creator gets 80% · Platform 20%</div>
+                        </div>
+                    </div>
                     <div class="pact share" onclick="toggleShareDropdown('${postId}',event)" title="Share this post">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                         <span class="pact-label" style="pointer-events:none"> Share</span>
@@ -10996,6 +11111,20 @@
                         '</div>' +
                         '<div class="pact pact-comment" data-cost="Costs 1 \u2605" onclick="toggleTray(\'' + postId + '\'); loadComments(\'' + postId + '\')">' +
                             '\ud83d\udcac <span class="pact-label">Comment</span><span class="pact-mobile-cost">1\u2605</span>' +
+                        '</div>' +
+                        '<div class="pact rain" onclick="toggleRainPicker(\'' + postId + '\',event)" title="Rain Stars on this post">' +
+                            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="pointer-events:none"><path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><line x1="8" y1="16" x2="8" y2="21"/><line x1="8" y1="21" x2="6" y2="19"/><line x1="8" y1="21" x2="10" y2="19"/><line x1="12" y1="18" x2="12" y2="23"/><line x1="12" y1="23" x2="10" y2="21"/><line x1="12" y1="23" x2="14" y2="21"/><line x1="16" y1="16" x2="16" y2="21"/><line x1="16" y1="21" x2="14" y2="19"/><line x1="16" y1="21" x2="18" y2="19"/></svg>' +
+                            '<span class="pact-label" style="pointer-events:none"> Rain</span>' +
+                            '<span class="rain-total-badge" id="rain-total-' + postId + '" style="' + ((post.rainTotal||0)>0 ? '' : 'display:none') + '">\u2605' + parseFloat(post.rainTotal||0).toFixed(0) + '</span>' +
+                            '<div class="rain-picker" id="rain-picker-' + postId + '">' +
+                                '<div class="rain-picker-header">\ud83c\udf27\ufe0f Rain Stars on this post</div>' +
+                                '<div class="rain-picker-amounts">' +
+                                    '<div class="rain-amount-btn" onclick="sendRain(\'' + postId + '\',\'' + safeAddr + '\',5,event)">5\u2605</div>' +
+                                    '<div class="rain-amount-btn" onclick="sendRain(\'' + postId + '\',\'' + safeAddr + '\',10,event)">10\u2605</div>' +
+                                    '<div class="rain-amount-btn" onclick="sendRain(\'' + postId + '\',\'' + safeAddr + '\',20,event)">20\u2605</div>' +
+                                '</div>' +
+                                '<div class="rain-picker-split">Creator gets 80% \u00b7 Platform 20%</div>' +
+                            '</div>' +
                         '</div>' +
                         '<div class="pact share" onclick="toggleShareDropdown(\'' + postId + '\',event)" title="Share this post">' +
                             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
@@ -13815,6 +13944,176 @@
 
     window.toggleShareDropdown = toggleShareDropdown;
     window.sharePostTo         = sharePostTo;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 🌧️ RAIN BUTTON — post tipping with visual star rain animation
+    // 80/20 split: 80% to creator, 20% to platform
+    // Logged in ledger as: spend (sender), earn (creator), platform_revenue
+    // ═══════════════════════════════════════════════════════════════════
+
+    function toggleRainPicker(postId, event) {
+        if (event) event.stopPropagation();
+        var picker = document.getElementById('rain-picker-' + postId);
+        if (!picker) return;
+        var isOpen = picker.classList.contains('open');
+        // Close all other open pickers and share dropdowns
+        document.querySelectorAll('.rain-picker.open, .share-dropdown.open').forEach(function(el) {
+            el.classList.remove('open');
+        });
+        if (!isOpen) {
+            picker.classList.add('open');
+            var _close = function(e) {
+                if (!picker.contains(e.target)) {
+                    picker.classList.remove('open');
+                    document.removeEventListener('click', _close);
+                }
+            };
+            setTimeout(function() { document.addEventListener('click', _close); }, 0);
+        }
+    }
+
+    async function sendRain(postId, recipientAddr, amount, event) {
+        if (event) { event.stopPropagation(); event.preventDefault(); }
+
+        if (!userAddress) return showToast('Connect wallet first!');
+        if (!recipientAddr || recipientAddr === 'undefined') return showToast('Cannot identify post author.');
+        if (isActionPending) return;
+
+        var recipient = recipientAddr.toLowerCase();
+        if (recipient === userAddress.toLowerCase()) return showToast("You can't rain on your own post.");
+
+        var total = getTotalSpendableStars();
+        if (total < amount) return showToast('Not enough Stars! Need ' + amount + '\u2605, have ' + total.toFixed(2) + '\u2605.');
+
+        isActionPending = true;
+
+        // Close picker immediately for good UX
+        var picker = document.getElementById('rain-picker-' + postId);
+        if (picker) picker.classList.remove('open');
+
+        try {
+            var senderAddr   = userAddress.toLowerCase();
+            var creatorCut   = parseFloat((amount * 0.8).toFixed(4));
+            var platformCut  = parseFloat((amount * 0.2).toFixed(4));
+
+            // ── STEP A: Log spend FIRST ───────────────────────────────
+            await window.fs.addDoc(
+                window.fs.collection(window.db, 'user_transactions'),
+                {
+                    type:           'spend',
+                    amount:         amount,
+                    fromAddress:    senderAddr,
+                    toAddress:      recipient,
+                    address:        senderAddr,
+                    description:    'Rained ' + amount + '\u2605 on a post (' + recipient.slice(0,8) + '\u2026)',
+                    postId:         postId,
+                    timestamp:      Date.now(),
+                    schema_version: 2
+                }
+            );
+
+            // ── STEP B: Deduct from sender ────────────────────────────
+            await deductStars(amount);
+            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Rain', amount, '\ud83c\udf27');
+
+            // ── STEP C: 80% to creator ────────────────────────────────
+            await creditCreatorStars(recipient, creatorCut);
+            logTransaction('earn', creatorCut, {
+                from:        senderAddr,
+                to:          recipient,
+                description: 'Rain received on post (' + amount + '\u2605 \u2192 ' + creatorCut.toFixed(2) + '\u2605 after 80/20 split)',
+                postId:      postId,
+                communityId: _activeCommunity ? _activeCommunity.id : null
+            });
+
+            // ── STEP D: 20% platform revenue ─────────────────────────
+            logAdminRevenue(senderAddr, 'rain_post', platformCut);
+
+            // ── STEP E: Increment rainTotal on the post document ──────
+            var collection = _activeCommunity ? 'posts' : 'posts';
+            window.fs.updateDoc(
+                window.fs.doc(window.db, collection, postId),
+                { rainTotal: window.fs.increment(amount) }
+            ).catch(function(){});
+
+            // ── STEP F: Update rain badge on card ─────────────────────
+            var badgeEl = document.getElementById('rain-total-' + postId);
+            if (badgeEl) {
+                var prev = parseFloat(badgeEl.textContent.replace('\u2605','')) || 0;
+                var next = prev + amount;
+                badgeEl.textContent = '\u2605' + next.toFixed(0);
+                badgeEl.style.display = '';
+            }
+
+            // ── STEP G: Flash card + trigger rain animation ───────────
+            var card = document.querySelector('[data-id="' + postId + '"]');
+            if (card) {
+                card.classList.remove('rain-flash');
+                void card.offsetWidth;
+                card.classList.add('rain-flash');
+                setTimeout(function() { card.classList.remove('rain-flash'); }, 1700);
+            }
+            triggerRainAnimation(postId, amount);
+
+            updateUI();
+            updateDrawerUI();
+            showToast('\ud83c\udf27 Rained ' + amount + '\u2605! Creator receives ' + creatorCut.toFixed(1) + '\u2605');
+
+        } catch (e) {
+            console.error('[sendRain]', e);
+            showToast('Rain failed. Please try again.');
+        }
+
+        isActionPending = false;
+    }
+
+    function triggerRainAnimation(postId, amount) {
+        // Find card position to anchor rain drops above it
+        var card = document.querySelector('[data-id="' + postId + '"]');
+        var rect = card ? card.getBoundingClientRect() : null;
+        var cx   = rect ? rect.left + rect.width  / 2 : window.innerWidth  / 2;
+        var cy   = rect ? rect.top                    : window.innerHeight  / 3;
+
+        // Scale drop count: 5★=8 drops, 10★=16 drops, 20★=28 drops
+        var count = amount >= 20 ? 28 : amount >= 10 ? 16 : 8;
+        var isBig = amount >= 10;
+
+        for (var i = 0; i < count; i++) {
+            (function(idx) {
+                setTimeout(function() {
+                    var drop = document.createElement('span');
+                    drop.className = 'rain-drop' + (isBig ? ' big' : '');
+                    drop.textContent = '\u2605';
+
+                    // Spread across card width, fall downward into the card
+                    var spreadX  = (Math.random() - 0.5) * (rect ? rect.width * 1.1 : 260);
+                    var fallDist = 80 + Math.random() * (rect ? rect.height * 0.9 : 120);
+                    var dur      = (0.5 + Math.random() * 0.5).toFixed(2) + 's';
+                    var delay    = (idx * 0.045).toFixed(2) + 's';
+                    var rot      = (Math.random() - 0.5) * 180 + 'deg';
+
+                    drop.style.cssText = [
+                        'left:' + (cx + spreadX - 8) + 'px',
+                        'top:'  + (cy - 20) + 'px',
+                        '--rx:0px',
+                        '--ry:' + fallDist.toFixed(0) + 'px',
+                        '--rd:' + dur,
+                        '--rdelay:' + delay,
+                        '--rrot:' + rot
+                    ].join(';');
+
+                    document.body.appendChild(drop);
+                    setTimeout(function() {
+                        if (drop.parentNode) drop.parentNode.removeChild(drop);
+                    }, 1800);
+                }, 0);
+            })(i);
+        }
+    }
+
+    window.toggleRainPicker  = toggleRainPicker;
+    window.sendRain          = sendRain;
+    window.triggerRainAnimation = triggerRainAnimation;
 
     // ═══════════════════════════════════════════════════════════════════
     // DARK MODE TOGGLE
