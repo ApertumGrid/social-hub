@@ -7686,7 +7686,7 @@
                         });
                         await creditCreatorStars(_activeCommunity.ownerId, 0.4);
                         logTransaction('earn', 0.4, {
-                            from: senderAddr, to: _activeCommunity.ownerId,
+                            from: senderAddr, to: (_activeCommunity.ownerId || '').toLowerCase(),
                             description: "Landlord Earnings from " + _activeCommunity.name + " Hub (comment hype)",
                             communityId: _activeCommunity.id
                         });
@@ -7713,7 +7713,7 @@
                 });
                 await creditCreatorStars(_activeCommunity.ownerId, 0.4);
                 logTransaction('earn', 0.4, {
-                    from: senderAddr, to: _activeCommunity.ownerId,
+                    from: senderAddr, to: (_activeCommunity.ownerId || '').toLowerCase(),
                     description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
                     postId: entityId, communityId: _activeCommunity.id
                 });
@@ -7901,7 +7901,7 @@
                 });
                 await creditCreatorStars(_activeCommunity.ownerId, 0.4);
                 logTransaction('earn', 0.4, {
-                    from: senderAddr, to: _activeCommunity.ownerId,
+                    from: senderAddr, to: (_activeCommunity.ownerId || '').toLowerCase(),
                     description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
                     postId: postId, communityId: _activeCommunity.id
                 });
@@ -10994,6 +10994,12 @@
     window._trendingHubsSetVisible = _trendingHubsSetVisible;
 
     async function openCommunityFeed(comm, opts) {
+        // ── Normalise ownerId to lowercase so all downstream comparisons
+        // (hypeElement, addComment guest/owner branch) work correctly
+        // regardless of how the address was originally stored in Firestore.
+        if (comm && comm.ownerId) {
+            comm = Object.assign({}, comm, { ownerId: comm.ownerId.toLowerCase() });
+        }
         _activeCommunity = comm;
         // opts.updateUrl = false suppresses pushState (used for post-broadcast refresh
         // and popstate handler where the URL is already correct)
