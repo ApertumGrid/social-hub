@@ -667,13 +667,19 @@
             min-height: 40px;
             -webkit-tap-highlight-color: transparent;
             text-shadow: 0 1px 2px rgba(0,0,0,0.18);
+            animation: guide-pulse 2.8s ease-in-out infinite;
+        }
+        @keyframes guide-pulse {
+            0%, 100% { box-shadow: 0 2px 14px rgba(255,0,204,0.40), 0 0 0 1px rgba(255,0,204,0.15); }
+            50%       { box-shadow: 0 2px 22px rgba(255,0,204,0.75), 0 0 0 3px rgba(255,0,204,0.30), 0 0 32px rgba(255,0,204,0.25); }
         }
         .how-it-works-btn:hover {
             background: linear-gradient(135deg, #ff33d6 0%, #ff66b2 100%);
             box-shadow: 0 4px 22px rgba(255,0,204,0.55), 0 0 0 1px rgba(255,0,204,0.25);
             transform: translateY(-1px);
+            animation: none;
         }
-        .how-it-works-btn:active { transform: translateY(0); box-shadow: 0 1px 8px rgba(255,0,204,0.35); }
+        .how-it-works-btn:active { transform: translateY(0); box-shadow: 0 1px 8px rgba(255,0,204,0.35); animation: none; }
 
         /* Fix 2 — Header Guide button: 40% smaller than full how-it-works-btn */
         #hiw-btn {
@@ -1184,6 +1190,30 @@
         .pact.views { cursor: default; opacity: 0.6; margin-left: auto; }
         .pact.views:hover { background: transparent; color: var(--text-secondary); border-color: transparent; box-shadow: none; }
         .pact-num { font-family: var(--font-mono); font-size: 0.7rem; }
+
+        /* ── HUB TOTAL EARNINGS BADGE ── */
+        .rp-hub-earned {
+            display: inline-flex; align-items: center; gap: 3px;
+            font-family: var(--font-mono);
+            font-size: 0.62rem; font-weight: 700;
+            color: var(--gold);
+            background: rgba(240,180,41,0.10);
+            border: 1px solid rgba(240,180,41,0.25);
+            border-radius: 50px;
+            padding: 2px 7px;
+            white-space: nowrap; flex-shrink: 0;
+        }
+        .comm-earned-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.65rem; font-weight: 700;
+            color: var(--gold);
+            background: rgba(240,180,41,0.10);
+            border: 1px solid rgba(240,180,41,0.25);
+            border-radius: 50px;
+            padding: 3px 9px;
+            white-space: nowrap;
+        }
 
         /* ══════════════════════════════════════════════════════
            🌧️ RAIN BUTTON — post-level tipping with animation
@@ -4425,9 +4455,11 @@
                     </div>
                 </div>
                 <div id="session-ticker-list" style="max-height:200px; overflow-y:auto; padding:4px 0; flex:1;">
-                    <div id="ticker-empty-state" style="padding:18px 14px; text-align:center; font-size:0.65rem; color:var(--text-muted); line-height:1.8;">
-                        Waiting for activity…<br>
-                        <span style="font-size:0.58rem; opacity:0.6;">Hypes, likes &amp; earnings<br>stream here in real time</span>
+                    <div id="ticker-empty-state" style="padding:16px 14px; text-align:center; font-size:0.65rem; color:var(--text-muted); line-height:1.9;">
+                        <div style="font-size:1.1rem; margin-bottom:6px; opacity:0.5;">⚡</div>
+                        <strong style="color:var(--text-secondary); font-size:0.68rem;">Make your first broadcast</strong><br>
+                        <span style="font-size:0.6rem; opacity:0.7;">to start earning Stars.</span><br>
+                        <span style="font-size:0.58rem; opacity:0.5; margin-top:4px; display:block;">Likes &amp; earnings stream here in real time</span>
                     </div>
                 </div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; border-top:1px solid var(--border);">
@@ -7658,6 +7690,11 @@
                             description: "Landlord Earnings from " + _activeCommunity.name + " Hub (comment hype)",
                             communityId: _activeCommunity.id
                         });
+                        // Track real Stars flowing through this Hub
+                        window.fs.updateDoc(
+                            window.fs.doc(window.db, 'communities', _activeCommunity.id),
+                            { totalStarsEarned: window.fs.increment(0.8) }
+                        ).catch(function(){});
                     } else {
                         await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
                         logTransaction('earn', CONFIG.CREATOR_CUT, {
@@ -7680,6 +7717,11 @@
                     description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
                     postId: entityId, communityId: _activeCommunity.id
                 });
+                // Track real Stars flowing through this Hub
+                window.fs.updateDoc(
+                    window.fs.doc(window.db, 'communities', _activeCommunity.id),
+                    { totalStarsEarned: window.fs.increment(0.8) }
+                ).catch(function(){});
             } else {
                 if (recipientNorm && recipientNorm !== "unknown") {
                     const lbl = _activeCommunity
@@ -7863,6 +7905,11 @@
                     description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
                     postId: postId, communityId: _activeCommunity.id
                 });
+                // Track real Stars flowing through this Hub
+                window.fs.updateDoc(
+                    window.fs.doc(window.db, 'communities', _activeCommunity.id),
+                    { totalStarsEarned: window.fs.increment(0.8) }
+                ).catch(function(){});
             } else {
                 if (recipientNorm && recipientNorm !== "unknown") {
                     const lbl = _activeCommunity
@@ -10667,13 +10714,18 @@
 
         // ── Log revenue & ledger ──────────────────────────────────────────────
         const firestoreLabel = postType === 1 ? 'text_post' : postType === 2 ? 'photo_post' : 'video_post';
+        const senderAddrComm = userAddress.toLowerCase();
         if (!isAdmin) {
-            logAdminRevenue(userAddress, firestoreLabel, feeAmount);
+            logAdminRevenue(senderAddrComm, firestoreLabel, feeAmount);
             logTransaction('spend', feeAmount, {
-                from: userAddress, to: CONFIG.ADMIN_ADDRESS,
+                from: senderAddrComm, to: CONFIG.ADMIN_ADDRESS.toLowerCase(),
                 description: `${postTypeLabel} Broadcast in ${_activeCommunity.name} Hub — ${feeAmount.toFixed(1)}★ (100% platform)`,
                 communityId: _activeCommunity.id
             });
+            // ── Live Activity ticker ──────────────────────────────────────────
+            if (typeof window.tickerLog === 'function') {
+                window.tickerLog('spend', postTypeLabel + ' in ' + _activeCommunity.name, feeAmount, '◈');
+            }
         }
 
         // ── Write post to Firestore with communityId ─────────────────────────
@@ -10829,6 +10881,9 @@
                     '<div class="comm-card-meta">' +
                         '<span class="comm-owner-chip">Owner: ' + shortAddr + '</span>' +
                         '<span class="comm-member-count">' + ((comm.postCount || 0).toLocaleString()) + ' posts</span>' +
+                        (parseFloat(comm.totalStarsEarned || 0) > 0
+                            ? '<span class="comm-earned-badge" title="Total Stars earned by this Hub">★ ' + parseFloat(comm.totalStarsEarned).toFixed(1) + ' earned</span>'
+                            : '') +
                     '</div>' +
                 '</div>'
             );
@@ -13420,13 +13475,12 @@
             listEl.innerHTML = '<div style="font-size:0.65rem;color:var(--text-muted);text-align:center;padding:10px 0;">No hubs yet — be the first!</div>';
             return;
         }
-        // Build rows via DOM so closures capture the full hub object for openCommunityFeed()
-        // and avatar onerror is a real JS handler — not an escaped inline string
         listEl.innerHTML = '';
         hubs.forEach(function(hub) {
             var name     = hub.name || 'Unnamed Hub';
             var posts    = hub.postCount   || 0;
             var members  = hub.memberCount || hub.anchors || 0;
+            var earned   = parseFloat(hub.totalStarsEarned || 0);
             var metaParts = [];
             if (posts)   metaParts.push(posts + ' posts');
             if (members) metaParts.push(members + ' members');
@@ -13460,13 +13514,20 @@
             info.appendChild(nameEl);
             info.appendChild(metaEl);
 
-            var starsEl = document.createElement('div');
-            starsEl.className   = 'rp-hub-stars';
-            starsEl.textContent = posts > 0 ? posts + '★' : '';
+            // Show real earned stars if > 0, otherwise fall back to post count
+            var badgeEl = document.createElement('div');
+            if (earned > 0) {
+                badgeEl.className   = 'rp-hub-earned';
+                badgeEl.textContent = (earned % 1 === 0 ? earned.toFixed(0) : earned.toFixed(1)) + ' ★';
+                badgeEl.title       = 'Total Stars earned by this Hub';
+            } else {
+                badgeEl.className   = 'rp-hub-stars';
+                badgeEl.textContent = posts > 0 ? posts + '★' : '';
+            }
 
             row.appendChild(img);
             row.appendChild(info);
-            row.appendChild(starsEl);
+            row.appendChild(badgeEl);
             listEl.appendChild(row);
         });
     }
@@ -14480,7 +14541,6 @@
     window.showLegal = showLegal;
     window.reportPost = reportPost;
 </script>
-    
 
 </body>
 </html>
