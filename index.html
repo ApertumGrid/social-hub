@@ -4179,22 +4179,6 @@
                     ">
                         ⚠ Platform Revenue — Separate Account · Source: admin_revenue/global · Contract: adminWithdraw()
                     </div>
-
-                    <!-- PLATFORM_ADMIN address read from contract — shows where funds will go -->
-                    <div id="platform-admin-display" style="
-                        background: rgba(45,212,191,0.05);
-                        border: 1px solid rgba(45,212,191,0.2);
-                        border-radius: var(--radius-sm);
-                        padding: 8px 12px;
-                        margin-bottom: 8px;
-                        font-size: 0.6rem;
-                        font-family: var(--font-mono);
-                        color: var(--text-muted);
-                    ">
-                        📍 Contract PLATFORM_ADMIN: <span id="platform-admin-addr" style="color:var(--teal);">Reading…</span><br>
-                        <span id="platform-admin-match" style="font-size:0.55rem;margin-top:2px;display:block;"></span>
-                    </div>
-
                     <button id="admin-withdraw-btn" onclick="adminWithdraw()">⬇ Settle Platform Revenue → Admin Wallet (adminWithdraw)</button>
                     <button id="admin-reconcile-btn" onclick="adminReconcile()"
                             style="display:flex;align-items:center;justify-content:center;gap:8px;
@@ -5316,10 +5300,6 @@
             if (typeof _subscribeInboxDot === 'function') _subscribeInboxDot(userAddress);
             subscribeAdminRevenue(userAddress);
             startChainRefresh();
-            // Read PLATFORM_ADMIN from contract so admin can see where revenue funds go
-            if (userAddress.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase()) {
-                setTimeout(readAndDisplayPlatformAdmin, 1500);
-            }
 
             await loadProfileFromFirebase(userAddress);
 
@@ -6609,37 +6589,6 @@
 
         console.log("[AdminWithdraw] ── Starting admin withdrawal ──");
 
-        // ── Step 0: Read PLATFORM_ADMIN from the contract and verify it matches ──
-        // adminWithdraw() sends funds to the address stored in the contract as
-        // PLATFORM_ADMIN — NOT necessarily the connected wallet. Verify before proceeding.
-        let contractAdmin = null;
-        try {
-            contractAdmin = await hubContract.PLATFORM_ADMIN();
-            console.log("[AdminWithdraw] Contract PLATFORM_ADMIN:", contractAdmin);
-        } catch (e) {
-            console.warn("[AdminWithdraw] Could not read PLATFORM_ADMIN from contract:", e.message);
-        }
-
-        const connectedWallet = (await signer.getAddress()).toLowerCase();
-        const contractAdminLower = contractAdmin ? contractAdmin.toLowerCase() : null;
-
-        if (contractAdmin && contractAdminLower !== connectedWallet) {
-            const proceed = confirm(
-                "⚠️ WARNING — ADDRESS MISMATCH\n\n" +
-                "The contract's PLATFORM_ADMIN is:\n" +
-                contractAdmin + "\n\n" +
-                "Your connected wallet is:\n" +
-                connectedWallet + "\n\n" +
-                "The withdrawn APTM will be sent to the contract's PLATFORM_ADMIN address,\n" +
-                "NOT your connected wallet.\n\n" +
-                "Only proceed if you control the PLATFORM_ADMIN address above.\n\n" +
-                "Proceed anyway?"
-            );
-            if (!proceed) return;
-        } else if (contractAdmin) {
-            console.log("[AdminWithdraw] ✓ PLATFORM_ADMIN matches connected wallet:", contractAdmin);
-        }
-
         // ── Step 1: Ensure live price is valid — fetch fresh if zero ─────────────
         let livePrice = currentAptmPriceUsd;
         if (!livePrice || livePrice <= 0) {
@@ -6720,11 +6669,6 @@
             `Est. Withdrawal:      ~${revenueAptm.toFixed(6)} APTM\n` +
             `Contract Balance:     ${contractBalAptm.toFixed(6)} APTM\n` +
             `Est. Remaining:       ~${Math.max(0, contractBalAptm - revenueAptm).toFixed(6)} APTM\n\n` +
-            `FUNDS WILL GO TO:\n` +
-            (contractAdmin ? contractAdmin : connectedWallet) + `\n` +
-            (contractAdmin && contractAdminLower !== connectedWallet
-                ? `⚠ This is NOT your connected wallet!\n`
-                : `✓ This matches your connected wallet\n`) + `\n` +
             `Contract call: adminWithdraw()  [no args]\n` +
             `Firebase counter resets to 0 ONLY after on-chain confirmation.\n` +
             `User deposits and personal balances are NOT touched.\n\n` +
@@ -6735,14 +6679,6 @@
         showToast("Calling adminWithdraw() on contract…");
 
         try {
-            // ── Read wallet balance BEFORE tx for post-confirmation comparison ───
-            let walletBalBefore = 0;
-            try {
-                const rawBefore = await provider.getBalance(await signer.getAddress());
-                walletBalBefore = parseFloat(ethers.utils.formatEther(rawBefore));
-                console.log(`[AdminWithdraw] Wallet balance BEFORE: ${walletBalBefore.toFixed(8)} APTM`);
-            } catch (_) {}
-
             // ── Step 6: PLATFORM EXIT — adminWithdraw() with NO arguments ────────
             // This is the correct contract function for platform revenue withdrawal.
             // The contract handles amount resolution internally from its revenue pool.
@@ -6764,28 +6700,6 @@
                 );
             }
             console.log(`[AdminWithdraw] Confirmed. Block: ${receipt.blockNumber}, Gas: ${receipt.gasUsed.toString()}`);
-
-            // ── Check wallet balance AFTER to confirm receipt ─────────────────────
-            try {
-                await new Promise(r => setTimeout(r, 2000)); // brief wait for balance to update
-                const rawAfter = await provider.getBalance(await signer.getAddress());
-                const walletBalAfter = parseFloat(ethers.utils.formatEther(rawAfter));
-                const received = walletBalAfter - walletBalBefore;
-                console.log(`[AdminWithdraw] Wallet balance AFTER:  ${walletBalAfter.toFixed(8)} APTM`);
-                console.log(`[AdminWithdraw] Net received: ${received.toFixed(8)} APTM`);
-                if (received < 0.0001) {
-                    console.warn("[AdminWithdraw] ⚠ Wallet balance did not increase — funds may have gone to contract PLATFORM_ADMIN address:", contractAdmin);
-                    alert(
-                        "⚠ Transaction confirmed but your wallet balance did not increase.\n\n" +
-                        "The contract sent funds to its PLATFORM_ADMIN address:\n" +
-                        (contractAdmin || "unknown") + "\n\n" +
-                        (contractAdmin && contractAdminLower !== connectedWallet
-                            ? "This is DIFFERENT from your connected wallet.\nCheck the PLATFORM_ADMIN address above — that is where the APTM went."
-                            : "Check your wallet — the balance update may be delayed.") +
-                        "\n\nFirebase has been reset to 0."
-                    );
-                }
-            } catch (_) {}
 
             // ── Step 7: Reset admin_revenue/global ONLY after receipt.status===1 ──
             if (window.db) {
@@ -11225,6 +11139,19 @@
                 }
             });
 
+            // ── Unsubscribe ALL comment listeners before wiping the DOM ───────
+            // Critical: _commentListeners[postId] guards loadComments — if the
+            // old listener is still registered after the DOM wipe, loadComments
+            // returns immediately on the new elements, leaving trays empty and
+            // Send buttons silently broken. Clean them all out now so every
+            // tray gets a fresh subscription when it re-opens.
+            Object.keys(_commentListeners).forEach(function(pid) {
+                if (typeof _commentListeners[pid] === 'function') {
+                    try { _commentListeners[pid](); } catch(_) {}
+                }
+                delete _commentListeners[pid];
+            });
+
             container.innerHTML = '';
             if (snap.empty) {
                 container.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:0.8rem;">No posts yet in this Hub. Be the first to broadcast!</div>';
@@ -14334,37 +14261,6 @@
     window.toggleRainPicker  = toggleRainPicker;
     window.sendRain          = sendRain;
     window.triggerRainAnimation = triggerRainAnimation;
-
-    // ═══════════════════════════════════════════════════════════════════
-    // PLATFORM_ADMIN READER — reads from contract, shows on screen
-    // Called after wallet connect so admin can see where funds will go
-    // ═══════════════════════════════════════════════════════════════════
-    async function readAndDisplayPlatformAdmin() {
-        var addrEl  = document.getElementById('platform-admin-addr');
-        var matchEl = document.getElementById('platform-admin-match');
-        if (!addrEl) return;
-        if (!hubContract) { addrEl.textContent = 'Not connected'; return; }
-        try {
-            var contractAdmin = await hubContract.PLATFORM_ADMIN();
-            addrEl.textContent = contractAdmin;
-            if (userAddress && contractAdmin.toLowerCase() === userAddress.toLowerCase()) {
-                addrEl.style.color = 'var(--teal)';
-                if (matchEl) { matchEl.textContent = '✓ Matches your connected wallet — funds will arrive here'; matchEl.style.color = 'var(--teal)'; }
-            } else {
-                addrEl.style.color = '#ef4444';
-                if (matchEl) {
-                    matchEl.textContent = '⚠ DOES NOT match your connected wallet (' + (userAddress || 'unknown') + ') — funds go to the address above';
-                    matchEl.style.color = '#ef4444';
-                }
-                console.warn('[readPlatformAdmin] MISMATCH — contract PLATFORM_ADMIN:', contractAdmin, '| connected:', userAddress);
-            }
-        } catch (e) {
-            addrEl.textContent = 'Could not read from contract';
-            addrEl.style.color = 'var(--text-muted)';
-            console.warn('[readPlatformAdmin] Error:', e.message);
-        }
-    }
-    window.readAndDisplayPlatformAdmin = readAndDisplayPlatformAdmin;
 
     // ═══════════════════════════════════════════════════════════════════
     // DARK MODE TOGGLE
