@@ -11140,11 +11140,8 @@
             });
 
             // ── Unsubscribe ALL comment listeners before wiping the DOM ───────
-            // Critical: _commentListeners[postId] guards loadComments — if the
-            // old listener is still registered after the DOM wipe, loadComments
-            // returns immediately on the new elements, leaving trays empty and
-            // Send buttons silently broken. Clean them all out now so every
-            // tray gets a fresh subscription when it re-opens.
+            // Without this, loadComments bails immediately on the new elements
+            // because _commentListeners[postId] still holds the old subscription.
             Object.keys(_commentListeners).forEach(function(pid) {
                 if (typeof _commentListeners[pid] === 'function') {
                     try { _commentListeners[pid](); } catch(_) {}
@@ -11194,71 +11191,153 @@
                 var card = document.createElement('div');
                 card.className = 'card post-card';
                 card.setAttribute('data-id', postId);
-                card.innerHTML = (
-                    '<div class="post-header">' +
-                        '<div class="wall-identity" onclick="viewUserWall(\'' + safeAddr + '\')">' +
-                            '<img src="' + escHtml(post.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + (post.authorAddr || 'anon'))) + '" class="av" crossorigin="anonymous">' +
-                            '<div class="post-meta">' +
-                                '<div class="post-author">' + escHtml(post.author || 'Anonymous') + ownerBadge + '</div>' +
-                                '<div class="post-addr">' + shortAddr + (post.isEdited ? '<span class="edited-badge">(edited)</span>' : '') + '</div>' +
-                            '</div>' +
+
+                // ── Build card using DOM methods so onclick handlers are reliable ──
+                // innerHTML string concatenation with escaped quotes breaks event
+                // handlers when the browser re-parses the HTML. createElement +
+                // addEventListener is the only reliable approach.
+
+                // Header
+                var header = document.createElement('div');
+                header.className = 'post-header';
+
+                var identity = document.createElement('div');
+                identity.className = 'wall-identity';
+                identity.title = 'View profile';
+                identity.addEventListener('click', function() { viewUserWall(safeAddr); });
+
+                var avImg = document.createElement('img');
+                avImg.className = 'av';
+                avImg.crossOrigin = 'anonymous';
+                avImg.src = escHtml(post.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + (post.authorAddr || 'anon')));
+                avImg.onerror = function() { this.src = 'https://api.dicebear.com/7.x/identicon/svg?seed=' + (post.authorAddr || 'anon'); };
+
+                var postMeta = document.createElement('div');
+                postMeta.className = 'post-meta';
+                postMeta.innerHTML = '<div class="post-author">' + escHtml(post.author || 'Anonymous') + ownerBadge + '</div>' +
+                    '<div class="post-addr">' + shortAddr + (post.isEdited ? '<span class="edited-badge">(edited)</span>' : '') + '</div>';
+
+                identity.appendChild(avImg);
+                identity.appendChild(postMeta);
+                header.appendChild(identity);
+                header.insertAdjacentHTML('beforeend', headerActions);
+                card.appendChild(header);
+
+                // Media
+                if (mediaHtml) card.insertAdjacentHTML('beforeend', mediaHtml);
+
+                // Body
+                var body = document.createElement('div');
+                body.className = 'post-body';
+                body.innerHTML = (typeof linkify === 'function' ? linkify(post.text) : escHtml(post.text));
+                card.appendChild(body);
+
+                // Actions bar
+                var actions = document.createElement('div');
+                actions.className = 'post-actions';
+
+                // ── Like button ──
+                var likeBtn = document.createElement('div');
+                likeBtn.className = 'pact pact-like' + (_isLiked(postId) ? ' pact-liked' : '');
+                likeBtn.id = 'like-btn-' + postId;
+                likeBtn.setAttribute('data-cost', 'Costs 1 \u2605');
+                likeBtn.innerHTML = '\u2764 <span class="pact-num" id="hp-' + postId + '">' + (post.hypes || 0) + '</span><span class="pact-label"> Like</span><span class="pact-mobile-cost">1\u2605</span>';
+                likeBtn.addEventListener('click', function(e) { triggerLikeAnimation(e); hypeElement(post.authorAddr || '', 'hp-' + postId); });
+                actions.appendChild(likeBtn);
+
+                // ── Comment button ──
+                var cmtBtn = document.createElement('div');
+                cmtBtn.className = 'pact pact-comment';
+                cmtBtn.setAttribute('data-cost', 'Costs 1 \u2605');
+                cmtBtn.innerHTML = '\ud83d\udcac <span class="pact-label">Comment</span><span class="pact-mobile-cost">1\u2605</span>';
+                cmtBtn.addEventListener('click', function() { toggleTray(postId); loadComments(postId); });
+                actions.appendChild(cmtBtn);
+
+                // ── Rain button ──
+                var rainBtn = document.createElement('div');
+                rainBtn.className = 'pact rain';
+                rainBtn.title = 'Rain Stars on this post';
+                rainBtn.innerHTML =
+                    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="pointer-events:none"><path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><line x1="8" y1="16" x2="8" y2="21"/><line x1="8" y1="21" x2="6" y2="19"/><line x1="8" y1="21" x2="10" y2="19"/><line x1="12" y1="18" x2="12" y2="23"/><line x1="12" y1="23" x2="10" y2="21"/><line x1="12" y1="23" x2="14" y2="21"/><line x1="16" y1="16" x2="16" y2="21"/><line x1="16" y1="21" x2="14" y2="19"/><line x1="16" y1="21" x2="18" y2="19"/></svg>' +
+                    '<span class="pact-label" style="pointer-events:none"> Rain</span>' +
+                    '<span class="rain-total-badge" id="rain-total-' + postId + '" style="' + ((post.rainTotal||0)>0?'':'display:none') + '">\u2605' + parseFloat(post.rainTotal||0).toFixed(0) + '</span>' +
+                    '<div class="rain-picker" id="rain-picker-' + postId + '">' +
+                        '<div class="rain-picker-header">\ud83c\udf27\ufe0f Rain Stars on this post</div>' +
+                        '<div class="rain-picker-amounts">' +
+                            '<div class="rain-amount-btn" id="rain-5-' + postId + '">5\u2605</div>' +
+                            '<div class="rain-amount-btn" id="rain-10-' + postId + '">10\u2605</div>' +
+                            '<div class="rain-amount-btn" id="rain-20-' + postId + '">20\u2605</div>' +
                         '</div>' +
-                        headerActions +
+                        '<div class="rain-picker-split">Creator gets 80% \u00b7 Platform 20%</div>' +
+                    '</div>';
+                rainBtn.addEventListener('click', function(e) { toggleRainPicker(postId, e); });
+                actions.appendChild(rainBtn);
+
+                // ── Share button ──
+                var shareBtn = document.createElement('div');
+                shareBtn.className = 'pact share';
+                shareBtn.title = 'Share this post';
+                shareBtn.innerHTML =
+                    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
+                    '<span class="pact-label" style="pointer-events:none"> Share</span>' +
+                    '<div class="share-dropdown" id="share-dd-' + postId + '">' +
+                        '<div class="share-opt tg" id="share-tg-' + postId + '"><svg width="18" height="18" viewBox="0 0 24 24" fill="#229ed9" style="pointer-events:none"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.32 14.617l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.828.942z"/></svg> Telegram</div>' +
+                        '<div class="share-opt wa" id="share-wa-' + postId + '"><svg width="18" height="18" viewBox="0 0 24 24" fill="#25d366" style="pointer-events:none"><path d="M12.004 0C5.374 0 .006 5.368.006 11.997c0 2.117.554 4.103 1.522 5.83L.057 24l6.304-1.654a11.964 11.964 0 0 0 5.643 1.424h.005C18.634 23.77 24 18.4 24 11.772 24 5.368 18.634 0 12.004 0zm0 21.786a9.926 9.926 0 0 1-5.064-1.386l-.363-.216-3.762.986 1.004-3.665-.237-.376a9.918 9.918 0 0 1-1.52-5.302c0-5.484 4.463-9.946 9.947-9.946 5.483 0 9.944 4.462 9.944 9.946 0 5.483-4.461 9.96-9.949 9.96zm5.45-7.448c-.298-.149-1.766-.872-2.04-.97-.273-.1-.472-.149-.671.149-.198.297-.771.97-.945 1.17-.174.198-.347.223-.645.074-.298-.149-1.258-.464-2.396-1.48-.885-.79-1.483-1.765-1.657-2.063-.173-.298-.019-.459.13-.607.133-.133.298-.347.447-.52.149-.174.198-.298.298-.497.099-.198.05-.372-.025-.52-.074-.149-.671-1.617-.919-2.213-.242-.58-.488-.501-.671-.51l-.571-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.29.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg> WhatsApp</div>' +
+                        '<div class="share-opt copy" id="share-copy-' + postId + '"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> Copy Link</div>' +
+                    '</div>';
+                shareBtn.addEventListener('click', function(e) { toggleShareDropdown(postId, e); });
+                actions.appendChild(shareBtn);
+
+                // ── Views ──
+                var viewsEl = document.createElement('div');
+                viewsEl.className = 'pact views';
+                viewsEl.innerHTML = '\ud83d\udc41 <span class="pact-num">' + ((post.views || 0).toLocaleString()) + '</span>';
+                actions.appendChild(viewsEl);
+
+                card.appendChild(actions);
+
+                // Wire up rain amount buttons via addEventListener (safe, no inline onclick)
+                setTimeout(function() {
+                    var r5  = document.getElementById('rain-5-'  + postId);
+                    var r10 = document.getElementById('rain-10-' + postId);
+                    var r20 = document.getElementById('rain-20-' + postId);
+                    var tg  = document.getElementById('share-tg-'   + postId);
+                    var wa  = document.getElementById('share-wa-'   + postId);
+                    var cp  = document.getElementById('share-copy-' + postId);
+                    if (r5)  r5.addEventListener('click',  function(e) { sendRain(postId, safeAddr, 5,  e); });
+                    if (r10) r10.addEventListener('click', function(e) { sendRain(postId, safeAddr, 10, e); });
+                    if (r20) r20.addEventListener('click', function(e) { sendRain(postId, safeAddr, 20, e); });
+                    if (tg)  tg.addEventListener('click',  function(e) { sharePostTo('telegram', postId, e); });
+                    if (wa)  wa.addEventListener('click',  function(e) { sharePostTo('whatsapp', postId, e); });
+                    if (cp)  cp.addEventListener('click',  function(e) { sharePostTo('copy',     postId, e); });
+                }, 0);
+
+                // ── Comment tray ──
+                var tray = document.createElement('div');
+                tray.className = 'comment-tray';
+                tray.id = 'tray-' + postId;
+                tray.style.display = 'none';
+                tray.innerHTML =
+                    '<div class="comment-list" id="list-' + postId + '"></div>' +
+                    '<div class="cmt-input-row" style="flex-direction:column;gap:6px;">' +
+                        '<textarea class="cmt-persistent-box" placeholder="Add a comment (1\u2605)\u2026" id="input-' + postId + '" rows="2"></textarea>' +
+                        '<div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">' +
+                            '<span style="font-size:0.6rem;color:var(--text-muted);font-family:var(--font-mono);">1\u2605 \u00b7 80% to creator</span>' +
+                            '<button class="btn btn-purple btn-sm" id="cmt-send-' + postId + '">Send</button>' +
+                        '</div>' +
                     '</div>' +
-                    mediaHtml +
-                    '<div class="post-body">' + (typeof linkify === 'function' ? linkify(post.text) : escHtml(post.text)) + '</div>' +
-                    '<div class="post-actions">' +
-                        '<div class="pact pact-like' + (_isLiked(postId) ? ' pact-liked' : '') + '" id="like-btn-' + postId + '" data-cost="Costs 1 \u2605" onclick="triggerLikeAnimation(event); hypeElement(\'' + (post.authorAddr||'') + '\',\'hp-' + postId + '\')">' +
-                            '\u2764 <span class="pact-num" id="hp-' + postId + '">' + (post.hypes || 0) + '</span><span class="pact-label"> Like</span><span class="pact-mobile-cost">1\u2605</span>' +
-                        '</div>' +
-                        '<div class="pact pact-comment" data-cost="Costs 1 \u2605" onclick="toggleTray(\'' + postId + '\'); loadComments(\'' + postId + '\')">' +
-                            '\ud83d\udcac <span class="pact-label">Comment</span><span class="pact-mobile-cost">1\u2605</span>' +
-                        '</div>' +
-                        '<div class="pact rain" onclick="toggleRainPicker(\'' + postId + '\',event)" title="Rain Stars on this post">' +
-                            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="pointer-events:none"><path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><line x1="8" y1="16" x2="8" y2="21"/><line x1="8" y1="21" x2="6" y2="19"/><line x1="8" y1="21" x2="10" y2="19"/><line x1="12" y1="18" x2="12" y2="23"/><line x1="12" y1="23" x2="10" y2="21"/><line x1="12" y1="23" x2="14" y2="21"/><line x1="16" y1="16" x2="16" y2="21"/><line x1="16" y1="21" x2="14" y2="19"/><line x1="16" y1="21" x2="18" y2="19"/></svg>' +
-                            '<span class="pact-label" style="pointer-events:none"> Rain</span>' +
-                            '<span class="rain-total-badge" id="rain-total-' + postId + '" style="' + ((post.rainTotal||0)>0 ? '' : 'display:none') + '">\u2605' + parseFloat(post.rainTotal||0).toFixed(0) + '</span>' +
-                            '<div class="rain-picker" id="rain-picker-' + postId + '">' +
-                                '<div class="rain-picker-header">\ud83c\udf27\ufe0f Rain Stars on this post</div>' +
-                                '<div class="rain-picker-amounts">' +
-                                    '<div class="rain-amount-btn" onclick="sendRain(\'' + postId + '\',\'' + safeAddr + '\',5,event)">5\u2605</div>' +
-                                    '<div class="rain-amount-btn" onclick="sendRain(\'' + postId + '\',\'' + safeAddr + '\',10,event)">10\u2605</div>' +
-                                    '<div class="rain-amount-btn" onclick="sendRain(\'' + postId + '\',\'' + safeAddr + '\',20,event)">20\u2605</div>' +
-                                '</div>' +
-                                '<div class="rain-picker-split">Creator gets 80% \u00b7 Platform 20%</div>' +
-                            '</div>' +
-                        '</div>' +
-                        '<div class="pact share" onclick="toggleShareDropdown(\'' + postId + '\',event)" title="Share this post">' +
-                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
-                            '<span class="pact-label" style="pointer-events:none"> Share</span>' +
-                            '<div class="share-dropdown" id="share-dd-' + postId + '">' +
-                                '<div class="share-opt tg" onclick="sharePostTo(\'telegram\',\'' + postId + '\',event)">' +
-                                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="#229ed9" style="pointer-events:none"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.32 14.617l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.828.942z"/></svg>' +
-                                    'Telegram' +
-                                '</div>' +
-                                '<div class="share-opt wa" onclick="sharePostTo(\'whatsapp\',\'' + postId + '\',event)">' +
-                                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="#25d366" style="pointer-events:none"><path d="M12.004 0C5.374 0 .006 5.368.006 11.997c0 2.117.554 4.103 1.522 5.83L.057 24l6.304-1.654a11.964 11.964 0 0 0 5.643 1.424h.005C18.634 23.77 24 18.4 24 11.772 24 5.368 18.634 0 12.004 0zm0 21.786a9.926 9.926 0 0 1-5.064-1.386l-.363-.216-3.762.986 1.004-3.665-.237-.376a9.918 9.918 0 0 1-1.52-5.302c0-5.484 4.463-9.946 9.947-9.946 5.483 0 9.944 4.462 9.944 9.946 0 5.483-4.461 9.96-9.949 9.96zm5.45-7.448c-.298-.149-1.766-.872-2.04-.97-.273-.1-.472-.149-.671.149-.198.297-.771.97-.945 1.17-.174.198-.347.223-.645.074-.298-.149-1.258-.464-2.396-1.48-.885-.79-1.483-1.765-1.657-2.063-.173-.298-.019-.459.13-.607.133-.133.298-.347.447-.52.149-.174.198-.298.298-.497.099-.198.05-.372-.025-.52-.074-.149-.671-1.617-.919-2.213-.242-.58-.488-.501-.671-.51l-.571-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.29.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>' +
-                                    'WhatsApp' +
-                                '</div>' +
-                                '<div class="share-opt copy" onclick="sharePostTo(\'copy\',\'' + postId + '\',event)">' +
-                                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>' +
-                                    'Copy Link' +
-                                '</div>' +
-                            '</div>' +
-                        '</div>' +
-                        '<div class="pact views">\ud83d\udc41 <span class="pact-num">' + ((post.views || 0).toLocaleString()) + '</span></div>' +
-                    '</div>' +
-                    '<div class="comment-tray" id="tray-' + postId + '" style="display:none;">' +
-                        '<div class="comment-list" id="list-' + postId + '"></div>' +
-                        '<div class="cmt-input-row" style="flex-direction:column;gap:6px;">' +
-                            '<textarea class="cmt-persistent-box" placeholder="Add a comment (1&#9733;)\u2026" id="input-' + postId + '" rows="2"></textarea>' +
-                            '<div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">' +
-                                '<button class="btn btn-purple btn-sm" onclick="addComment(\'' + (post.authorAddr||'') + '\',\'' + postId + '\')">Send</button>' +
-                            '</div>' +
-                        '</div>' +
-                        '<button class="close-comments-btn" onclick="toggleTray(\'' + postId + '\')">&#8593; Close</button>' +
-                    '</div>'
-                );
+                    '<button class="close-comments-btn" id="cmt-close-' + postId + '">\u2191 Close Comments</button>';
+
+                card.appendChild(tray);
+
+                // Wire send and close after tray is in DOM
+                setTimeout(function() {
+                    var sendBtn  = document.getElementById('cmt-send-'  + postId);
+                    var closeBtn = document.getElementById('cmt-close-' + postId);
+                    if (sendBtn)  sendBtn.addEventListener('click',  function() { addComment(post.authorAddr || '', postId); });
+                    if (closeBtn) closeBtn.addEventListener('click', function() { toggleTray(postId); });
+                }, 0);
+
                 container.appendChild(card);
             });
 
