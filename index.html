@@ -7806,11 +7806,14 @@
     // COMMENTS — Firebase only, NO MetaMask (80/20 split)
     // ═══════════════════════════════════════════════════════════════════
     function toggleTray(id) {
-        const t = document.getElementById(`tray-${id}`);
+        var t = document.getElementById('tray-' + id);
+        if (!t) {
+            // Fallback: search within any post card with this data-id
+            var card = document.querySelector('[data-id="' + id + '"]');
+            if (card) t = card.querySelector('.comment-tray');
+        }
         if (!t) return;
-        // Works whether tray is hidden by CSS class (style.display='') or inline style (style.display='none')
-        const isVisible = t.style.display === 'block';
-        t.style.display = isVisible ? 'none' : 'block';
+        t.style.display = (t.style.display === 'block') ? 'none' : 'block';
     }
 
     async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
@@ -11296,21 +11299,22 @@
 
                 card.appendChild(actions);
 
-                // Wire up rain amount buttons via addEventListener (safe, no inline onclick)
-                setTimeout(function() {
-                    var r5  = document.getElementById('rain-5-'  + postId);
-                    var r10 = document.getElementById('rain-10-' + postId);
-                    var r20 = document.getElementById('rain-20-' + postId);
-                    var tg  = document.getElementById('share-tg-'   + postId);
-                    var wa  = document.getElementById('share-wa-'   + postId);
-                    var cp  = document.getElementById('share-copy-' + postId);
-                    if (r5)  r5.addEventListener('click',  function(e) { sendRain(postId, safeAddr, 5,  e); });
-                    if (r10) r10.addEventListener('click', function(e) { sendRain(postId, safeAddr, 10, e); });
-                    if (r20) r20.addEventListener('click', function(e) { sendRain(postId, safeAddr, 20, e); });
-                    if (tg)  tg.addEventListener('click',  function(e) { sharePostTo('telegram', postId, e); });
-                    if (wa)  wa.addEventListener('click',  function(e) { sharePostTo('whatsapp', postId, e); });
-                    if (cp)  cp.addEventListener('click',  function(e) { sharePostTo('copy',     postId, e); });
-                }, 0);
+                // ── Rain sub-buttons: wire directly on the elements ──────────────
+                // Using direct DOM references avoids any getElementById timing issues
+                var r5El  = rainBtn.querySelector('#rain-5-'  + postId);
+                var r10El = rainBtn.querySelector('#rain-10-' + postId);
+                var r20El = rainBtn.querySelector('#rain-20-' + postId);
+                if (r5El)  r5El.addEventListener('click',  function(e) { e.stopPropagation(); sendRain(postId, safeAddr, 5,  e); });
+                if (r10El) r10El.addEventListener('click', function(e) { e.stopPropagation(); sendRain(postId, safeAddr, 10, e); });
+                if (r20El) r20El.addEventListener('click', function(e) { e.stopPropagation(); sendRain(postId, safeAddr, 20, e); });
+
+                // ── Share sub-buttons: wire directly ──────────────────────────────
+                var tgEl = shareBtn.querySelector('#share-tg-'   + postId);
+                var waEl = shareBtn.querySelector('#share-wa-'   + postId);
+                var cpEl = shareBtn.querySelector('#share-copy-' + postId);
+                if (tgEl) tgEl.addEventListener('click', function(e) { e.stopPropagation(); sharePostTo('telegram', postId, e); });
+                if (waEl) waEl.addEventListener('click', function(e) { e.stopPropagation(); sharePostTo('whatsapp', postId, e); });
+                if (cpEl) cpEl.addEventListener('click', function(e) { e.stopPropagation(); sharePostTo('copy',     postId, e); });
 
                 // ── Comment tray ──
                 var tray = document.createElement('div');
@@ -11330,13 +11334,11 @@
 
                 card.appendChild(tray);
 
-                // Wire send and close after tray is in DOM
-                setTimeout(function() {
-                    var sendBtn  = document.getElementById('cmt-send-'  + postId);
-                    var closeBtn = document.getElementById('cmt-close-' + postId);
-                    if (sendBtn)  sendBtn.addEventListener('click',  function() { addComment(post.authorAddr || '', postId); });
-                    if (closeBtn) closeBtn.addEventListener('click', function() { toggleTray(postId); });
-                }, 0);
+                // ── Comment tray send/close: wire directly ────────────────────────
+                var sendBtnEl  = tray.querySelector('#cmt-send-'  + postId);
+                var closeBtnEl = tray.querySelector('#cmt-close-' + postId);
+                if (sendBtnEl)  sendBtnEl.addEventListener('click',  function() { addComment(post.authorAddr || '', postId); });
+                if (closeBtnEl) closeBtnEl.addEventListener('click', function() { toggleTray(postId); });
 
                 container.appendChild(card);
             });
@@ -14055,6 +14057,10 @@
     function toggleShareDropdown(postId, event) {
         if (event) event.stopPropagation();
         var dd = document.getElementById('share-dd-' + postId);
+        if (!dd) {
+            var card = document.querySelector('[data-id="' + postId + '"]');
+            if (card) dd = card.querySelector('.share-dropdown');
+        }
         if (!dd) return;
         var isOpen = dd.classList.contains('open');
         // Close any other open dropdowns
@@ -14152,6 +14158,10 @@
     function toggleRainPicker(postId, event) {
         if (event) event.stopPropagation();
         var picker = document.getElementById('rain-picker-' + postId);
+        if (!picker) {
+            var card = document.querySelector('[data-id="' + postId + '"]');
+            if (card) picker = card.querySelector('.rain-picker');
+        }
         if (!picker) return;
         var isOpen = picker.classList.contains('open');
         // Close all other open pickers and share dropdowns
