@@ -1230,15 +1230,13 @@
         /* Rain amount picker dropdown */
         .rain-picker {
             display: none;
-            position: absolute;
-            bottom: calc(100% + 8px);
-            left: 50%; transform: translateX(-50%);
+            position: fixed;
             background: var(--bg-panel);
             border: 1px solid var(--border-md);
             border-radius: var(--radius-md);
             box-shadow: 0 8px 28px rgba(0,0,0,0.18);
             min-width: 190px;
-            z-index: 9999;
+            z-index: 99999;
             overflow: hidden;
             animation: fadeUp 0.15s ease both;
             pointer-events: auto;
@@ -1345,15 +1343,13 @@
         .pact.share > svg, .pact.share > span { pointer-events: none; }
         .share-dropdown {
             display: none;
-            position: absolute;
-            bottom: calc(100% + 8px);
-            left: 50%; transform: translateX(-50%);
+            position: fixed;
             background: var(--bg-panel);
             border: 1px solid var(--border-md);
             border-radius: var(--radius-md);
             box-shadow: 0 8px 24px rgba(0,0,0,0.14);
             min-width: 175px;
-            z-index: 9999;
+            z-index: 99999;
             overflow: hidden;
             animation: fadeUp 0.15s ease both;
             pointer-events: auto;
@@ -7808,12 +7804,17 @@
     function toggleTray(id) {
         var t = document.getElementById('tray-' + id);
         if (!t) {
-            // Fallback: search within any post card with this data-id
             var card = document.querySelector('[data-id="' + id + '"]');
             if (card) t = card.querySelector('.comment-tray');
         }
         if (!t) return;
-        t.style.display = (t.style.display === 'block') ? 'none' : 'block';
+        var isOpen = t.style.display === 'block';
+        t.style.display = isOpen ? 'none' : 'block';
+        if (!isOpen) {
+            setTimeout(function() {
+                t.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 80);
+        }
     }
 
     async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
@@ -11253,7 +11254,26 @@
                 cmtBtn.className = 'pact pact-comment';
                 cmtBtn.setAttribute('data-cost', 'Costs 1 \u2605');
                 cmtBtn.innerHTML = '\ud83d\udcac <span class="pact-label">Comment</span><span class="pact-mobile-cost">1\u2605</span>';
-                cmtBtn.addEventListener('click', function() { toggleTray(postId); loadComments(postId); });
+                cmtBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var trayEl = document.getElementById('tray-' + postId);
+                    if (!trayEl) {
+                        var cardEl = document.querySelector('[data-id="' + postId + '"]');
+                        trayEl = cardEl ? cardEl.querySelector('.comment-tray') : null;
+                    }
+                    if (trayEl) {
+                        var isOpen = trayEl.style.display === 'block';
+                        trayEl.style.display = isOpen ? 'none' : 'block';
+                        if (!isOpen) {
+                            loadComments(postId);
+                            // Scroll the tray into view within feed-col so it
+                            // isn't clipped by app-shell overflow:hidden
+                            setTimeout(function() {
+                                trayEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                            }, 80);
+                        }
+                    }
+                });
                 actions.appendChild(cmtBtn);
 
                 // ── Rain button ──
@@ -11273,7 +11293,14 @@
                         '</div>' +
                         '<div class="rain-picker-split">Creator gets 80% \u00b7 Platform 20%</div>' +
                     '</div>';
-                rainBtn.addEventListener('click', function(e) { toggleRainPicker(postId, e); });
+                rainBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var pickerEl = rainBtn.querySelector('.rain-picker');
+                    if (!pickerEl) return;
+                    var isOpen = pickerEl.classList.contains('open');
+                    document.querySelectorAll('.rain-picker.open, .share-dropdown.open').forEach(function(el) { el.classList.remove('open'); });
+                    if (!isOpen) pickerEl.classList.add('open');
+                });
                 actions.appendChild(rainBtn);
 
                 // ── Share button ──
@@ -11288,7 +11315,14 @@
                         '<div class="share-opt wa" id="share-wa-' + postId + '"><svg width="18" height="18" viewBox="0 0 24 24" fill="#25d366" style="pointer-events:none"><path d="M12.004 0C5.374 0 .006 5.368.006 11.997c0 2.117.554 4.103 1.522 5.83L.057 24l6.304-1.654a11.964 11.964 0 0 0 5.643 1.424h.005C18.634 23.77 24 18.4 24 11.772 24 5.368 18.634 0 12.004 0zm0 21.786a9.926 9.926 0 0 1-5.064-1.386l-.363-.216-3.762.986 1.004-3.665-.237-.376a9.918 9.918 0 0 1-1.52-5.302c0-5.484 4.463-9.946 9.947-9.946 5.483 0 9.944 4.462 9.944 9.946 0 5.483-4.461 9.96-9.949 9.96zm5.45-7.448c-.298-.149-1.766-.872-2.04-.97-.273-.1-.472-.149-.671.149-.198.297-.771.97-.945 1.17-.174.198-.347.223-.645.074-.298-.149-1.258-.464-2.396-1.48-.885-.79-1.483-1.765-1.657-2.063-.173-.298-.019-.459.13-.607.133-.133.298-.347.447-.52.149-.174.198-.298.298-.497.099-.198.05-.372-.025-.52-.074-.149-.671-1.617-.919-2.213-.242-.58-.488-.501-.671-.51l-.571-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.29.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg> WhatsApp</div>' +
                         '<div class="share-opt copy" id="share-copy-' + postId + '"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> Copy Link</div>' +
                     '</div>';
-                shareBtn.addEventListener('click', function(e) { toggleShareDropdown(postId, e); });
+                shareBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var ddEl = shareBtn.querySelector('.share-dropdown');
+                    if (!ddEl) return;
+                    var isOpen = ddEl.classList.contains('open');
+                    document.querySelectorAll('.rain-picker.open, .share-dropdown.open').forEach(function(el) { el.classList.remove('open'); });
+                    if (!isOpen) ddEl.classList.add('open');
+                });
                 actions.appendChild(shareBtn);
 
                 // ── Views ──
@@ -14063,9 +14097,16 @@
         }
         if (!dd) return;
         var isOpen = dd.classList.contains('open');
-        // Close any other open dropdowns
-        document.querySelectorAll('.share-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+        document.querySelectorAll('.share-dropdown.open, .rain-picker.open').forEach(function(d) { d.classList.remove('open'); });
         if (!isOpen) {
+            // Position above the button using fixed coords to escape overflow:hidden
+            var btn = event && event.currentTarget ? event.currentTarget : null;
+            if (btn) {
+                var r = btn.getBoundingClientRect();
+                dd.style.left = Math.max(4, r.left + r.width/2 - 87) + 'px';
+                dd.style.top  = Math.max(4, r.top - 8) + 'px';
+                dd.style.transform = 'translateY(-100%)';
+            }
             dd.classList.add('open');
             var _closeHandler = function(e) {
                 if (!dd.contains(e.target)) {
@@ -14164,11 +14205,16 @@
         }
         if (!picker) return;
         var isOpen = picker.classList.contains('open');
-        // Close all other open pickers and share dropdowns
-        document.querySelectorAll('.rain-picker.open, .share-dropdown.open').forEach(function(el) {
-            el.classList.remove('open');
-        });
+        document.querySelectorAll('.rain-picker.open, .share-dropdown.open').forEach(function(el) { el.classList.remove('open'); });
         if (!isOpen) {
+            // Position above the button using fixed coords to escape overflow:hidden
+            var btn = event && event.currentTarget ? event.currentTarget : null;
+            if (btn) {
+                var r = btn.getBoundingClientRect();
+                picker.style.left = Math.max(4, r.left + r.width/2 - 95) + 'px';
+                picker.style.top  = Math.max(4, r.top - 8) + 'px';
+                picker.style.transform = 'translateY(-100%)';
+            }
             picker.classList.add('open');
             var _close = function(e) {
                 if (!picker.contains(e.target)) {
@@ -14179,7 +14225,6 @@
             setTimeout(function() { document.addEventListener('click', _close); }, 0);
         }
     }
-
     async function sendRain(postId, recipientAddr, amount, event) {
         if (event) { event.stopPropagation(); event.preventDefault(); }
 
