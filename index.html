@@ -1236,6 +1236,30 @@
         }
         .post-card.deep-link-highlight { animation: postDeepLinkFlash 2.4s ease forwards; }
 
+        /* ── HUB TOTAL EARNINGS BADGE ── */
+        .rp-hub-earned {
+            display: inline-flex; align-items: center; gap: 3px;
+            font-family: var(--font-mono);
+            font-size: 0.62rem; font-weight: 700;
+            color: var(--gold);
+            background: rgba(240,180,41,0.10);
+            border: 1px solid rgba(240,180,41,0.25);
+            border-radius: 50px;
+            padding: 2px 7px;
+            white-space: nowrap; flex-shrink: 0;
+        }
+        .comm-earned-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.65rem; font-weight: 700;
+            color: var(--gold);
+            background: rgba(240,180,41,0.10);
+            border: 1px solid rgba(240,180,41,0.25);
+            border-radius: 50px;
+            padding: 3px 9px;
+            white-space: nowrap;
+        }
+
         /* ── UNIFIED HARVEST TOOLTIP (desktop only) ──────────────────────────
            Shared by .pact[data-cost] AND .hero-action-btn[data-cost] AND
            .comm-follow-btn[data-cost]. Dark bubble, white 11px text.
@@ -7540,6 +7564,11 @@
                             description: "Landlord Earnings from " + _activeCommunity.name + " Hub (comment hype)",
                             communityId: _activeCommunity.id
                         });
+                        // ── Track real Hub earnings on the community document ──
+                        window.fs.updateDoc(
+                            window.fs.doc(window.db, 'communities', _activeCommunity.id),
+                            { totalStarsEarned: window.fs.increment(0.8) }
+                        ).catch(function(){});
                     } else {
                         await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
                         logTransaction('earn', CONFIG.CREATOR_CUT, {
@@ -7562,6 +7591,11 @@
                     description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
                     postId: entityId, communityId: _activeCommunity.id
                 });
+                // ── Track real Hub earnings on the community document ──
+                window.fs.updateDoc(
+                    window.fs.doc(window.db, 'communities', _activeCommunity.id),
+                    { totalStarsEarned: window.fs.increment(0.8) }
+                ).catch(function(){});
             } else {
                 if (recipientNorm && recipientNorm !== "unknown") {
                     const lbl = _activeCommunity
@@ -7745,6 +7779,11 @@
                     description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
                     postId: postId, communityId: _activeCommunity.id
                 });
+                // ── Track real Hub earnings on the community document ──
+                window.fs.updateDoc(
+                    window.fs.doc(window.db, 'communities', _activeCommunity.id),
+                    { totalStarsEarned: window.fs.increment(0.8) }
+                ).catch(function(){});
             } else {
                 if (recipientNorm && recipientNorm !== "unknown") {
                     const lbl = _activeCommunity
@@ -10697,6 +10736,9 @@
                     '<div class="comm-card-meta">' +
                         '<span class="comm-owner-chip">Owner: ' + shortAddr + '</span>' +
                         '<span class="comm-member-count">' + ((comm.postCount || 0).toLocaleString()) + ' posts</span>' +
+                        (parseFloat(comm.totalStarsEarned || 0) > 0
+                            ? '<span class="comm-earned-badge" title="Total Stars earned by this Hub">★ ' + parseFloat(comm.totalStarsEarned).toFixed(1) + ' earned</span>'
+                            : '') +
                     '</div>' +
                 '</div>'
             );
@@ -13274,14 +13316,13 @@
             listEl.innerHTML = '<div style="font-size:0.65rem;color:var(--text-muted);text-align:center;padding:10px 0;">No hubs yet — be the first!</div>';
             return;
         }
-        // Build rows via DOM so closures capture the full hub object for openCommunityFeed()
-        // and avatar onerror is a real JS handler — not an escaped inline string
         listEl.innerHTML = '';
         hubs.forEach(function(hub) {
-            var name     = hub.name || 'Unnamed Hub';
-            var posts    = hub.postCount   || 0;
-            var members  = hub.memberCount || hub.anchors || 0;
-            var metaParts = [];
+            var name        = hub.name || 'Unnamed Hub';
+            var posts       = hub.postCount        || 0;
+            var members     = hub.memberCount || hub.anchors || 0;
+            var earned      = parseFloat(hub.totalStarsEarned || 0);
+            var metaParts   = [];
             if (posts)   metaParts.push(posts + ' posts');
             if (members) metaParts.push(members + ' members');
             var meta        = metaParts.length ? metaParts.join(' · ') : 'New hub';
@@ -13314,13 +13355,22 @@
             info.appendChild(nameEl);
             info.appendChild(metaEl);
 
-            var starsEl = document.createElement('div');
-            starsEl.className   = 'rp-hub-stars';
-            starsEl.textContent = posts > 0 ? posts + '★' : '';
+            // Show real earned stars badge — gold if > 0, greyed if none yet
+            var earnedEl = document.createElement('div');
+            if (earned > 0) {
+                earnedEl.className   = 'rp-hub-earned';
+                earnedEl.textContent = earned % 1 === 0
+                    ? earned.toFixed(0) + ' ★'
+                    : earned.toFixed(1) + ' ★';
+                earnedEl.title = 'Total Stars earned by this Hub';
+            } else {
+                earnedEl.className   = 'rp-hub-stars';
+                earnedEl.textContent = posts > 0 ? posts + ' posts' : '';
+            }
 
             row.appendChild(img);
             row.appendChild(info);
-            row.appendChild(starsEl);
+            row.appendChild(earnedEl);
             listEl.appendChild(row);
         });
     }
