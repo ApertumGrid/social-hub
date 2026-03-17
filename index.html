@@ -4296,7 +4296,9 @@
 
                         <textarea id="comm-post-text" class="field"
                                   placeholder="What's your signal to this Hub?"
-                                  style="white-space:pre-wrap;"></textarea>
+                                  rows="3"
+                                  style="white-space:pre-wrap; resize:none; overflow:hidden; min-height:80px;"
+                                  oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,320)+'px';"></textarea>
 
                         <div class="media-tabs">
                             <div class="mtab active" id="comm-tab-url"  onclick="setCommMediaTab('url')">🔗 URL</div>
@@ -7738,6 +7740,15 @@
 
             // ── STEP D: Platform revenue ──────────────────────────────────────────────────
             logAdminRevenue(senderAddr, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
+
+            // ── Release spend lock NOW — all credits are fully written ────────────────────
+            // The lock was armed by deductStars to stop the onSnapshot rubber-banding the
+            // balance back to the pre-deduction value. All creditCreatorStars writes are now
+            // complete so it's safe to let the snapshot through — this makes the earned 0.8★
+            // appear immediately in the UI instead of being silently dropped.
+            isSpending = false;
+            if (_spendLockTimer) { clearTimeout(_spendLockTimer); _spendLockTimer = null; }
+
             updateUI();
             updateDrawerUI();
             // ── Counter update ────────────────────────────────────────────────────
@@ -7797,7 +7808,9 @@
     function toggleTray(id) {
         const t = document.getElementById(`tray-${id}`);
         if (!t) return;
-        t.style.display = t.style.display === 'block' ? 'none' : 'block';
+        // Works whether tray is hidden by CSS class (style.display='') or inline style (style.display='none')
+        const isVisible = t.style.display === 'block';
+        t.style.display = isVisible ? 'none' : 'block';
     }
 
     async function addComment(recipientAddress, postId, isReply = false, parentId = null) {
@@ -10755,7 +10768,7 @@
             const mediaEl  = document.getElementById('comm-post-media');
             const progWrap = document.getElementById('comm-upload-progress-wrap');
             const fPrev    = document.getElementById('comm-file-preview-wrap');
-            if (textEl)   textEl.value  = '';
+            if (textEl)   { textEl.value = ''; textEl.style.height = 'auto'; }
             if (mediaEl)  mediaEl.value = '';
             if (progWrap) progWrap.style.display = 'none';
             if (fPrev)    fPrev.style.display    = 'none';
@@ -11116,6 +11129,16 @@
                     window.fs.orderBy('timestamp', 'desc')
                 )
             );
+
+            // ── Remember which trays are currently open before wiping ─────────
+            var openTrays = new Set();
+            container.querySelectorAll('.comment-tray').forEach(function(tray) {
+                if (tray.style.display === 'block') {
+                    var tid = tray.id.replace('tray-', '');
+                    if (tid) openTrays.add(tid);
+                }
+            });
+
             container.innerHTML = '';
             if (snap.empty) {
                 container.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:0.8rem;">No posts yet in this Hub. Be the first to broadcast!</div>';
@@ -11225,6 +11248,17 @@
                 );
                 container.appendChild(card);
             });
+
+            // ── Re-open any trays that were open before the refresh ───────────
+            // Also re-subscribe their comment listeners so the content is live
+            openTrays.forEach(function(pid) {
+                var tray = document.getElementById('tray-' + pid);
+                if (tray) {
+                    tray.style.display = 'block';
+                    if (typeof loadComments === 'function') loadComments(pid);
+                }
+            });
+
         } catch (e) {
             console.error('[openCommunityFeed]', e);
             container.innerHTML = '<div style="padding:16px;color:var(--red);font-size:0.78rem;">Error loading posts: ' + escHtml(e.message) + '</div>';
