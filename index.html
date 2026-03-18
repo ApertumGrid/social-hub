@@ -533,7 +533,7 @@
         .btn-gold:hover { background: rgba(240,180,41,0.18); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(240,180,41,0.15); }
 
         /* Post cards */
-        .post-card { animation: fadeUp 0.25s ease both; }
+        .post-card { animation: fadeUp 0.25s ease both; position: relative; overflow: visible; }
         @keyframes fadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
         @keyframes postFlash {
             0%   {
@@ -7804,14 +7804,20 @@
     function toggleTray(id) {
         console.log('[toggleTray] called id=', id);
         var t = document.getElementById('tray-' + id);
+        var card = document.querySelector('[data-id="' + id + '"]');
         if (!t) {
-            var card = document.querySelector('[data-id="' + id + '"]');
             if (card) t = card.querySelector('.comment-tray');
         }
         console.log('[toggleTray] tray element=', t);
         if (!t) return;
         var isOpen = t.style.display === 'block';
         t.style.display = isOpen ? 'none' : 'block';
+        // Elevate the card above its siblings so the open tray is never painted
+        // over by the next card's animation stacking context
+        if (card) {
+            card.style.position = isOpen ? '' : 'relative';
+            card.style.zIndex   = isOpen ? '' : '2';
+        }
         console.log('[toggleTray] now display=', t.style.display);
         if (!isOpen) {
             setTimeout(function() {
