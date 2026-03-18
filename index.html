@@ -7803,11 +7803,13 @@
     // ═══════════════════════════════════════════════════════════════════
     function toggleTray(id) {
         console.log('[toggleTray] called id=', id);
-        var t = document.getElementById('tray-' + id);
-        var card = document.querySelector('[data-id="' + id + '"]');
-        if (!t) {
-            if (card) t = card.querySelector('.comment-tray');
-        }
+        // id may be a raw postId OR a full element id like 'comm-tray-POSTID'
+        // Try the exact id first, then fall back to 'tray-'+id (global feed format)
+        var t = document.getElementById(id) || document.getElementById('tray-' + id);
+        // Strip any tray prefix to get the raw postId for data-id lookup
+        var rawId = id.replace('comm-tray-', '').replace('tray-', '');
+        var card = document.querySelector('[data-id="' + rawId + '"]');
+        if (!t && card) t = card.querySelector('.comment-tray');
         console.log('[toggleTray] tray element=', t);
         if (!t) return;
         var isOpen = t.style.display === 'block';
@@ -8116,6 +8118,26 @@
     }
 
 
+
+    // loadCommentsInto — used by hub cards which have 'comm-list-POSTID' element IDs
+    // to avoid colliding with the global feed's 'list-POSTID' IDs for the same post.
+    async function loadCommentsInto(listId, postId) {
+        if (_commentListeners[postId]) {
+            try { _commentListeners[postId](); } catch(_) {}
+            delete _commentListeners[postId];
+        }
+        var _orig = document.getElementById.bind(document);
+        document.getElementById = function(id) {
+            if (id === 'list-' + postId) return _orig(listId);
+            return _orig(id);
+        };
+        try {
+            await loadComments(postId);
+        } finally {
+            document.getElementById = _orig;
+        }
+    }
+    window.loadCommentsInto = loadCommentsInto;
 
     function toggleReplyInput(commentId) {
         const area = document.getElementById(`reply-area-${commentId}`);
@@ -11153,7 +11175,7 @@
             var openTrays = new Set();
             container.querySelectorAll('.comment-tray').forEach(function(tray) {
                 if (tray.style.display === 'block') {
-                    var tid = tray.id.replace('tray-', '');
+                    var tid = tray.id.replace('comm-tray-', '').replace('tray-', '');
                     if (tid) openTrays.add(tid);
                 }
             });
@@ -11265,12 +11287,22 @@
                 actions.appendChild(likeBtn);
 
                 // ── Comment button ──
-                var cmtBtn = document.createElement('div');
-                cmtBtn.className = 'pact pact-comment';
-                cmtBtn.setAttribute('data-cost', 'Costs 1 \u2605');
-                cmtBtn.innerHTML = '\ud83d\udcac <span class="pact-label">Comment</span><span class="pact-mobile-cost">1\u2605</span>';
-                cmtBtn.addEventListener('click', function() { toggleTray(postId); loadComments(postId); });
-                actions.appendChild(cmtBtn);
+                // Uses 'comm-tray-'+postId so toggleTray targets ONLY the hub tray.
+                // The global feed onSnapshot also renders community posts into
+                // #feed-items with identical IDs — duplicate IDs caused toggleTray
+                // to open the hub tray then immediately close the global feed tray
+                // (or vice versa), making comments appear completely broken on deploy.
+                (function(pid) {
+                    var cmtBtn = document.createElement('div');
+                    cmtBtn.className = 'pact pact-comment';
+                    cmtBtn.setAttribute('data-cost', 'Costs 1 \u2605');
+                    cmtBtn.innerHTML = '\ud83d\udcac <span class="pact-label">Comment</span><span class="pact-mobile-cost">1\u2605</span>';
+                    cmtBtn.addEventListener('click', function() {
+                        toggleTray('comm-tray-' + pid);
+                        loadCommentsInto('comm-list-' + pid, pid);
+                    });
+                    actions.appendChild(cmtBtn);
+                })(postId);
 
                 // ── Rain button ──
                 var rainBtn = document.createElement('div');
@@ -11355,28 +11387,40 @@
                 if (cpEl) cpEl.addEventListener('click', function(e) { e.stopPropagation(); sharePostTo('copy',     postId, e); });
 
                 // ── Comment tray ──
-                var tray = document.createElement('div');
-                tray.className = 'comment-tray';
-                tray.id = 'tray-' + postId;
-                tray.style.display = 'none';
-                tray.innerHTML =
-                    '<div class="comment-list" id="list-' + postId + '"></div>' +
-                    '<div class="cmt-input-row" style="flex-direction:column;gap:6px;">' +
-                        '<textarea class="cmt-persistent-box" placeholder="Add a comment (1\u2605)\u2026" id="input-' + postId + '" rows="2"></textarea>' +
-                        '<div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">' +
-                            '<span style="font-size:0.6rem;color:var(--text-muted);font-family:var(--font-mono);">1\u2605 \u00b7 80% to creator</span>' +
-                            '<button class="btn btn-purple btn-sm" id="cmt-send-' + postId + '">Send</button>' +
+                // All element IDs use 'comm-' prefix to prevent collision with the
+                // identical IDs that loadGlobalFeed creates for the same postId.
+                (function(pid, authorAddr) {
+                    var cTrayId  = 'comm-tray-'  + pid;
+                    var cListId  = 'comm-list-'  + pid;
+                    var cInputId = 'comm-input-' + pid;
+                    var cSendId  = 'comm-send-'  + pid;
+                    var cCloseId = 'comm-close-' + pid;
+
+                    var tray = document.createElement('div');
+                    tray.className = 'comment-tray';
+                    tray.id = cTrayId;
+                    tray.style.display = 'none';
+                    tray.innerHTML =
+                        '<div class="comment-list" id="' + cListId + '"></div>' +
+                        '<div class="cmt-input-row" style="flex-direction:column;gap:6px;">' +
+                            '<textarea class="cmt-persistent-box" placeholder="Add a comment (1\u2605)\u2026" id="' + cInputId + '" rows="2"></textarea>' +
+                            '<div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">' +
+                                '<span style="font-size:0.6rem;color:var(--text-muted);font-family:var(--font-mono);">1\u2605 \u00b7 80% to creator</span>' +
+                                '<button class="btn btn-purple btn-sm" id="' + cSendId + '">Send</button>' +
+                            '</div>' +
                         '</div>' +
-                    '</div>' +
-                    '<button class="close-comments-btn" id="cmt-close-' + postId + '">\u2191 Close Comments</button>';
+                        '<button class="close-comments-btn" id="' + cCloseId + '">\u2191 Close Comments</button>';
 
-                card.appendChild(tray);
+                    card.appendChild(tray);
 
-                // ── Comment tray send/close: wire directly ────────────────────────
-                var sendBtnEl  = tray.querySelector('#cmt-send-'  + postId);
-                var closeBtnEl = tray.querySelector('#cmt-close-' + postId);
-                if (sendBtnEl)  sendBtnEl.addEventListener('click',  function() { addComment(post.authorAddr || '', postId); });
-                if (closeBtnEl) closeBtnEl.addEventListener('click', function() { toggleTray(postId); });
+                    var sendBtnEl  = tray.querySelector('#' + cSendId);
+                    var closeBtnEl = tray.querySelector('#' + cCloseId);
+                    if (sendBtnEl) sendBtnEl.addEventListener('click', function() {
+                        var ta = document.getElementById(cInputId);
+                        if (ta && ta.value.trim()) addComment(authorAddr, pid);
+                    });
+                    if (closeBtnEl) closeBtnEl.addEventListener('click', function() { toggleTray(cTrayId); });
+                })(postId, post.authorAddr || '');
 
                 container.appendChild(card);
             });
@@ -11384,10 +11428,10 @@
             // ── Re-open any trays that were open before the refresh ───────────
             // Also re-subscribe their comment listeners so the content is live
             openTrays.forEach(function(pid) {
-                var tray = document.getElementById('tray-' + pid);
+                var tray = document.getElementById('comm-tray-' + pid);
                 if (tray) {
                     tray.style.display = 'block';
-                    if (typeof loadComments === 'function') loadComments(pid);
+                    if (typeof loadCommentsInto === 'function') loadCommentsInto('comm-list-' + pid, pid);
                 }
             });
 
@@ -11396,7 +11440,11 @@
             container.innerHTML = '<div style="padding:16px;color:var(--red);font-size:0.78rem;">Error loading posts: ' + escHtml(e.message) + '</div>';
         }
     }
-    window.openCommunityFeed = openCommunityFeed;
+    window.openCommunityFeed  = openCommunityFeed;
+    window.toggleTray         = toggleTray;
+    window.loadComments       = loadComments;
+    window.loadCommentsInto   = loadCommentsInto;
+    window.addComment         = addComment;
     window.toggleTray        = toggleTray;
     window.loadComments      = loadComments;
     window.addComment        = addComment;
