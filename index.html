@@ -5277,11 +5277,9 @@
             : 0;
         const availStars = Math.floor((aptmStarsDr + earnedDr) * 10) / 10;
 
-        // My APTM Value: pure live math — (totalStars × $0.01) / livePrice
-        // This is the number that moves when stars go up/down OR when price moves.
-        const myAptmVal = (currentAptmPriceUsd > 0)
-            ? ((availStars * CONFIG.STAR_USD) / currentAptmPriceUsd)
-            : 0;
+        // My APTM Value: the on-chain balance — stable unless you spend stars.
+        // Stars fluctuate with price. APTM balance does not.
+        const myAptmVal = aptmBal;
         const myAptmStr = myAptmVal.toFixed(4) + " APTM";
 
         // Big balance display: Available Stars (live, market-responsive)
@@ -5565,17 +5563,19 @@
                     creatorEarnings    = Math.max(0, parseFloat(d.creatorStars   || 0));
                     totalDepositedAptm = Math.max(0, parseFloat(d.initial_deposit || 0));
 
-                    // currentAptmBalance = UNCAPPED spendable APTM value.
-                    // Formula: (fbStars + fbEarned) × $0.01 / livePrice
-                    // DO NOT cap at onChainAptm — the on-chain value is denominated at
-                    // the DEPOSIT price; at the current (lower) price the same stars are
-                    // worth MORE APTM, so capping silently truncates legitimate value.
+                    // ── SOURCE OF TRUTH: on-chain APTM balance ──────────────────
+                    // currentAptmBalance = exactly what the contract holds for this user.
+                    // Stars are DERIVED from this: Stars = onChainAptm × livePrice / $0.01
+                    // This means:
+                    //   price doubles  → APTM stays same, Stars double   ✓
+                    //   price halves   → APTM stays same, Stars halve    ✓
+                    //   spend 10 Stars → APTM drops by ($0.10/price)     ✓
+                    // updateUI() already uses: aptmStars = currentAptmBalance × price / $0.01
+                    // so we just need to keep currentAptmBalance = onChainAptm at all times.
                     const livePrice    = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
                     const totalStars   = purchasedStars + creatorEarnings;
-                    currentAptmBalance = (livePrice > 0 && totalStars > 0)
-                        ? (totalStars * CONFIG.STAR_USD) / livePrice
-                        : onChainAptm;
-                    console.log(`[syncData] onChain=${onChainAptm.toFixed(6)} APTM | fbStars=${purchasedStars.toFixed(4)}★ | fbEarned=${creatorEarnings.toFixed(4)}★ | livePrice=$${livePrice.toFixed(6)} | spendable(UNCAPPED)=${currentAptmBalance.toFixed(6)} APTM`);
+                    currentAptmBalance = onChainAptm;
+                    console.log(`[syncData] onChain=${onChainAptm.toFixed(6)} APTM | fbStars=${purchasedStars.toFixed(4)}★ | fbEarned=${creatorEarnings.toFixed(4)}★ | livePrice=$${livePrice.toFixed(6)} | currentAptmBalance=${currentAptmBalance.toFixed(6)} APTM | displayStars=${livePrice > 0 ? ((onChainAptm * livePrice) / 0.01).toFixed(2) : 'pending'}★`);
                     await window.fs.updateDoc(userRef, { lastSync: Date.now() });
                 }
             } else {
@@ -5622,18 +5622,15 @@
                     } catch (_) {}
                 }
 
-                // UNCAPPED: spendable APTM = (fbStars + fbEarned) × $0.01 / livePrice
-                // Do NOT clamp to onChainAptm — price drift means stars may be worth
-                // more APTM than was originally deposited, and clamping hides that.
-                const livePrice   = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
-                const totalStars  = fbStarsNet + fbEarnedNet;
-                const netAptm     = (livePrice > 0 && totalStars > 0)
-                    ? (totalStars * CONFIG.STAR_USD) / livePrice
-                    : onChainAptm;
-
+                // ── SOURCE OF TRUTH: on-chain APTM balance ──────────────────
+                // currentAptmBalance = onChainAptm always.
+                // Stars are derived in updateUI(): Stars = onChainAptm × price / $0.01
+                // So when price moves, stars move automatically — APTM stays stable.
+                // When the user spends stars, the on-chain balance drops, so both
+                // APTM and stars displayed drop correctly on the next refresh.
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
                 if (!spendLockActive) {
-                    currentAptmBalance = netAptm;
+                    currentAptmBalance = onChainAptm;
                     updateUI();
                 }
             } catch (e) { console.warn('[ChainRefresh] poll failed:', e); }
@@ -5723,11 +5720,10 @@
             const availStr     = availStars.toFixed(1) + " ★";
             const aptmStr      = aptmBal.toFixed(4) + " APTM";
 
-            // ── My APTM Value: pure live math — (totalStars × $0.01) / livePrice ──
-            // Never uses hard-coded 0.3024. Moves up/down with both star count AND price.
-            const myAptmValue = (currentAptmPriceUsd > 0)
-                ? ((availStars * CONFIG.STAR_USD) / currentAptmPriceUsd)
-                : 0;
+            // ── My APTM Value: the on-chain balance — this is what you actually hold ──
+            // APTM balance stays stable when price moves. Stars change. APTM doesn't.
+            // Dollar value = aptmBal × livePrice (shown separately as needed).
+            const myAptmValue = aptmBal;
             const myAptmStr = myAptmValue.toFixed(4) + " APTM";
 
             // Sidebar — Available Stars (live), Total Deposited (from Firebase, user-specific)
