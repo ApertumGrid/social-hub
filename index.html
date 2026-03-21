@@ -1644,6 +1644,47 @@
         }
         #right-panel::-webkit-scrollbar { width: 3px; }
         #right-panel::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.10); border-radius: 3px; }
+                /* ── Daily Signal & Build the Future ──────────────────────── */
+        .btf-option {
+            display: flex; flex-direction: column; gap: 4px;
+            padding: 9px 12px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+            position: relative;
+            overflow: hidden;
+        }
+        .btf-option:hover:not(.btf-voted) {
+            border-color: rgba(45,212,191,0.4);
+            background: rgba(45,212,191,0.05);
+        }
+        .btf-option.btf-winning {
+            border-color: rgba(45,212,191,0.5);
+        }
+        .btf-option-bar {
+            position: absolute; left: 0; top: 0; bottom: 0;
+            background: linear-gradient(90deg, rgba(45,212,191,0.12), rgba(124,92,191,0.08));
+            border-radius: var(--radius-md);
+            transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+            pointer-events: none;
+        }
+        .btf-option-label {
+            font-size: 0.78rem; font-weight: 600;
+            color: var(--text-primary); position: relative; z-index: 1;
+        }
+        .btf-option-pct {
+            font-size: 0.6rem; font-family: var(--font-mono);
+            color: var(--text-muted); position: relative; z-index: 1;
+            transition: color 0.2s;
+        }
+        .btf-option.btf-winning .btf-option-pct { color: var(--teal); }
+        .btf-option.btf-my-vote { border-color: rgba(124,92,191,0.6); }
+        .btf-option.btf-my-vote .btf-option-label::after {
+            content: " ✓"; color: var(--purple-lt); font-size: 0.7rem;
+        }
+
         .rp-heading {
             display: flex; align-items: center; justify-content: space-between;
             font-size: 0.85rem; font-weight: 700; color: var(--text-primary);
@@ -4717,16 +4758,57 @@
                     </div>
                 </div>
             </div>
-            <div class="rp-card" style="padding:0;">
-                <div style="padding:10px 14px 8px; font-size:0.58rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px;">Featured Partner</div>
-                <a href="https://openplaza.io" target="_blank" rel="noopener noreferrer" style="display:block; padding:0 10px 10px; text-decoration:none;">
-                    <img src="https://i.postimg.cc/gJVdm1jC/Screenshot-2026-03-15-230202.png"
-                         alt="OpenPlaza — Discover, Collect and Trade NFTs"
-                         style="width:100%; border-radius:12px; border:1px solid #c8a24d; display:block; box-shadow:0 2px 16px rgba(200,162,77,0.22); transition:opacity 0.15s;"
-                         onmouseover="this.style.opacity='0.85'"
-                         onmouseout="this.style.opacity='1'"
-                         onerror="this.closest('.rp-card').style.display='none'">
-                </a>
+            <!-- ── DAILY SIGNAL CARD ──────────────────────────────────────── -->
+            <div class="rp-card" id="daily-signal-card" style="
+                background: linear-gradient(135deg, rgba(124,92,191,0.12) 0%, rgba(45,212,191,0.06) 100%);
+                border: 1px solid rgba(124,92,191,0.35);
+                position: relative;
+                overflow: hidden;">
+                <!-- Glow orb -->
+                <div style="position:absolute; top:-20px; right:-20px; width:80px; height:80px;
+                            background:radial-gradient(circle, rgba(124,92,191,0.3) 0%, transparent 70%);
+                            pointer-events:none;"></div>
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                    <div style="width:7px; height:7px; border-radius:50%; background:var(--teal);
+                                box-shadow:0 0 8px var(--teal); animation:blink 2s infinite;"></div>
+                    <span style="font-size:0.58rem; font-weight:700; color:var(--teal);
+                                 text-transform:uppercase; letter-spacing:1.8px;">Daily Signal</span>
+                    <span id="ds-date" style="font-size:0.55rem; color:var(--text-muted);
+                                              font-family:var(--font-mono); margin-left:auto;"></span>
+                </div>
+                <div id="ds-quote" style="
+                    font-size:0.82rem; font-weight:600; color:var(--text-primary);
+                    line-height:1.65; margin-bottom:12px; font-style:italic;
+                    border-left:2px solid var(--purple-lt); padding-left:10px;">
+                    Loading today&#8217;s signal&#8230;
+                </div>
+                <div id="ds-category" style="
+                    display:inline-block; font-size:0.58rem; font-weight:700;
+                    color:var(--purple-lt); background:rgba(124,92,191,0.15);
+                    border:1px solid rgba(124,92,191,0.3); border-radius:20px;
+                    padding:2px 10px; letter-spacing:0.5px;"></div>
+            </div>
+
+            <!-- ── BUILD THE FUTURE CARD ─────────────────────────────────────── -->
+            <div class="rp-card" id="btf-card" style="
+                background: linear-gradient(135deg, rgba(45,212,191,0.06) 0%, rgba(124,92,191,0.08) 100%);
+                border: 1px solid rgba(45,212,191,0.25);">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                    <span style="font-size:0.58rem; font-weight:700; color:var(--teal);
+                                 text-transform:uppercase; letter-spacing:1.8px;">Build the Future</span>
+                    <span id="btf-votes-total" style="font-size:0.6rem; color:var(--text-muted);
+                                                      font-family:var(--font-mono);">0 votes</span>
+                </div>
+                <div id="btf-question" style="
+                    font-size:0.82rem; font-weight:700; color:var(--text-primary);
+                    line-height:1.55; margin-bottom:14px;">
+                    What would make you never leave a social platform?
+                </div>
+                <div id="btf-options" style="display:flex; flex-direction:column; gap:8px;"></div>
+                <div id="btf-thankyou" style="display:none; text-align:center; padding:12px 0;
+                    font-size:0.78rem; color:var(--teal); font-weight:600;">
+                    ✓ Vote recorded — thanks for shaping SocialHub!
+                </div>
             </div>
             <div class="rp-card">
                 <div class="rp-heading">Storage</div>
@@ -11683,6 +11765,261 @@
         }
     }
     window.openCommunityFeed  = openCommunityFeed;
+
+    // =========================================================================
+    // DAILY SIGNAL — Changes every day at midnight. Pulls from a curated list
+    // seeded by day-of-year so it's deterministic (same signal for all users
+    // on the same day). No API call needed — pure JS.
+    // =========================================================================
+    (function initDailySignal() {
+        var signals = [
+            { quote: "The future of social media belongs to platforms where creators own their audience — and their income.", category: "Vision" },
+            { quote: "90% of creators on traditional platforms never earn a dollar. Here, your first post could change that.", category: "Economy" },
+            { quote: "Decentralisation isn't just a tech choice. It's a statement that people come before profit.", category: "Philosophy" },
+            { quote: "Every like you give on SocialHub puts real money in a real person's wallet. That's not a feature — that's a revolution.", category: "Impact" },
+            { quote: "The platforms that win in Web3 won't be the biggest. They'll be the ones people trust the most.", category: "Trust" },
+            { quote: "Stars aren't points. They're value. Every one you earn is real cryptocurrency waiting to be withdrawn.", category: "Economy" },
+            { quote: "When the platform earns, the platform grows. When the creator earns, the creator stays. SocialHub does both.", category: "Design" },
+            { quote: "Community isn't built with algorithms. It's built with shared ownership and real stakes.", category: "Community" },
+            { quote: "The question isn't whether blockchain belongs in social media. The question is why it took this long.", category: "Vision" },
+            { quote: "A platform that pays you to post isn't magic. It's just a platform that respects your time.", category: "Philosophy" },
+            { quote: "Content is the product. Creators are the producers. On SocialHub, they get paid like it.", category: "Economy" },
+            { quote: "The internet was built to connect people. Web3 is rebuilding it to reward them.", category: "Vision" },
+            { quote: "Your followers aren't just an audience. On SocialHub, following someone is a real vote of confidence worth real value.", category: "Impact" },
+            { quote: "Transparency isn't a buzzword here. Every star split is visible, every payment is on-chain, every rule is public.", category: "Trust" },
+            { quote: "Rain isn't just an animation. It's the most direct transfer of value from one person to another the internet has ever seen.", category: "Feature" },
+            { quote: "The best time to join a platform is before everyone else does. The second best time is right now.", category: "Growth" },
+            { quote: "Hub owners don't just create community. They earn from every interaction inside it. That's the landlord model — yours.", category: "Hubs" },
+            { quote: "Moderation shouldn't mean censorship. It means curation with accountability.", category: "Community" },
+            { quote: "SocialHub isn't competing with Instagram or X. It's building what they refused to.", category: "Vision" },
+            { quote: "A social platform without a real economy is just a notice board. We built the economy first.", category: "Design" },
+            { quote: "The creators who get in early on a platform always win the most. History has proven this every single time.", category: "Growth" },
+            { quote: "Broadcasting on SocialHub costs Stars. That cost is what makes every post mean something.", category: "Economy" },
+            { quote: "Your wallet is your identity here. No passwords, no verification emails, no middlemen.", category: "Philosophy" },
+            { quote: "Every comment you leave creates value for someone. That's a fundamentally different internet.", category: "Impact" },
+            { quote: "Small platforms with real values become large platforms with loyal communities. We're in the small part. For now.", category: "Growth" },
+            { quote: "You are not the product on SocialHub. You are the producer, the earner, and the owner.", category: "Vision" },
+            { quote: "Phase 2 is USDT. Global. Borderless. No excuses for anyone in any country not to participate.", category: "Future" },
+            { quote: "The best social platforms feel inevitable in hindsight. Right now we're in the part where it just feels right.", category: "Vision" },
+            { quote: "Crypto isn't complicated. Deposit APTM, earn Stars, withdraw when you're ready. That's it.", category: "Simplicity" },
+            { quote: "Every hub is a micro-economy. Every post is a transaction. Every follow is an investment.", category: "Economy" },
+            { quote: "We didn't build another social network. We built the first social economy.", category: "Vision" },
+            { quote: "The algorithm doesn't decide what people see here. The community does — with their Stars.", category: "Design" },
+            { quote: "Traditional platforms take 100% of the revenue your content generates. We take 20% at most.", category: "Economy" },
+            { quote: "Real money changes behaviour. When people earn for quality, they post quality.", category: "Philosophy" },
+            { quote: "SocialHub is a test. The world is the market. And the results so far are promising.", category: "Growth" },
+            { quote: "Your daily signal is the first step. The ecosystem is built one interaction at a time.", category: "Community" }
+        ];
+
+        var now  = new Date();
+        var day  = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+        var idx  = day % signals.length;
+        var sig  = signals[idx];
+
+        var quoteEl    = document.getElementById('ds-quote');
+        var catEl      = document.getElementById('ds-category');
+        var dateEl     = document.getElementById('ds-date');
+
+        if (quoteEl)  quoteEl.textContent  = '“' + sig.quote + '”';
+        if (catEl)    catEl.textContent    = sig.category;
+        if (dateEl)   dateEl.textContent   = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    })();
+
+    // =========================================================================
+    // BUILD THE FUTURE — Rotating question with live Firebase vote tracking.
+    // Votes stored in Firestore: btf_votes/{questionId}/options/{optionId}
+    // =========================================================================
+    var _btfQuestions = [
+        {
+            id: 'q1',
+            question: 'What would make you never leave a social platform?',
+            options: [
+                { id: 'earn',      label: 'Earn real money' },
+                { id: 'privacy',   label: 'True privacy' },
+                { id: 'noalgo',    label: 'No algorithm' },
+                { id: 'community', label: 'Real community' }
+            ]
+        },
+        {
+            id: 'q2',
+            question: 'What do you wish traditional social media did differently?',
+            options: [
+                { id: 'paycreators', label: 'Pay creators fairly' },
+                { id: 'noads',       label: 'Zero ads' },
+                { id: 'owncontent',  label: 'Own my content' },
+                { id: 'transparent', label: 'Be transparent' }
+            ]
+        },
+        {
+            id: 'q3',
+            question: 'What would bring 1 million people to SocialHub?',
+            options: [
+                { id: 'viral',    label: 'One viral moment' },
+                { id: 'usdt',     label: 'USDT earnings' },
+                { id: 'stars',    label: 'The star economy' },
+                { id: 'trust',    label: 'Trust and transparency' }
+            ]
+        },
+        {
+            id: 'q4',
+            question: 'Which Web3 feature matters most to you?',
+            options: [
+                { id: 'owallet',  label: 'Own your wallet' },
+                { id: 'onchain',  label: 'On-chain payments' },
+                { id: 'nocustod', label: 'No custodian' },
+                { id: 'global',   label: 'Global access' }
+            ]
+        },
+        {
+            id: 'q5',
+            question: 'What is the biggest problem with social media today?',
+            options: [
+                { id: 'exploit',  label: 'Exploiting creators' },
+                { id: 'censor',   label: 'Censorship' },
+                { id: 'data',     label: 'Selling your data' },
+                { id: 'fake',     label: 'Fake engagement' }
+            ]
+        }
+    ];
+
+    var _btfVoted    = false;
+    var _btfMyVote   = null;
+    var _btfUnsub    = null;
+    var _btfCurrent  = null;
+
+    function _btfGetTodayQuestion() {
+        var now = new Date();
+        var day = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+        return _btfQuestions[day % _btfQuestions.length];
+    }
+
+    function _btfRender(counts) {
+        var q       = _btfCurrent;
+        var total   = q.options.reduce(function(s, o) { return s + (counts[o.id] || 0); }, 0);
+        var maxVotes = 0;
+        q.options.forEach(function(o) { if ((counts[o.id]||0) > maxVotes) maxVotes = counts[o.id]||0; });
+
+        var container = document.getElementById('btf-options');
+        var totalEl   = document.getElementById('btf-votes-total');
+        if (totalEl) totalEl.textContent = total + (total === 1 ? ' vote' : ' votes');
+        if (!container) return;
+
+        container.innerHTML = '';
+        q.options.forEach(function(opt) {
+            var votes = counts[opt.id] || 0;
+            var pct   = total > 0 ? Math.round((votes / total) * 100) : 0;
+            var isWin = votes === maxVotes && total > 0;
+            var isMine = _btfMyVote === opt.id;
+
+            var div = document.createElement('div');
+            div.className = 'btf-option' +
+                (isWin && total > 0 ? ' btf-winning' : '') +
+                (isMine ? ' btf-my-vote' : '') +
+                (_btfVoted ? ' btf-voted' : '');
+
+            div.innerHTML =
+                '<div class="btf-option-bar" style="width:' + (_btfVoted ? pct : 0) + '%"></div>' +
+                '<span class="btf-option-label">' + opt.label + '</span>' +
+                (_btfVoted
+                    ? '<span class="btf-option-pct">' + pct + '% · ' + votes + ' vote' + (votes !== 1 ? 's' : '') + '</span>'
+                    : '');
+
+            if (!_btfVoted) {
+                div.style.cursor = 'pointer';
+                div.addEventListener('click', function() { _btfCastVote(opt.id); });
+            }
+            container.appendChild(div);
+
+            // Animate bar after paint
+            if (_btfVoted) {
+                setTimeout(function() {
+                    div.querySelector('.btf-option-bar').style.width = pct + '%';
+                }, 50);
+            }
+        });
+    }
+
+    async function _btfCastVote(optionId) {
+        if (_btfVoted || !_btfCurrent) return;
+        _btfVoted  = true;
+        _btfMyVote = optionId;
+
+        // Show thank you briefly then re-render with bars
+        var thanks = document.getElementById('btf-thankyou');
+        if (thanks) { thanks.style.display = 'block'; setTimeout(function() { thanks.style.display = 'none'; }, 2200); }
+
+        // Write to Firebase
+        if (window.db && window.fs) {
+            try {
+                var ref = window.fs.doc(window.db, 'btf_votes', _btfCurrent.id);
+                await window.fs.runTransaction(window.db, async function(txn) {
+                    var snap = await txn.get(ref);
+                    var data = snap.exists() ? snap.data() : {};
+                    data[optionId] = (data[optionId] || 0) + 1;
+                    txn.set(ref, data, { merge: true });
+                });
+            } catch(e) { console.warn('[BTF] vote write failed:', e); }
+        }
+
+        // Re-render immediately with local optimistic update
+        var counts = {};
+        _btfCurrent.options.forEach(function(o) { counts[o.id] = 0; });
+        counts[optionId] = 1;
+        _btfRender(counts);
+        // Live data will update via onSnapshot
+    }
+
+    function _btfSubscribe(q) {
+        if (_btfUnsub) { try { _btfUnsub(); } catch(_) {} }
+        if (!window.db || !window.fs) {
+            _btfRender({});
+            return;
+        }
+        var ref = window.fs.doc(window.db, 'btf_votes', q.id);
+        _btfUnsub = window.fs.onSnapshot(ref, function(snap) {
+            var counts = snap.exists() ? snap.data() : {};
+            _btfRender(counts);
+        }, function(e) {
+            console.warn('[BTF] onSnapshot failed:', e);
+            _btfRender({});
+        });
+    }
+
+    function initBuildTheFuture() {
+        var q = _btfGetTodayQuestion();
+        _btfCurrent = q;
+
+        var qEl = document.getElementById('btf-question');
+        if (qEl) qEl.textContent = q.question;
+
+        // Check if user already voted today (localStorage flag)
+        var storageKey = 'btf_voted_' + q.id;
+        var saved = localStorage.getItem(storageKey);
+        if (saved) {
+            _btfVoted  = true;
+            _btfMyVote = saved;
+        }
+
+        _btfSubscribe(q);
+    }
+
+    // Init both features once DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initBuildTheFuture);
+    } else {
+        initBuildTheFuture();
+    }
+
+    // Persist vote choice to localStorage so page refresh remembers
+    var _origBtfCast = _btfCastVote;
+    window._btfCastVoteWithPersist = async function(optionId) {
+        if (_btfCurrent) {
+            localStorage.setItem('btf_voted_' + _btfCurrent.id, optionId);
+        }
+        await _origBtfCast(optionId);
+    };
+    // Override internal cast to also persist
+    _btfCastVote = window._btfCastVoteWithPersist;
     window.toggleTray         = toggleTray;
     window.loadComments       = loadComments;
     window.loadCommentsInto   = loadCommentsInto;
