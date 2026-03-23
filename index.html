@@ -6767,22 +6767,77 @@
             _balUnsub = window.fs.onSnapshot(
                 window.fs.collection(window.db, 'user_balances'),
                 function(snap) {
-                    let totalPurchased = 0;
-                    let totalEarned    = 0;
-                    let totalUserAptm  = 0;
+                    let totalPurchased    = 0;
+                    let totalEarned       = 0;
+                    let totalInitDeposit  = 0;  // sum of initial_deposit across ALL users
+                    let totalSpentStars   = 0;  // sum of spentStarsTotal across ALL users
+                    // ── CORRECT LIABILITY AGGREGATION ────────────────────────────────────
+                    // Neither aptmBalance (only written on spend) nor star-to-APTM
+                    // conversion at live price gives the correct liability:
+                    //   • aptmBalance misses users who deposited and never spent
+                    //   • stars × livePrice under-counts when price has risen since deposit
+                    //
+                    // Correct approach: sum initial_deposit (APTM actually deposited)
+                    // across all users and subtract the APTM equivalent of stars spent.
+                    // This gives the true APTM owed regardless of price movement.
+                    //
+                    //   netLiability = Σ(initial_deposit) - Σ(spentStars × $0.01 / livePrice)
+                    //
+                    // initial_deposit is written on every deposit and only grows,
+                    // making it the most reliable field in user_balances.
+                    // ── Per-user liability aggregation ──────────────────────────────
+                    // Use initial_deposit per user when present (most accurate).
+                    // Fall back per-user to their net stars value when initial_deposit
+                    // is missing or zero — catches users who deposited before that
+                    // field was added, preventing silent under-counting of liability.
+                    let totalUserLiabilityAptm = 0; // running APTM sum across all users
+                    const _lp = (typeof currentAptmPriceUsd !== "undefined" && currentAptmPriceUsd > 0)
+                        ? currentAptmPriceUsd
+                        : (window.aptmPriceUSD || 0);
                     snap.forEach(function(d) {
-                        const data = d.data();
-                        totalPurchased += parseFloat(data.stars)        || 0;
-                        totalEarned    += parseFloat(data.creatorStars) || 0;
-                        totalUserAptm  += parseFloat(data.aptmBalance)  || 0;
+                        const data         = d.data();
+                        const initDep      = parseFloat(data.initial_deposit) || 0;
+                        const userStars    = (parseFloat(data.stars) || 0) + (parseFloat(data.creatorStars) || 0);
+                        const userSpent    = parseFloat(data.spentStarsTotal) || 0;
+                        // aptmBalance is written on every spend and deposit — most accurate
+                        const aptmBal      = parseFloat(data.aptmBalance) || 0;
+                        totalPurchased    += parseFloat(data.stars)        || 0;
+                        totalEarned       += parseFloat(data.creatorStars) || 0;
+                        totalInitDeposit  += initDep;
+                        totalSpentStars   += userSpent;
+
+                        // ── LIABILITY PRIORITY (best → fallback) ────────────────────────
+                        // 1. aptmBalance (written on every spend/deposit — most current)
+                        // 2. initial_deposit minus spent (accurate but zeroed on withdrawal)
+                        // 3. star-value fallback (under-counts but beats zero)
+                        // NOTE: initial_deposit is zeroed after withdrawal then rebuilt
+                        // on next deposit. aptmBalance is the only field that always
+                        // reflects what a user is CURRENTLY owed regardless of history.
+                        if (aptmBal > 0) {
+                            // Best path: aptmBalance is live and up-to-date
+                            totalUserLiabilityAptm += aptmBal;
+                        } else if (initDep > 0) {
+                            // Second path: initial_deposit recorded, subtract spent
+                            const spentAptm = (_lp > 0 && userSpent > 0)
+                                ? (userSpent * 0.01) / _lp : 0;
+                            totalUserLiabilityAptm += Math.max(0, initDep - spentAptm);
+                        } else if (userStars > 0 && _lp > 0) {
+                            // Last resort: use current star value
+                            totalUserLiabilityAptm += (userStars * 0.01) / _lp;
+                        }
                     });
+                    window._mcdUserLiabilityAptm = totalUserLiabilityAptm; // pre-computed, price-aware
                     const totalCirculating = totalPurchased + totalEarned;
                     const s2 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
                     s2('mcd-circulating', totalCirculating.toFixed(2) + ' ★');
-                    s2('mcd-pending',     totalCirculating.toFixed(2) + ' ★');
-                    window._mcdPurchased = totalPurchased;
-                    window._mcdEarned    = totalEarned;
-                    window._mcdUserAptm  = totalUserAptm;
+                    // mcd-pending (User-Owned Debt) is updated in _updateSolvency
+                    // with the correct APTM liability value, not circulating stars.
+                    window._mcdPurchased    = totalPurchased;
+                    window._mcdEarned       = totalEarned;
+                    window._mcdTotalStars   = totalPurchased + totalEarned;
+                    window._mcdInitDeposit  = totalInitDeposit;  // NEW: sum of all user deposits
+                    window._mcdSpentStars   = totalSpentStars;   // NEW: sum of all stars spent
+                    window._mcdUserAptm     = null; // computed in _updateSolvency using initDeposit
                     const adminRev = window._mcdAdminRev || 0;
                     _updateSolvency(adminRev);
                 },
@@ -6837,14 +6892,43 @@
             const livePrice = (currentAptmPriceUsd > 0) ? currentAptmPriceUsd
                             : (window.aptmPriceUSD > 0 ? window.aptmPriceUSD : 0);
 
-            // ── BUG FIX: Do NOT add adminRevAptm to liability ─────────────────
-            // Admin revenue is the 20% platform cut already INSIDE the contract
-            // balance as part of normal deposit flow. Adding it again as a
-            // separate liability double-counts it and triggers a false insolvent
-            // (red) state whenever a user legitimately withdraws their balance.
-            // Admin revenue is withdrawn via adminWithdraw() from the same pool.
-            const adminRevAptm       = (livePrice > 0) ? (adminRevStars * CONFIG.STAR_USD) / livePrice : 0; // kept for display only
-            const userLiabilityAptm  = window._mcdUserAptm || 0;
+            // ── User liability: initial_deposit minus spent APTM ────────────────
+            // Using initial_deposit (APTM actually deposited by each user, summed
+            // across all Firebase docs) gives the true liability regardless of
+            // price movement since deposit. Stars-to-APTM conversion at live price
+            // UNDER-counts when price has risen (same stars = less APTM at higher
+            // price), making the system appear more solvent than it is.
+            //
+            // Net liability = Σ(initial_deposit) - Σ(spentStars × $0.01 / livePrice)
+            // Spent APTM = value of stars already consumed — no longer owed.
+            //
+            // adminRevAptm is NOT added — already inside contractBalAptm.
+            const adminRevAptm       = (livePrice > 0) ? (adminRevStars * CONFIG.STAR_USD) / livePrice : 0; // display only
+            const totalInitDeposit   = window._mcdInitDeposit || 0;  // Σ initial_deposit
+            const totalSpentStars    = window._mcdSpentStars  || 0;  // Σ spentStarsTotal
+            const totalSpentAptm     = (livePrice > 0 && totalSpentStars > 0)
+                ? (totalSpentStars * CONFIG.STAR_USD) / livePrice
+                : 0;
+            // Fall back to star-based estimate if initial_deposit not yet aggregated
+            // ── BUG FIX: use pre-computed per-user liability ──────────────────────────
+            // window._mcdUserLiabilityAptm is computed per-user in the onSnapshot
+            // loop with a fallback for users missing initial_deposit.
+            // The previous approach recomputed from aggregate totalInitDeposit
+            // which silently dropped users whose initial_deposit field is 0 or
+            // missing (e.g. users who deposited before that field was added,
+            // or direct on-chain deposits bypassing the UI).
+            // Using the per-user pre-computed value captures ALL users correctly.
+            const totalStarsAllUsers = window._mcdTotalStars || (window._mcdPurchased || 0) + (window._mcdEarned || 0);
+            const starBasedAptm      = (livePrice > 0 && totalStarsAllUsers > 0)
+                ? (totalStarsAllUsers * CONFIG.STAR_USD) / livePrice
+                : 0;
+            // Use pre-computed per-user liability (with per-user fallback) if available.
+            // Fall back to aggregate calculation only if onSnapshot has not fired yet.
+            const userLiabilityAptm  = (window._mcdUserLiabilityAptm != null)
+                ? window._mcdUserLiabilityAptm
+                : (totalInitDeposit > 0)
+                    ? Math.max(0, totalInitDeposit - totalSpentAptm)
+                    : starBasedAptm;
             const totalLiabilityAptm = userLiabilityAptm; // adminRevAptm excluded — already inside contractBalAptm
 
             const contractBalStars   = livePrice > 0 ? (contractBalAptm * livePrice) / CONFIG.STAR_USD : 0;
@@ -6858,6 +6942,9 @@
             if (bar) bar.className = 'mcd-solvency ' + (isSolvent ? 'solvent' : 'insolvent');
             if (ratioEl) ratioEl.textContent =
                 contractBalAptm.toFixed(4) + ' APTM / ' + totalLiabilityAptm.toFixed(4) + ' APTM owed';
+            // Update User-Owned Debt card with correct APTM liability
+            const pendingEl = document.getElementById('mcd-pending');
+            if (pendingEl) pendingEl.textContent = userLiabilityAptm.toFixed(4) + ' APTM';
 
             if (isSolvent) {
                 if (statusEl) statusEl.textContent = 'SYSTEM SOLVENT';
@@ -7102,7 +7189,10 @@
                     const snap     = await window.fs.getDoc(userRef);
                     const prevDeposit = snap.exists() ? (parseFloat(snap.data().initial_deposit) || 0) : 0;
                     const newDeposit  = prevDeposit + aptmAmount;
-                    await window.fs.updateDoc(userRef, { initial_deposit: newDeposit, lastUpdated: Date.now() });
+                    // Also update aptmBalance so solvency checker sees this deposit immediately
+                    const prevAptmBal  = snap.exists() ? (parseFloat(snap.data().aptmBalance) || 0) : 0;
+                    const newAptmBal   = prevAptmBal + aptmAmount;
+                    await window.fs.updateDoc(userRef, { initial_deposit: newDeposit, aptmBalance: newAptmBal, lastUpdated: Date.now() });
                     totalDepositedAptm = newDeposit;
                     console.log(`[Deposit] initial_deposit updated: ${prevDeposit.toFixed(4)} → ${newDeposit.toFixed(4)} APTM`);
                 } catch (fbErr) { console.warn("[Deposit] Could not update initial_deposit:", fbErr); }
