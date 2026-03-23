@@ -92,7 +92,7 @@
             --font-mono: 'JetBrains Mono', monospace;
             --bottom-nav-h: 62px;
             --sidebar-w:  210px;
-            --rp-w:       290px;
+            --rp-w:       250px;
         }
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1632,13 +1632,13 @@
             border-left: 1px solid var(--border);
             background: var(--bg-panel);
             box-shadow: -1px 0 3px rgba(0,0,0,0.06);
-            overflow-y: auto;
-            overflow-x: visible;
-            padding: 16px 14px 32px;
+            overflow-y: scroll;
+            overflow-x: hidden;
+            padding: 16px 14px;
             display: flex; flex-direction: column; gap: 14px;
             min-width: 0;
-            height: calc(100vh - 88px);
-            max-height: calc(100vh - 88px);
+            height: calc(100vh - 60px);
+            max-height: calc(100vh - 60px);
             position: sticky;
             top: 0;
         }
@@ -4717,67 +4717,16 @@
                     </div>
                 </div>
             </div>
-            <!-- ── DAILY SIGNAL CARD ─────────────────────────────────── -->
-            <div class="rp-card" id="daily-signal-card" style="
-                background: linear-gradient(135deg, rgba(124,92,191,0.08) 0%, rgba(45,212,191,0.05) 100%);
-                border: 1px solid rgba(124,92,191,0.25);
-                padding: 16px;
-                position: relative;
-            ">
-                <!-- Ambient glow -->
-                <div style="
-                    position:absolute; top:-30px; right:-30px;
-                    width:100px; height:100px;
-                    background: radial-gradient(circle, rgba(124,92,191,0.15) 0%, transparent 70%);
-                    pointer-events:none;
-                "></div>
-                <div style="display:flex; align-items:center; gap:7px; margin-bottom:12px;">
-                    <span style="
-                        width:8px; height:8px; border-radius:50%;
-                        background:var(--purple-lt);
-                        box-shadow:0 0 8px rgba(124,92,191,0.8);
-                        animation: blink 2s infinite;
-                        flex-shrink:0;
-                    "></span>
-                    <span style="font-size:0.58rem; font-weight:700; color:var(--purple-lt); text-transform:uppercase; letter-spacing:1.5px;">Today's Thought</span>
-                </div>
-                <div id="daily-signal-text" style="
-                    font-size:0.82rem;
-                    font-weight:600;
-                    color:var(--text-primary);
-                    line-height:1.6;
-                    min-height:60px;
-                    font-style:italic;
-                ">"Loading today's thought…"</div>
-                <div id="daily-signal-date" style="
-                    font-size:0.58rem;
-                    color:var(--text-muted);
-                    font-family:var(--font-mono);
-                    margin-top:10px;
-                "></div>
-            </div>
-
-            <!-- ── BUILD THE FUTURE ──────────────────────────────────────── -->
-            <div class="rp-card" id="build-future-card" style="padding:16px;">
-                <div style="display:flex; align-items:center; gap:7px; margin-bottom:12px;">
-                    <span style="font-size:0.9rem;">🌐</span>
-                    <span style="font-size:0.58rem; font-weight:700; color:var(--teal); text-transform:uppercase; letter-spacing:1.5px;">Build The Future</span>
-                </div>
-                <div id="btf-question" style="
-                    font-size:0.84rem;
-                    font-weight:700;
-                    color:var(--text-primary);
-                    line-height:1.5;
-                    margin-bottom:14px;
-                ">What does the internet owe creators?</div>
-                <div id="btf-options" style="display:flex; flex-direction:column; gap:8px;"></div>
-                <div id="btf-total" style="
-                    font-size:0.58rem;
-                    color:var(--text-muted);
-                    font-family:var(--font-mono);
-                    margin-top:10px;
-                    text-align:right;
-                "></div>
+            <div class="rp-card" style="padding:0;">
+                <div style="padding:10px 14px 8px; font-size:0.58rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px;">Featured Partner</div>
+                <a href="https://openplaza.io" target="_blank" rel="noopener noreferrer" style="display:block; padding:0 10px 10px; text-decoration:none;">
+                    <img src="https://i.postimg.cc/gJVdm1jC/Screenshot-2026-03-15-230202.png"
+                         alt="OpenPlaza — Discover, Collect and Trade NFTs"
+                         style="width:100%; border-radius:12px; border:1px solid #c8a24d; display:block; box-shadow:0 2px 16px rgba(200,162,77,0.22); transition:opacity 0.15s;"
+                         onmouseover="this.style.opacity='0.85'"
+                         onmouseout="this.style.opacity='1'"
+                         onerror="this.closest('.rp-card').style.display='none'">
+                </a>
             </div>
             <div class="rp-card">
                 <div class="rp-heading">Storage</div>
@@ -5328,9 +5277,11 @@
             : 0;
         const availStars = Math.floor((aptmStarsDr + earnedDr) * 10) / 10;
 
-        // My APTM Value: currentAptmBalance = onChain - spentAptm
-        // Decreases when you spend. Stable when price moves. Correct always.
-        const myAptmVal = Math.max(0, parseFloat(currentAptmBalance) || 0);
+        // My APTM Value: pure live math — (totalStars × $0.01) / livePrice
+        // This is the number that moves when stars go up/down OR when price moves.
+        const myAptmVal = (currentAptmPriceUsd > 0)
+            ? ((availStars * CONFIG.STAR_USD) / currentAptmPriceUsd)
+            : 0;
         const myAptmStr = myAptmVal.toFixed(4) + " APTM";
 
         // Big balance display: Available Stars (live, market-responsive)
@@ -5614,25 +5565,17 @@
                     creatorEarnings    = Math.max(0, parseFloat(d.creatorStars   || 0));
                     totalDepositedAptm = Math.max(0, parseFloat(d.initial_deposit || 0));
 
-                    // ── CORRECT FORMULA: onChain - spentAPTM ──────────────────────
-                    // The contract balance never changes when stars are spent (spending
-                    // only writes to Firebase). So we subtract the APTM equivalent of
-                    // all stars ever spent to get the true spendable balance.
-                    //
-                    //   currentAptmBalance = onChainAptm - (spentStarsTotal × $0.01 / livePrice)
-                    //
-                    // This means:
-                    //   price moves  → formula re-evaluates spentAptm at new price ✓
-                    //   stars spent  → spentStarsTotal grows → balance drops correctly ✓
-                    //   hard refresh → reads onChain + spentTotal → same result every time ✓
-                    const livePrice       = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
-                    const spentStarsTotal = Math.max(0, parseFloat(d.spentStarsTotal || 0));
-                    const spentAptm       = (livePrice > 0)
-                        ? (spentStarsTotal * CONFIG.STAR_USD) / livePrice
-                        : 0;
-                    currentAptmBalance    = Math.max(0, onChainAptm - spentAptm);
-                    const totalStars      = purchasedStars + creatorEarnings;
-                    console.log(`[syncData] onChain=${onChainAptm.toFixed(6)} APTM | spent=${spentStarsTotal.toFixed(4)}★ (${spentAptm.toFixed(6)} APTM) | livePrice=$${livePrice.toFixed(6)} | spendableAptm=${currentAptmBalance.toFixed(6)} APTM | displayStars=${livePrice > 0 ? ((currentAptmBalance * livePrice) / CONFIG.STAR_USD).toFixed(2) : '?'}★`);
+                    // currentAptmBalance = UNCAPPED spendable APTM value.
+                    // Formula: (fbStars + fbEarned) × $0.01 / livePrice
+                    // DO NOT cap at onChainAptm — the on-chain value is denominated at
+                    // the DEPOSIT price; at the current (lower) price the same stars are
+                    // worth MORE APTM, so capping silently truncates legitimate value.
+                    const livePrice    = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
+                    const totalStars   = purchasedStars + creatorEarnings;
+                    currentAptmBalance = (livePrice > 0 && totalStars > 0)
+                        ? (totalStars * CONFIG.STAR_USD) / livePrice
+                        : onChainAptm;
+                    console.log(`[syncData] onChain=${onChainAptm.toFixed(6)} APTM | fbStars=${purchasedStars.toFixed(4)}★ | fbEarned=${creatorEarnings.toFixed(4)}★ | livePrice=$${livePrice.toFixed(6)} | spendable(UNCAPPED)=${currentAptmBalance.toFixed(6)} APTM`);
                     await window.fs.updateDoc(userRef, { lastSync: Date.now() });
                 }
             } else {
@@ -5679,25 +5622,14 @@
                     } catch (_) {}
                 }
 
-                // ── CORRECT FORMULA: onChain - spentAPTM ─────────────────────
-                // Read spentStarsTotal from Firebase and subtract APTM equivalent
-                // from the on-chain balance. Price-movement-proof and spend-accurate.
-                let fbSpentTotal = 0;
-                if (window.db) {
-                    try {
-                        const spentSnap = await window.fs.getDoc(
-                            window.fs.doc(window.db, 'user_balances', addr.toLowerCase())
-                        );
-                        if (spentSnap.exists()) {
-                            fbSpentTotal = Math.max(0, parseFloat(spentSnap.data().spentStarsTotal || 0));
-                        }
-                    } catch (_) {}
-                }
+                // UNCAPPED: spendable APTM = (fbStars + fbEarned) × $0.01 / livePrice
+                // Do NOT clamp to onChainAptm — price drift means stars may be worth
+                // more APTM than was originally deposited, and clamping hides that.
                 const livePrice   = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
-                const spentAptm   = (livePrice > 0)
-                    ? (fbSpentTotal * CONFIG.STAR_USD) / livePrice
-                    : 0;
-                const netAptm     = Math.max(0, onChainAptm - spentAptm);
+                const totalStars  = fbStarsNet + fbEarnedNet;
+                const netAptm     = (livePrice > 0 && totalStars > 0)
+                    ? (totalStars * CONFIG.STAR_USD) / livePrice
+                    : onChainAptm;
 
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
                 if (!spendLockActive) {
@@ -5791,11 +5723,11 @@
             const availStr     = availStars.toFixed(1) + " ★";
             const aptmStr      = aptmBal.toFixed(4) + " APTM";
 
-            // ── My APTM Value: use currentAptmBalance directly ─────────────
-            // currentAptmBalance = onChainAptm - spentAptm (set by syncData/refresh)
-            // This correctly decreases when stars are spent AND stays stable
-            // when price moves (because spentAptm re-evaluates at new price too).
-            const myAptmValue = Math.max(0, parseFloat(currentAptmBalance) || 0);
+            // ── My APTM Value: pure live math — (totalStars × $0.01) / livePrice ──
+            // Never uses hard-coded 0.3024. Moves up/down with both star count AND price.
+            const myAptmValue = (currentAptmPriceUsd > 0)
+                ? ((availStars * CONFIG.STAR_USD) / currentAptmPriceUsd)
+                : 0;
             const myAptmStr = myAptmValue.toFixed(4) + " APTM";
 
             // Sidebar — Available Stars (live), Total Deposited (from Firebase, user-specific)
@@ -6756,20 +6688,19 @@
                 function(snap) {
                     let totalPurchased = 0;
                     let totalEarned    = 0;
-                    let totalUserAptm  = 0;
                     snap.forEach(function(d) {
                         const data = d.data();
                         totalPurchased += parseFloat(data.stars)        || 0;
                         totalEarned    += parseFloat(data.creatorStars) || 0;
-                        totalUserAptm  += parseFloat(data.aptmBalance)  || 0;
                     });
                     const totalCirculating = totalPurchased + totalEarned;
                     const s2 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
                     s2('mcd-circulating', totalCirculating.toFixed(2) + ' ★');
                     s2('mcd-pending',     totalCirculating.toFixed(2) + ' ★');
+                    // Cache for solvency formula
                     window._mcdPurchased = totalPurchased;
                     window._mcdEarned    = totalEarned;
-                    window._mcdUserAptm  = totalUserAptm;
+                    // Re-run solvency with fresh user balance totals
                     const adminRev = window._mcdAdminRev || 0;
                     _updateSolvency(adminRev);
                 },
@@ -6819,52 +6750,50 @@
                 return;
             }
 
-            // Solvency check in APTM — price-movement proof.
-            // Price dropping never triggers a false DISCREPANCY alarm.
             const livePrice = (currentAptmPriceUsd > 0) ? currentAptmPriceUsd
                             : (window.aptmPriceUSD > 0 ? window.aptmPriceUSD : 0);
+            const contractBalStars = (contractBalAptm * livePrice) / CONFIG.STAR_USD;
 
-            const adminRevAptm       = (livePrice > 0) ? (adminRevStars * CONFIG.STAR_USD) / livePrice : 0;
-            const userLiabilityAptm  = window._mcdUserAptm || 0;
-            const totalLiabilityAptm = userLiabilityAptm + adminRevAptm;
+            // NET LIABILITY = net purchased stars (already spend-deducted in Firestore)
+            //               + creator earnings (owed to creators)
+            //               + admin platform revenue (owed to admin)
+            // This is the exact amount the contract must be able to pay out.
+            // _mcdPurchased comes from user_balances.stars which deductSpendableStars
+            // reduces atomically — so it is already the correct net figure.
+            const totalLiabilityStars = totalPurchased + totalEarned + adminRevStars;
 
-            const contractBalStars   = livePrice > 0 ? (contractBalAptm * livePrice) / CONFIG.STAR_USD : 0;
-            const isSolvent          = contractBalAptm >= totalLiabilityAptm;
-            const discrepancyAptm    = Math.abs(contractBalAptm - totalLiabilityAptm);
-            const discrepancyUSD     = discrepancyAptm * livePrice;
-            const coverageRatio      = totalLiabilityAptm > 0
-                ? ((contractBalAptm / totalLiabilityAptm) * 100).toFixed(1)
+            const isSolvent     = contractBalStars >= totalLiabilityStars;
+            const discrepancy   = Math.abs(contractBalStars - totalLiabilityStars);
+            const coverageRatio = totalLiabilityStars > 0
+                ? ((contractBalStars / totalLiabilityStars) * 100).toFixed(1)
                 : '∞';
 
             if (bar) bar.className = 'mcd-solvency ' + (isSolvent ? 'solvent' : 'insolvent');
             if (ratioEl) ratioEl.textContent =
-                contractBalAptm.toFixed(4) + ' APTM / ' + totalLiabilityAptm.toFixed(4) + ' APTM owed';
+                contractBalStars.toFixed(1) + ' ★ / ' + totalLiabilityStars.toFixed(1) + ' ★';
 
             if (isSolvent) {
                 if (statusEl) statusEl.textContent = 'SYSTEM SOLVENT';
                 if (detailEl) detailEl.textContent =
                     'Coverage: ' + coverageRatio + '% · Surplus: ' +
-                    discrepancyAptm.toFixed(4) + ' APTM ($' + discrepancyUSD.toFixed(2) + ')' +
-                    ' · Users owed: ' + userLiabilityAptm.toFixed(4) + ' APTM' +
-                    ' · Admin rev: ' + adminRevAptm.toFixed(4) + ' APTM' +
-                    ' · Price: $' + livePrice.toFixed(4);
+                    discrepancy.toFixed(2) + ' ★ ($' + (discrepancy * CONFIG.STAR_USD).toFixed(2) + ')' +
+                    ' · Purchased: ' + totalPurchased.toFixed(2) + '★  Earned: ' + totalEarned.toFixed(2) + '★  Admin: ' + adminRevStars.toFixed(2) + '★';
             } else {
                 if (statusEl) statusEl.textContent = 'RESERVE DISCREPANCY';
                 if (detailEl) detailEl.textContent =
-                    'Shortfall: ' + discrepancyAptm.toFixed(4) + ' APTM ($' + discrepancyUSD.toFixed(2) + ')' +
+                    'Shortfall: ' + discrepancy.toFixed(2) + ' ★ ($' +
+                    (discrepancy * CONFIG.STAR_USD).toFixed(2) + ')' +
                     ' · Coverage: ' + coverageRatio + '%' +
-                    ' · Users owed: ' + userLiabilityAptm.toFixed(4) + ' APTM' +
-                    ' · Admin rev: ' + adminRevAptm.toFixed(4) + ' APTM' +
-                    ' · Price: $' + livePrice.toFixed(4);
+                    ' · Purchased: ' + totalPurchased.toFixed(2) + '★  Earned: ' + totalEarned.toFixed(2) + '★  Admin: ' + adminRevStars.toFixed(2) + '★';
             }
 
             console.log(
-                '[Solvency] Contract: ' + contractBalAptm.toFixed(6) + ' APTM' +
-                ' | userLiability=' + userLiabilityAptm.toFixed(6) + ' APTM' +
-                ' | adminRev=' + adminRevAptm.toFixed(6) + ' APTM' +
-                ' | totalOwed=' + totalLiabilityAptm.toFixed(6) + ' APTM' +
-                ' | price=$' + livePrice.toFixed(4) +
-                ' | ' + (isSolvent ? 'SOLVENT ✓' : 'DISCREPANCY ✗') +
+                '[Solvency] Contract: ' + contractBalStars.toFixed(4) + '★' +
+                ' | purchased=' + totalPurchased.toFixed(4) + '★' +
+                ' earned=' + totalEarned.toFixed(4) + '★' +
+                ' admin=' + adminRevStars.toFixed(4) + '★' +
+                ' TOTAL_LIABILITY=' + totalLiabilityStars.toFixed(4) + '★' +
+                ' | ' + (isSolvent ? 'SOLVENT' : 'DISCREPANCY') +
                 ' (' + coverageRatio + '% coverage)'
             );
         }
@@ -8856,7 +8785,7 @@
             "Net Total:                      " + netStarsForModal.toFixed(2) + " \u2605\n\n" +
             "Live Price:       $" + livePriceForModal.toFixed(4) + " / APTM\n" +
             "Star Value:       " + dynamicAptmAmount.toFixed(6) + " APTM\n" +
-            "You Will Receive: " + safeModalAptm.toFixed(6) + " APTM  (on-chain balance)\n" +
+            "You Will Receive: " + safeModalAptm.toFixed(6) + " APTM  (net star value)\n" +
             "\u2500".repeat(34) + "\n\n" +
             shortfallLine +
             syncLine +
@@ -8972,21 +8901,44 @@
                 return alert("On-chain balance is 0. Nothing to withdraw.");
             }
 
-            const postSyncAptm      = parseFloat(ethers.utils.formatEther(postSyncBalanceWei));
-            const finalWithdrawAptm = postSyncAptm;  // EXACT on-chain amount — never reverts
+            const postSyncAptm = parseFloat(ethers.utils.formatEther(postSyncBalanceWei));
+
+            // ── BUG FIX: Net-star-value withdrawal ──────────────────────────────────
+            // The on-chain starBalances holds the FULL deposited amount. Spending
+            // only deducts from Firebase, NOT from the contract mapping. Using
+            // postSyncAptm directly always returns the full deposit, ignoring
+            // everything the user spent.
+            //
+            // Fix: calculate what the user is OWED from their net Firebase stars,
+            // then cap at postSyncAptm so we never ask for more than the contract
+            // holds (which would revert).
+            //
+            //   netAptmOwed       = (netStarsForModal × $0.01) / livePrice
+            //   finalWithdrawAptm = min(netAptmOwed, postSyncAptm)
+            const netAptmOwed       = livePriceForModal > 0
+                ? (netStarsForModal * CONFIG.STAR_USD) / livePriceForModal
+                : 0;
+            const finalWithdrawAptm = Math.min(netAptmOwed, postSyncAptm);
+
+            console.log("[Settlement] NET OWED CALC" +
+                " | netStars=" + netStarsForModal.toFixed(4) +
+                " | livePrice=$" + livePriceForModal.toFixed(6) +
+                " | netAptmOwed=" + netAptmOwed.toFixed(6) +
+                " | onChainCap=" + postSyncAptm.toFixed(6) +
+                " | finalWithdraw=" + finalWithdrawAptm.toFixed(6));
 
             if (finalWithdrawAptm <= 0) {
                 _unlockSettle();
-                return alert("Withdraw amount is 0. Please try again.");
+                return alert("Withdraw amount is 0.\n\nYour net star balance is 0 after spending.\nNo funds to withdraw.");
             }
 
-            const aptmGap = dynamicAptmAmount - finalWithdrawAptm;
+            const aptmGap = netAptmOwed - postSyncAptm;
             if (aptmGap > 0.0001) {
-                console.warn("[Settlement] Gap after sync: starValue=" + dynamicAptmAmount.toFixed(6) +
-                    " onChain=" + finalWithdrawAptm.toFixed(6) + " gap=" + aptmGap.toFixed(6) +
-                    " APTM \u2014 check syncStarsToBlockchain Cloud Function is calling backendInteract() correctly.");
+                console.warn("[Settlement] Vault gap: netOwed=" + netAptmOwed.toFixed(6) +
+                    " onChain=" + postSyncAptm.toFixed(6) + " gap=" + aptmGap.toFixed(6) +
+                    " APTM \u2014 use Seed Protocol Liquidity to cover.");
             } else {
-                console.log("[Settlement] Full value on-chain \u2713 " + finalWithdrawAptm.toFixed(6) + " APTM");
+                console.log("[Settlement] Full net value available on-chain \u2713 " + finalWithdrawAptm.toFixed(6) + " APTM");
             }
 
             const withdrawWei = ethers.utils.parseEther(finalWithdrawAptm.toFixed(18));
@@ -15097,219 +15049,6 @@
     window.closeLegal = closeLegal;
     window.showLegal = showLegal;
     window.reportPost = reportPost;
-</script>
-
-
-<script>
-// ═══════════════════════════════════════════════════════════════
-// TODAY'S THOUGHT — rotates every day, pre-written insights
-// ═══════════════════════════════════════════════════════════════
-(function initDailySignal() {
-    function run() {
-        try {
-            var signals = [
-                "The platforms that pay their creators will inherit the internet. Everything else is just renting attention.",
-                "Your content built their empire. It's time to build your own.",
-                "Web3 doesn't just change how money moves — it changes who gets to keep it.",
-                "The creator economy isn't a trend. It's a correction. Twenty years of unpaid value is being settled on-chain.",
-                "Every like, comment and share has always been worth money. Now the technology exists to prove it.",
-                "The next billion-dollar social platform will be owned by its users, not its investors.",
-                "Decentralisation isn't a buzzword. It's the difference between renting and owning your audience."
-            ];
-
-            var day    = new Date().getDay(); // 0=Sun … 6=Sat
-            var today  = signals[day];
-            var dateStr = new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
-
-            var textEl = document.getElementById('daily-signal-text');
-            var dateEl = document.getElementById('daily-signal-date');
-
-            if (textEl) {
-                textEl.style.opacity = '0';
-                textEl.style.transition = 'opacity 0.6s ease';
-                setTimeout(function() {
-                    textEl.textContent = '\u201c' + today + '\u201d';
-                    textEl.style.opacity = '1';
-                }, 300);
-            }
-            if (dateEl) dateEl.textContent = dateStr;
-        } catch(e) {
-            console.warn('[DailySignal]', e);
-        }
-    }
-    // Run after DOM is ready regardless of script placement
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', run);
-    } else {
-        run();
-    }
-})();
-
-// ═══════════════════════════════════════════════════════════════
-// BUILD THE FUTURE — rotating questions with live Firebase votes
-// ═══════════════════════════════════════════════════════════════
-(function initBuildTheFuture() {
-    function run() {
-        try {
-            var polls = [
-                {
-                    q: "What does the internet owe creators?",
-                    id: "btf_0",
-                    opts: ["Fair revenue split", "Content ownership", "Transparent rules", "Real community"]
-                },
-                {
-                    q: "What would make you never leave a social platform?",
-                    id: "btf_1",
-                    opts: ["Earning real money", "True privacy", "No algorithms", "Owning my data"]
-                },
-                {
-                    q: "The biggest problem with social media today?",
-                    id: "btf_2",
-                    opts: ["Creators unpaid", "Data harvesting", "Toxic content", "No transparency"]
-                },
-                {
-                    q: "What should every creator automatically receive?",
-                    id: "btf_3",
-                    opts: ["Revenue share", "Platform equity", "Verified identity", "Content rights"]
-                },
-                {
-                    q: "What will kill traditional social media?",
-                    id: "btf_4",
-                    opts: ["Decentralisation", "Creator exodus", "Regulation", "Better platforms"]
-                },
-                {
-                    q: "If you could change one thing about social media?",
-                    id: "btf_5",
-                    opts: ["Pay creators fairly", "Remove the algorithm", "Give users ownership", "Full transparency"]
-                },
-                {
-                    q: "What makes a social platform worth your time?",
-                    id: "btf_6",
-                    opts: ["Real earnings", "Great community", "No ads", "I control my feed"]
-                }
-            ];
-
-            var day     = new Date().getDay();
-            var poll    = polls[day];
-            var voted   = localStorage.getItem('btf_voted_' + poll.id);
-
-            var qEl     = document.getElementById('btf-question');
-            var optsEl  = document.getElementById('btf-options');
-            var totalEl = document.getElementById('btf-total');
-
-            if (qEl) qEl.textContent = poll.q;
-            if (!optsEl) return;
-
-            // Load votes from Firebase and render
-            function renderOptions(voteCounts, totalVotes, userVote) {
-                optsEl.innerHTML = '';
-                poll.opts.forEach(function(opt, i) {
-                    var key      = 'opt' + i;
-                    var count    = voteCounts[key] || 0;
-                    // Before anyone has voted: show equal placeholder bars (25%) so the card looks alive
-                    var pct      = userVote
-                        ? (totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0)
-                        : 25;
-                    var isVoted  = userVote === key;
-
-                    var row = document.createElement('div');
-                    row.style.cssText = 'position:relative; border-radius:8px; overflow:hidden; cursor:' + (userVote ? 'default' : 'pointer') + '; transition:opacity 0.13s;';
-                    row.innerHTML =
-                        '<div style="' +
-                            'position:absolute; top:0; left:0; height:100%;' +
-                            'width:' + pct + '%;' +
-                            'background:' + (isVoted ? 'rgba(124,92,191,0.25)' : 'rgba(45,212,191,0.1)') + ';' +
-                            'border-radius:8px;' +
-                            'transition:width 0.6s ease;' +
-                        '"></div>' +
-                        '<div style="' +
-                            'position:relative; z-index:1;' +
-                            'display:flex; justify-content:space-between; align-items:center;' +
-                            'padding:9px 12px;' +
-                            'border:1px solid ' + (isVoted ? 'rgba(124,92,191,0.5)' : 'rgba(124,92,191,0.15)') + ';' +
-                            'border-radius:8px;' +
-                        '">' +
-                            '<span style="font-size:0.75rem; font-weight:' + (isVoted ? '700' : '500') + '; color:' + (isVoted ? 'var(--purple-lt)' : 'var(--text-primary)') + ';">' + opt + '</span>' +
-                            '<span style="font-size:0.65rem; font-family:var(--font-mono); color:var(--text-muted);">' +
-                                (userVote ? pct + '%' : 'tap to vote') +
-                            '</span>' +
-                        '</div>';
-
-                    if (!userVote) {
-                        row.addEventListener('click', function() { castVote(key); });
-                        row.addEventListener('mouseover', function() { row.style.opacity = '0.75'; });
-                        row.addEventListener('mouseout',  function() { row.style.opacity = '1'; });
-                    }
-
-                    optsEl.appendChild(row);
-                });
-
-                if (totalEl) {
-                    totalEl.textContent = userVote
-                        ? totalVotes + ' vote' + (totalVotes !== 1 ? 's' : '') + ' today'
-                        : 'Your voice shapes SocialHub';
-                }
-            }
-
-            function castVote(optKey) {
-                if (!window.db || !window.fs) return;
-                var ref = window.fs.doc(window.db, 'btf_votes', poll.id + '_' + getTodayKey());
-                window.fs.runTransaction(window.db, function(txn) {
-                    return txn.get(ref).then(function(snap) {
-                        var data = snap.exists() ? snap.data() : {};
-                        data[optKey] = (data[optKey] || 0) + 1;
-                        txn.set(ref, data, { merge: true });
-                    });
-                }).then(function() {
-                    localStorage.setItem('btf_voted_' + poll.id, optKey);
-                    listenVotes(optKey);
-                }).catch(function(e) { console.warn('[BTF vote]', e); });
-            }
-
-            function getTodayKey() {
-                var d = new Date();
-                return d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate();
-            }
-
-            function listenVotes(userVote) {
-                if (!window.db || !window.fs) {
-                    renderOptions({}, 0, userVote || null);
-                    return;
-                }
-                var ref = window.fs.doc(window.db, 'btf_votes', poll.id + '_' + getTodayKey());
-                window.fs.onSnapshot(ref, function(snap) {
-                    var data   = snap.exists() ? snap.data() : {};
-                    var total  = 0;
-                    poll.opts.forEach(function(_, i) { total += (data['opt'+i] || 0); });
-                    renderOptions(data, total, userVote || localStorage.getItem('btf_voted_' + poll.id));
-                });
-            }
-
-            // Show placeholder bars immediately so the card is never blank
-            renderOptions({}, 0, voted || null);
-
-            // Wait for Firebase to be ready then start live listener
-            var attempts = 0;
-            var waitForFb = setInterval(function() {
-                attempts++;
-                if (window.db && window.fs) {
-                    clearInterval(waitForFb);
-                    listenVotes(voted || null);
-                } else if (attempts > 20) {
-                    clearInterval(waitForFb);
-                    // Firebase unavailable — already rendered placeholders above, nothing more to do
-                }
-            }, 300);
-        } catch(e) {
-            console.warn('[BuildTheFuture]', e);
-        }
-    }
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', run);
-    } else {
-        run();
-    }
-})();
 </script>
 
 </body>
