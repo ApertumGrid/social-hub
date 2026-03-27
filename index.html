@@ -5220,7 +5220,14 @@
             currentAptmPriceUsd = price;
             window.aptmPriceUSD = price;
 
-            // Price updated — call updateUI() so Available Stars reprice instantly.
+            // Price updated — recompute purchasedStars from depositedAptm at new price.
+            // This is what makes Susan's 22 Stars become 100 Stars when APTM goes from $0.22 to $1.00.
+            // We read depositedAptm from the last known Firebase snapshot via window._lastDepositedAptm
+            // (set by syncData/startChainRefresh). If not yet set, purchasedStars stays as-is.
+            if (window._lastDepositedAptm !== undefined && price > 0) {
+                purchasedStars = Math.floor((window._lastDepositedAptm * price) / CONFIG.STAR_USD * 10) / 10;
+            }
+
             // Available_Stars = (currentAptmBalance * newPrice) / $0.01
             // Price doubles overnight → stars shown double. Price halves → stars halve.
             updateUI();
@@ -5608,11 +5615,25 @@
                     currentAptmBalance = onChainAptm;
                 } else {
                     const d = snap.data();
-                    // stars is already net-of-spend — deductSpendableStars reduces it atomically.
-                    // Do NOT subtract spentStarsTotal again — that is the double-subtraction bug.
-                    purchasedStars     = Math.max(0, parseFloat(d.stars         || 0));
+                    // creatorEarnings = flat earned stars from engagement (creatorStars field)
+                    // purchasedStars  = live-repriced deposit stars (computed from depositedAptm × price)
+                    //                   NOT read from the legacy `stars` field which was baked at deposit price
                     creatorEarnings    = Math.max(0, parseFloat(d.creatorStars   || 0));
                     totalDepositedAptm = Math.max(0, parseFloat(d.initial_deposit || 0));
+                    // depositedAptm is the authoritative APTM held from deposits.
+                    // If not yet written (legacy users), fall back to aptmBalance, then initial_deposit.
+                    const depositedAptmFb = Math.max(0,
+                        parseFloat(d.depositedAptm  || 0) ||
+                        parseFloat(d.aptmBalance     || 0) ||
+                        parseFloat(d.initial_deposit || 0)
+                    );
+                    // purchasedStars = live star value of deposited APTM (reprices with market)
+                    const livePrice0 = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
+                    purchasedStars   = (livePrice0 > 0 && depositedAptmFb > 0)
+                        ? Math.floor((depositedAptmFb * livePrice0) / CONFIG.STAR_USD * 10) / 10
+                        : Math.max(0, parseFloat(d.stars || 0)); // legacy fallback
+                    // Cache for applyPriceUpdate so heartbeat price ticks can reprice without a Firestore read
+                    window._lastDepositedAptm = depositedAptmFb;
 
                     // ── CORRECT FORMULA: onChain - spentAPTM ──────────────────────
                     // The contract balance never changes when stars are spent (spending
@@ -5678,10 +5699,22 @@
                             window.fs.doc(window.db, 'user_balances', addr.toLowerCase())
                         );
                         if (snap.exists()) {
-                            fbStarsNet      = Math.max(0, parseFloat(snap.data().stars        || 0));
-                            fbEarnedNet     = Math.max(0, parseFloat(snap.data().creatorStars || 0));
-                            purchasedStars  = fbStarsNet;
+                            const d         = snap.data();
+                            fbEarnedNet     = Math.max(0, parseFloat(d.creatorStars || 0));
                             creatorEarnings = fbEarnedNet;
+                            // purchasedStars = live star value of APTM held (reprices with market)
+                            const depAptm   = Math.max(0,
+                                parseFloat(d.depositedAptm  || 0) ||
+                                parseFloat(d.aptmBalance     || 0) ||
+                                parseFloat(d.initial_deposit || 0)
+                            );
+                            const lp        = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
+                            purchasedStars  = (lp > 0 && depAptm > 0)
+                                ? Math.floor((depAptm * lp) / CONFIG.STAR_USD * 10) / 10
+                                : Math.max(0, parseFloat(d.stars || 0));
+                            fbStarsNet      = purchasedStars;
+                            // Cache for applyPriceUpdate heartbeat repricing
+                            window._lastDepositedAptm = depAptm;
                         }
                     } catch (_) {}
                 }
@@ -7188,34 +7221,56 @@
                 console.log(`[Deposit] Using price: $${depositPrice.toFixed(4)}`);
             }
 
-            const starsReceived = Math.floor(aptmAmount * depositPrice / CONFIG.STAR_USD);
-            if (starsReceived <= 0) {
-                console.error('[Deposit] starsReceived=0 after price guard — aborting star mint. Deposit is on-chain.');
-                alert('Deposit confirmed on-chain but star price returned 0.\nPlease use the Reconciliation tool to mint your stars, or retry deposit.');
-                return;
-            }
+            // ── STAR DISPLAY NOTE ───────────────────────────────────────────────
+            // Stars shown to the user are ALWAYS computed live:
+            //   displayStars = (currentAptmBalance × livePrice / $0.01) + creatorEarnings
+            //
+            // We do NOT bake a fixed star count into Firebase at deposit time.
+            // Doing so freezes the balance at the deposit-time price and breaks
+            // repricing when APTM moves (Susan: deposited at $0.22, wakes at $1.00
+            // — should see 100 Stars, not 22).
+            //
+            // Firebase deposit fields written here:
+            //   initial_deposit  — lifetime APTM deposited (receipt, never decreases)
+            //   depositedAptm    — running APTM total (settlement source of truth)
+            //   aptmBalance      — solvency-checker mirror of on-chain balance
+            //
+            // The starsAtDepositPrice value below is for the log/ticker only.
 
-            // Increment the lifetime deposit receipt in Firebase — only ever grows
+            const starsAtDepositPrice = Math.floor(aptmAmount * depositPrice / CONFIG.STAR_USD);
+            console.log(`[Deposit] At deposit price $${depositPrice.toFixed(4)}: ${aptmAmount} APTM = ${starsAtDepositPrice} Stars (display will reprice live)`);
+
+            // Increment Firebase deposit records — depositedAptm is the settlement source of truth
             if (userAddress && window.db) {
                 try {
-                    const userRef  = window.fs.doc(window.db, "user_balances", userAddress.toLowerCase());
-                    const snap     = await window.fs.getDoc(userRef);
+                    const userRef     = window.fs.doc(window.db, "user_balances", userAddress.toLowerCase());
+                    const snap        = await window.fs.getDoc(userRef);
                     const prevDeposit = snap.exists() ? (parseFloat(snap.data().initial_deposit) || 0) : 0;
+                    const prevDepAptm = snap.exists() ? (parseFloat(snap.data().depositedAptm)   || 0) : 0;
+                    const prevAptmBal = snap.exists() ? (parseFloat(snap.data().aptmBalance)      || 0) : 0;
                     const newDeposit  = prevDeposit + aptmAmount;
-                    // Also update aptmBalance so solvency checker sees this deposit immediately
-                    const prevAptmBal  = snap.exists() ? (parseFloat(snap.data().aptmBalance) || 0) : 0;
-                    const newAptmBal   = prevAptmBal + aptmAmount;
-                    await window.fs.updateDoc(userRef, { initial_deposit: newDeposit, aptmBalance: newAptmBal, lastUpdated: Date.now() });
+                    const newDepAptm  = prevDepAptm + aptmAmount;  // SOURCE OF TRUTH for settlement
+                    const newAptmBal  = prevAptmBal + aptmAmount;
+                    await window.fs.updateDoc(userRef, {
+                        initial_deposit: newDeposit,
+                        depositedAptm:   newDepAptm,
+                        aptmBalance:     newAptmBal,
+                        lastUpdated:     Date.now()
+                    });
                     totalDepositedAptm = newDeposit;
-                    console.log(`[Deposit] initial_deposit updated: ${prevDeposit.toFixed(4)} → ${newDeposit.toFixed(4)} APTM`);
-                } catch (fbErr) { console.warn("[Deposit] Could not update initial_deposit:", fbErr); }
+                    // Update live balance immediately so updateUI shows new stars right away
+                    currentAptmBalance = Math.max(0, (parseFloat(currentAptmBalance) || 0) + aptmAmount);
+                    // Cache depositedAptm so applyPriceUpdate heartbeat can reprice without a Firestore read
+                    window._lastDepositedAptm = newDepAptm;
+                    console.log(`[Deposit] initial_deposit: ${prevDeposit.toFixed(4)} → ${newDeposit.toFixed(4)} APTM | depositedAptm: ${prevDepAptm.toFixed(4)} → ${newDepAptm.toFixed(4)} APTM`);
+                } catch (fbErr) { console.warn("[Deposit] Could not update Firebase deposit records:", fbErr); }
             }
 
-            await creditPurchasedStars(userAddress, starsReceived);
-            if (typeof window.tickerLog === 'function') window.tickerLog('info', 'Deposit: +' + starsReceived + ' Stars', starsReceived, '↓');
-            logTransaction('deposit', starsReceived, {
+            // Log/ticker use starsAtDepositPrice for display context only
+            if (typeof window.tickerLog === 'function') window.tickerLog('info', 'Deposit: +' + starsAtDepositPrice + ' Stars', starsAtDepositPrice, '↓');
+            logTransaction('deposit', starsAtDepositPrice, {
                 from: 'on-chain', to: userAddress,
-                description: `Deposited ${aptmAmount.toFixed(2)} $APTM → ${starsReceived} Stars`
+                description: `Deposited ${aptmAmount.toFixed(4)} $APTM → ~${starsAtDepositPrice} Stars at $${depositPrice.toFixed(4)} (Stars reprice live with APTM)`
             });
             showToast("Deposit Successful ✓");
             setTimeout(() => { syncData(); }, 2000);
@@ -7236,13 +7291,14 @@
     // If balance cannot be determined, disables the button (never shows a fake amount).
     function updateSettleButtons() {
         var livePrice  = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : 0;
-        // Use purchasedStars + creatorEarnings — the EXACT same source as the
-        // settlement modal reads from Firestore. This guarantees the button label
-        // always matches the "You Will Receive" line in the confirmation dialog.
-        // Do NOT derive stars from currentAptmBalance (round-trip introduces drift).
-        var totalStars = Math.max(0, parseFloat(purchasedStars)  || 0)
-                       + Math.max(0, parseFloat(creatorEarnings) || 0);
-        var btns       = document.querySelectorAll('button[onclick*="settleStarsToWallet"]');
+        // Withdrawal amount uses the same formula as settleToWallet:
+        //   depositAptm (from currentAptmBalance, which = onChain - spentDebt) + earnedAptm
+        // currentAptmBalance is set by syncData and reprices on every heartbeat.
+        var btns        = document.querySelectorAll('button[onclick*="settleStarsToWallet"]');
+        var earnedAptm  = (livePrice > 0 && creatorEarnings > 0)
+            ? (creatorEarnings * CONFIG.STAR_USD) / livePrice : 0;
+        var depositAptm = Math.max(0, parseFloat(currentAptmBalance) || 0);
+        var withdrawAptm = depositAptm + earnedAptm;
 
         if (!userAddress) {
             btns.forEach(function(b) {
@@ -7252,22 +7308,14 @@
             return;
         }
 
-        if (livePrice <= 0 || totalStars <= 0) {
+        if (livePrice <= 0 || withdrawAptm <= 0) {
             btns.forEach(function(b) {
                 b.textContent = 'Settle Total Balance to Wallet →';
-                b.disabled    = (totalStars <= 0 && !!userAddress);
+                b.disabled    = (withdrawAptm <= 0 && !!userAddress);
             });
             return;
         }
 
-        // Withdrawal amount = on-chain spendable APTM (currentAptmBalance, set by syncData).
-        // This matches what the contract will actually pay — not the star-derived fantasy value
-        // which can exceed the contract balance when price has moved since deposit.
-        // currentAptmBalance is already capped at the on-chain value by syncData.
-        var starDerivedAptm = (totalStars * CONFIG.STAR_USD) / livePrice;
-        var withdrawAptm    = Math.min(starDerivedAptm, Math.max(parseFloat(currentAptmBalance) || 0, 0));
-        // If currentAptmBalance not yet loaded, fall back to star-derived (will be corrected on sync)
-        if (withdrawAptm <= 0 && starDerivedAptm > 0) withdrawAptm = starDerivedAptm;
         var label = 'Settle ' + withdrawAptm.toFixed(4) + ' APTM →';
         btns.forEach(function(b) {
             if (!b.disabled || b.textContent.indexOf('progress') === -1) {
@@ -7298,10 +7346,15 @@
             }
 
             var fbData       = (liveSnap && liveSnap.exists()) ? liveSnap.data() : null;
-            var fbStars      = fbData ? (parseFloat(fbData.stars)         || 0) : 0;
-            var fbEarned     = fbData ? (parseFloat(fbData.creatorStars)  || 0) : 0;
+            var fbEarned     = fbData ? (parseFloat(fbData.creatorStars)   || 0) : 0;
             var fbDeposit    = fbData ? (parseFloat(fbData.initial_deposit) || 0) : 0;
             var fbSpent      = fbData ? (parseFloat(fbData.spentStarsTotal) || 0) : 0;
+            // depositedAptm is the APTM source of truth for the deposit portion.
+            // Legacy users without depositedAptm fall back to aptmBalance then initial_deposit.
+            var fbDepAptm    = fbData
+                ? (parseFloat(fbData.depositedAptm || 0) || parseFloat(fbData.aptmBalance || 0) || parseFloat(fbData.initial_deposit || 0))
+                : 0;
+            fbDepAptm = Math.max(0, fbDepAptm);
 
             // ── Verify price is loaded ────────────────────────────────────────────
             var livePrice = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : 0;
@@ -7317,21 +7370,37 @@
                 return alert('Live APTM price is not available. Settle is disabled.\nPlease wait a moment and try again.');
             }
 
-            // ── Compute user liability (what user is owed from the contract) ─────
-            // Formula: APTM_owed = (stars_remaining + creatorStars) × $0.01 / livePrice
-            // stars_remaining already reflects spentStarsTotal via syncData.
-            // We use the on-chain balance as the authoritative floor — never withdraw
-            // more than what the contract actually holds for the user.
-            var totalStars   = fbStars + fbEarned;
-            if (totalStars <= 0) {
+            // ── Compute user withdrawal amount ───────────────────────────────────────────
+            // DEPOSIT portion: use APTM held directly (price-movement proof)
+            //   depositAptmOwed = fbDepAptm (APTM deposited, lives in contract)
+            //   This reprices automatically — Susan's 1 APTM at $0.22 deposit
+            //   is still 1 APTM at $1.00, so she gets 1 APTM back from the deposit portion.
+            //
+            // EARNED portion: flat star count ÷ live price
+            //   earnedAptmOwed = fbEarned × $0.01 / livePrice
+            //   Engagement earnings are stored as flat stars (already correct).
+            //
+            // SPENT deduction: subtract APTM equivalent of stars spent
+            //   spentAptmDebt = fbSpent × $0.01 / livePrice
+            //
+            // Total: depositAptmOwed + earnedAptmOwed - spentAptmDebt
+
+            var spentAptmDebt    = (livePrice > 0) ? (fbSpent  * CONFIG.STAR_USD) / livePrice : 0;
+            var earnedAptmOwed   = (livePrice > 0) ? (fbEarned * CONFIG.STAR_USD) / livePrice : 0;
+            var depositAptmOwed  = Math.max(0, fbDepAptm - spentAptmDebt);
+            var withdrawAptm     = Math.max(0, depositAptmOwed + earnedAptmOwed);
+
+            // Equivalent star display values for the confirm dialog
+            var depositStarsDisplay = (livePrice > 0) ? Math.floor((depositAptmOwed * livePrice) / CONFIG.STAR_USD * 10) / 10 : 0;
+            var totalStarsDisplay   = depositStarsDisplay + fbEarned;
+
+            if (withdrawAptm <= 0) {
                 settleAllBtns.forEach(function(b) {
                     b.disabled    = false;
                     b.textContent = 'Settle Total Balance to Wallet →';
                 });
-                return alert('No stars to settle.\n\nDeposit APTM or earn stars through interactions first.');
+                return alert('No balance to settle.\n\nDeposit APTM or earn stars through interactions first.');
             }
-
-            var withdrawAptm  = (totalStars * CONFIG.STAR_USD) / livePrice;
 
             // Read on-chain balance as a safety cap — reserve protection
             var onChainWei = null;
@@ -7356,7 +7425,9 @@
                 return alert('Withdraw amount is 0 at the current price.\n\nYour stars could not be converted to APTM.');
             }
 
-            console.log('[settleToWallet] stars=' + totalStars.toFixed(4) +
+            console.log('[settleToWallet] depositAptm=' + depositAptmOwed.toFixed(8) +
+                ' earnedAptm=' + earnedAptmOwed.toFixed(8) +
+                ' spentDebt=' + spentAptmDebt.toFixed(8) +
                 ' withdrawAptm=' + withdrawAptm.toFixed(8) +
                 ' onChainAptm=' + onChainAptm.toFixed(8) +
                 ' safeWithdrawAptm=' + safeWithdrawAptm.toFixed(8) +
@@ -7364,9 +7435,9 @@
 
             var confirmed = confirm(
                 'Settle Stars to Wallet\n\n' +
-                'Total Stars:      ' + totalStars.toFixed(2) + ' ★\n' +
-                '  Purchased:      ' + fbStars.toFixed(2) + ' ★\n' +
-                '  Earned:         ' + fbEarned.toFixed(2) + ' ★\n' +
+                'Total Stars:      ' + totalStarsDisplay.toFixed(2) + ' ★\n' +
+                '  Deposit Stars:  ' + depositStarsDisplay.toFixed(2) + ' ★ (repriced at live APTM)\n' +
+                '  Earned Stars:   ' + fbEarned.toFixed(2) + ' ★\n' +
                 'Live Price:       $' + livePrice.toFixed(4) + ' / APTM\n' +
                 'Will Withdraw:    ' + safeWithdrawAptm.toFixed(6) + ' APTM\n' +
                 '─'.repeat(30) + '\n' +
