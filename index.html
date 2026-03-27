@@ -7473,12 +7473,16 @@
             console.log('[settleToWallet] Confirmed. Block: ' + receipt.blockNumber +
                 ', Withdrew: ' + safeWithdrawAptm.toFixed(8) + ' APTM');
 
-            // ── On-chain confirmed — NOW zero local state and Firebase ─────────
-            purchasedStars     = 0;
-            creatorEarnings    = 0;
-            currentAptmBalance = 0;
-            totalDepositedAptm = 0;
-            _lastSpendTime     = Date.now();
+            // ── On-chain confirmed — zero ALL local state first, THEN Firebase ─────────
+            purchasedStars            = 0;
+            creatorEarnings           = 0;
+            currentAptmBalance        = 0;
+            totalDepositedAptm        = 0;
+            window._lastDepositedAptm = 0;   // stop heartbeat from repricing old APTM amount
+            _lastSpendTime            = Date.now();
+            // Call updateUI immediately so the screen shows 0 right now, before Firebase write
+            updateUI();
+            updateDrawerUI();
 
             if (window.db) {
                 try {
@@ -7491,6 +7495,7 @@
                             currentAptmBalance: 0,
                             spentStarsTotal:    0,
                             initial_deposit:    0,
+                            depositedAptm:      0,   // zero the settlement source of truth
                             lastWithdraw:       Date.now(),
                             lastUpdated:        Date.now()
                         },
@@ -7502,11 +7507,11 @@
 
             logTransaction('settle', safeWithdrawAptm, {
                 from: addr, to: 'wallet',
-                description: 'Settled ' + totalStars.toFixed(2) + '★ → ' + safeWithdrawAptm.toFixed(4) + ' $APTM to wallet'
+                description: 'Settled ' + totalStarsDisplay.toFixed(2) + '★ → ' + safeWithdrawAptm.toFixed(4) + ' $APTM to wallet'
             });
             showToast('Settled! ' + safeWithdrawAptm.toFixed(4) + ' APTM → wallet ✓');
-            updateUI();
-            updateDrawerUI();
+            // syncData runs after Firebase write is complete — all vars already zeroed so
+            // it will read 0 back from Firestore and confirm the zero rather than re-inflate.
             syncData();
         } catch (e) {
             console.error('[settleToWallet] threw:', e);
