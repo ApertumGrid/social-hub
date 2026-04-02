@@ -16065,20 +16065,41 @@
     // visible dimensions (e.g. inside a scrolled-off panel).
     function _playTrackNative(track, videoEl) {
         if (!track || !videoEl) return;
+
+        // Show the element first — must be visible before we attach stream
+        videoEl.style.display = 'block';
+
+        // Strategy 1: use the underlying MediaStreamTrack directly
         try {
             const raw = typeof track.getMediaStreamTrack === 'function'
                 ? track.getMediaStreamTrack() : null;
-            if (raw) {
-                videoEl.srcObject = new MediaStream([raw]);
-                videoEl.style.display = 'block';
-                videoEl.play().catch(() => {});
+            if (raw && raw.readyState !== 'ended') {
+                const ms = new MediaStream([raw]);
+                videoEl.srcObject = ms;
+                // autoplay attr handles play; explicit call handles browsers that need it
+                const p = videoEl.play();
+                if (p && typeof p.catch === 'function') p.catch(() => {});
+                // Verify it actually rendered — if not, fall through to strategy 2
+                setTimeout(() => {
+                    if (videoEl.readyState === 0 || videoEl.videoWidth === 0) {
+                        console.warn('[Live] Native srcObject stalled — falling back to Agora play()');
+                        _agoraPlayFallback(track, videoEl);
+                    }
+                }, 1500);
                 return;
             }
-        } catch(_) {}
-        // Fallback: let Agora inject its own <video> into the parent div
+        } catch(e) {
+            console.warn('[Live] srcObject strategy failed:', e);
+        }
+
+        // Strategy 2: Agora's own play() into the parent wrapper
+        _agoraPlayFallback(track, videoEl);
+    }
+
+    function _agoraPlayFallback(track, videoEl) {
         const wrapper = videoEl.parentElement || videoEl;
         wrapper.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-        try { track.play(wrapper); } catch(_) {}
+        try { track.play(wrapper); } catch(e) { console.warn('[Live] Agora play() fallback failed:', e); }
     }
 
     // ── Local camera preview ──────────────────────────────────────
@@ -16099,7 +16120,13 @@
             const vid         = $('live-local-video');
             const placeholder = $('live-preview-placeholder');
             if (placeholder) placeholder.style.display = 'none';
-            if (vid) _playTrackNative(localVideoTrack, vid);
+
+            // Wait two frames — Agora tracks need a moment after creation
+            // before getMediaStreamTrack() returns an active, non-black stream
+            if (vid) {
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                _playTrackNative(localVideoTrack, vid);
+            }
         } catch(e) {
             console.error('[Live] Preview error:', e);
             const msg = e.name === 'NotAllowedError' || e.message?.includes('Permission')
@@ -16170,19 +16197,36 @@
             show('live-active-panel');
             setText('live-broadcast-title-display', title);
 
-            // Play local video into broadcaster box using native MediaStream
-            // (bypasses Agora's internal getBoundingClientRect check)
+            // Play local video into broadcaster box.
+            // We wait two frames AFTER showing the panel so the element is painted
+            // and has real dimensions before we attach the stream.
             const bvNative = $('live-broadcaster-video-native');
             if (bvNative) {
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
                 _playTrackNative(localVideoTrack, bvNative);
+
+                // Extra safety: if still black after 2s, try direct getUserMedia stream
+                setTimeout(async () => {
+                    if (bvNative.readyState === 0 || bvNative.videoWidth === 0) {
+                        console.warn('[Live] Broadcaster video still black — trying getUserMedia direct');
+                        try {
+                            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                            bvNative.srcObject = stream;
+                            bvNative.play().catch(() => {});
+                        } catch(e) {
+                            console.warn('[Live] getUserMedia fallback failed:', e);
+                            // Last resort: Agora play() into wrapper
+                            _agoraPlayFallback(localVideoTrack, bvNative);
+                        }
+                    }
+                }, 2000);
             } else {
                 // Fallback for older HTML without native video element
                 const bvEl = $('live-broadcaster-video');
                 if (bvEl) {
                     bvEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-                    requestAnimationFrame(() => requestAnimationFrame(() => {
-                        try { localVideoTrack.play(bvEl); } catch(_) {}
-                    }));
+                    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                    try { localVideoTrack.play(bvEl); } catch(_) {}
                 }
             }
 
@@ -16759,12 +16803,31 @@
 
     // ── Debug helper — call window.forceVideoPlay() in console if black screen ──
     window.forceVideoPlay = function() {
-        const bvEl = $('live-broadcaster-video');
-        if (!bvEl) { console.warn('[forceVideoPlay] Element not found'); return; }
+        const bvNative = $('live-broadcaster-video-native');
         if (!localVideoTrack) { console.warn('[forceVideoPlay] No localVideoTrack'); return; }
-        bvEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-        console.log('[forceVideoPlay] Replaying into', bvEl, 'rect:', bvEl.getBoundingClientRect());
-        localVideoTrack.play(bvEl);
+
+        if (bvNative) {
+            console.log('[forceVideoPlay] Forcing native video, rect:', bvNative.getBoundingClientRect());
+            // Try srcObject first
+            try {
+                const raw = localVideoTrack.getMediaStreamTrack();
+                if (raw) {
+                    bvNative.srcObject = new MediaStream([raw]);
+                    bvNative.style.display = 'block';
+                    bvNative.play().catch(e => console.warn('[forceVideoPlay] play() rejected:', e));
+                    console.log('[forceVideoPlay] srcObject attached, track state:', raw.readyState);
+                    return;
+                }
+            } catch(e) { console.warn('[forceVideoPlay] srcObject failed:', e); }
+            // Fall back to Agora play
+            _agoraPlayFallback(localVideoTrack, bvNative);
+        } else {
+            const bvEl = $('live-broadcaster-video');
+            if (!bvEl) { console.warn('[forceVideoPlay] Element not found'); return; }
+            bvEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+            console.log('[forceVideoPlay] Replaying into', bvEl, 'rect:', bvEl.getBoundingClientRect());
+            localVideoTrack.play(bvEl);
+        }
     };
 
     console.log('[SocialHub] Live Stream Engine initialised — Agora App ID:', AGORA_APP_ID);
