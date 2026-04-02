@@ -15983,12 +15983,23 @@
                 if (ph) ph.style.display = '';
             }
         }
-        // Auto-start camera preview when switching to broadcast tab
+        // Auto-start camera preview when switching to broadcast tab (not yet live)
         if (tab === 'broadcast' && !isHosting && window.AgoraRTC) {
-            // Small delay so the panel is visible before Agora measures the element
             setTimeout(function() {
                 if (typeof window.startLocalPreview === 'function') window.startLocalPreview();
             }, 300);
+        }
+        // Re-attach broadcaster video when switching back while actively hosting.
+        // The panel was hidden (display:none) while on Watch tab — Agora's injected
+        // <video> stops rendering and needs play() called again once visible.
+        if (tab === 'broadcast' && isHosting && localVideoTrack) {
+            setTimeout(async function() {
+                const bvEl = $('live-broadcaster-video');
+                if (bvEl) {
+                    console.log('[Live] Re-attaching broadcaster video after tab switch');
+                    await _playTrackNative(localVideoTrack, bvEl);
+                }
+            }, 150);
         }
     };
 
@@ -16061,42 +16072,32 @@
     }
 
     // ── Helper: play an Agora video track into a dedicated wrapper div ─────────
-    // IMPORTANT: Agora's play() clears the innerHTML of the target element,
-    // so we must NEVER target a container that holds overlay badges/metadata.
-    // Always pass a dedicated inner wrapper div as the target.
-    // The wrapper must be visible and have real dimensions before play() is called.
+    // IMPORTANT: Agora's play() clears innerHTML of the target — never pass
+    // a container that holds overlay badges. Use dedicated inner wrappers only.
     async function _playTrackNative(track, wrapperEl) {
         if (!track || !wrapperEl) return;
 
-        // Ensure wrapper is visible
-        wrapperEl.style.display    = 'block';
-        wrapperEl.style.width      = '100%';
-        wrapperEl.style.height     = '100%';
-        wrapperEl.style.position   = 'absolute';
-        wrapperEl.style.top        = '0';
-        wrapperEl.style.left       = '0';
+        // Ensure wrapper is visible and sized
+        wrapperEl.style.display  = 'block';
+        wrapperEl.style.width    = '100%';
+        wrapperEl.style.height   = '100%';
+        wrapperEl.style.position = 'absolute';
+        wrapperEl.style.top      = '0';
+        wrapperEl.style.left     = '0';
 
-        // Wait for the browser to paint so getBoundingClientRect returns real values
+        // Poll up to 2s for the element to have real dimensions
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-        // If the wrapper still has no height, its parent may not be visible yet —
-        // poll up to 2s for the parent container to get real dimensions
         for (let i = 0; i < 20; i++) {
-            const rect = wrapperEl.getBoundingClientRect();
-            if (rect.height > 10) break;
+            if (wrapperEl.getBoundingClientRect().height > 10) break;
             await new Promise(r => setTimeout(r, 100));
         }
 
         const rect = wrapperEl.getBoundingClientRect();
-        console.log('[Live] Wrapper rect before play():', Math.round(rect.width), 'x', Math.round(rect.height));
-
-        if (rect.height < 10) {
-            console.warn('[Live] Wrapper still has no height — play() will likely fail');
-        }
+        console.log('[Live] Wrapper rect:', Math.round(rect.width), 'x', Math.round(rect.height));
 
         try {
             track.play(wrapperEl);
-            console.log('[Live] Agora play() called successfully');
+            console.log('[Live] Agora play() called');
         } catch(e) {
             console.warn('[Live] Agora play() failed:', e);
         }
@@ -16119,7 +16120,6 @@
 
             const placeholder = $('live-preview-placeholder');
             if (placeholder) placeholder.style.display = 'none';
-            // Play into the inner video element — it's a dedicated slot, safe for Agora
             const vid = $('live-local-video');
             if (vid) {
                 vid.style.display = 'block';
@@ -16195,12 +16195,10 @@
             show('live-active-panel');
             setText('live-broadcast-title-display', title);
 
-            // Play into live-broadcaster-video — the dedicated inner wrapper.
-            // Do NOT target live-broadcaster-video-container (Agora would wipe the overlays).
+            // Play into the dedicated inner wrapper — NOT the outer container
+            // (Agora's play() wipes innerHTML, so outer container would lose overlays)
             const bvEl = $('live-broadcaster-video');
-            if (bvEl) {
-                await _playTrackNative(localVideoTrack, bvEl);
-            }
+            if (bvEl) await _playTrackNative(localVideoTrack, bvEl);
 
             // 6. Show LIVE badge in sidebar
             const badge = $('live-viewer-badge');
