@@ -4923,7 +4923,7 @@
                                 <div style="font-size:2rem;opacity:0.3;">📷</div>
                                 <div style="font-size:0.72rem; color:rgba(255,255,255,0.35);">Camera preview will appear here</div>
                             </div>
-                            <div id="live-local-video" style="width:100%;height:100%;"></div>
+                            <div id="live-local-video" style="width:100%;height:100%;position:absolute;top:0;left:0;"></div>
                         </div>
 
                         <div style="display:flex; gap:10px;">
@@ -4942,7 +4942,7 @@
                                 <span class="live-badge-pill">🔴 YOU ARE LIVE</span>
                                 <span class="live-viewer-chip" id="live-broadcast-viewers">👁 0 watching</span>
                             </div>
-                            <div id="live-broadcaster-video" style="width:100%;height:100%;"></div>
+                            <div id="live-broadcaster-video" style="width:100%;height:100%;position:absolute;top:0;left:0;"></div>
                             <div class="live-stream-meta">
                                 <div class="live-stream-host" id="live-broadcast-title-display"></div>
                             </div>
@@ -15866,20 +15866,22 @@
     // ── Load stream browser ───────────────────────────────────────
     function loadStreamBrowser() {
         if (!window.db || !window.fs) { waitForFb(loadStreamBrowser); return; }
-        const { collection, query, where, onSnapshot, orderBy } = window.fs;
+        const { collection, query, where, onSnapshot } = window.fs;
 
         // Tear down previous listener
         if (_liveStreamUnsub) { try { _liveStreamUnsub(); } catch(_) {} }
 
+        // Simple query — no composite index needed
         const q = query(
             collection(window.db, LIVE_COL),
-            where('active', '==', true),
-            orderBy('startedAt', 'desc')
+            where('active', '==', true)
         );
 
         _liveStreamUnsub = onSnapshot(q, snap => {
             const streams = [];
             snap.forEach(d => streams.push({ id: d.id, ...d.data() }));
+            // Sort client-side by startedAt desc
+            streams.sort((a, b) => (b.startedAt?.seconds || 0) - (a.startedAt?.seconds || 0));
             renderStreamBrowser(streams);
         }, err => {
             console.warn('[Live] Stream browser listener error:', err);
@@ -15925,10 +15927,22 @@
 
             [localVideoTrack, localAudioTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
 
-            const previewEl = $('live-local-video');
-            const placeholder = $('live-preview-placeholder');
+            const previewEl     = $('live-local-video');
+            const placeholder   = $('live-preview-placeholder');
+            const previewWrap   = $('live-local-preview');
+
             if (placeholder) placeholder.style.display = 'none';
-            if (previewEl) localVideoTrack.play(previewEl);
+            if (previewWrap) {
+                previewWrap.style.width  = '100%';
+                previewWrap.style.height = '220px';
+            }
+            if (previewEl) {
+                previewEl.style.width  = '100%';
+                previewEl.style.height = '100%';
+                // Small delay so element is fully laid out before Agora injects video
+                await new Promise(r => setTimeout(r, 100));
+                localVideoTrack.play(previewEl);
+            }
 
             showToast('📷 Camera preview started');
         } catch(e) {
@@ -15980,14 +15994,19 @@
             }
             await agoraClient.publish([localVideoTrack, localAudioTrack]);
 
-            // 4. Play own video in broadcaster view
-            const bvEl = $('live-broadcaster-video');
-            if (bvEl) localVideoTrack.play(bvEl);
-
-            // 5. Show active panel, hide setup
+            // 5. Show active panel FIRST — element must be visible before play()
             hide('live-setup-panel');
             show('live-active-panel');
             setText('live-broadcast-title-display', title);
+
+            // 4. Play own video AFTER panel is visible in DOM
+            await new Promise(r => setTimeout(r, 120));
+            const bvEl = $('live-broadcaster-video');
+            if (bvEl) {
+                bvEl.style.width  = '100%';
+                bvEl.style.height = '100%';
+                localVideoTrack.play(bvEl);
+            }
 
             // 6. Show LIVE badge in sidebar
             const badge = $('live-viewer-badge');
@@ -16222,18 +16241,19 @@
         if (!window.db || !window.fs) { waitForFb(() => subscribeLiveChat(streamId, feedElId)); return; }
         if (_liveChatUnsub) { try { _liveChatUnsub(); } catch(_) {} }
 
-        const { collection, query, orderBy, onSnapshot, limit } = window.fs;
+        const { collection, query, orderBy, onSnapshot } = window.fs;
+        // Note: limit not available in window.fs — query without it, render last 50 client-side
         const q = query(
             collection(window.db, LIVE_CHAT_COL, streamId, 'messages'),
-            orderBy('ts', 'desc'),
-            limit(50)
+            orderBy('ts', 'asc')
         );
 
         _liveChatUnsub = onSnapshot(q, snap => {
             const msgs = [];
             snap.forEach(d => msgs.push({ id: d.id, ...d.data() }));
-            msgs.reverse();
-            renderChatFeed(feedElId, msgs);
+            // Keep last 50 messages client-side
+            const recent = msgs.slice(-50);
+            renderChatFeed(feedElId, recent);
         });
     }
 
