@@ -16070,51 +16070,31 @@
         `).join('');
     }
 
-    // ── Helper: play Agora video track into a named element ────────────────────
-    // Uses srcObject on a native <video> element directly — most reliable method.
-    // Polls until the MediaStreamTrack is truly live before attaching.
-    async function _playTrackNative(track, targetEl) {
-        if (!track || !targetEl) return;
-        try {
-            // Poll up to 3s for the underlying track to be live
-            let raw = null;
-            for (let i = 0; i < 30; i++) {
-                try {
-                    const t = typeof track.getMediaStreamTrack === 'function'
-                        ? track.getMediaStreamTrack() : null;
-                    if (t && t.readyState === 'live' && t.enabled) { raw = t; break; }
-                } catch(_) {}
-                await new Promise(r => setTimeout(r, 100));
-            }
-            if (!raw) {
-                console.warn('[Live] Track never became live — falling back to Agora play()');
-                track.play(targetEl);
-                return;
-            }
-            console.log('[Live] Track is live, using srcObject on native video');
-            // targetEl might be a <video> or a <div> — handle both
-            let videoEl = targetEl;
-            if (targetEl.tagName !== 'VIDEO') {
-                // Find or create a <video> inside the div
-                videoEl = targetEl.querySelector('video');
-                if (!videoEl) {
-                    videoEl = document.createElement('video');
-                    videoEl.autoplay   = true;
-                    videoEl.muted      = true;
-                    videoEl.playsInline = true;
-                    videoEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;';
-                    targetEl.appendChild(videoEl);
-                }
-            }
-            videoEl.style.display = 'block';
-            videoEl.srcObject = new MediaStream([raw]);
-            const p = videoEl.play();
-            if (p && p.catch) p.catch(e => console.warn('[Live] video.play():', e));
-            console.log('[Live] srcObject attached successfully');
-        } catch(e) {
-            console.warn('[Live] _playTrackNative error:', e);
-            try { track.play(targetEl); } catch(_) {}
+    // ── Helper: play Agora video track into a native <video> element ───────────
+    // Polls until track is live, then attaches via srcObject.
+    // The video element MUST have visible ancestors before calling this.
+    async function _playTrackNative(track, videoEl) {
+        if (!track || !videoEl) return;
+        videoEl.style.display = 'block';
+        // Poll up to 3s for track to become live
+        let raw = null;
+        for (let i = 0; i < 30; i++) {
+            try {
+                const t = typeof track.getMediaStreamTrack === 'function'
+                    ? track.getMediaStreamTrack() : null;
+                if (t && t.readyState === 'live' && t.enabled) { raw = t; break; }
+            } catch(_) {}
+            await new Promise(r => setTimeout(r, 100));
         }
+        if (!raw) {
+            console.warn('[Live] Track never became live after 3s');
+            try { track.play(videoEl.parentElement || videoEl); } catch(_) {}
+            return;
+        }
+        console.log('[Live] Attaching srcObject, videoEl offsetHeight:', videoEl.offsetHeight);
+        videoEl.srcObject = new MediaStream([raw]);
+        const p = videoEl.play();
+        if (p && p.catch) p.catch(e => console.warn('[Live] play():', e));
     }
 
     // ── Local camera preview ──────────────────────────────────────
@@ -16204,13 +16184,25 @@
             }
             await agoraClient.publish([localVideoTrack, localAudioTrack]);
 
-            // Show active panel FIRST — element must be in DOM and visible before play()
+            // Show ALL panels in the hierarchy before playing video —
+            // if any ancestor is display:none the video element has zero dimensions
+            // and srcObject goes inactive immediately.
+            const bcPanel = $('live-broadcast-panel');
+            if (bcPanel) bcPanel.style.display = '';       // ensure parent visible
             hide('live-setup-panel');
             show('live-active-panel');
             setText('live-broadcast-title-display', title);
 
-            // Play local video — use the native <video> element directly.
-            // It's already in the DOM so srcObject works regardless of parent visibility.
+            // Also update the tab buttons to reflect broadcast tab is active
+            const watchBtn = $('ltab-watch');
+            const liveBtn  = $('ltab-broadcast');
+            if (watchBtn) watchBtn.classList.remove('active');
+            if (liveBtn)  liveBtn.classList.add('active');
+
+            // Wait two frames for the browser to repaint with the panels visible
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+            // Now play — the video element has real dimensions
             const bvNative = $('live-broadcaster-video-native');
             if (bvNative) {
                 await _playTrackNative(localVideoTrack, bvNative);
