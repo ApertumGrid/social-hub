@@ -629,6 +629,16 @@
             border:1px solid rgba(224,62,62,0.2);
             margin-bottom:12px;
         }
+        /* Force Agora-injected video to fill the container */
+        .live-stream-box video,
+        #live-broadcaster-video video,
+        #live-remote-video video,
+        #live-local-video video {
+            position:absolute !important;
+            top:0 !important; left:0 !important;
+            width:100% !important; height:100% !important;
+            object-fit:cover !important;
+        }
         .live-stream-overlay-top {
             position:absolute; top:10px; left:12px; right:12px;
             display:flex; justify-content:space-between; align-items:center;
@@ -721,6 +731,74 @@
             border-top:1px solid var(--border);
         }
         .live-chat-input-row .field { margin-top:0 !important; flex:1; }
+
+        /* ── Gift System ─────────────────────────────────── */
+        .live-gift-card {
+            background:var(--bg-card);
+            border:1px solid var(--border);
+            border-radius:var(--radius-md);
+            overflow:hidden;
+            margin-bottom:10px;
+        }
+        .live-gift-head {
+            padding:10px 14px 8px;
+            font-size:0.7rem; font-weight:700;
+            color:var(--text-secondary);
+            text-transform:uppercase; letter-spacing:1px;
+            border-bottom:1px solid var(--border);
+            display:flex; align-items:center; gap:6px;
+        }
+        .live-gift-grid {
+            display:grid; grid-template-columns:repeat(2,1fr);
+            gap:8px; padding:12px;
+        }
+        .gift-btn {
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            gap:3px; padding:10px 6px;
+            border-radius:var(--radius-sm);
+            border:1.5px solid var(--border);
+            background:var(--bg-card2);
+            cursor:pointer; transition:all 0.15s;
+            font-family:var(--font-body);
+        }
+        .gift-btn:hover { transform:translateY(-2px); box-shadow:0 4px 14px rgba(0,0,0,0.12); }
+        .gift-btn:active { transform:scale(0.96); }
+        .gift-btn .gift-icon { font-size:1.4rem; }
+        .gift-btn .gift-name { font-size:0.65rem; font-weight:700; color:var(--text-primary); }
+        .gift-btn .gift-cost { font-size:0.6rem; color:var(--gold); font-weight:700; }
+        .gift-btn.spark  { border-color:rgba(124,92,191,0.3); }
+        .gift-btn.fire   { border-color:rgba(251,146,60,0.4); }
+        .gift-btn.diamond{ border-color:rgba(139,92,246,0.5); background:rgba(139,92,246,0.04); }
+        .gift-btn.rocket { border-color:rgba(239,68,68,0.4); background:rgba(239,68,68,0.03); }
+        /* Fullscreen burst animation */
+        @keyframes gift-burst {
+            0%   { opacity:0; transform:scale(0.3); }
+            30%  { opacity:1; transform:scale(1.15); }
+            70%  { opacity:1; transform:scale(1); }
+            100% { opacity:0; transform:scale(1.05); }
+        }
+        .gift-burst-overlay {
+            position:fixed; inset:0; z-index:9999;
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            pointer-events:none;
+            animation:gift-burst 1.8s ease forwards;
+        }
+        .gift-burst-emoji { font-size:5rem; filter:drop-shadow(0 0 24px rgba(255,200,0,0.7)); }
+        .gift-burst-label { font-size:1.1rem; font-weight:800; color:#fff;
+            text-shadow:0 2px 12px rgba(0,0,0,0.5); margin-top:10px; }
+        /* SuperChat bars in chat */
+        .live-superchat-bar {
+            margin:6px 0; padding:8px 12px;
+            border-radius:var(--radius-sm);
+            font-size:0.75rem; font-weight:700;
+            display:flex; align-items:center; gap:8px;
+        }
+        .live-superchat-bar.fire    { background:rgba(251,146,60,0.18); border-left:3px solid #f97316; }
+        .live-superchat-bar.diamond { background:rgba(139,92,246,0.18); border-left:3px solid #8b5cf6; }
+        .live-superchat-bar.rocket  {
+            background:linear-gradient(90deg,rgba(239,68,68,0.15),rgba(251,146,60,0.10));
+            border-left:3px solid #ef4444;
+        }
 
         .live-stats-row {
             display:grid; grid-template-columns:repeat(4,1fr);
@@ -4854,7 +4932,7 @@
                                 <span class="live-badge-pill" id="live-stream-badge-watch">🔴 LIVE</span>
                                 <span class="live-viewer-chip" id="live-watch-viewers">👁 0 watching</span>
                             </div>
-                            <div id="live-remote-video" style="width:100%;height:100%;"></div>
+                            <div id="live-remote-video" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
                             <div class="live-stream-meta" id="live-stream-meta">
                                 <div class="live-stream-host" id="live-stream-host-name">Loading…</div>
                                 <div class="live-stream-title-sm" id="live-stream-title-sm"></div>
@@ -4872,6 +4950,33 @@
                                 ⚡ Hype  <span id="live-hype-count" style="opacity:0.75;font-size:0.7rem;">(0)</span>
                             </button>
                             <button class="btn btn-outline btn-sm" onclick="leaveLiveStream()">✕ Leave</button>
+                        </div>
+
+                        <!-- Gift Panel -->
+                        <div class="live-gift-card">
+                            <div class="live-gift-head">🎁 Send a Gift <span style="font-size:0.6rem;color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;">(80% goes to creator)</span></div>
+                            <div class="live-gift-grid">
+                                <button class="gift-btn spark" onclick="sendGift('spark')">
+                                    <span class="gift-icon">⚡</span>
+                                    <span class="gift-name">Spark</span>
+                                    <span class="gift-cost">1 ★</span>
+                                </button>
+                                <button class="gift-btn fire" onclick="sendGift('fire')">
+                                    <span class="gift-icon">🔥</span>
+                                    <span class="gift-name">Fire</span>
+                                    <span class="gift-cost">5 ★</span>
+                                </button>
+                                <button class="gift-btn diamond" onclick="sendGift('diamond')">
+                                    <span class="gift-icon">💎</span>
+                                    <span class="gift-name">Diamond</span>
+                                    <span class="gift-cost">20 ★</span>
+                                </button>
+                                <button class="gift-btn rocket" onclick="sendGift('rocket')">
+                                    <span class="gift-icon">🚀</span>
+                                    <span class="gift-name">Rocket</span>
+                                    <span class="gift-cost">50 ★</span>
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Live Chat -->
@@ -4937,12 +5042,12 @@
 
                     <!-- Active broadcast dashboard (hidden until live) -->
                     <div id="live-active-panel" style="display:none;">
-                        <div class="live-stream-box" id="live-broadcaster-video-container" style="height:260px;">
+                        <div class="live-stream-box" id="live-broadcaster-video-container">
                             <div class="live-stream-overlay-top">
                                 <span class="live-badge-pill">🔴 YOU ARE LIVE</span>
                                 <span class="live-viewer-chip" id="live-broadcast-viewers">👁 0 watching</span>
                             </div>
-                            <div id="live-broadcaster-video" style="width:100%;height:100%;position:absolute;top:0;left:0;"></div>
+                            <div id="live-broadcaster-video" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
                             <div class="live-stream-meta">
                                 <div class="live-stream-host" id="live-broadcast-title-display"></div>
                             </div>
@@ -4968,10 +5073,14 @@
                             </div>
                         </div>
 
-                        <!-- Live chat (broadcaster view) -->
+                        <!-- Live chat (broadcaster view) -->\
                         <div class="card live-chat-card">
                             <div class="live-chat-head">💬 Live Chat</div>
                             <div id="live-broadcast-chat-feed" class="live-chat-feed"></div>
+                            <div class="live-chat-input-row">
+                                <input type="text" id="live-broadcast-chat-input" class="field" placeholder="Chat with your viewers…" style="margin-top:0;" onkeydown="if(event.key==='Enter')sendLiveChatBroadcaster()">
+                                <button class="btn btn-purple btn-sm" onclick="sendLiveChatBroadcaster()">Send</button>
+                            </div>
                         </div>
 
                         <button class="btn btn-sm" onclick="endLiveStream()" style="width:100%;margin-top:10px;background:rgba(224,62,62,0.12);border:1px solid rgba(224,62,62,0.4);color:#e03e3e;font-weight:700;">■ End Stream &amp; Settle Stars</button>
@@ -16000,11 +16109,14 @@
             setText('live-broadcast-title-display', title);
 
             // 4. Play own video AFTER panel is visible in DOM
-            await new Promise(r => setTimeout(r, 120));
+            await new Promise(r => setTimeout(r, 200));
             const bvEl = $('live-broadcaster-video');
             if (bvEl) {
                 bvEl.style.width  = '100%';
                 bvEl.style.height = '100%';
+                // Wait for next paint cycle before calling play
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                try { localVideoTrack.stop(); } catch(_) {}
                 localVideoTrack.play(bvEl);
             }
 
@@ -16034,31 +16146,19 @@
     // ── End stream ────────────────────────────────────────────────
     window.endLiveStream = async function() {
         if (!currentStreamId) return;
-        const confirmed = confirm(`End your stream?\n\nYou earned ${liveStarsEarned.toFixed(1)} ★\nYour cut (80%): ${(liveStarsEarned * CREATOR_CUT).toFixed(1)} ★\n\nStars will be credited to your Creator balance.`);
+        // Note: Gift stars (80/20) are credited in real-time when sent.
+        // liveStarsEarned reflects the display total for the confirmation dialog only.
+        const confirmed = confirm(`End your stream?\n\nTotal Stars received: ${liveStarsEarned.toFixed(1)} ★\n(Gift stars have already been credited to your Creator balance in real-time.)`);
         if (!confirmed) return;
 
         try {
             // Mark stream inactive in Firestore
-            const { doc, updateDoc, increment } = window.fs;
+            const { doc, updateDoc } = window.fs;
             await updateDoc(doc(window.db, LIVE_COL, currentStreamId), {
-                active: false,
+                active:  false,
                 endedAt: Date.now()
             });
-
-            // Credit 80% stars to creator balance
-            const creatorStars = parseFloat((liveStarsEarned * CREATOR_CUT).toFixed(2));
-            const platformStars = parseFloat((liveStarsEarned * 0.2).toFixed(2));
-
-            if (creatorStars > 0 && window.db && window.fs) {
-                const userRef = window.fs.doc(window.db, 'user_balances', userAddress);
-                await updateDoc(userRef, { creatorStars: increment(creatorStars) });
-                creatorEarnings = (parseFloat(creatorEarnings) || 0) + creatorStars;
-
-                // Platform revenue
-                const adminRef = window.fs.doc(window.db, 'admin_revenue', 'global');
-                await updateDoc(adminRef, { total: increment(platformStars) }).catch(() => {});
-            }
-
+            // Stars already credited per-gift via sendGift() — nothing to settle here
         } catch(e) {
             console.error('[Live] End stream error:', e);
         }
@@ -16073,7 +16173,7 @@
         const badge = $('live-viewer-badge');
         if (badge) badge.style.display = 'none';
 
-        showToast(`✓ Stream ended — ${(liveStarsEarned * CREATOR_CUT).toFixed(1)} ★ credited to your Creator balance.`);
+        showToast(`✓ Stream ended — ${liveStarsEarned.toFixed(1)} ★ received this session.`);
         if (typeof updateUI === 'function') updateUI();
 
         // Reset state
@@ -16225,6 +16325,126 @@
         }).catch(e => console.warn('[Live chat]', e));
     };
 
+    // ── Broadcaster chat (host sending messages to their own stream) ──
+    window.sendLiveChatBroadcaster = async function() {
+        const input = $('live-broadcast-chat-input');
+        const text  = input ? input.value.trim() : '';
+        if (!text || !currentStreamId) return;
+        if (input) input.value = '';
+
+        if (!window.db || !window.fs) return;
+        const { collection, addDoc, serverTimestamp } = window.fs;
+        await addDoc(collection(window.db, LIVE_CHAT_COL, currentStreamId, 'messages'), {
+            author:   userHandle  || 'Creator',
+            avatar:   userAvatar  || '',
+            text:     text,
+            ts:       serverTimestamp(),
+            isSystem: false,
+            isHost:   true
+        }).catch(e => console.warn('[Live broadcast chat]', e));
+    };
+
+    // ── Gift System ───────────────────────────────────────────────
+    const GIFT_TIERS = {
+        spark:   { icon: '⚡', name: 'Spark',   cost: 1,  style: 'spark',   chatStyle: '' },
+        fire:    { icon: '🔥', name: 'Fire',    cost: 5,  style: 'fire',    chatStyle: 'fire' },
+        diamond: { icon: '💎', name: 'Diamond', cost: 20, style: 'diamond', chatStyle: 'diamond' },
+        rocket:  { icon: '🚀', name: 'Rocket',  cost: 50, style: 'rocket',  chatStyle: 'rocket' }
+    };
+
+    window.sendGift = async function(tierKey) {
+        if (!_watchingStreamId) { showToast('Join a stream first to send gifts.'); return; }
+        if (!userAddress)       { showToast('Connect your wallet to send gifts.'); return; }
+
+        const tier = GIFT_TIERS[tierKey];
+        if (!tier) return;
+
+        const available = typeof getTotalSpendableStars === 'function' ? getTotalSpendableStars() : 0;
+        if (available < tier.cost) {
+            showToast(`Not enough Stars! You need ${tier.cost} ★ to send a ${tier.name}.`);
+            return;
+        }
+
+        try {
+            const { doc, updateDoc, increment, getDoc } = window.fs;
+
+            // Fetch stream to get host address
+            const streamSnap = await getDoc(doc(window.db, LIVE_COL, _watchingStreamId));
+            if (!streamSnap.exists() || !streamSnap.data().active) {
+                showToast('Stream has ended.'); return;
+            }
+            const hostAddr = streamSnap.data().hostAddr;
+
+            // 1. Deduct from viewer's purchased stars
+            const viewerRef = doc(window.db, 'user_balances', userAddress);
+            await updateDoc(viewerRef, { stars: increment(-tier.cost) });
+            purchasedStars = Math.max(0, (parseFloat(purchasedStars) || 0) - tier.cost);
+
+            // 2. Credit 80% to creator immediately
+            const creatorCut  = parseFloat((tier.cost * 0.8).toFixed(4));
+            const platformCut = parseFloat((tier.cost * 0.2).toFixed(4));
+
+            if (hostAddr) {
+                const creatorRef = doc(window.db, 'user_balances', hostAddr);
+                await updateDoc(creatorRef, { creatorStars: increment(creatorCut) }).catch(() => {});
+            }
+
+            // 3. Credit 20% to platform immediately
+            const adminRef = doc(window.db, 'admin_revenue', 'global');
+            await updateDoc(adminRef, { total: increment(platformCut) }).catch(() => {});
+
+            // 4. Update stream star count for display
+            await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
+                starsEarned: increment(tier.cost),
+                hypeCount:   increment(1)
+            });
+
+            // 5. Post gift message to live chat
+            const giftText = `${tier.icon} ${userHandle || 'Someone'} sent a ${tier.name}! (${tier.cost} ★)`;
+            const { collection, addDoc, serverTimestamp } = window.fs;
+            await addDoc(collection(window.db, LIVE_CHAT_COL, _watchingStreamId, 'messages'), {
+                author:    userHandle || 'Viewer',
+                avatar:    userAvatar || '',
+                text:      giftText,
+                ts:        serverTimestamp(),
+                isSystem:  true,
+                isGift:    true,
+                giftTier:  tierKey,
+                giftIcon:  tier.icon,
+                giftStyle: tier.chatStyle
+            }).catch(() => {});
+
+            // 6. Show burst animation for diamond / rocket
+            if (tierKey === 'diamond' || tierKey === 'rocket') {
+                _showGiftBurst(tier);
+            }
+
+            if (typeof updateUI === 'function') updateUI();
+            showToast(`${tier.icon} ${tier.name} sent! Creator gets ${creatorCut.toFixed(1)} ★`);
+
+        } catch(e) {
+            console.warn('[Gift] Error:', e);
+            showToast('Gift failed: ' + (e.message || String(e)));
+        }
+    };
+
+    function _showGiftBurst(tier) {
+        const existing = document.querySelector('.gift-burst-overlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'gift-burst-overlay';
+        overlay.style.background = tier.style === 'rocket'
+            ? 'radial-gradient(circle, rgba(239,68,68,0.25) 0%, transparent 70%)'
+            : 'radial-gradient(circle, rgba(139,92,246,0.25) 0%, transparent 70%)';
+        overlay.innerHTML = `
+            <div class="gift-burst-emoji">${tier.icon}</div>
+            <div class="gift-burst-label">${tier.name}! ${tier.icon}</div>
+        `;
+        document.body.appendChild(overlay);
+        setTimeout(() => overlay.remove(), 1900);
+    }
+
     function sendSystemChat(streamId, text) {
         if (!window.db || !window.fs) return;
         const { collection, addDoc, serverTimestamp } = window.fs;
@@ -16260,15 +16480,56 @@
     function renderChatFeed(feedElId, msgs) {
         const feed = $(feedElId);
         if (!feed) return;
-        feed.innerHTML = msgs.map(m => `
-            <div class="live-chat-msg">
+        feed.innerHTML = msgs.map(m => {
+            // Gift SuperChat bar styles (fire, diamond, rocket)
+            if (m.isGift && m.giftStyle) {
+                return `<div class="live-superchat-bar ${m.giftStyle}">
+                    <span style="font-size:1.2rem;">${m.giftIcon || '🎁'}</span>
+                    <div>
+                        <div style="font-size:0.65rem;color:var(--text-muted);">${_esc(m.author)}</div>
+                        <div style="color:var(--text-primary);">${_esc(m.text)}</div>
+                    </div>
+                </div>`;
+            }
+            // Spark gift — small highlight inline
+            if (m.isGift) {
+                return `<div class="live-chat-msg" style="background:rgba(124,92,191,0.07);border-radius:6px;padding:4px 6px;">
+                    <img class="live-chat-av" src="${m.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=' + _esc(m.author)}" onerror="this.src='https://api.dicebear.com/7.x/identicon/svg?seed=hub'">
+                    <div>
+                        <div class="live-chat-user">${_esc(m.author)}</div>
+                        <div class="live-chat-body live-chat-hype-msg">${_esc(m.text)}</div>
+                    </div>
+                </div>`;
+            }
+            // Host message — purple tint
+            if (m.isHost) {
+                return `<div class="live-chat-msg" style="background:rgba(124,92,191,0.06);border-radius:6px;padding:4px 6px;">
+                    <img class="live-chat-av" src="${m.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=' + _esc(m.author)}" onerror="this.src='https://api.dicebear.com/7.x/identicon/svg?seed=hub'">
+                    <div>
+                        <div class="live-chat-user" style="color:var(--purple);">👑 ${_esc(m.author)}</div>
+                        <div class="live-chat-body">${_esc(m.text)}</div>
+                    </div>
+                </div>`;
+            }
+            // Standard system message
+            if (m.isSystem) {
+                return `<div class="live-chat-msg">
+                    <img class="live-chat-av" src="https://api.dicebear.com/7.x/identicon/svg?seed=system" onerror="this.src='https://api.dicebear.com/7.x/identicon/svg?seed=hub'">
+                    <div>
+                        <div class="live-chat-user" style="color:var(--text-muted);">System</div>
+                        <div class="live-chat-body live-chat-hype-msg">${_esc(m.text)}</div>
+                    </div>
+                </div>`;
+            }
+            // Regular message
+            return `<div class="live-chat-msg">
                 <img class="live-chat-av" src="${m.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=' + _esc(m.author)}" onerror="this.src='https://api.dicebear.com/7.x/identicon/svg?seed=hub'">
                 <div>
                     <div class="live-chat-user">${_esc(m.author)}</div>
-                    <div class="live-chat-body ${m.isSystem ? 'live-chat-hype-msg' : ''}">${_esc(m.text)}</div>
+                    <div class="live-chat-body">${_esc(m.text)}</div>
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
         feed.scrollTop = feed.scrollHeight;
     }
 
