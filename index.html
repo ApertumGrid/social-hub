@@ -15971,7 +15971,23 @@
         const bcEl    = $('live-broadcast-panel');
         if (watchEl) watchEl.style.display = tab === 'watch' ? '' : 'none';
         if (bcEl)    bcEl.style.display    = tab === 'broadcast' ? '' : 'none';
-        if (tab === 'watch') loadStreamBrowser();
+        if (tab === 'watch') {
+            loadStreamBrowser();
+            // Stop preview camera when leaving broadcast tab (unless actively streaming)
+            if (!isHosting) {
+                if (localVideoTrack) { try { localVideoTrack.stop(); localVideoTrack.close(); } catch(_) {} localVideoTrack = null; }
+                if (localAudioTrack) { try { localAudioTrack.stop(); localAudioTrack.close(); } catch(_) {} localAudioTrack = null; }
+                const ph = $('live-preview-placeholder');
+                if (ph) ph.style.display = '';
+            }
+        }
+        // Auto-start camera preview when switching to broadcast tab
+        if (tab === 'broadcast' && !isHosting && window.AgoraRTC) {
+            // Small delay so the panel is visible before Agora measures the element
+            setTimeout(function() {
+                if (typeof window.startLocalPreview === 'function') window.startLocalPreview();
+            }, 300);
+        }
     };
 
     // ── Load stream browser ───────────────────────────────────────
@@ -16046,8 +16062,18 @@
     window.startLocalPreview = async function() {
         try {
             if (!window.AgoraRTC) { showToast('Agora SDK not loaded yet — please wait.'); return; }
-            if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack.close(); }
-            if (localAudioTrack) { localAudioTrack.stop(); localAudioTrack.close(); }
+            // Don't restart if already previewing
+            if (localVideoTrack && !isHosting) {
+                const previewEl = $('live-local-video');
+                if (previewEl) {
+                    requestAnimationFrame(() => requestAnimationFrame(() => {
+                        try { localVideoTrack.play(previewEl); } catch(_) {}
+                    }));
+                }
+                return;
+            }
+            if (localVideoTrack) { try { localVideoTrack.stop(); localVideoTrack.close(); } catch(_) {} }
+            if (localAudioTrack) { try { localAudioTrack.stop(); localAudioTrack.close(); } catch(_) {} }
 
             [localVideoTrack, localAudioTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
 
@@ -16059,20 +16085,24 @@
             if (previewWrap) { previewWrap.style.width = '100%'; previewWrap.style.height = '220px'; }
             if (previewEl) {
                 previewEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-                const playPreviewWhenReady = () => {
-                    if (previewEl.offsetWidth > 0 || previewEl.offsetHeight > 0) {
+                // Two rAF cycles ensures the browser has painted before Agora measures
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    try {
                         localVideoTrack.play(previewEl);
-                    } else {
-                        setTimeout(playPreviewWhenReady, 100);
+                    } catch(e) {
+                        setTimeout(() => { try { localVideoTrack.play(previewEl); } catch(_) {} }, 400);
                     }
-                };
-                setTimeout(playPreviewWhenReady, 50);
+                }));
             }
-
-            showToast('📷 Camera preview started');
         } catch(e) {
             console.error('[Live] Preview error:', e);
-            showToast('Camera error: ' + (e.message || 'Permission denied?'));
+            const msg = e.name === 'NotAllowedError' || e.message?.includes('Permission')
+                ? 'Camera permission denied — please allow camera access in your browser settings.'
+                : 'Camera error: ' + (e.message || String(e));
+            showToast(msg);
+            // Show placeholder again on error
+            const ph = $('live-preview-placeholder');
+            if (ph) ph.style.display = '';
         }
     };
 
@@ -16112,12 +16142,17 @@
             liveHypeCount   = 0;
 
             // 2. Init Agora client as host
+            // IMPORTANT: Token is signed for channel "socialhub_live_test" — must use exact name.
+            // We isolate streams by storing the host's Agora UID in Firestore so viewers
+            // can subscribe to only that UID even though all streams share one channel.
+            const HOST_UID = 1 + Math.floor(Math.random() * 99998); // unique per session
             agoraClient = window.AgoraRTC.createClient({ mode: 'live', codec: 'h264' });
             await agoraClient.setClientRole('host');
+            await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, HOST_UID);
 
-            // Each stream gets its own Agora channel — prevents cross-stream bleed
-            const channel = (LIVE_CHANNEL + '_' + docRef.id).substring(0, 64);
-            await agoraClient.join(AGORA_APP_ID, channel, AGORA_TOKEN, 1);
+            // Store host UID so viewers know which publisher to subscribe to
+            const { doc: _doc, updateDoc: _upd } = window.fs;
+            await _upd(_doc(window.db, LIVE_COL, docRef.id), { hostUid: HOST_UID }).catch(() => {});
 
             // 3. Publish tracks (create if not already previewed)
             if (!localVideoTrack || !localAudioTrack) {
@@ -16229,15 +16264,18 @@
             // Update viewer count
             await updateDoc(doc(window.db, LIVE_COL, streamId), { viewers: increment(1) });
 
-            // Init Agora as audience — join the SAME per-stream channel as the host
+            // Init Agora as audience — join shared channel, subscribe only to this stream's host UID
             agoraClient = window.AgoraRTC.createClient({ mode: 'live', codec: 'h264' });
             await agoraClient.setClientRole('audience');
+            await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, Math.floor(Math.random() * 99998) + 100000);
 
-            const channel = (LIVE_CHANNEL + '_' + streamId).substring(0, 64);
-            await agoraClient.join(AGORA_APP_ID, channel, AGORA_TOKEN, Math.floor(Math.random() * 99998) + 2);
+            // hostUid tells us which publisher in the shared channel belongs to THIS stream
+            const hostUid = streamData.hostUid || null;
 
-            // Listen for remote video
+            // Listen for remote video — only render the matching host UID
             agoraClient.on('user-published', async (remoteUser, mediaType) => {
+                // If we know the hostUid, skip any other publisher (another stream's host)
+                if (hostUid && remoteUser.uid !== hostUid) return;
                 await agoraClient.subscribe(remoteUser, mediaType);
                 if (mediaType === 'video') {
                     const remoteEl = $('live-remote-video');
@@ -16258,8 +16296,11 @@
                 }
             });
 
-            agoraClient.on('user-unpublished', () => {
-                leaveLiveStream();
+            agoraClient.on('user-unpublished', (remoteUser) => {
+                // Only leave if the host (our stream's publisher) drops — ignore other streams
+                if (!hostUid || remoteUser.uid === hostUid) {
+                    leaveLiveStream();
+                }
             });
 
             // Show player, hide browser
