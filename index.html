@@ -622,12 +622,19 @@
         .live-stream-box {
             position:relative;
             width:100%;
-            height:240px;
+            height:420px;
             background:#0d1117;
             border-radius:var(--radius-md);
             overflow:hidden;
             border:1px solid rgba(224,62,62,0.2);
             margin-bottom:12px;
+        }
+        /* Keep broadcaster preview slightly shorter */
+        #live-local-preview {
+            height:260px !important;
+        }
+        @media (max-width:768px) {
+            .live-stream-box { height:56vw; min-height:220px; }
         }
         /* Force Agora-injected <video> and its wrapper div to fill the container */
         #live-broadcaster-video video,
@@ -16372,11 +16379,12 @@
             // Deduct star from viewer — find host address to credit
             const streamSnap = await getDoc(doc(window.db, LIVE_COL, _watchingStreamId));
             if (!streamSnap.exists()) return;
+            const hostAddr = streamSnap.data().hostAddr;
 
-            // Deduct from viewer's purchased stars (simplest safe path)
+            // 1. Deduct from viewer's purchased stars in Firestore
             if (userAddress) {
                 const viewerRef = doc(window.db, 'user_balances', userAddress.toLowerCase());
-                await updateDoc(viewerRef, { stars: increment(-HYPE_STAR_COST) }).catch(() => {});
+                await updateDoc(viewerRef, { stars: increment(-HYPE_STAR_COST), spentStarsTotal: increment(HYPE_STAR_COST) }).catch(() => {});
                 // Update bridge balance
                 if (typeof window._liveTotalSpendable === 'number') {
                     window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - HYPE_STAR_COST);
@@ -16384,14 +16392,62 @@
                 }
             }
 
-            // Credit stream star count (settled to creator on stream end)
+            // 2. 80/20 split — credit creator 80%, platform 20%
+            const creatorCut  = parseFloat((HYPE_STAR_COST * 0.8).toFixed(4));
+            const platformCut = parseFloat((HYPE_STAR_COST * 0.2).toFixed(4));
+
+            // Credit creator's earned balance instantly
+            if (hostAddr) {
+                const { collection: col, addDoc: adc, serverTimestamp: sts } = window.fs;
+                await updateDoc(doc(window.db, 'user_balances', hostAddr.toLowerCase()), {
+                    creatorStars: increment(creatorCut)
+                }).catch(() => {});
+                // Log earn entry to host's ledger
+                adc(col(window.db, 'user_transactions'), {
+                    type:           'earn',
+                    amount:         creatorCut,
+                    fromAddress:    (userAddress || '').toLowerCase(),
+                    toAddress:      hostAddr.toLowerCase(),
+                    address:        hostAddr.toLowerCase(),
+                    description:    `Live Stream Hype from ${userHandle} (+${creatorCut.toFixed(1)}★)`,
+                    timestamp:      Date.now(),
+                    schema_version: 2
+                }).catch(() => {});
+            }
+
+            // Credit platform revenue 20%
+            updateDoc(doc(window.db, 'admin_revenue', 'global'), {
+                total: increment(platformCut)
+            }).catch(() => {});
+
+            // Log spend entry to viewer's ledger
+            if (userAddress) {
+                const { collection: col2, addDoc: adc2 } = window.fs;
+                adc2(col2(window.db, 'user_transactions'), {
+                    type:           'spend',
+                    amount:         HYPE_STAR_COST,
+                    fromAddress:    userAddress.toLowerCase(),
+                    toAddress:      hostAddr || '',
+                    address:        userAddress.toLowerCase(),
+                    description:    `Live Hype sent (${HYPE_STAR_COST}★ · creator gets ${creatorCut.toFixed(1)}★)`,
+                    timestamp:      Date.now(),
+                    schema_version: 2
+                }).catch(() => {});
+            }
+
+            // 3. Update stream display counter
             await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
                 starsEarned: increment(HYPE_STAR_COST),
                 hypeCount:   increment(1)
             });
 
-            // Add hype message to chat
+            // 4. Add hype message to chat
             sendSystemChat(_watchingStreamId, `${userHandle} hyped the stream! ⚡`);
+
+            // 5. Feed into Live Activity ticker (right panel)
+            if (typeof window.tickerLog === 'function') {
+                window.tickerLog('spend', 'Live Hype', HYPE_STAR_COST, '⚡');
+            }
 
             // Local UI update
             const hypeBtn = $('live-hype-btn');
@@ -16400,6 +16456,7 @@
                 setTimeout(() => { hypeBtn.style.transform = ''; }, 140);
             }
 
+            showToast(`⚡ Hype sent! Creator gets ${creatorCut.toFixed(1)} ★ instantly.`);
             if (typeof updateUI === 'function') updateUI();
 
         } catch(e) {
@@ -16480,7 +16537,7 @@
 
             // 1. Deduct from viewer's purchased stars in Firestore
             const viewerRef = doc(window.db, 'user_balances', userAddress.toLowerCase());
-            await updateDoc(viewerRef, { stars: increment(-tier.cost) });
+            await updateDoc(viewerRef, { stars: increment(-tier.cost), spentStarsTotal: increment(tier.cost) });
             // Update bridge so subsequent gifts in same session see correct balance
             if (typeof window._liveTotalSpendable === 'number') {
                 window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - tier.cost);
@@ -16500,6 +16557,37 @@
             await updateDoc(doc(window.db, 'admin_revenue', 'global'), {
                 total: increment(platformCut)
             }).catch(() => {});
+
+            // 3b. Log spend entry to viewer's ledger
+            await addDoc(collection(window.db, 'user_transactions'), {
+                type:           'spend',
+                amount:         tier.cost,
+                fromAddress:    userAddress.toLowerCase(),
+                toAddress:      hostAddr || '',
+                address:        userAddress.toLowerCase(),
+                description:    `${tier.icon} ${tier.name} Gift sent (${tier.cost}★ · creator gets ${creatorCut.toFixed(1)}★)`,
+                timestamp:      Date.now(),
+                schema_version: 2
+            }).catch(() => {});
+
+            // 3c. Log earn entry to host's ledger
+            if (hostAddr) {
+                addDoc(collection(window.db, 'user_transactions'), {
+                    type:           'earn',
+                    amount:         creatorCut,
+                    fromAddress:    userAddress.toLowerCase(),
+                    toAddress:      hostAddr.toLowerCase(),
+                    address:        hostAddr.toLowerCase(),
+                    description:    `${tier.icon} ${tier.name} Gift received from ${userHandle} (+${creatorCut.toFixed(1)}★)`,
+                    timestamp:      Date.now(),
+                    schema_version: 2
+                }).catch(() => {});
+            }
+
+            // 3d. Feed into Live Activity ticker (right panel)
+            if (typeof window.tickerLog === 'function') {
+                window.tickerLog('spend', `${tier.name} Gift`, tier.cost, tier.icon);
+            }
 
             // 4. Update stream display counter
             await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
