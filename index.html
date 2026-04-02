@@ -629,13 +629,13 @@
             border:1px solid rgba(224,62,62,0.2);
             margin-bottom:12px;
         }
-        /* Force Agora-injected <video> to fill its parent div */
+        /* Force Agora-injected <video> and its wrapper div to fill the container */
         #live-broadcaster-video video,
-        #live-broadcaster-video div,
+        #live-broadcaster-video > div,
         #live-remote-video video,
-        #live-remote-video div,
+        #live-remote-video > div,
         #live-local-preview video,
-        #live-local-preview div {
+        #live-local-preview > div {
             position:absolute !important;
             top:0 !important; left:0 !important;
             width:100% !important; height:100% !important;
@@ -5043,9 +5043,7 @@
                                 <span class="live-badge-pill">🔴 YOU ARE LIVE</span>
                                 <span class="live-viewer-chip" id="live-broadcast-viewers">👁 0 watching</span>
                             </div>
-                            <div id="live-broadcaster-video" style="position:absolute;top:0;left:0;width:100%;height:100%;">
-                                <video id="live-broadcaster-video-native" autoplay muted playsinline style="width:100%;height:100%;object-fit:cover;display:block;"></video>
-                            </div>
+                            <div id="live-broadcaster-video" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
                             <div class="live-stream-meta">
                                 <div class="live-stream-host" id="live-broadcast-title-display"></div>
                             </div>
@@ -15988,7 +15986,6 @@
         }
         // Auto-start camera preview when switching to broadcast tab (not yet live)
         if (tab === 'broadcast' && !isHosting && window.AgoraRTC) {
-            // Wait two frames for live-broadcast-panel to be visible, then preview
             requestAnimationFrame(() => requestAnimationFrame(() => {
                 if (typeof window.startLocalPreview === 'function') window.startLocalPreview();
             }));
@@ -15997,9 +15994,9 @@
         if (tab === 'broadcast' && isHosting && localVideoTrack) {
             show('live-active-panel');
             hide('live-setup-panel');
-            requestAnimationFrame(() => requestAnimationFrame(async () => {
+            requestAnimationFrame(() => requestAnimationFrame(() => {
                 console.log('[Live] Re-attaching broadcaster video after tab switch');
-                await _agoraPlay(localVideoTrack, 'live-broadcaster-video');
+                _playInContainer(localVideoTrack, 'live-broadcaster-video');
             }));
         }
     };
@@ -16072,39 +16069,23 @@
         `).join('');
     }
 
-    // ── Helper: play an Agora local video track into a container div ─────────
-    // Uses Agora's own .play() which injects and manages its own <video> element.
-    // The container MUST be visible (non-zero dimensions) before calling this.
-    // Returns true on success.
-    async function _agoraPlay(track, containerId) {
+    // ── Helper: play Agora video track into a native <video> element ───────────
+    // Polls until track is live, then attaches via srcObject.
+    // ── Helper: play a local Agora video track into a container div ──────────
+    // RULES:
+    //  1. Never call track.stop() — that kills a published stream.
+    //  2. Never clear innerHTML — Agora manages its own <video> inside the container.
+    //  3. Container must be visible (non-zero size) before calling track.play().
+    //  4. If already playing in the same container, track.play() is idempotent — safe to call again.
+    function _playInContainer(track, containerId) {
+        if (!track) { console.warn('[Live] _playInContainer: no track'); return; }
         const el = typeof containerId === 'string' ? $(containerId) : containerId;
-        if (!track || !el) { console.warn('[Live] _agoraPlay: missing track or element', containerId); return false; }
-
-        // Ensure the element and all its ancestors are visible before playing.
-        // Poll up to 1.5s for the container to have real dimensions.
-        let waited = 0;
-        while ((el.offsetWidth === 0 || el.offsetHeight === 0) && waited < 1500) {
-            await new Promise(r => setTimeout(r, 50));
-            waited += 50;
-        }
-        if (el.offsetWidth === 0 || el.offsetHeight === 0) {
-            console.warn('[Live] _agoraPlay: container still has zero size after wait —', containerId);
-        }
-
+        if (!el) { console.warn('[Live] _playInContainer: element not found:', containerId); return; }
+        console.log('[Live] Playing track into', containerId, '— dims:', el.offsetWidth, 'x', el.offsetHeight);
         try {
-            // Stop any existing playback in this container first
-            track.stop();
-        } catch(_) {}
-
-        try {
-            // Clear any previously injected video elements in the container
-            el.innerHTML = '';
             track.play(el);
-            console.log('[Live] _agoraPlay: playing in', containerId, 'dims:', el.offsetWidth, 'x', el.offsetHeight);
-            return true;
         } catch(e) {
-            console.error('[Live] _agoraPlay error:', e);
-            return false;
+            console.error('[Live] track.play() error:', e);
         }
     }
 
@@ -16113,28 +16094,29 @@
         try {
             if (!window.AgoraRTC) { showToast('Agora SDK not loaded yet — please wait.'); return; }
 
-            // If we already have a track and are not yet live, just replay it
+            // If we already have tracks and haven't gone live, just replay into preview box
             if (localVideoTrack && !isHosting) {
                 const ph = $('live-preview-placeholder');
                 if (ph) ph.style.display = 'none';
-                await _agoraPlay(localVideoTrack, 'live-local-preview');
+                _playInContainer(localVideoTrack, 'live-local-preview');
                 return;
             }
 
-            // Release any old tracks
-            if (localVideoTrack) { try { localVideoTrack.stop(); localVideoTrack.close(); } catch(_) {} localVideoTrack = null; }
-            if (localAudioTrack) { try { localAudioTrack.stop(); localAudioTrack.close(); } catch(_) {} localAudioTrack = null; }
+            // Close old tracks cleanly (not publishing yet, safe to close)
+            if (localVideoTrack) { try { localVideoTrack.close(); } catch(_) {} localVideoTrack = null; }
+            if (localAudioTrack) { try { localAudioTrack.close(); } catch(_) {} localAudioTrack = null; }
 
             [localVideoTrack, localAudioTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
 
             const ph = $('live-preview-placeholder');
             if (ph) ph.style.display = 'none';
 
-            // Hide the static <video> placeholder — Agora will inject its own
+            // Hide the static video placeholder — Agora will inject its own <video>
             const staticVid = $('live-local-video');
             if (staticVid) staticVid.style.display = 'none';
 
-            await _agoraPlay(localVideoTrack, 'live-local-preview');
+            // Play into the preview container div
+            _playInContainer(localVideoTrack, 'live-local-preview');
 
         } catch(e) {
             console.error('[Live] Preview error:', e);
@@ -16201,26 +16183,24 @@
             }
             await agoraClient.publish([localVideoTrack, localAudioTrack]);
 
-            // Show ALL panels in the hierarchy before playing video —
-            // if any ancestor is display:none the video element has zero dimensions
-            // and srcObject goes inactive immediately.
+            // Show ALL panels in the hierarchy before playing video
             const bcPanel = $('live-broadcast-panel');
-            if (bcPanel) bcPanel.style.display = '';       // ensure parent visible
+            if (bcPanel) bcPanel.style.display = '';
             hide('live-setup-panel');
             show('live-active-panel');
             setText('live-broadcast-title-display', title);
 
-            // Also update the tab buttons to reflect broadcast tab is active
+            // Update tab buttons
             const watchBtn = $('ltab-watch');
             const liveBtn  = $('ltab-broadcast');
             if (watchBtn) watchBtn.classList.remove('active');
             if (liveBtn)  liveBtn.classList.add('active');
 
-            // Wait two frames for the browser to repaint with the panels visible
+            // Wait two frames for panels to paint and get real dimensions
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-            // Play into the container div — Agora injects its own <video> element
-            await _agoraPlay(localVideoTrack, 'live-broadcaster-video');
+            // Play local video into the broadcaster container div
+            _playInContainer(localVideoTrack, 'live-broadcaster-video');
 
             // 6. Show LIVE badge in sidebar
             const badge = $('live-viewer-badge');
@@ -16792,12 +16772,9 @@
 
     // ── Debug helper — call window.forceVideoPlay() in console if black screen ──
     window.forceVideoPlay = function() {
-        const bvEl = $('live-broadcaster-video');
-        if (!bvEl) { console.warn('[forceVideoPlay] Element not found'); return; }
         if (!localVideoTrack) { console.warn('[forceVideoPlay] No localVideoTrack'); return; }
-        bvEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-        console.log('[forceVideoPlay] Replaying into', bvEl, 'rect:', bvEl.getBoundingClientRect());
-        localVideoTrack.play(bvEl);
+        console.log('[forceVideoPlay] Forcing replay into live-broadcaster-video');
+        _playInContainer(localVideoTrack, 'live-broadcaster-video');
     };
 
     console.log('[SocialHub] Live Stream Engine initialised — Agora App ID:', AGORA_APP_ID);
