@@ -15991,14 +15991,18 @@
         }
         // Re-attach broadcaster video when switching back while actively hosting
         if (tab === 'broadcast' && isHosting && localVideoTrack) {
-            setTimeout(async function() {
+            // Ensure live-active-panel is visible (it should be, but re-enforce)
+            show('live-active-panel');
+            hide('live-setup-panel');
+            // Wait two frames for the browser to repaint ancestor panels, then re-attach
+            requestAnimationFrame(() => requestAnimationFrame(async () => {
                 const bvNative = $('live-broadcaster-video-native');
                 const target = bvNative || $('live-broadcaster-video');
                 if (target) {
                     console.log('[Live] Re-attaching broadcaster video after tab switch');
                     await _playTrackNative(localVideoTrack, target);
                 }
-            }, 150);
+            }));
         }
     };
 
@@ -16076,7 +16080,9 @@
     async function _playTrackNative(track, videoEl) {
         if (!track || !videoEl) return;
         videoEl.style.display = 'block';
-        // Poll up to 3s for track to become live
+
+        // Poll up to 3s for track to become live AND for the element to have real dimensions.
+        // If the element is inside a display:none ancestor, srcObject goes inactive immediately.
         let raw = null;
         for (let i = 0; i < 30; i++) {
             try {
@@ -16091,7 +16097,19 @@
             try { track.play(videoEl.parentElement || videoEl); } catch(_) {}
             return;
         }
-        console.log('[Live] Attaching srcObject, videoEl offsetHeight:', videoEl.offsetHeight);
+
+        // Wait up to 1s for the element to have real dimensions (ancestor must be visible)
+        for (let i = 0; i < 20; i++) {
+            if (videoEl.offsetWidth > 0 && videoEl.offsetHeight > 0) break;
+            await new Promise(r => setTimeout(r, 50));
+        }
+        console.log('[Live] Attaching srcObject — videoEl dims:', videoEl.offsetWidth, 'x', videoEl.offsetHeight);
+        if (videoEl.offsetWidth === 0 || videoEl.offsetHeight === 0) {
+            console.warn('[Live] videoEl still has zero dimensions — trying Agora native play as fallback');
+            try { track.play(videoEl.parentElement || videoEl); } catch(_) {}
+            return;
+        }
+
         videoEl.srcObject = new MediaStream([raw]);
         const p = videoEl.play();
         if (p && p.catch) p.catch(e => console.warn('[Live] play():', e));
@@ -16104,7 +16122,11 @@
             // Don't recreate tracks if already previewing
             if (localVideoTrack && !isHosting) {
                 const vid = $('live-local-video');
-                if (vid) _playTrackNative(localVideoTrack, vid);
+                if (vid) {
+                    vid.style.display = 'block';
+                    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                    _playTrackNative(localVideoTrack, vid);
+                }
                 return;
             }
             if (localVideoTrack) { try { localVideoTrack.stop(); localVideoTrack.close(); } catch(_) {} }
@@ -16117,6 +16139,8 @@
             const vid = $('live-local-video');
             if (vid) {
                 vid.style.display = 'block';
+                // Wait two frames so the browser paints the container with real dimensions
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
                 await _playTrackNative(localVideoTrack, vid);
             }
         } catch(e) {
