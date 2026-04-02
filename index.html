@@ -16115,8 +16115,9 @@
             agoraClient = window.AgoraRTC.createClient({ mode: 'live', codec: 'h264' });
             await agoraClient.setClientRole('host');
 
-            const channel = LIVE_CHANNEL + currentStreamId;
-            await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, 1);
+            // Each stream gets its own Agora channel — prevents cross-stream bleed
+            const channel = (LIVE_CHANNEL + '_' + docRef.id).substring(0, 64);
+            await agoraClient.join(AGORA_APP_ID, channel, AGORA_TOKEN, 1);
 
             // 3. Publish tracks (create if not already previewed)
             if (!localVideoTrack || !localAudioTrack) {
@@ -16228,12 +16229,12 @@
             // Update viewer count
             await updateDoc(doc(window.db, LIVE_COL, streamId), { viewers: increment(1) });
 
-            // Init Agora as audience
+            // Init Agora as audience — join the SAME per-stream channel as the host
             agoraClient = window.AgoraRTC.createClient({ mode: 'live', codec: 'h264' });
             await agoraClient.setClientRole('audience');
 
-            const channel = LIVE_CHANNEL + streamId;
-            await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, Math.floor(Math.random() * 99998) + 2);
+            const channel = (LIVE_CHANNEL + '_' + streamId).substring(0, 64);
+            await agoraClient.join(AGORA_APP_ID, channel, AGORA_TOKEN, Math.floor(Math.random() * 99998) + 2);
 
             // Listen for remote video
             agoraClient.on('user-published', async (remoteUser, mediaType) => {
@@ -16673,13 +16674,19 @@
         }
     });
 
-    // ── Stale stream cleanup on startup — kill any zombie streams ─
-    // Runs once when Firebase is ready. Marks any active streams from
-    // this user's address as inactive if they are >4 hours old.
+    // ── Stale stream cleanup on startup — kill ALL zombie streams ─
+    // On every page load, mark ALL active streams from this user as
+    // inactive. If we're currently hosting we'll create a fresh one.
+    // This is the only reliable way to clear streams left open by
+    // crashed tabs, mobile background kills, etc.
     function _cleanStaleStreams() {
         if (!window.db || !window.fs) return;
-        const addr = window._liveUserAddress || window.userAddress || '';
-        if (!addr) return;
+        const addr = (window._liveUserAddress || window.userAddress || '').toLowerCase();
+        if (!addr) {
+            // User address not loaded yet — retry in 2s
+            setTimeout(_cleanStaleStreams, 2000);
+            return;
+        }
         const { collection, query, where, getDocs, doc, updateDoc } = window.fs;
         getDocs(query(
             collection(window.db, LIVE_COL),
@@ -16688,21 +16695,25 @@
         )).then(snap => {
             const now = Date.now();
             snap.forEach(d => {
-                const age = now - (d.data().startedAt?.toMillis?.() || now);
-                // Kill if older than 4 hours OR if it's not our current active stream
-                if (age > 4 * 60 * 60 * 1000 || d.id !== currentStreamId) {
+                // Kill everything — if user is currently live they'll have a fresh doc
+                if (d.id !== currentStreamId) {
                     updateDoc(doc(window.db, LIVE_COL, d.id), {
                         active: false, endedAt: now
                     }).catch(() => {});
                 }
             });
+            if (snap.size > 0) console.log(`[Live] Cleaned ${snap.size} zombie stream(s) for ${addr}`);
         }).catch(() => {});
     }
 
-    // ── Init on page load — start browser listener if on live tab ─
+    // Also expose so it can be called manually from console
+    window._cleanStaleStreams = _cleanStaleStreams;
+
+    // ── Init on page load ─────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function() {
         waitForFb(() => {
-            _cleanStaleStreams();
+            // Delay to let updateUI() run first and populate window._liveUserAddress
+            setTimeout(_cleanStaleStreams, 3000);
         });
     });
 
