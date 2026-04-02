@@ -730,6 +730,7 @@
             border-top:1px solid var(--border);
         }
         .live-chat-input-row .field { margin-top:0 !important; flex:1; width:0 !important; min-width:0; }
+        .live-chat-input-row .btn   { width:auto !important; margin-top:0 !important; flex-shrink:0; }
 
         /* ── Gift System CSS ─────────────────────────────────────── */
         .live-gift-card {
@@ -15988,8 +15989,21 @@
         );
 
         _liveStreamUnsub = onSnapshot(q, snap => {
+            const now = Date.now();
+            const MAX_AGE = 6 * 60 * 60 * 1000; // 6 hours — anything older is a zombie
             const streams = [];
-            snap.forEach(d => streams.push({ id: d.id, ...d.data() }));
+            snap.forEach(d => {
+                const data = d.data();
+                const startMs = data.startedAt?.toMillis?.() || data.startedAt?.seconds * 1000 || 0;
+                const age = startMs ? now - startMs : 0;
+                if (age < MAX_AGE) {
+                    streams.push({ id: d.id, ...data });
+                } else {
+                    // Auto-kill zombie stream silently
+                    const { doc, updateDoc } = window.fs;
+                    updateDoc(doc(window.db, LIVE_COL, d.id), { active: false, endedAt: now }).catch(() => {});
+                }
+            });
             // Sort client-side by startedAt desc
             streams.sort((a, b) => (b.startedAt?.seconds || 0) - (a.startedAt?.seconds || 0));
             renderStreamBrowser(streams);
@@ -16116,18 +16130,25 @@
             setText('live-broadcast-title-display', title);
 
             // Play local video into broadcaster box
-            // Use a polling approach — wait until the element has a real bounding rect
-            const bvEl = $('live-broadcaster-video');
+            // Force the container to have explicit pixel dimensions before Agora play()
+            // so Agora's internal getBoundingClientRect() never returns zeros.
+            const bvEl        = $('live-broadcaster-video');
+            const bvContainer = $('live-broadcaster-video-container');
             if (bvEl) {
                 bvEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-                const playWhenReady = () => {
-                    if (bvEl.offsetWidth > 0 || bvEl.offsetHeight > 0) {
+                if (bvContainer) {
+                    bvContainer.style.width  = bvContainer.offsetWidth  + 'px';
+                    bvContainer.style.height = (bvContainer.offsetHeight || 240) + 'px';
+                }
+                // Two rAF cycles to ensure the browser has painted the shown panel
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    try {
                         localVideoTrack.play(bvEl);
-                    } else {
-                        setTimeout(playWhenReady, 100);
+                    } catch(e) {
+                        // Fallback: retry after 500ms if play() threw
+                        setTimeout(() => { try { localVideoTrack.play(bvEl); } catch(_) {} }, 500);
                     }
-                };
-                setTimeout(playWhenReady, 100);
+                }));
             }
 
             // 6. Show LIVE badge in sidebar
@@ -16613,11 +16634,75 @@
         return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
+    // ── Zombie stream killer — cleans up if page closes mid-stream ─
+    async function _forceEndStream() {
+        if (!currentStreamId || !window.db || !window.fs) return;
+        try {
+            const { doc, updateDoc } = window.fs;
+            // sendBeacon-safe: use fetch with keepalive as fallback
+            await updateDoc(doc(window.db, LIVE_COL, currentStreamId), {
+                active: false, endedAt: Date.now()
+            });
+        } catch(e) {}
+        currentStreamId = null;
+        isHosting = false;
+    }
+
+    window.addEventListener('beforeunload', function() {
+        if (currentStreamId && window.db && window.fs) {
+            // Synchronous Firestore write via keepalive fetch (best effort on page close)
+            const streamPath = `projects/${window.db.app.options.projectId}/databases/(default)/documents/${LIVE_COL}/${currentStreamId}`;
+            const url = `https://firestore.googleapis.com/v1/${streamPath}?updateMask.fieldPaths=active&updateMask.fieldPaths=endedAt`;
+            const body = JSON.stringify({
+                fields: {
+                    active:   { booleanValue: false },
+                    endedAt:  { integerValue: String(Date.now()) }
+                }
+            });
+            navigator.sendBeacon && navigator.sendBeacon(
+                `https://firestore.googleapis.com/v1/${streamPath}`,
+                new Blob([body], { type: 'application/json' })
+            );
+            _forceEndStream();
+        }
+    });
+
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'hidden' && currentStreamId) {
+            _forceEndStream();
+        }
+    });
+
+    // ── Stale stream cleanup on startup — kill any zombie streams ─
+    // Runs once when Firebase is ready. Marks any active streams from
+    // this user's address as inactive if they are >4 hours old.
+    function _cleanStaleStreams() {
+        if (!window.db || !window.fs) return;
+        const addr = window._liveUserAddress || window.userAddress || '';
+        if (!addr) return;
+        const { collection, query, where, getDocs, doc, updateDoc } = window.fs;
+        getDocs(query(
+            collection(window.db, LIVE_COL),
+            where('hostAddr', '==', addr),
+            where('active', '==', true)
+        )).then(snap => {
+            const now = Date.now();
+            snap.forEach(d => {
+                const age = now - (d.data().startedAt?.toMillis?.() || now);
+                // Kill if older than 4 hours OR if it's not our current active stream
+                if (age > 4 * 60 * 60 * 1000 || d.id !== currentStreamId) {
+                    updateDoc(doc(window.db, LIVE_COL, d.id), {
+                        active: false, endedAt: now
+                    }).catch(() => {});
+                }
+            });
+        }).catch(() => {});
+    }
+
     // ── Init on page load — start browser listener if on live tab ─
     document.addEventListener('DOMContentLoaded', function() {
-        // Pre-load stream browser quietly so it's ready when user clicks Live
         waitForFb(() => {
-            // Ensure Firestore index exists gracefully (will warn in console if index needed)
+            _cleanStaleStreams();
         });
     });
 
