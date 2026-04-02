@@ -28,6 +28,9 @@
     <!-- 1. Ethers.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 
+    <!-- Agora RTC SDK — Live Streaming -->
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.2.js"></script>
+
     <!-- 2. Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -589,6 +592,171 @@
         /* COMMUNITIES PAGE */
         #page-communities { display:none; }
         #page-communities.active { display:block; }
+
+        /* ═══════════════════════════════════════════════════════════════
+           LIVE STREAM PAGE
+        ═══════════════════════════════════════════════════════════════ */
+        #page-live { display:none; }
+        #page-live.active { display:block; }
+
+        .live-tabs {
+            display:flex; gap:8px; margin-bottom:16px;
+        }
+        .live-tab {
+            flex:1; padding:9px 14px;
+            border-radius:var(--radius-md);
+            border:1px solid var(--border);
+            background:transparent;
+            color:var(--text-secondary);
+            font-family:var(--font-body);
+            font-size:0.78rem; font-weight:700;
+            cursor:pointer; transition:all 0.15s;
+        }
+        .live-tab.active {
+            background:rgba(224,62,62,0.10);
+            border-color:rgba(224,62,62,0.45);
+            color:#e03e3e;
+        }
+        .live-tab:hover:not(.active) { background:var(--bg-hover); color:var(--text-primary); }
+
+        .live-stream-box {
+            position:relative;
+            width:100%;
+            aspect-ratio:16/9;
+            background:#0d1117;
+            border-radius:var(--radius-md);
+            overflow:hidden;
+            border:1px solid rgba(224,62,62,0.2);
+            margin-bottom:12px;
+        }
+        .live-stream-overlay-top {
+            position:absolute; top:10px; left:12px; right:12px;
+            display:flex; justify-content:space-between; align-items:center;
+            z-index:10;
+        }
+        .live-badge-pill {
+            background:#e03e3e;
+            color:#fff;
+            font-size:0.65rem; font-weight:800;
+            padding:3px 10px; border-radius:20px;
+            letter-spacing:0.5px;
+            animation:live-pulse-badge 2s ease-in-out infinite;
+        }
+        @keyframes live-pulse-badge {
+            0%,100% { box-shadow:0 0 0 0 rgba(224,62,62,0.4); }
+            50%      { box-shadow:0 0 0 6px rgba(224,62,62,0); }
+        }
+        .live-viewer-chip {
+            background:rgba(0,0,0,0.55);
+            color:rgba(255,255,255,0.85);
+            font-size:0.65rem; font-weight:700;
+            padding:3px 10px; border-radius:20px;
+            backdrop-filter:blur(4px);
+        }
+        .live-stream-meta {
+            position:absolute; bottom:12px; left:14px; right:14px;
+            z-index:10;
+        }
+        .live-stream-host {
+            font-weight:700; font-size:0.9rem; color:#fff;
+            text-shadow:0 1px 6px rgba(0,0,0,0.7);
+        }
+        .live-stream-title-sm {
+            font-size:0.72rem; color:rgba(255,255,255,0.7);
+            text-shadow:0 1px 4px rgba(0,0,0,0.6);
+        }
+        .live-action-row {
+            display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap;
+        }
+        .live-stars-pill {
+            display:flex; align-items:center; gap:5px;
+            background:var(--bg-card2);
+            border:1px solid var(--border);
+            border-radius:50px;
+            padding:6px 14px;
+            font-family:var(--font-mono);
+            font-size:0.78rem; font-weight:700;
+            color:var(--text-primary);
+        }
+        .live-hype-btn {
+            background:linear-gradient(135deg,rgba(240,180,41,0.2),rgba(240,180,41,0.08));
+            border:1px solid rgba(240,180,41,0.45) !important;
+            color:var(--gold) !important;
+            font-weight:800 !important;
+            flex:1;
+            transition:all 0.13s;
+        }
+        .live-hype-btn:hover { background:rgba(240,180,41,0.18) !important; transform:translateY(-1px); }
+        .live-hype-btn:active { transform:scale(0.97) !important; }
+
+        .live-chat-card { padding:0 !important; overflow:hidden; }
+        .live-chat-head {
+            padding:10px 14px 8px;
+            border-bottom:1px solid var(--border);
+            font-size:0.72rem; font-weight:700;
+            color:var(--text-secondary);
+            text-transform:uppercase; letter-spacing:0.8px;
+        }
+        .live-chat-feed {
+            height:200px;
+            overflow-y:auto;
+            padding:10px 14px;
+            display:flex; flex-direction:column; gap:8px;
+            scroll-behavior:smooth;
+        }
+        .live-chat-msg {
+            display:flex; gap:8px; align-items:flex-start;
+            animation:fadeUp 0.2s ease both;
+        }
+        .live-chat-av {
+            width:24px; height:24px; border-radius:50%;
+            object-fit:cover; flex-shrink:0;
+        }
+        .live-chat-body { font-size:0.78rem; color:var(--text-primary); line-height:1.4; }
+        .live-chat-user { font-size:0.65rem; font-weight:700; color:var(--purple-lt); }
+        .live-chat-hype-msg { color:var(--gold); font-weight:700; }
+
+        .live-chat-input-row {
+            display:flex; gap:8px; padding:10px 14px;
+            border-top:1px solid var(--border);
+        }
+        .live-chat-input-row .field { margin-top:0 !important; flex:1; }
+
+        .live-stats-row {
+            display:grid; grid-template-columns:repeat(4,1fr);
+            gap:8px; margin-bottom:12px;
+        }
+        .live-stat-chip {
+            background:var(--bg-card2);
+            border:1px solid var(--border);
+            border-radius:var(--radius-sm);
+            padding:10px 8px;
+            text-align:center;
+        }
+        .live-stat-val { font-family:var(--font-mono); font-size:0.95rem; font-weight:700; color:var(--text-primary); }
+        .live-stat-label { font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-top:2px; }
+
+        .live-stream-card {
+            border:1px solid var(--border);
+            border-radius:var(--radius-md);
+            overflow:hidden;
+            cursor:pointer;
+            margin-bottom:12px;
+            transition:border-color 0.15s, transform 0.13s;
+        }
+        .live-stream-card:hover { border-color:rgba(224,62,62,0.4); transform:translateY(-2px); }
+        .live-stream-thumb {
+            width:100%; aspect-ratio:16/9;
+            background:#0d1117;
+            position:relative;
+            display:flex; align-items:center; justify-content:center;
+        }
+        .live-stream-card-body {
+            padding:10px 14px;
+            background:var(--bg-card);
+        }
+        .live-stream-card-title { font-size:0.82rem; font-weight:700; color:var(--text-primary); margin-bottom:3px; }
+        .live-stream-card-meta  { font-size:0.68rem; color:var(--text-muted); }
         .comm-search-wrap { position:relative; margin-bottom:18px; }
         .comm-search-wrap input { width:100%; padding:11px 40px 11px 14px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--bg-input); color:var(--text-primary); font-size:0.86rem; outline:none; transition:border-color 0.15s; }
         .comm-search-wrap input:focus { border-color:rgba(45,212,191,0.5); }
@@ -3757,6 +3925,9 @@
         <button class="mdash-btn"        id="mdash-info"        onclick="showMobileTab('tokenomics')">
             <span class="mbtn-icon">◎</span>Tokenomics
         </button>
+        <button class="mdash-btn"        id="mdash-live"        onclick="showMobileTab('live')">
+            <span class="mbtn-icon">🔴</span>Live
+        </button>
     </div>
 
     <!-- BODY LAYOUT -->
@@ -3776,6 +3947,10 @@
                 <div class="nav-item" id="nav-inbox"   onclick="switchPage('inbox', this)"><span class="nav-icon">✉</span> Inbox<span class="notif-dot" id="notif-dot-inbox" style="position:relative;top:-1px;margin-left:5px;" aria-label="New message"></span></div>
                 <div class="nav-item" id="nav-info" onclick="switchPage('info', this)"><span class="nav-icon">◎</span> Tokenomics</div>
                 <div class="nav-item" id="nav-communities" onclick="switchPage('communities', this)"><span class="nav-icon">⬡</span> Communities</div>
+                <div class="nav-item" id="nav-live" onclick="switchPage('live', this)" style="border-color:rgba(224,62,62,0.3);">
+                    <span class="nav-icon">🔴</span> Live Stream
+                    <span class="nav-badge" id="live-viewer-badge" style="background:rgba(224,62,62,0.15);color:#e03e3e;display:none;">LIVE</span>
+                </div>
             </div>
             <div class="sidebar-vault">
                 <div class="vault-label">Available Stars ★</div>
@@ -4654,6 +4829,152 @@
                         <div class="inbox-main" id="inbox-main">
                             <div class="inbox-empty-state">Select a conversation or start a new one.</div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════════════════════════════════
+                 LIVE STREAM PAGE
+            ════════════════════════════════════════════════════════ -->
+            <div id="page-live" class="page" style="display:none;">
+                <div class="page-heading">🔴 <span>Live Stream</span></div>
+
+                <!-- TABS: Watch / Go Live -->
+                <div class="live-tabs" id="live-tabs">
+                    <button class="live-tab active" id="ltab-watch" onclick="setLiveTab('watch')">📺 Watch Streams</button>
+                    <button class="live-tab" id="ltab-broadcast" onclick="setLiveTab('broadcast')">🎙 Go Live</button>
+                </div>
+
+                <!-- ── WATCH TAB ── -->
+                <div id="live-watch-panel">
+                    <!-- Active stream player -->
+                    <div id="live-player-wrap" style="display:none;">
+                        <div class="live-stream-box" id="live-remote-video-container">
+                            <div class="live-stream-overlay-top">
+                                <span class="live-badge-pill" id="live-stream-badge-watch">🔴 LIVE</span>
+                                <span class="live-viewer-chip" id="live-watch-viewers">👁 0 watching</span>
+                            </div>
+                            <div id="live-remote-video" style="width:100%;height:100%;"></div>
+                            <div class="live-stream-meta" id="live-stream-meta">
+                                <div class="live-stream-host" id="live-stream-host-name">Loading…</div>
+                                <div class="live-stream-title-sm" id="live-stream-title-sm"></div>
+                            </div>
+                        </div>
+
+                        <!-- Hype + Stars row -->
+                        <div class="live-action-row">
+                            <div class="live-stars-pill">
+                                <span style="color:var(--gold);">★</span>
+                                <span id="live-creator-stars-watch">0</span>
+                                <span style="font-size:0.62rem;color:var(--text-muted);">creator Stars</span>
+                            </div>
+                            <button class="btn live-hype-btn" id="live-hype-btn" onclick="sendLiveHype()">
+                                ⚡ Hype  <span id="live-hype-count" style="opacity:0.75;font-size:0.7rem;">(0)</span>
+                            </button>
+                            <button class="btn btn-outline btn-sm" onclick="leaveLiveStream()">✕ Leave</button>
+                        </div>
+
+                        <!-- Live Chat -->
+                        <div class="card live-chat-card">
+                            <div class="live-chat-head">💬 Live Chat</div>
+                            <div id="live-chat-feed" class="live-chat-feed"></div>
+                            <div class="live-chat-input-row">
+                                <input type="text" id="live-chat-input" class="field" placeholder="Say something…" style="margin-top:0;" onkeydown="if(event.key==='Enter')sendLiveChat()">
+                                <button class="btn btn-purple btn-sm" onclick="sendLiveChat()">Send</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Stream browser — shows available streams -->
+                    <div id="live-stream-browser">
+                        <div id="live-no-streams" class="card" style="text-align:center; padding:32px 16px;">
+                            <div style="font-size:2rem; margin-bottom:10px; opacity:0.5;">📡</div>
+                            <div style="font-weight:700; color:var(--text-primary); margin-bottom:6px;">No live streams right now</div>
+                            <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:16px;">Be the first to go live and earn Stars from your audience.</div>
+                            <button class="btn btn-purple btn-sm" onclick="setLiveTab('broadcast')">🎙 Start Streaming</button>
+                        </div>
+                        <div id="live-stream-list" style="display:none;"></div>
+                    </div>
+                </div>
+
+                <!-- ── BROADCAST TAB ── -->
+                <div id="live-broadcast-panel" style="display:none;">
+
+                    <!-- Pre-stream setup -->
+                    <div id="live-setup-panel" class="card" style="border-color:rgba(224,62,62,0.3);">
+                        <div style="font-size:0.72rem; font-weight:700; color:#e03e3e; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">🎙 Stream Setup</div>
+
+                        <label style="font-size:0.75rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Stream Title</label>
+                        <input type="text" id="live-stream-title-input" class="field" placeholder="e.g. Building the future of Web3 live…" style="margin-top:0; margin-bottom:12px;">
+
+                        <label style="font-size:0.75rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Category</label>
+                        <select id="live-stream-category" class="field" style="margin-top:0; margin-bottom:14px;">
+                            <option value="Crypto">🪙 Crypto & Web3</option>
+                            <option value="Creative">🎨 Creative</option>
+                            <option value="Gaming">🎮 Gaming</option>
+                            <option value="Education">📚 Education</option>
+                            <option value="Lifestyle">🌿 Lifestyle</option>
+                            <option value="Music">🎵 Music</option>
+                        </select>
+
+                        <!-- Camera preview -->
+                        <div class="live-stream-box" id="live-local-preview" style="height:220px; background:#0d1117; border-radius:var(--radius-md); overflow:hidden; position:relative; margin-bottom:14px;">
+                            <div id="live-preview-placeholder" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;">
+                                <div style="font-size:2rem;opacity:0.3;">📷</div>
+                                <div style="font-size:0.72rem; color:rgba(255,255,255,0.35);">Camera preview will appear here</div>
+                            </div>
+                            <div id="live-local-video" style="width:100%;height:100%;"></div>
+                        </div>
+
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn btn-outline btn-sm" id="live-preview-btn" onclick="startLocalPreview()" style="flex:1;">📷 Preview Camera</button>
+                            <button class="btn btn-sm" id="live-go-live-btn" onclick="startLiveStream()" style="flex:1; background:#e03e3e; color:#fff; border:none; font-weight:700;">🔴 Go Live</button>
+                        </div>
+                        <div style="font-size:0.62rem; color:var(--text-muted); margin-top:8px; text-align:center; line-height:1.6;">
+                            80% of Stars earned go to you · No MetaMask until cash-out · Powered by Agora
+                        </div>
+                    </div>
+
+                    <!-- Active broadcast dashboard (hidden until live) -->
+                    <div id="live-active-panel" style="display:none;">
+                        <div class="live-stream-box" id="live-broadcaster-video-container" style="height:260px;">
+                            <div class="live-stream-overlay-top">
+                                <span class="live-badge-pill">🔴 YOU ARE LIVE</span>
+                                <span class="live-viewer-chip" id="live-broadcast-viewers">👁 0 watching</span>
+                            </div>
+                            <div id="live-broadcaster-video" style="width:100%;height:100%;"></div>
+                            <div class="live-stream-meta">
+                                <div class="live-stream-host" id="live-broadcast-title-display"></div>
+                            </div>
+                        </div>
+
+                        <!-- Live stats row -->
+                        <div class="live-stats-row">
+                            <div class="live-stat-chip">
+                                <div class="live-stat-val" id="live-stat-stars" style="color:var(--gold);">0 ★</div>
+                                <div class="live-stat-label">Stars Earned</div>
+                            </div>
+                            <div class="live-stat-chip">
+                                <div class="live-stat-val" id="live-stat-hypes">0</div>
+                                <div class="live-stat-label">Hypes</div>
+                            </div>
+                            <div class="live-stat-chip">
+                                <div class="live-stat-val" id="live-stat-duration">0:00</div>
+                                <div class="live-stat-label">Duration</div>
+                            </div>
+                            <div class="live-stat-chip">
+                                <div class="live-stat-val" id="live-stat-viewers">0</div>
+                                <div class="live-stat-label">Viewers</div>
+                            </div>
+                        </div>
+
+                        <!-- Live chat (broadcaster view) -->
+                        <div class="card live-chat-card">
+                            <div class="live-chat-head">💬 Live Chat</div>
+                            <div id="live-broadcast-chat-feed" class="live-chat-feed"></div>
+                        </div>
+
+                        <button class="btn btn-sm" onclick="endLiveStream()" style="width:100%;margin-top:10px;background:rgba(224,62,62,0.12);border:1px solid rgba(224,62,62,0.4);color:#e03e3e;font-weight:700;">■ End Stream &amp; Settle Stars</button>
                     </div>
                 </div>
             </div>
@@ -7753,6 +8074,7 @@
         const pageInfo        = document.getElementById('page-info');
         const pageCommunities = document.getElementById('page-communities');
         const pageInbox       = document.getElementById('page-inbox');
+        const pageLive        = document.getElementById('page-live');
         const composerCard = document.getElementById('composer-card');
         const feedItems    = document.getElementById('feed-items');
         const feedHeading  = document.querySelector('.feed-heading');
@@ -7764,6 +8086,7 @@
         if (pageInfo)        { pageInfo.style.display         = 'none'; pageInfo.classList.remove('active'); }
         if (pageCommunities) { pageCommunities.style.display  = 'none'; pageCommunities.classList.remove('active'); }
         if (pageInbox)       { pageInbox.style.display        = 'none'; pageInbox.classList.remove('active'); }
+        if (pageLive)        { pageLive.style.display         = 'none'; pageLive.classList.remove('active'); }
         // Always hide My Network when switching tabs — shown only by viewUserWall on own wall
         // Hide network drawer and button when leaving home tab
         const _nd = document.getElementById('network-drawer');
@@ -7779,7 +8102,7 @@
         const mobileTabMap = { home: 'mdash-home', earnings: 'mdash-studio', info: 'mdash-info', profile: 'mdash-profile', communities: 'mdash-communities' };
         // also handle showMobileTab names
         const mobileBtnMap = { home: 'mdash-home', studio: 'mdash-studio', tokenomics: 'mdash-info', profile: 'mdash-profile',
-                                earnings: 'mdash-studio', info: 'mdash-info', communities: 'mdash-communities' };
+                                earnings: 'mdash-studio', info: 'mdash-info', communities: 'mdash-communities', live: 'mdash-live' };
         Object.values(mobileBtnMap).forEach(id => { const b = document.getElementById(id); if (b) b.classList.remove('active'); });
         const activeMobileBtn = mobileBtnMap[tabName];
         if (activeMobileBtn) { const b = document.getElementById(activeMobileBtn); if (b) b.classList.add('active'); }
@@ -7826,7 +8149,7 @@
             if (signalsBarEl)  signalsBarEl.classList.add('signals-hidden');
             if (categoryBarEl) categoryBarEl.classList.add('signals-hidden');
 
-            const pageMap = { earnings: 'earnings', studio: 'earnings', info: 'info', tokenomics: 'info', communities: 'communities', inbox: 'inbox' };
+            const pageMap = { earnings: 'earnings', studio: 'earnings', info: 'info', tokenomics: 'info', communities: 'communities', inbox: 'inbox', live: 'live' };
             const pageId  = pageMap[tabName];
             const pg      = pageId ? document.getElementById('page-' + pageId) : null;
             if (pg) { pg.style.display = 'block'; pg.classList.add('active'); }
@@ -15482,6 +15805,520 @@
     } else {
         run();
     }
+})();
+
+// ═══════════════════════════════════════════════════════════════════
+// LIVE STREAM ENGINE  — Agora RTC + Firebase
+// App ID: 59f975efccbf40a7b36eb30778da13a5
+// ═══════════════════════════════════════════════════════════════════
+(function initLiveStream() {
+
+    // ── Config ────────────────────────────────────────────────────
+    const AGORA_APP_ID  = '59f975efccbf40a7b36eb30778da13a5';
+    const LIVE_CHANNEL  = 'socialhub_live_';   // + streamId suffix
+    const LIVE_COL      = 'live_streams';
+    const LIVE_CHAT_COL = 'live_chat';
+    const HYPE_STAR_COST = 1;                  // 1 ★ per hype
+    const CREATOR_CUT   = 0.8;
+
+    // ── State ─────────────────────────────────────────────────────
+    let agoraClient      = null;
+    let localVideoTrack  = null;
+    let localAudioTrack  = null;
+    let currentStreamId  = null;   // Firestore doc id of active stream
+    let isHosting        = false;
+    let streamStartTime  = null;
+    let durationTimer    = null;
+    let liveStarsEarned  = 0;
+    let liveHypeCount    = 0;
+    let liveViewerCount  = 0;
+    let _liveStreamUnsub = null;   // Firestore listener teardown
+    let _liveChatUnsub   = null;
+    let _watchingStreamId = null;
+
+    // ── Helpers ───────────────────────────────────────────────────
+    function $(id) { return document.getElementById(id); }
+    function setText(id, val) { const el = $(id); if (el) el.textContent = val; }
+    function show(id)  { const el = $(id); if (el) el.style.display = ''; }
+    function hide(id)  { const el = $(id); if (el) el.style.display = 'none'; }
+
+    function waitForFb(cb) {
+        const t = setInterval(() => {
+            if (window.db && window.fs) { clearInterval(t); cb(); }
+        }, 300);
+        setTimeout(() => clearInterval(t), 12000);
+    }
+
+    // ── Tab switching ─────────────────────────────────────────────
+    window.setLiveTab = function(tab) {
+        ['watch','broadcast'].forEach(t => {
+            const btn = $('ltab-' + t);
+            if (btn) btn.classList.toggle('active', t === tab);
+        });
+        const watchEl = $('live-watch-panel');
+        const bcEl    = $('live-broadcast-panel');
+        if (watchEl) watchEl.style.display = tab === 'watch' ? '' : 'none';
+        if (bcEl)    bcEl.style.display    = tab === 'broadcast' ? '' : 'none';
+        if (tab === 'watch') loadStreamBrowser();
+    };
+
+    // ── Load stream browser ───────────────────────────────────────
+    function loadStreamBrowser() {
+        if (!window.db || !window.fs) { waitForFb(loadStreamBrowser); return; }
+        const { collection, query, where, onSnapshot, orderBy } = window.fs;
+
+        // Tear down previous listener
+        if (_liveStreamUnsub) { try { _liveStreamUnsub(); } catch(_) {} }
+
+        const q = query(
+            collection(window.db, LIVE_COL),
+            where('active', '==', true),
+            orderBy('startedAt', 'desc')
+        );
+
+        _liveStreamUnsub = onSnapshot(q, snap => {
+            const streams = [];
+            snap.forEach(d => streams.push({ id: d.id, ...d.data() }));
+            renderStreamBrowser(streams);
+        }, err => {
+            console.warn('[Live] Stream browser listener error:', err);
+        });
+    }
+
+    function renderStreamBrowser(streams) {
+        const browser = $('live-stream-browser');
+        const noEl    = $('live-no-streams');
+        const listEl  = $('live-stream-list');
+        if (!browser) return;
+
+        if (!streams.length) {
+            if (noEl)  noEl.style.display  = '';
+            if (listEl) listEl.style.display = 'none';
+            return;
+        }
+        if (noEl)   noEl.style.display   = 'none';
+        if (listEl) listEl.style.display = '';
+
+        listEl.innerHTML = streams.map(s => `
+            <div class="live-stream-card" onclick="joinLiveStream('${s.id}')">
+                <div class="live-stream-thumb">
+                    <span class="live-badge-pill" style="position:relative;">🔴 LIVE</span>
+                    <span class="live-viewer-chip" style="position:absolute;top:10px;right:12px;">👁 ${s.viewers || 0} watching</span>
+                </div>
+                <div class="live-stream-card-body">
+                    <div class="live-stream-card-title">${_esc(s.title || 'Untitled Stream')}</div>
+                    <div class="live-stream-card-meta">
+                        ${_esc(s.hostName || 'Creator')} · ${_esc(s.category || 'General')} · ★ ${(s.starsEarned || 0).toFixed(1)} earned
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // ── Local camera preview ──────────────────────────────────────
+    window.startLocalPreview = async function() {
+        try {
+            if (!window.AgoraRTC) { showToast('Agora SDK not loaded yet — please wait.'); return; }
+            if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack.close(); }
+            if (localAudioTrack) { localAudioTrack.stop(); localAudioTrack.close(); }
+
+            [localVideoTrack, localAudioTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
+
+            const previewEl = $('live-local-video');
+            const placeholder = $('live-preview-placeholder');
+            if (placeholder) placeholder.style.display = 'none';
+            if (previewEl) localVideoTrack.play(previewEl);
+
+            showToast('📷 Camera preview started');
+        } catch(e) {
+            console.error('[Live] Preview error:', e);
+            showToast('Camera error: ' + (e.message || 'Permission denied?'));
+        }
+    };
+
+    // ── Go Live ───────────────────────────────────────────────────
+    window.startLiveStream = async function() {
+        if (!userAddress) { showToast('Connect your wallet first to go live.'); return; }
+        if (!window.AgoraRTC) { showToast('Agora SDK loading — try again in a moment.'); return; }
+
+        const title    = ($('live-stream-title-input') || {}).value || 'Untitled Stream';
+        const category = ($('live-stream-category') || {}).value   || 'General';
+
+        if (!title.trim()) { showToast('Please enter a stream title.'); return; }
+
+        try {
+            // 1. Create Firestore stream doc
+            const { collection, addDoc, serverTimestamp } = window.fs;
+            const docRef = await addDoc(collection(window.db, LIVE_COL), {
+                hostAddr:   userAddress,
+                hostName:   userHandle || 'Creator',
+                hostAvatar: userAvatar || '',
+                title:      title.trim(),
+                category:   category,
+                active:     true,
+                viewers:    0,
+                starsEarned: 0,
+                hypeCount:  0,
+                startedAt:  serverTimestamp()
+            });
+            currentStreamId = docRef.id;
+            isHosting       = true;
+            liveStarsEarned = 0;
+            liveHypeCount   = 0;
+
+            // 2. Init Agora client as host
+            agoraClient = window.AgoraRTC.createClient({ mode: 'live', codec: 'h264' });
+            await agoraClient.setClientRole('host');
+
+            const channel = LIVE_CHANNEL + currentStreamId;
+            await agoraClient.join(AGORA_APP_ID, channel, null, userAddress);
+
+            // 3. Publish tracks (create if not already previewed)
+            if (!localVideoTrack || !localAudioTrack) {
+                [localVideoTrack, localAudioTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
+            }
+            await agoraClient.publish([localVideoTrack, localAudioTrack]);
+
+            // 4. Play own video in broadcaster view
+            const bvEl = $('live-broadcaster-video');
+            if (bvEl) localVideoTrack.play(bvEl);
+
+            // 5. Show active panel, hide setup
+            hide('live-setup-panel');
+            show('live-active-panel');
+            setText('live-broadcast-title-display', title);
+
+            // 6. Show LIVE badge in sidebar
+            const badge = $('live-viewer-badge');
+            if (badge) badge.style.display = '';
+
+            // 7. Start duration timer
+            streamStartTime = Date.now();
+            durationTimer = setInterval(updateDuration, 1000);
+
+            // 8. Subscribe to live chat for broadcaster
+            subscribeLiveChat(currentStreamId, 'live-broadcast-chat-feed');
+
+            // 9. Listen for hype events (viewer count updates)
+            subscribeStreamDoc(currentStreamId);
+
+            showToast('🔴 You are now LIVE! Audience can join and Hype you.');
+
+        } catch(e) {
+            console.error('[Live] Go live error:', e);
+            showToast('Stream error: ' + (e.message || String(e)));
+            isHosting = false;
+        }
+    };
+
+    // ── End stream ────────────────────────────────────────────────
+    window.endLiveStream = async function() {
+        if (!currentStreamId) return;
+        const confirmed = confirm(`End your stream?\n\nYou earned ${liveStarsEarned.toFixed(1)} ★\nYour cut (80%): ${(liveStarsEarned * CREATOR_CUT).toFixed(1)} ★\n\nStars will be credited to your Creator balance.`);
+        if (!confirmed) return;
+
+        try {
+            // Mark stream inactive in Firestore
+            const { doc, updateDoc, increment } = window.fs;
+            await updateDoc(doc(window.db, LIVE_COL, currentStreamId), {
+                active: false,
+                endedAt: Date.now()
+            });
+
+            // Credit 80% stars to creator balance
+            const creatorStars = parseFloat((liveStarsEarned * CREATOR_CUT).toFixed(2));
+            const platformStars = parseFloat((liveStarsEarned * 0.2).toFixed(2));
+
+            if (creatorStars > 0 && window.db && window.fs) {
+                const userRef = window.fs.doc(window.db, 'user_balances', userAddress);
+                await updateDoc(userRef, { creatorStars: increment(creatorStars) });
+                creatorEarnings = (parseFloat(creatorEarnings) || 0) + creatorStars;
+
+                // Platform revenue
+                const adminRef = window.fs.doc(window.db, 'admin_revenue', 'global');
+                await updateDoc(adminRef, { total: increment(platformStars) }).catch(() => {});
+            }
+
+        } catch(e) {
+            console.error('[Live] End stream error:', e);
+        }
+
+        // Clean up Agora
+        await _cleanupAgora();
+
+        // Reset UI
+        show('live-setup-panel');
+        hide('live-active-panel');
+        clearInterval(durationTimer);
+        const badge = $('live-viewer-badge');
+        if (badge) badge.style.display = 'none';
+
+        showToast(`✓ Stream ended — ${(liveStarsEarned * CREATOR_CUT).toFixed(1)} ★ credited to your Creator balance.`);
+        if (typeof updateUI === 'function') updateUI();
+
+        // Reset state
+        currentStreamId = null;
+        isHosting = false;
+        liveStarsEarned = 0;
+        liveHypeCount = 0;
+    };
+
+    // ── Join stream as viewer ─────────────────────────────────────
+    window.joinLiveStream = async function(streamId) {
+        if (!window.AgoraRTC || !window.db) return;
+
+        _watchingStreamId = streamId;
+
+        try {
+            // Fetch stream doc
+            const { doc, getDoc, updateDoc, increment } = window.fs;
+            const snap = await getDoc(doc(window.db, LIVE_COL, streamId));
+            if (!snap.exists() || !snap.data().active) {
+                showToast('This stream has ended.');
+                loadStreamBrowser();
+                return;
+            }
+            const streamData = snap.data();
+
+            // Update viewer count
+            await updateDoc(doc(window.db, LIVE_COL, streamId), { viewers: increment(1) });
+
+            // Init Agora as audience
+            agoraClient = window.AgoraRTC.createClient({ mode: 'live', codec: 'h264' });
+            await agoraClient.setClientRole('audience');
+
+            const channel = LIVE_CHANNEL + streamId;
+            await agoraClient.join(AGORA_APP_ID, channel, null, Math.floor(Math.random() * 99999));
+
+            // Listen for remote video
+            agoraClient.on('user-published', async (remoteUser, mediaType) => {
+                await agoraClient.subscribe(remoteUser, mediaType);
+                if (mediaType === 'video') {
+                    const remoteEl = $('live-remote-video');
+                    if (remoteEl) remoteUser.videoTrack.play(remoteEl);
+                }
+                if (mediaType === 'audio') {
+                    remoteUser.audioTrack.play();
+                }
+            });
+
+            agoraClient.on('user-unpublished', () => {
+                leaveLiveStream();
+            });
+
+            // Show player, hide browser
+            hide('live-stream-browser');
+            show('live-player-wrap');
+
+            // Populate stream info
+            setText('live-stream-host-name', streamData.hostName || 'Creator');
+            setText('live-stream-title-sm',  streamData.title    || '');
+            setText('live-creator-stars-watch', (streamData.starsEarned || 0).toFixed(1));
+
+            // Subscribe to live updates + chat
+            subscribeStreamDoc(streamId);
+            subscribeLiveChat(streamId, 'live-chat-feed');
+
+            showToast('📺 Joined the stream!');
+
+        } catch(e) {
+            console.error('[Live] Join error:', e);
+            showToast('Could not join stream: ' + (e.message || String(e)));
+        }
+    };
+
+    // ── Leave stream ──────────────────────────────────────────────
+    window.leaveLiveStream = async function() {
+        if (_watchingStreamId && window.db && window.fs) {
+            try {
+                const { doc, updateDoc, increment } = window.fs;
+                await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), { viewers: increment(-1) });
+            } catch(_) {}
+        }
+        await _cleanupAgora();
+        hide('live-player-wrap');
+        show('live-stream-browser');
+        if (_liveChatUnsub) { try { _liveChatUnsub(); } catch(_) {} _liveChatUnsub = null; }
+        _watchingStreamId = null;
+        loadStreamBrowser();
+    };
+
+    // ── Hype button ───────────────────────────────────────────────
+    window.sendLiveHype = async function() {
+        if (!_watchingStreamId) return;
+        const available = typeof getTotalSpendableStars === 'function' ? getTotalSpendableStars() : 0;
+        if (available < HYPE_STAR_COST) { showToast('Not enough Stars to Hype! Deposit APTM first.'); return; }
+
+        try {
+            const { doc, updateDoc, increment, getDoc } = window.fs;
+
+            // Deduct star from viewer — find host address to credit
+            const streamSnap = await getDoc(doc(window.db, LIVE_COL, _watchingStreamId));
+            if (!streamSnap.exists()) return;
+            const hostAddr = streamSnap.data().hostAddr;
+
+            // Deduct from viewer's purchased stars (simplest safe path)
+            if (userAddress) {
+                const viewerRef = doc(window.db, 'user_balances', userAddress);
+                await updateDoc(viewerRef, { stars: increment(-HYPE_STAR_COST) }).catch(() => {});
+                purchasedStars = Math.max(0, (parseFloat(purchasedStars) || 0) - HYPE_STAR_COST);
+            }
+
+            // Credit stream star count (settled to creator on stream end)
+            await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
+                starsEarned: increment(HYPE_STAR_COST),
+                hypeCount:   increment(1)
+            });
+
+            // Add hype message to chat
+            sendSystemChat(_watchingStreamId, `${userHandle || 'Someone'} hyped the stream! ⚡`);
+
+            // Local UI update
+            const hypeBtn = $('live-hype-btn');
+            if (hypeBtn) {
+                hypeBtn.style.transform = 'scale(0.93)';
+                setTimeout(() => { hypeBtn.style.transform = ''; }, 140);
+            }
+
+            if (typeof updateUI === 'function') updateUI();
+
+        } catch(e) {
+            console.warn('[Live] Hype error:', e);
+        }
+    };
+
+    // ── Live chat ─────────────────────────────────────────────────
+    window.sendLiveChat = async function() {
+        const input = $('live-chat-input');
+        const text  = input ? input.value.trim() : '';
+        if (!text || !_watchingStreamId) return;
+        if (input) input.value = '';
+
+        if (!window.db || !window.fs) return;
+        const { collection, addDoc, serverTimestamp } = window.fs;
+        await addDoc(collection(window.db, LIVE_CHAT_COL, _watchingStreamId, 'messages'), {
+            author:    userHandle  || 'Viewer',
+            avatar:    userAvatar  || '',
+            text:      text,
+            ts:        serverTimestamp(),
+            isSystem:  false
+        }).catch(e => console.warn('[Live chat]', e));
+    };
+
+    function sendSystemChat(streamId, text) {
+        if (!window.db || !window.fs) return;
+        const { collection, addDoc, serverTimestamp } = window.fs;
+        addDoc(collection(window.db, LIVE_CHAT_COL, streamId, 'messages'), {
+            author:   'System',
+            avatar:   '',
+            text:     text,
+            ts:       serverTimestamp(),
+            isSystem: true
+        }).catch(() => {});
+    }
+
+    function subscribeLiveChat(streamId, feedElId) {
+        if (!window.db || !window.fs) { waitForFb(() => subscribeLiveChat(streamId, feedElId)); return; }
+        if (_liveChatUnsub) { try { _liveChatUnsub(); } catch(_) {} }
+
+        const { collection, query, orderBy, onSnapshot, limit } = window.fs;
+        const q = query(
+            collection(window.db, LIVE_CHAT_COL, streamId, 'messages'),
+            orderBy('ts', 'desc'),
+            limit(50)
+        );
+
+        _liveChatUnsub = onSnapshot(q, snap => {
+            const msgs = [];
+            snap.forEach(d => msgs.push({ id: d.id, ...d.data() }));
+            msgs.reverse();
+            renderChatFeed(feedElId, msgs);
+        });
+    }
+
+    function renderChatFeed(feedElId, msgs) {
+        const feed = $(feedElId);
+        if (!feed) return;
+        feed.innerHTML = msgs.map(m => `
+            <div class="live-chat-msg">
+                <img class="live-chat-av" src="${m.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=' + _esc(m.author)}" onerror="this.src='https://api.dicebear.com/7.x/identicon/svg?seed=hub'">
+                <div>
+                    <div class="live-chat-user">${_esc(m.author)}</div>
+                    <div class="live-chat-body ${m.isSystem ? 'live-chat-hype-msg' : ''}">${_esc(m.text)}</div>
+                </div>
+            </div>
+        `).join('');
+        feed.scrollTop = feed.scrollHeight;
+    }
+
+    // ── Subscribe to stream doc for live viewer/stars updates ─────
+    function subscribeStreamDoc(streamId) {
+        if (!window.db || !window.fs) { waitForFb(() => subscribeStreamDoc(streamId)); return; }
+        const { doc, onSnapshot } = window.fs;
+
+        onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
+            if (!snap.exists()) return;
+            const d = snap.data();
+
+            // Viewer side
+            setText('live-watch-viewers',       '👁 ' + (d.viewers || 0) + ' watching');
+            setText('live-creator-stars-watch',  (d.starsEarned || 0).toFixed(1));
+            setText('live-hype-count',           '(' + (d.hypeCount || 0) + ')');
+
+            // Broadcaster side
+            liveStarsEarned  = d.starsEarned || 0;
+            liveHypeCount    = d.hypeCount   || 0;
+            liveViewerCount  = d.viewers     || 0;
+            setText('live-stat-stars',   liveStarsEarned.toFixed(1) + ' ★');
+            setText('live-stat-hypes',   String(liveHypeCount));
+            setText('live-stat-viewers', String(liveViewerCount));
+            setText('live-broadcast-viewers', '👁 ' + liveViewerCount + ' watching');
+
+            // Sidebar badge viewer count
+            const badge = $('live-viewer-badge');
+            if (badge && isHosting) badge.textContent = liveViewerCount + ' live';
+
+            // If stream ended remotely
+            if (!d.active && !isHosting) {
+                showToast('The stream has ended.');
+                leaveLiveStream();
+            }
+        });
+    }
+
+    // ── Duration timer ────────────────────────────────────────────
+    function updateDuration() {
+        if (!streamStartTime) return;
+        const secs  = Math.floor((Date.now() - streamStartTime) / 1000);
+        const m     = Math.floor(secs / 60);
+        const s     = secs % 60;
+        setText('live-stat-duration', m + ':' + String(s).padStart(2, '0'));
+    }
+
+    // ── Agora cleanup ─────────────────────────────────────────────
+    async function _cleanupAgora() {
+        try {
+            if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack.close(); localVideoTrack = null; }
+            if (localAudioTrack) { localAudioTrack.stop(); localAudioTrack.close(); localAudioTrack = null; }
+            if (agoraClient)     { await agoraClient.leave(); agoraClient = null; }
+        } catch(e) { console.warn('[Live] Agora cleanup:', e); }
+    }
+
+    // ── _esc fallback if not yet defined ─────────────────────────
+    function _esc(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ── Init on page load — start browser listener if on live tab ─
+    document.addEventListener('DOMContentLoaded', function() {
+        // Pre-load stream browser quietly so it's ready when user clicks Live
+        waitForFb(() => {
+            // Ensure Firestore index exists gracefully (will warn in console if index needed)
+        });
+    });
+
+    console.log('[SocialHub] Live Stream Engine initialised — Agora App ID:', AGORA_APP_ID);
+
 })();
 </script>
 
