@@ -15989,15 +15989,14 @@
                 if (typeof window.startLocalPreview === 'function') window.startLocalPreview();
             }, 300);
         }
-        // Re-attach broadcaster video when switching back while actively hosting.
-        // The panel was hidden (display:none) while on Watch tab — Agora's injected
-        // <video> stops rendering and needs play() called again once visible.
+        // Re-attach broadcaster video when switching back while actively hosting
         if (tab === 'broadcast' && isHosting && localVideoTrack) {
             setTimeout(async function() {
-                const bvEl = $('live-broadcaster-video');
-                if (bvEl) {
+                const bvNative = $('live-broadcaster-video-native');
+                const target = bvNative || $('live-broadcaster-video');
+                if (target) {
                     console.log('[Live] Re-attaching broadcaster video after tab switch');
-                    await _playTrackNative(localVideoTrack, bvEl);
+                    await _playTrackNative(localVideoTrack, target);
                 }
             }, 150);
         }
@@ -16071,35 +16070,50 @@
         `).join('');
     }
 
-    // ── Helper: play an Agora video track into a dedicated wrapper div ─────────
-    // IMPORTANT: Agora's play() clears innerHTML of the target — never pass
-    // a container that holds overlay badges. Use dedicated inner wrappers only.
-    async function _playTrackNative(track, wrapperEl) {
-        if (!track || !wrapperEl) return;
-
-        // Ensure wrapper is visible and sized
-        wrapperEl.style.display  = 'block';
-        wrapperEl.style.width    = '100%';
-        wrapperEl.style.height   = '100%';
-        wrapperEl.style.position = 'absolute';
-        wrapperEl.style.top      = '0';
-        wrapperEl.style.left     = '0';
-
-        // Poll up to 2s for the element to have real dimensions
-        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        for (let i = 0; i < 20; i++) {
-            if (wrapperEl.getBoundingClientRect().height > 10) break;
-            await new Promise(r => setTimeout(r, 100));
-        }
-
-        const rect = wrapperEl.getBoundingClientRect();
-        console.log('[Live] Wrapper rect:', Math.round(rect.width), 'x', Math.round(rect.height));
-
+    // ── Helper: play Agora video track into a named element ────────────────────
+    // Uses srcObject on a native <video> element directly — most reliable method.
+    // Polls until the MediaStreamTrack is truly live before attaching.
+    async function _playTrackNative(track, targetEl) {
+        if (!track || !targetEl) return;
         try {
-            track.play(wrapperEl);
-            console.log('[Live] Agora play() called');
+            // Poll up to 3s for the underlying track to be live
+            let raw = null;
+            for (let i = 0; i < 30; i++) {
+                try {
+                    const t = typeof track.getMediaStreamTrack === 'function'
+                        ? track.getMediaStreamTrack() : null;
+                    if (t && t.readyState === 'live' && t.enabled) { raw = t; break; }
+                } catch(_) {}
+                await new Promise(r => setTimeout(r, 100));
+            }
+            if (!raw) {
+                console.warn('[Live] Track never became live — falling back to Agora play()');
+                track.play(targetEl);
+                return;
+            }
+            console.log('[Live] Track is live, using srcObject on native video');
+            // targetEl might be a <video> or a <div> — handle both
+            let videoEl = targetEl;
+            if (targetEl.tagName !== 'VIDEO') {
+                // Find or create a <video> inside the div
+                videoEl = targetEl.querySelector('video');
+                if (!videoEl) {
+                    videoEl = document.createElement('video');
+                    videoEl.autoplay   = true;
+                    videoEl.muted      = true;
+                    videoEl.playsInline = true;
+                    videoEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;';
+                    targetEl.appendChild(videoEl);
+                }
+            }
+            videoEl.style.display = 'block';
+            videoEl.srcObject = new MediaStream([raw]);
+            const p = videoEl.play();
+            if (p && p.catch) p.catch(e => console.warn('[Live] video.play():', e));
+            console.log('[Live] srcObject attached successfully');
         } catch(e) {
-            console.warn('[Live] Agora play() failed:', e);
+            console.warn('[Live] _playTrackNative error:', e);
+            try { track.play(targetEl); } catch(_) {}
         }
     }
 
@@ -16195,10 +16209,15 @@
             show('live-active-panel');
             setText('live-broadcast-title-display', title);
 
-            // Play into the dedicated inner wrapper — NOT the outer container
-            // (Agora's play() wipes innerHTML, so outer container would lose overlays)
-            const bvEl = $('live-broadcaster-video');
-            if (bvEl) await _playTrackNative(localVideoTrack, bvEl);
+            // Play local video — use the native <video> element directly.
+            // It's already in the DOM so srcObject works regardless of parent visibility.
+            const bvNative = $('live-broadcaster-video-native');
+            if (bvNative) {
+                await _playTrackNative(localVideoTrack, bvNative);
+            } else {
+                const bvEl = $('live-broadcaster-video');
+                if (bvEl) await _playTrackNative(localVideoTrack, bvEl);
+            }
 
             // 6. Show LIVE badge in sidebar
             const badge = $('live-viewer-badge');
