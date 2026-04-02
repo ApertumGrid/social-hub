@@ -729,7 +729,7 @@
             display:flex; gap:8px; padding:10px 14px;
             border-top:1px solid var(--border);
         }
-        .live-chat-input-row .field { margin-top:0 !important; flex:1; }
+        .live-chat-input-row .field { margin-top:0 !important; flex:1; width:0 !important; min-width:0; }
 
         /* ── Gift System CSS ─────────────────────────────────────── */
         .live-gift-card {
@@ -6309,6 +6309,15 @@
 
             // Update settle button text with live APTM amount
             if (typeof updateSettleButtons === 'function') updateSettleButtons();
+
+            // ── Expose shared state for live engine IIFE ──────────────────
+            window._liveUserAddress  = userAddress  || '';
+            window._liveUserHandle   = userHandle   || 'Anonymous';
+            window._liveUserAvatar   = userAvatar   || '';
+            window._livePurchasedStars = parseFloat(purchasedStars) || 0;
+            window._liveCreatorEarnings = parseFloat(creatorEarnings) || 0;
+            window._liveAvailableStars = availStars;
+            window._liveTotalSpendable = availStars; // same formula
 
             // Admin panel — OWNER ONLY. !important prevents any stylesheet override.
             const isAdmin = userAddress && userAddress.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase();
@@ -16037,8 +16046,7 @@
             if (previewEl) {
                 previewEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
                 const playPreviewWhenReady = () => {
-                    const rect = previewEl.getBoundingClientRect();
-                    if (rect.width > 0 && rect.height > 0) {
+                    if (previewEl.offsetWidth > 0 || previewEl.offsetHeight > 0) {
                         localVideoTrack.play(previewEl);
                     } else {
                         setTimeout(playPreviewWhenReady, 100);
@@ -16056,6 +16064,11 @@
 
     // ── Go Live ───────────────────────────────────────────────────
     window.startLiveStream = async function() {
+        // Read shared state from main IIFE bridge
+        const userAddress = window._liveUserAddress || '';
+        const userHandle  = window._liveUserHandle  || 'Creator';
+        const userAvatar  = window._liveUserAvatar  || '';
+
         if (!userAddress) { showToast('Connect your wallet first to go live.'); return; }
         if (!window.AgoraRTC) { showToast('Agora SDK loading — try again in a moment.'); return; }
 
@@ -16108,8 +16121,7 @@
             if (bvEl) {
                 bvEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
                 const playWhenReady = () => {
-                    const rect = bvEl.getBoundingClientRect();
-                    if (rect.width > 0 && rect.height > 0) {
+                    if (bvEl.offsetWidth > 0 || bvEl.offsetHeight > 0) {
                         localVideoTrack.play(bvEl);
                     } else {
                         setTimeout(playWhenReady, 100);
@@ -16210,8 +16222,7 @@
                     if (remoteEl) {
                         remoteEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
                         const playRemoteWhenReady = () => {
-                            const rect = remoteEl.getBoundingClientRect();
-                            if (rect.width > 0 && rect.height > 0) {
+                            if (remoteEl.offsetWidth > 0 || remoteEl.offsetHeight > 0) {
                                 remoteUser.videoTrack.play(remoteEl);
                             } else {
                                 setTimeout(playRemoteWhenReady, 100);
@@ -16269,7 +16280,12 @@
     // ── Hype button ───────────────────────────────────────────────
     window.sendLiveHype = async function() {
         if (!_watchingStreamId) return;
-        const available = typeof getTotalSpendableStars === 'function' ? getTotalSpendableStars() : 0;
+
+        // Read shared state from main IIFE bridge
+        const userAddress = window._liveUserAddress || '';
+        const userHandle  = window._liveUserHandle  || 'Someone';
+        const available   = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
+
         if (available < HYPE_STAR_COST) { showToast('Not enough Stars to Hype! Deposit APTM first.'); return; }
 
         try {
@@ -16278,13 +16294,16 @@
             // Deduct star from viewer — find host address to credit
             const streamSnap = await getDoc(doc(window.db, LIVE_COL, _watchingStreamId));
             if (!streamSnap.exists()) return;
-            const hostAddr = streamSnap.data().hostAddr;
 
             // Deduct from viewer's purchased stars (simplest safe path)
             if (userAddress) {
-                const viewerRef = doc(window.db, 'user_balances', userAddress);
+                const viewerRef = doc(window.db, 'user_balances', userAddress.toLowerCase());
                 await updateDoc(viewerRef, { stars: increment(-HYPE_STAR_COST) }).catch(() => {});
-                purchasedStars = Math.max(0, (parseFloat(purchasedStars) || 0) - HYPE_STAR_COST);
+                // Update bridge balance
+                if (typeof window._liveTotalSpendable === 'number') {
+                    window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - HYPE_STAR_COST);
+                    window._liveAvailableStars = window._liveTotalSpendable;
+                }
             }
 
             // Credit stream star count (settled to creator on stream end)
@@ -16294,7 +16313,7 @@
             });
 
             // Add hype message to chat
-            sendSystemChat(_watchingStreamId, `${userHandle || 'Someone'} hyped the stream! ⚡`);
+            sendSystemChat(_watchingStreamId, `${userHandle} hyped the stream! ⚡`);
 
             // Local UI update
             const hypeBtn = $('live-hype-btn');
@@ -16320,8 +16339,8 @@
         if (!window.db || !window.fs) return;
         const { collection, addDoc, serverTimestamp } = window.fs;
         await addDoc(collection(window.db, LIVE_CHAT_COL, _watchingStreamId, 'messages'), {
-            author:   userHandle || 'Viewer',
-            avatar:   userAvatar || '',
+            author:   window._liveUserHandle || 'Viewer',
+            avatar:   window._liveUserAvatar || '',
             text:     text,
             ts:       serverTimestamp(),
             isSystem: false
@@ -16337,8 +16356,8 @@
         if (!window.db || !window.fs) return;
         const { collection, addDoc, serverTimestamp } = window.fs;
         await addDoc(collection(window.db, LIVE_CHAT_COL, currentStreamId, 'messages'), {
-            author:   userHandle || 'Creator',
-            avatar:   userAvatar || '',
+            author:   window._liveUserHandle || 'Creator',
+            avatar:   window._liveUserAvatar || '',
             text:     text,
             ts:       serverTimestamp(),
             isSystem: false,
@@ -16356,12 +16375,18 @@
 
     window.sendGift = async function(tierKey) {
         if (!_watchingStreamId) { showToast('Join a stream first to send gifts.'); return; }
-        if (!userAddress)       { showToast('Connect your wallet to send gifts.');  return; }
+
+        // Read shared state from main IIFE bridge (exposed via updateUI)
+        const userAddress = window._liveUserAddress || '';
+        const userHandle  = window._liveUserHandle  || 'Viewer';
+        const userAvatar  = window._liveUserAvatar  || '';
+        const available   = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
+
+        if (!userAddress) { showToast('Connect your wallet to send gifts.'); return; }
 
         const tier = GIFT_TIERS[tierKey];
         if (!tier) return;
 
-        const available = typeof getTotalSpendableStars === 'function' ? getTotalSpendableStars() : 0;
         if (available < tier.cost) {
             showToast(`Not enough Stars — need ${tier.cost} ★ to send a ${tier.name}.`);
             return;
@@ -16375,10 +16400,14 @@
             if (!streamSnap.exists() || !streamSnap.data().active) { showToast('Stream has ended.'); return; }
             const hostAddr = streamSnap.data().hostAddr;
 
-            // 1. Deduct from viewer's purchased stars
-            const viewerRef = doc(window.db, 'user_balances', userAddress);
+            // 1. Deduct from viewer's purchased stars in Firestore
+            const viewerRef = doc(window.db, 'user_balances', userAddress.toLowerCase());
             await updateDoc(viewerRef, { stars: increment(-tier.cost) });
-            purchasedStars = Math.max(0, (parseFloat(purchasedStars) || 0) - tier.cost);
+            // Update bridge so subsequent gifts in same session see correct balance
+            if (typeof window._liveTotalSpendable === 'number') {
+                window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - tier.cost);
+                window._liveAvailableStars = window._liveTotalSpendable;
+            }
 
             // 2. Credit 80% to creator instantly
             const creatorCut  = parseFloat((tier.cost * 0.8).toFixed(4));
@@ -16402,9 +16431,9 @@
 
             // 5. Post gift message to live chat
             await addDoc(collection(window.db, LIVE_CHAT_COL, _watchingStreamId, 'messages'), {
-                author:    userHandle || 'Viewer',
-                avatar:    userAvatar || '',
-                text:      `${tier.icon} ${userHandle || 'Someone'} sent a ${tier.name}! (${tier.cost} ★)`,
+                author:    userHandle,
+                avatar:    userAvatar,
+                text:      `${tier.icon} ${userHandle} sent a ${tier.name}! (${tier.cost} ★)`,
                 ts:        serverTimestamp(),
                 isSystem:  true,
                 isGift:    true,
