@@ -16060,25 +16060,38 @@
         `).join('');
     }
 
-    // ── Helper: attach Agora track to a native <video> element ───
-    // Bypasses Agora's play() which silently fails when element has no
-    // visible dimensions (e.g. inside a scrolled-off panel).
-    function _playTrackNative(track, videoEl) {
+    // ── Helper: attach Agora video track to a native <video> element ──────────
+    // Waits up to 3s for the camera track to become live before attaching.
+    // This is necessary because getMediaStreamTrack() returns immediately after
+    // createMicrophoneAndCameraTracks() but the camera hasn't produced frames yet.
+    async function _playTrackNative(track, videoEl) {
         if (!track || !videoEl) return;
-        try {
-            const raw = typeof track.getMediaStreamTrack === 'function'
-                ? track.getMediaStreamTrack() : null;
-            if (raw) {
-                videoEl.srcObject = new MediaStream([raw]);
-                videoEl.style.display = 'block';
-                videoEl.play().catch(() => {});
-                return;
-            }
-        } catch(_) {}
-        // Fallback: let Agora inject its own <video> into the parent div
-        const wrapper = videoEl.parentElement || videoEl;
-        wrapper.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-        try { track.play(wrapper); } catch(_) {}
+        videoEl.style.display = 'block';
+
+        // Poll until the underlying MediaStreamTrack is live (max 3s)
+        let raw = null;
+        for (let i = 0; i < 30; i++) {
+            try {
+                raw = typeof track.getMediaStreamTrack === 'function'
+                    ? track.getMediaStreamTrack() : null;
+                if (raw && raw.readyState === 'live') break;
+            } catch(_) {}
+            await new Promise(r => setTimeout(r, 100));
+            raw = null;
+        }
+
+        if (raw) {
+            console.log('[Live] Track live after poll, attaching srcObject');
+            videoEl.srcObject = new MediaStream([raw]);
+            const p = videoEl.play();
+            if (p && typeof p.catch === 'function') p.catch(e => console.warn('[Live] play():', e));
+        } else {
+            // Fallback: Agora injects its own <video> into the parent wrapper
+            console.warn('[Live] Track not live after 3s — using Agora play() fallback');
+            const wrapper = videoEl.parentElement || videoEl;
+            wrapper.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+            try { track.play(wrapper); } catch(e) { console.warn('[Live] Agora play() also failed:', e); }
+        }
     }
 
     // ── Local camera preview ──────────────────────────────────────
@@ -16099,23 +16112,9 @@
             const vid         = $('live-local-video');
             const placeholder = $('live-preview-placeholder');
             if (placeholder) placeholder.style.display = 'none';
-
-            // Must make element visible BEFORE attaching stream,
-            // and wait a moment for the camera to produce its first frames.
             if (vid) {
-                vid.style.display = 'block';
-                await new Promise(r => setTimeout(r, 500));
-                const raw = typeof localVideoTrack.getMediaStreamTrack === 'function'
-                    ? localVideoTrack.getMediaStreamTrack() : null;
-                if (raw && raw.readyState !== 'ended') {
-                    vid.srcObject = new MediaStream([raw]);
-                    vid.play().catch(e => console.warn('[Live] preview play():', e));
-                    console.log('[Live] Preview attached, track state:', raw.readyState);
-                } else {
-                    // Fallback: let Agora inject video into the container
-                    const container = $('live-local-preview');
-                    if (container) localVideoTrack.play(container);
-                }
+                vid.style.display = 'block';   // must be visible before attaching
+                await _playTrackNative(localVideoTrack, vid);
             }
         } catch(e) {
             console.error('[Live] Preview error:', e);
@@ -16187,19 +16186,16 @@
             show('live-active-panel');
             setText('live-broadcast-title-display', title);
 
-            // Play local video into broadcaster box using native MediaStream
-            // (bypasses Agora's internal getBoundingClientRect check)
+            // Play local video into broadcaster box.
+            // Panel is now visible — poll until track is live then attach.
             const bvNative = $('live-broadcaster-video-native');
             if (bvNative) {
-                _playTrackNative(localVideoTrack, bvNative);
+                await _playTrackNative(localVideoTrack, bvNative);
             } else {
-                // Fallback for older HTML without native video element
                 const bvEl = $('live-broadcaster-video');
                 if (bvEl) {
                     bvEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-                    requestAnimationFrame(() => requestAnimationFrame(() => {
-                        try { localVideoTrack.play(bvEl); } catch(_) {}
-                    }));
+                    await _playTrackNative(localVideoTrack, bvEl);
                 }
             }
 
