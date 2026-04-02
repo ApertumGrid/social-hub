@@ -5021,7 +5021,7 @@
                                 <div style="font-size:2rem;opacity:0.3;">📷</div>
                                 <div style="font-size:0.72rem; color:rgba(255,255,255,0.35);">Camera preview will appear here</div>
                             </div>
-                            <div id="live-local-video" style="width:100%;height:100%;position:absolute;top:0;left:0;"></div>
+                            <video id="live-local-video" autoplay muted playsinline style="width:100%;height:100%;position:absolute;top:0;left:0;object-fit:cover;display:none;"></video>
                         </div>
 
                         <div style="display:flex; gap:10px;">
@@ -5040,7 +5040,9 @@
                                 <span class="live-badge-pill">🔴 YOU ARE LIVE</span>
                                 <span class="live-viewer-chip" id="live-broadcast-viewers">👁 0 watching</span>
                             </div>
-                            <div id="live-broadcaster-video" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
+                            <div id="live-broadcaster-video" style="position:absolute;top:0;left:0;width:100%;height:100%;">
+                                <video id="live-broadcaster-video-native" autoplay muted playsinline style="width:100%;height:100%;object-fit:cover;display:block;"></video>
+                            </div>
                             <div class="live-stream-meta">
                                 <div class="live-stream-host" id="live-broadcast-title-display"></div>
                             </div>
@@ -16058,18 +16060,35 @@
         `).join('');
     }
 
+    // ── Helper: attach Agora track to a native <video> element ───
+    // Bypasses Agora's play() which silently fails when element has no
+    // visible dimensions (e.g. inside a scrolled-off panel).
+    function _playTrackNative(track, videoEl) {
+        if (!track || !videoEl) return;
+        try {
+            const raw = typeof track.getMediaStreamTrack === 'function'
+                ? track.getMediaStreamTrack() : null;
+            if (raw) {
+                videoEl.srcObject = new MediaStream([raw]);
+                videoEl.style.display = 'block';
+                videoEl.play().catch(() => {});
+                return;
+            }
+        } catch(_) {}
+        // Fallback: let Agora inject its own <video> into the parent div
+        const wrapper = videoEl.parentElement || videoEl;
+        wrapper.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+        try { track.play(wrapper); } catch(_) {}
+    }
+
     // ── Local camera preview ──────────────────────────────────────
     window.startLocalPreview = async function() {
         try {
             if (!window.AgoraRTC) { showToast('Agora SDK not loaded yet — please wait.'); return; }
-            // Don't restart if already previewing
+            // Don't recreate tracks if already previewing
             if (localVideoTrack && !isHosting) {
-                const previewEl = $('live-local-video');
-                if (previewEl) {
-                    requestAnimationFrame(() => requestAnimationFrame(() => {
-                        try { localVideoTrack.play(previewEl); } catch(_) {}
-                    }));
-                }
+                const vid = $('live-local-video');
+                if (vid) _playTrackNative(localVideoTrack, vid);
                 return;
             }
             if (localVideoTrack) { try { localVideoTrack.stop(); localVideoTrack.close(); } catch(_) {} }
@@ -16077,30 +16096,16 @@
 
             [localVideoTrack, localAudioTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
 
-            const previewEl   = $('live-local-video');
+            const vid         = $('live-local-video');
             const placeholder = $('live-preview-placeholder');
-            const previewWrap = $('live-local-preview');
-
             if (placeholder) placeholder.style.display = 'none';
-            if (previewWrap) { previewWrap.style.width = '100%'; previewWrap.style.height = '220px'; }
-            if (previewEl) {
-                previewEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-                // Two rAF cycles ensures the browser has painted before Agora measures
-                requestAnimationFrame(() => requestAnimationFrame(() => {
-                    try {
-                        localVideoTrack.play(previewEl);
-                    } catch(e) {
-                        setTimeout(() => { try { localVideoTrack.play(previewEl); } catch(_) {} }, 400);
-                    }
-                }));
-            }
+            if (vid) _playTrackNative(localVideoTrack, vid);
         } catch(e) {
             console.error('[Live] Preview error:', e);
             const msg = e.name === 'NotAllowedError' || e.message?.includes('Permission')
                 ? 'Camera permission denied — please allow camera access in your browser settings.'
                 : 'Camera error: ' + (e.message || String(e));
             showToast(msg);
-            // Show placeholder again on error
             const ph = $('live-preview-placeholder');
             if (ph) ph.style.display = '';
         }
@@ -16165,26 +16170,20 @@
             show('live-active-panel');
             setText('live-broadcast-title-display', title);
 
-            // Play local video into broadcaster box
-            // Force the container to have explicit pixel dimensions before Agora play()
-            // so Agora's internal getBoundingClientRect() never returns zeros.
-            const bvEl        = $('live-broadcaster-video');
-            const bvContainer = $('live-broadcaster-video-container');
-            if (bvEl) {
-                bvEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-                if (bvContainer) {
-                    bvContainer.style.width  = bvContainer.offsetWidth  + 'px';
-                    bvContainer.style.height = (bvContainer.offsetHeight || 240) + 'px';
+            // Play local video into broadcaster box using native MediaStream
+            // (bypasses Agora's internal getBoundingClientRect check)
+            const bvNative = $('live-broadcaster-video-native');
+            if (bvNative) {
+                _playTrackNative(localVideoTrack, bvNative);
+            } else {
+                // Fallback for older HTML without native video element
+                const bvEl = $('live-broadcaster-video');
+                if (bvEl) {
+                    bvEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+                    requestAnimationFrame(() => requestAnimationFrame(() => {
+                        try { localVideoTrack.play(bvEl); } catch(_) {}
+                    }));
                 }
-                // Two rAF cycles to ensure the browser has painted the shown panel
-                requestAnimationFrame(() => requestAnimationFrame(() => {
-                    try {
-                        localVideoTrack.play(bvEl);
-                    } catch(e) {
-                        // Fallback: retry after 500ms if play() threw
-                        setTimeout(() => { try { localVideoTrack.play(bvEl); } catch(_) {} }, 500);
-                    }
-                }));
             }
 
             // 6. Show LIVE badge in sidebar
