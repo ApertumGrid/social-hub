@@ -16060,27 +16060,43 @@
         `).join('');
     }
 
-    // ── Helper: play an Agora video track into a container element ─────────────
-    // Strategy: use Agora's own play() method (which manages the internal
-    // MediaStream lifecycle correctly), but ensure the container is visible
-    // and has real dimensions first. Then verify it rendered and retry if not.
-    async function _playTrackNative(track, containerEl) {
-        if (!track || !containerEl) return;
+    // ── Helper: play an Agora video track into a dedicated wrapper div ─────────
+    // IMPORTANT: Agora's play() clears the innerHTML of the target element,
+    // so we must NEVER target a container that holds overlay badges/metadata.
+    // Always pass a dedicated inner wrapper div as the target.
+    // The wrapper must be visible and have real dimensions before play() is called.
+    async function _playTrackNative(track, wrapperEl) {
+        if (!track || !wrapperEl) return;
 
-        // Ensure container is visible with real dimensions
-        containerEl.style.display = 'block';
-        containerEl.style.width   = containerEl.style.width  || '100%';
-        containerEl.style.height  = containerEl.style.height || '100%';
+        // Ensure wrapper is visible
+        wrapperEl.style.display    = 'block';
+        wrapperEl.style.width      = '100%';
+        wrapperEl.style.height     = '100%';
+        wrapperEl.style.position   = 'absolute';
+        wrapperEl.style.top        = '0';
+        wrapperEl.style.left       = '0';
 
-        // Wait for the browser to paint the element so it has real dimensions
+        // Wait for the browser to paint so getBoundingClientRect returns real values
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-        const rect = containerEl.getBoundingClientRect();
-        console.log('[Live] Container rect before play():', rect.width, 'x', rect.height);
+        // If the wrapper still has no height, its parent may not be visible yet —
+        // poll up to 2s for the parent container to get real dimensions
+        for (let i = 0; i < 20; i++) {
+            const rect = wrapperEl.getBoundingClientRect();
+            if (rect.height > 10) break;
+            await new Promise(r => setTimeout(r, 100));
+        }
+
+        const rect = wrapperEl.getBoundingClientRect();
+        console.log('[Live] Wrapper rect before play():', Math.round(rect.width), 'x', Math.round(rect.height));
+
+        if (rect.height < 10) {
+            console.warn('[Live] Wrapper still has no height — play() will likely fail');
+        }
 
         try {
-            track.play(containerEl);
-            console.log('[Live] Agora play() called on container');
+            track.play(wrapperEl);
+            console.log('[Live] Agora play() called successfully');
         } catch(e) {
             console.warn('[Live] Agora play() failed:', e);
         }
@@ -16103,9 +16119,12 @@
 
             const placeholder = $('live-preview-placeholder');
             if (placeholder) placeholder.style.display = 'none';
-            // Play into the container div — Agora injects and manages its own <video>
-            const previewBox = $('live-local-preview');
-            if (previewBox) await _playTrackNative(localVideoTrack, previewBox);
+            // Play into the inner video element — it's a dedicated slot, safe for Agora
+            const vid = $('live-local-video');
+            if (vid) {
+                vid.style.display = 'block';
+                await _playTrackNative(localVideoTrack, vid);
+            }
         } catch(e) {
             console.error('[Live] Preview error:', e);
             const msg = e.name === 'NotAllowedError' || e.message?.includes('Permission')
@@ -16176,14 +16195,11 @@
             show('live-active-panel');
             setText('live-broadcast-title-display', title);
 
-            // Play local video into broadcaster box.
-            // Use the outer container so Agora can size its injected <video> correctly.
-            const bvContainer = $('live-broadcaster-video-container');
-            if (bvContainer) {
-                await _playTrackNative(localVideoTrack, bvContainer);
-            } else {
-                const bvEl = $('live-broadcaster-video');
-                if (bvEl) await _playTrackNative(localVideoTrack, bvEl);
+            // Play into live-broadcaster-video — the dedicated inner wrapper.
+            // Do NOT target live-broadcaster-video-container (Agora would wipe the overlays).
+            const bvEl = $('live-broadcaster-video');
+            if (bvEl) {
+                await _playTrackNative(localVideoTrack, bvEl);
             }
 
             // 6. Show LIVE badge in sidebar
