@@ -12,6 +12,7 @@
     <title>SOCIALHUB — The Future of Social</title>
 
     <!-- PWA: iOS -->
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="SocialHub">
@@ -19,13 +20,13 @@
 
     <!-- PWA: Android + Chrome -->
     <meta name="theme-color" content="#7c5cbf">
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="/social-hub/manifest.json">
 
     <!-- PWA: Service Worker Registration -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
+          navigator.serviceWorker.register('/social-hub/sw.js')
             .then(() => console.log('[SocialHub] Service Worker registered'))
             .catch(err => console.warn('[SocialHub] SW failed:', err));
         });
@@ -19086,34 +19087,7 @@
     let _wbActive   = false;
     let _wbMode     = 'overlay'; // 'overlay' | 'blank'
     let _wbTool     = 'pen';
-    let _wbSyncTimer = null;
     let _wbViewerUnsub = null;
-
-    // Send canvas data to Firestore every 300ms while whiteboard is open
-    function _startWBSync() {
-        if (_wbSyncTimer) return;
-        _wbSyncTimer = setInterval(() => {
-            if (!_wbActive || !currentStreamId || !window.db) return;
-            const canvas = _getWBCanvas();
-            if (!canvas) return;
-            const dataUrl = canvas.toDataURL('image/png', 0.5);
-            const { doc, updateDoc } = window.fs;
-            updateDoc(doc(window.db, LIVE_COL, currentStreamId), {
-                whiteboardData: dataUrl,
-                whiteboardActive: true
-            }).catch(() => {});
-        }, 300);
-    }
-
-    function _stopWBSync() {
-        if (_wbSyncTimer) { clearInterval(_wbSyncTimer); _wbSyncTimer = null; }
-        if (currentStreamId && window.db) {
-            const { doc, updateDoc } = window.fs;
-            updateDoc(doc(window.db, LIVE_COL, currentStreamId), {
-                whiteboardActive: false, whiteboardData: ''
-            }).catch(() => {});
-        }
-    }
 
     // Viewer side — subscribe to whiteboard updates
     function _subscribeViewerWB(streamId) {
