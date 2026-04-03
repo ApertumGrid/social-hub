@@ -30,6 +30,8 @@
 
     <!-- Agora RTC SDK — Live Streaming -->
     <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.2.js"></script>
+    <!-- Agora Virtual Background Extension -->
+    <script src="https://download.agora.io/sdk/release/agora-extension-virtual-background-1.3.1.js"></script>
 
     <!-- 2. Firebase -->
     <script type="module">
@@ -885,6 +887,82 @@
             100% { transform:scale(1);   opacity:1; }
         }
         .countdown-label { font-size:0.9rem; color:rgba(255,255,255,0.6); letter-spacing:2px; text-transform:uppercase; }
+
+
+        /* ── VIRTUAL BACKGROUND ─────────────────────────────────── */
+        #vbg-picker {
+            display:none; padding:10px 14px;
+            background:var(--bg-card2); border:1px solid var(--border);
+            border-radius:var(--radius-md); margin-bottom:10px;
+        }
+        .vbg-options { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+        .vbg-swatch {
+            width:44px; height:44px; border-radius:10px; cursor:pointer;
+            border:2px solid transparent; transition:all 0.15s;
+            display:flex; align-items:center; justify-content:center;
+            font-size:1.3rem;
+        }
+        .vbg-swatch:hover, .vbg-swatch.active { border-color:var(--purple); }
+
+        /* ── CO-HOST PANEL ───────────────────────────────────────── */
+        #cohost-panel {
+            display:none; padding:10px 14px;
+            background:var(--bg-card2); border:1px solid var(--border);
+            border-radius:var(--radius-md); margin-bottom:10px;
+        }
+        .cohost-request-row {
+            display:flex; align-items:center; justify-content:space-between;
+            padding:6px 0; border-bottom:1px solid var(--border); font-size:0.78rem;
+        }
+        .cohost-request-row:last-child { border-bottom:none; }
+        /* Viewer co-host request button */
+        #viewer-cohost-btn {
+            background:none; border:1.5px solid var(--purple);
+            color:var(--purple); border-radius:50px;
+            padding:6px 14px; font-size:0.73rem; font-weight:600;
+            cursor:pointer; transition:all 0.15s;
+        }
+        #viewer-cohost-btn:hover { background:var(--purple-dim); }
+        #viewer-cohost-btn.active { background:var(--purple); color:#fff; }
+        /* Co-host stage area (viewer promoted) */
+        #cohost-stage-wrap {
+            display:none; margin-bottom:10px;
+            background:#0d1117; border-radius:var(--radius-md);
+            overflow:hidden; position:relative; height:180px;
+        }
+        #cohost-local-video { width:100%; height:100%; }
+
+        /* ── PAID ADMISSION ──────────────────────────────────────── */
+        .paid-badge {
+            background:rgba(240,180,41,0.15); border:1px solid var(--gold);
+            color:var(--gold); border-radius:50px;
+            padding:2px 8px; font-size:0.62rem; font-weight:700;
+        }
+        #paid-gate-overlay {
+            display:none; position:absolute; inset:0; z-index:20;
+            background:rgba(10,10,20,0.88);
+            flex-direction:column; align-items:center; justify-content:center;
+            gap:12px; text-align:center; padding:20px;
+            border-radius:var(--radius-md);
+        }
+        #paid-gate-overlay.visible { display:flex; }
+
+        /* ── RECORDING ───────────────────────────────────────────── */
+        .rec-dot {
+            width:8px; height:8px; border-radius:50%;
+            background:#e03e3e; display:inline-block; margin-right:4px;
+            animation:rec-pulse 1.2s ease-in-out infinite;
+        }
+        @keyframes rec-pulse {
+            0%,100% { opacity:1; } 50% { opacity:0.25; }
+        }
+        #recording-status {
+            display:none; font-size:0.62rem; color:#e03e3e; font-weight:700;
+            align-items:center; gap:4px; padding:4px 10px;
+            background:rgba(224,62,62,0.1); border-radius:50px;
+            border:1px solid rgba(224,62,62,0.3);
+        }
+        #recording-status.active { display:flex; }
 
         /* ── STREAM HEALTH INDICATOR ─────────────────────────────── */
         #stream-health {
@@ -5146,12 +5224,26 @@
                 <div id="live-watch-panel">
                     <!-- Active stream player -->
                     <div id="live-player-wrap" style="display:none;">
+                        <!-- Co-host stage (shown when viewer is promoted to co-host) -->
+                        <div id="cohost-stage-wrap">
+                            <div id="cohost-local-video"></div>
+                            <div style="position:absolute;top:8px;left:12px;font-size:0.62rem;font-weight:700;color:rgba(255,255,255,0.8);background:rgba(0,0,0,0.5);padding:2px 8px;border-radius:50px;">🎤 YOU — ON STAGE</div>
+                            <button onclick="leaveCoHost()" style="position:absolute;top:8px;right:10px;background:rgba(224,62,62,0.85);border:none;color:#fff;border-radius:50px;padding:3px 10px;font-size:0.65rem;font-weight:700;cursor:pointer;">Leave Stage</button>
+                        </div>
                         <div class="live-stream-box" id="live-remote-video-container">
                             <div class="live-stream-overlay-top">
                                 <span class="live-badge-pill" id="live-stream-badge-watch">🔴 LIVE</span>
                                 <span class="live-viewer-chip" id="live-watch-viewers">👁 0 watching</span>
                             </div>
                             <div id="live-remote-video" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
+                            <!-- Paid stream gate overlay -->
+                            <div id="paid-gate-overlay">
+                                <div style="font-size:2rem;">⭐</div>
+                                <div style="font-weight:700;color:#fff;font-size:1rem;" id="paid-gate-title">Paid Stream</div>
+                                <div style="font-size:0.8rem;color:rgba(255,255,255,0.65);" id="paid-gate-desc">Pay entry fee to watch</div>
+                                <button class="btn btn-sm" style="background:var(--gold);color:#111;font-weight:700;border:none;" onclick="payStreamEntry()">⭐ Pay Entry Fee</button>
+                                <button class="btn btn-outline btn-sm" onclick="leaveLiveStream()">← Leave</button>
+                            </div>
                             <div class="live-stream-meta" id="live-stream-meta">
                                 <div class="live-stream-host" id="live-stream-host-name">Loading…</div>
                                 <div class="live-stream-title-sm" id="live-stream-title-sm"></div>
@@ -5169,6 +5261,7 @@
                                 ⚡ Hype <span style="font-size:0.65rem;opacity:0.6;font-weight:600;"> · 1★</span>&nbsp;<span id="live-hype-count" style="opacity:0.75;font-size:0.7rem;">(0)</span>
                             </button>
                             <button class="raise-hand-btn" id="viewer-raise-hand-btn" onclick="toggleRaiseHand()">✋ Raise Hand</button>
+                            <button id="viewer-cohost-btn" onclick="requestCoHost()">🎤 Join Stage</button>
                             <button class="btn btn-outline btn-sm" onclick="leaveLiveStream()">✕ Leave</button>
                         </div>
 
@@ -5283,6 +5376,24 @@
                             <option value="Music">🎵 Music</option>
                         </select>
 
+                        <!-- Paid admission + recording row -->
+                        <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; flex:1; min-width:140px; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 12px;">
+                                <input type="checkbox" id="setup-paid-toggle" onchange="togglePaidSetup(this.checked)" style="accent-color:var(--gold);">
+                                <span style="font-size:0.73rem; font-weight:600; color:var(--text-secondary);">⭐ Paid Admission</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; flex:1; min-width:140px; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 12px;">
+                                <input type="checkbox" id="setup-record-toggle" style="accent-color:#e03e3e;">
+                                <span style="font-size:0.73rem; font-weight:600; color:var(--text-secondary);">⏺ Record Stream</span>
+                            </label>
+                        </div>
+                        <!-- Paid entry fee input (shown when paid toggled) -->
+                        <div id="paid-fee-row" style="display:none; margin-bottom:14px;">
+                            <label style="font-size:0.75rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Entry Fee (Stars)</label>
+                            <input type="number" id="setup-entry-fee" class="field" placeholder="e.g. 10" min="1" max="9999" style="margin-top:0;">
+                            <div style="font-size:0.62rem; color:var(--text-muted); margin-top:4px;">Viewers pay this once to join. 80% goes to you.</div>
+                        </div>
+
                         <!-- Camera preview -->
                         <div class="live-stream-box" id="live-local-preview" style="height:220px; background:#0d1117; border-radius:var(--radius-md); overflow:hidden; position:relative; margin-bottom:14px;">
                             <div id="live-preview-placeholder" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;">
@@ -5360,6 +5471,15 @@
                             <button class="studio-btn" id="btn-noise-suppress" onclick="toggleNoiseSuppression()">
                                 <span class="studio-btn-icon">🎙</span> Noise Cancel
                             </button>
+                            <button class="studio-btn" id="btn-vbg" onclick="toggleVBGPicker()">
+                                <span class="studio-btn-icon">🌅</span> Background
+                            </button>
+                            <button class="studio-btn" id="btn-cohost" onclick="toggleCohostPanel()">
+                                <span class="studio-btn-icon">🎤</span> Co-Host
+                            </button>
+                            <button class="studio-btn" id="btn-recording" onclick="toggleRecording()">
+                                <span class="studio-btn-icon">⏺</span> Record
+                            </button>
                             <button class="studio-btn" id="btn-lower-third" onclick="toggleLowerThird()">
                                 <span class="studio-btn-icon">📺</span> Lower Third
                             </button>
@@ -5386,6 +5506,30 @@
                                 <button class="btn btn-purple btn-sm" onclick="applyLowerThird()">✓ Apply</button>
                                 <button class="btn btn-sm btn-outline" onclick="hideLowerThird()">Remove</button>
                             </div>
+                        </div>
+
+                        <!-- Virtual Background Picker -->
+                        <div id="vbg-picker">
+                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">🌅 Virtual Background</div>
+                            <div class="vbg-options">
+                                <div class="vbg-swatch" id="vbg-none" onclick="setVBG('none')" title="Off" style="background:var(--bg-card2); border-color:var(--border); font-size:0.6rem; color:var(--text-muted);">Off</div>
+                                <div class="vbg-swatch" id="vbg-blur" onclick="setVBG('blur')" title="Blur" style="background:linear-gradient(135deg,#667eea,#764ba2);">💫</div>
+                                <div class="vbg-swatch" id="vbg-color-1" onclick="setVBG('color','#0a0a14')" title="Dark studio" style="background:#0a0a14;"></div>
+                                <div class="vbg-swatch" id="vbg-color-2" onclick="setVBG('color','#1a3a2a')" title="Green studio" style="background:#1a3a2a;"></div>
+                                <div class="vbg-swatch" id="vbg-color-3" onclick="setVBG('color','#1a1a3e')" title="Deep blue" style="background:#1a1a3e;"></div>
+                                <div class="vbg-swatch" id="vbg-color-4" onclick="setVBG('color','#2d1b4e')" title="Purple" style="background:#2d1b4e;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Co-Host Management Panel (host side) -->
+                        <div id="cohost-panel">
+                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎤 Co-Host Requests</div>
+                            <div id="cohost-requests-list"><div style="font-size:0.75rem;color:var(--text-muted);">No co-host requests yet.</div></div>
+                        </div>
+
+                        <!-- Recording status indicator (shown when recording) -->
+                        <div id="recording-status" style="margin-bottom:8px;">
+                            <span class="rec-dot"></span> Recording
                         </div>
 
                         <!-- Poll Creator (hidden by default) -->
@@ -16471,6 +16615,7 @@
                 <div class="live-stream-thumb">
                     <span class="live-badge-pill" style="position:relative;">🔴 LIVE</span>
                     <span class="live-viewer-chip" style="position:absolute;top:10px;right:12px;">👁 ${s.viewers || 0} watching</span>
+                    ${s.isPaid ? '<span class="paid-badge" style="position:absolute;bottom:10px;left:12px;">⭐ ' + s.entryFee + '★ entry</span>' : ''}
                 </div>
                 <div class="live-stream-card-body">
                     <div class="live-stream-card-title">${_esc(s.title || 'Untitled Stream')}</div>
@@ -16572,6 +16717,12 @@
         try {
             // 1. Create Firestore stream doc
             const { collection, addDoc, serverTimestamp } = window.fs;
+            // Read paid admission + recording settings from setup panel
+            const paidChecked = ($('setup-paid-toggle') || {}).checked || false;
+            const entryFeeVal = parseInt(($('setup-entry-fee') || {}).value || '0', 10) || 0;
+            const willRecord  = ($('setup-record-toggle') || {}).checked || false;
+            streamEntryFee = paidChecked && entryFeeVal > 0 ? entryFeeVal : 0;
+
             const docRef = await addDoc(collection(window.db, LIVE_COL), {
                 hostAddr:   userAddress,
                 hostName:   userHandle || 'Creator',
@@ -16582,7 +16733,10 @@
                 viewers:    0,
                 starsEarned: 0,
                 hypeCount:  0,
-                startedAt:  serverTimestamp()
+                startedAt:  serverTimestamp(),
+                entryFee:   streamEntryFee,
+                isPaid:     streamEntryFee > 0,
+                hasReplay:  false
             });
             currentStreamId = docRef.id;
             isHosting       = true;
@@ -16613,7 +16767,7 @@
             if (bcPanel) bcPanel.style.display = '';
             hide('live-setup-panel');
             show('live-active-panel');
-            setText('live-broadcast-title-display', title);
+            setText('live-broadcast-title-display', title + (streamEntryFee > 0 ? ' <span class="paid-badge">⭐ ' + streamEntryFee + '★ entry</span>' : ''));
 
             // Update tab buttons
             const watchBtn = $('ltab-watch');
@@ -16646,6 +16800,11 @@
 
             // 9. Listen for hype events (viewer count updates)
             subscribeStreamDoc(currentStreamId);
+
+            // Auto-start recording if host ticked the record checkbox
+            if (willRecord) {
+                setTimeout(() => window.toggleRecording(), 1500); // slight delay for video to render
+            }
 
             showToast('🔴 You are now LIVE! Audience can join and Hype you.');
 
@@ -16685,9 +16844,40 @@
         if (typeof updateUI === 'function') updateUI();
 
         currentStreamId = null;
-        isHosting = false;
+        isHosting       = false;
         liveStarsEarned = 0;
-        liveHypeCount = 0;
+        liveHypeCount   = 0;
+
+        // Reset setup UI for next stream
+        streamEntryFee = 0;
+        const paidChk = $('setup-paid-toggle');
+        if (paidChk) paidChk.checked = false;
+        const recChk = $('setup-record-toggle');
+        if (recChk) recChk.checked = false;
+        const feeRow = $('paid-fee-row');
+        if (feeRow) feeRow.style.display = 'none';
+        const feeInp = $('setup-entry-fee');
+        if (feeInp) feeInp.value = '';
+
+        // Reset VBG button
+        const vbgBtn = $('btn-vbg');
+        if (vbgBtn) { vbgBtn.innerHTML = '<span class="studio-btn-icon">🌅</span> Background'; vbgBtn.classList.remove('active-teal'); }
+        currentVBG = 'none';
+        document.querySelectorAll('.vbg-swatch').forEach(s => s.classList.remove('active'));
+
+        // Reset cohost panel
+        const cohostPanelEl = $('cohost-panel');
+        if (cohostPanelEl) cohostPanelEl.style.display = 'none';
+        const vbgPicker = $('vbg-picker');
+        if (vbgPicker) vbgPicker.style.display = 'none';
+        const recBtn = $('btn-recording');
+        if (recBtn) { recBtn.innerHTML = '<span class="studio-btn-icon">⏺</span> Record'; recBtn.classList.remove('active'); }
+
+        // Disable pre-live controls until next preview
+        const preMic = $('pre-btn-mic'); const preCam = $('pre-btn-cam');
+        if (preMic) { preMic.style.opacity = '0.45'; preMic.style.pointerEvents = 'none'; preMic.innerHTML = '🎙 Mute'; preMic.style.borderColor = ''; preMic.style.color = ''; }
+        if (preCam) { preCam.style.opacity = '0.45'; preCam.style.pointerEvents = 'none'; preCam.innerHTML = '📷 Cam Off'; preCam.style.borderColor = ''; preCam.style.color = ''; }
+        isMicMuted = false; isCamOff = false;
     };
 
     // ── Join stream as viewer ─────────────────────────────────────
@@ -16758,7 +16948,40 @@
             setText('live-stream-title-sm',  streamData.title    || '');
             setText('live-creator-stars-watch', (streamData.starsEarned || 0).toFixed(1));
 
-            // Subscribe to live updates + chat
+            // ── Paid admission gate check ─────────────────────────────
+            const fee = streamData.entryFee || 0;
+            streamEntryFee = fee;
+            hasPassedGate  = false;
+
+            if (fee > 0) {
+                const userAddress = window._liveUserAddress || '';
+                let alreadyPaid = false;
+                if (userAddress && window.db && window.fs) {
+                    try {
+                        const { doc: _d, getDoc: _g } = window.fs;
+                        const paidSnap = await _g(_d(window.db, 'live_streams', streamId, 'paid_viewers', userAddress));
+                        alreadyPaid = paidSnap.exists() && paidSnap.data().paid === true;
+                    } catch(_) {}
+                }
+                if (!alreadyPaid) {
+                    // Show gate overlay — viewer must pay before watching
+                    const overlay = $('paid-gate-overlay');
+                    if (overlay) {
+                        overlay.classList.add('visible');
+                        const desc = $('paid-gate-desc');
+                        if (desc) desc.textContent = fee + '★ entry fee · 80% goes to the creator';
+                    }
+                    // Video is live but gated — do not subscribe to audio yet
+                    // (they can see blurred/black video until they pay)
+                    showToast('⭐ This is a paid stream — pay ' + fee + '★ to watch.');
+                } else {
+                    hasPassedGate = true;
+                }
+            } else {
+                hasPassedGate = true;
+            }
+
+            // Subscribe to live updates + chat (always — chat is free)
             subscribeStreamDoc(streamId);
             subscribeLiveChat(streamId, 'live-chat-feed');
 
@@ -16772,6 +16995,9 @@
 
     // ── Leave stream ──────────────────────────────────────────────
     window.leaveLiveStream = async function() {
+        // Clean up co-host state first
+        if (isCoHost) { await leaveCoHost().catch(() => {}); }
+
         if (_watchingStreamId && window.db && window.fs) {
             try {
                 const { doc, updateDoc, increment } = window.fs;
@@ -16779,6 +17005,21 @@
             } catch(_) {}
         }
         await _cleanupAgora();
+
+        // Reset paid gate state
+        streamEntryFee = 0;
+        hasPassedGate  = false;
+        const overlay = $('paid-gate-overlay');
+        if (overlay) overlay.classList.remove('visible');
+
+        // Hide co-host stage
+        const stageWrap = $('cohost-stage-wrap');
+        if (stageWrap) stageWrap.style.display = 'none';
+
+        // Reset co-host request button
+        const cohostBtn = $('viewer-cohost-btn');
+        if (cohostBtn) { cohostBtn.textContent = '🎤 Join Stage'; cohostBtn.style.opacity = ''; cohostBtn.style.pointerEvents = ''; cohostBtn.classList.remove('active'); }
+
         hide('live-player-wrap');
         show('live-stream-browser');
         if (_liveChatUnsub) { try { _liveChatUnsub(); } catch(_) {} _liveChatUnsub = null; }
@@ -17211,6 +17452,28 @@
     // ── Agora cleanup ─────────────────────────────────────────────
     async function _cleanupAgora() {
         try {
+            // Stop recording if active
+            if (isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop(); // triggers _uploadRecording via onstop
+                isRecording = false;
+                const statusEl = $('recording-status');
+                if (statusEl) statusEl.classList.remove('active');
+            }
+
+            // Tear down VBG processor
+            if (vbgProcessor) {
+                try { await vbgProcessor.disable(); } catch(_) {}
+                vbgProcessor = null;
+            }
+
+            // Tear down co-host tracks
+            if (cohostVideoTrack) { try { cohostVideoTrack.stop(); cohostVideoTrack.close(); } catch(_) {} cohostVideoTrack = null; }
+            if (cohostAudioTrack) { try { cohostAudioTrack.stop(); cohostAudioTrack.close(); } catch(_) {} cohostAudioTrack = null; }
+            isCoHost = false;
+
+            // Unsubscribe co-host listener
+            if (_cohostUnsub) { try { _cohostUnsub(); } catch(_) {} _cohostUnsub = null; }
+
             if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack.close(); localVideoTrack = null; }
             if (localAudioTrack) { localAudioTrack.stop(); localAudioTrack.close(); localAudioTrack = null; }
             if (agoraClient)     { await agoraClient.leave(); agoraClient = null; }
@@ -17331,6 +17594,29 @@
     let _viewerPollVote    = null;   // which option viewer voted for
     const REACTIONS_COL    = 'live_reactions';
 
+    // ── NEW FEATURE STATE ─────────────────────────────────────────
+    // Virtual background
+    let vbgProcessor       = null;   // Agora VBG processor instance
+    let vbgExtension       = null;   // Extension registered with AgoraRTC
+    let currentVBG         = 'none'; // 'none' | 'blur' | 'color'
+
+    // Co-host
+    let cohostRequests     = {};     // uid → {handle, ts}
+    let _cohostUnsub       = null;   // Firestore listener
+    let isCoHost           = false;  // viewer promoted to co-host
+    let cohostVideoTrack   = null;   // co-host local cam track
+    let cohostAudioTrack   = null;   // co-host local mic track
+
+    // Paid admission
+    let streamEntryFee     = 0;      // Stars required to join
+    let hasPassedGate      = false;  // viewer already paid / free stream
+
+    // Recording
+    let mediaRecorder      = null;
+    let recordedChunks     = [];
+    let isRecording        = false;
+    let recordStreamId     = null;   // which stream is being recorded
+
     // ── COUNTDOWN before going live ───────────────────────────────
     function runCountdown(seconds, onDone) {
         const overlay = $('stream-countdown-overlay');
@@ -17359,6 +17645,475 @@
     window.startLiveStream = async function() {
         runCountdown(3, async () => { await _origStartLive(); });
     };
+
+    // ══════════════════════════════════════════════════════════════
+    // FEATURE 1 — VIRTUAL BACKGROUND
+    // ══════════════════════════════════════════════════════════════
+
+    window.toggleVBGPicker = function() {
+        const el = $('vbg-picker');
+        if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+    };
+
+    async function _initVBGExtension() {
+        if (vbgExtension) return true; // already registered
+        try {
+            if (!window.VirtualBackgroundExtension) {
+                showToast('Virtual background extension not loaded.');
+                return false;
+            }
+            vbgExtension = new window.VirtualBackgroundExtension();
+            window.AgoraRTC.registerExtensions([vbgExtension]);
+            return true;
+        } catch(e) {
+            console.error('[VBG] Extension init error:', e);
+            return false;
+        }
+    }
+
+    window.setVBG = async function(type, value) {
+        if (!localVideoTrack) { showToast('Start camera preview first.'); return; }
+
+        // Mark active swatch
+        document.querySelectorAll('.vbg-swatch').forEach(s => s.classList.remove('active'));
+        const activeId = type === 'none' ? 'vbg-none' : type === 'blur' ? 'vbg-blur' : null;
+        if (activeId) $$(activeId)?.classList.add('active');
+
+        if (type === 'none') {
+            // Disable — remove processor
+            try {
+                if (vbgProcessor) {
+                    await vbgProcessor.disable();
+                    vbgProcessor = null;
+                }
+                currentVBG = 'none';
+                const btn = $('btn-vbg');
+                if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🌅</span> Background'; btn.classList.remove('active-teal'); }
+                showToast('Background removed.');
+            } catch(e) { showToast('Could not remove background: ' + e.message); }
+            return;
+        }
+
+        try {
+            const ok = await _initVBGExtension();
+            if (!ok) return;
+
+            if (!vbgProcessor) {
+                vbgProcessor = vbgExtension.createProcessor();
+                await vbgProcessor.init('/agora_bg_model'); // model path (CDN served)
+                localVideoTrack.pipe(vbgProcessor).pipe(localVideoTrack.processorDestination);
+            }
+
+            if (type === 'blur') {
+                await vbgProcessor.setOptions({ type: 'blur', blurDegree: 2 });
+                currentVBG = 'blur';
+                showToast('🌫 Background blur on.');
+            } else if (type === 'color') {
+                // Convert hex to rgb
+                const r = parseInt(value.slice(1,3),16), g = parseInt(value.slice(3,5),16), b = parseInt(value.slice(5,7),16);
+                await vbgProcessor.setOptions({ type: 'color', color: { red: r, green: g, blue: b } });
+                currentVBG = 'color';
+                showToast('🎨 Virtual background set.');
+            }
+
+            await vbgProcessor.enable();
+            const btn = $('btn-vbg');
+            if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🌅</span> BG: On'; btn.classList.add('active-teal'); }
+        } catch(e) {
+            console.error('[VBG] setVBG error:', e);
+            showToast('Background error: ' + (e.message || String(e)));
+        }
+    };
+
+    // Helper $ alias — we use $ but need a no-throw version for classList ops
+    function $$(id) { return document.getElementById(id); }
+
+    // ══════════════════════════════════════════════════════════════
+    // FEATURE 2 — CO-HOST / INVITE TO STAGE
+    // Host side: sees requests, can approve/reject
+    // Viewer side: requests to join, gets mic+cam if approved
+    // Mechanism: Firestore subcollection "cohost_requests" under stream doc
+    // ══════════════════════════════════════════════════════════════
+
+    window.toggleCohostPanel = function() {
+        const el = $('cohost-panel');
+        if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+        if (el && el.style.display !== 'none') _subscribeCohostRequests();
+    };
+
+    function _subscribeCohostRequests() {
+        if (!currentStreamId || !window.db || !window.fs) return;
+        if (_cohostUnsub) return; // already subscribed
+        const { collection, onSnapshot } = window.fs;
+        const col = collection(window.db, 'live_streams', currentStreamId, 'cohost_requests');
+        _cohostUnsub = onSnapshot(col, snap => {
+            const listEl = $('cohost-requests-list');
+            if (!listEl) return;
+            const docs = [];
+            snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+            const pending = docs.filter(d => d.status === 'pending');
+            if (!pending.length) {
+                listEl.innerHTML = '<div style="font-size:0.75rem;color:var(--text-muted);">No co-host requests yet.</div>';
+                return;
+            }
+            listEl.innerHTML = pending.map(d => `
+                <div class="cohost-request-row">
+                    <span style="font-weight:600;">${_esc(d.handle || d.uid)}</span>
+                    <div style="display:flex;gap:6px;">
+                        <button class="btn btn-sm" style="background:var(--purple);color:#fff;border:none;font-size:0.65rem;" onclick="approveCoHost('${d.id}','${_esc(d.uid)}')">✓ Approve</button>
+                        <button class="btn btn-outline btn-sm" style="font-size:0.65rem;" onclick="rejectCoHost('${d.id}')">✕</button>
+                    </div>
+                </div>
+            `).join('');
+        });
+    }
+
+    window.approveCoHost = async function(docId, uid) {
+        if (!currentStreamId || !window.db || !window.fs) return;
+        try {
+            const { doc, updateDoc } = window.fs;
+            await updateDoc(doc(window.db, 'live_streams', currentStreamId, 'cohost_requests', docId), {
+                status: 'approved'
+            });
+            showToast('✓ Co-host approved — they can now join the stage.');
+        } catch(e) { showToast('Approve error: ' + e.message); }
+    };
+
+    window.rejectCoHost = async function(docId) {
+        if (!currentStreamId || !window.db || !window.fs) return;
+        try {
+            const { doc, updateDoc } = window.fs;
+            await updateDoc(doc(window.db, 'live_streams', currentStreamId, 'cohost_requests', docId), {
+                status: 'rejected'
+            });
+        } catch(e) {}
+    };
+
+    // VIEWER SIDE — request to join stage
+    window.requestCoHost = async function() {
+        if (!_watchingStreamId || !window.db || !window.fs) return;
+        const userAddress = window._liveUserAddress || '';
+        const userHandle  = window._liveUserHandle  || 'Viewer';
+        if (!userAddress) { showToast('Connect wallet first.'); return; }
+
+        const btn = $('viewer-cohost-btn');
+        if (isCoHost) { await leaveCoHost(); return; }
+
+        try {
+            const { doc, setDoc, onSnapshot, serverTimestamp } = window.fs;
+            const reqRef = doc(window.db, 'live_streams', _watchingStreamId, 'cohost_requests', userAddress);
+            await setDoc(reqRef, {
+                uid:    userAddress,
+                handle: userHandle,
+                status: 'pending',
+                ts:     serverTimestamp()
+            });
+            if (btn) { btn.textContent = '⏳ Waiting…'; btn.style.opacity = '0.6'; btn.style.pointerEvents = 'none'; }
+            showToast('✋ Stage request sent — waiting for host approval.');
+
+            // Watch for approval
+            const unsub = onSnapshot(reqRef, async snap => {
+                if (!snap.exists()) return;
+                const data = snap.data();
+                if (data.status === 'approved') {
+                    unsub();
+                    await _promoteToCoHost();
+                } else if (data.status === 'rejected') {
+                    unsub();
+                    if (btn) { btn.textContent = '🎤 Join Stage'; btn.style.opacity = ''; btn.style.pointerEvents = ''; }
+                    showToast('Host declined your stage request.');
+                }
+            });
+        } catch(e) { showToast('Request error: ' + e.message); }
+    };
+
+    async function _promoteToCoHost() {
+        if (!agoraClient || !window.AgoraRTC) return;
+        try {
+            // Promote viewer to host role so they can publish
+            await agoraClient.setClientRole('host');
+            [cohostAudioTrack, cohostVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
+            await agoraClient.publish([cohostAudioTrack, cohostVideoTrack]);
+            // Show local video in stage area
+            const stageWrap = $('cohost-stage-wrap');
+            if (stageWrap) {
+                stageWrap.style.display = 'block';
+                cohostVideoTrack.play($('cohost-local-video'));
+            }
+            const btn = $('viewer-cohost-btn');
+            if (btn) { btn.textContent = '🎤 Leave Stage'; btn.style.opacity = ''; btn.style.pointerEvents = ''; btn.classList.add('active'); }
+            isCoHost = true;
+            showToast('🎤 You are now on stage! Everyone can see and hear you.');
+        } catch(e) {
+            console.error('[CoHost] promote error:', e);
+            showToast('Could not join stage: ' + e.message);
+        }
+    }
+
+    window.leaveCoHost = async function() {
+        if (!isCoHost) return;
+        try {
+            if (cohostVideoTrack) { cohostVideoTrack.stop(); cohostVideoTrack.close(); cohostVideoTrack = null; }
+            if (cohostAudioTrack) { cohostAudioTrack.stop(); cohostAudioTrack.close(); cohostAudioTrack = null; }
+            if (agoraClient) await agoraClient.setClientRole('audience');
+            const stageWrap = $('cohost-stage-wrap');
+            if (stageWrap) stageWrap.style.display = 'none';
+            isCoHost = false;
+            const btn = $('viewer-cohost-btn');
+            if (btn) { btn.textContent = '🎤 Join Stage'; btn.classList.remove('active'); }
+            showToast('Left the stage.');
+        } catch(e) { console.error('[CoHost] leave error:', e); }
+    };
+
+    // ══════════════════════════════════════════════════════════════
+    // FEATURE 3 — PAID ADMISSION
+    // Host sets entry fee in setup; stored in Firestore stream doc.
+    // joinLiveStream checks fee and shows gate overlay if unpaid.
+    // ══════════════════════════════════════════════════════════════
+
+    window.togglePaidSetup = function(checked) {
+        const row = $('paid-fee-row');
+        if (row) row.style.display = checked ? '' : 'none';
+    };
+
+    window.payStreamEntry = async function() {
+        if (!_watchingStreamId || !window.db || !window.fs) return;
+        const userAddress = window._liveUserAddress || '';
+        const userHandle  = window._liveUserHandle  || 'Viewer';
+        if (!userAddress) { showToast('Connect wallet first.'); return; }
+
+        const available = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
+        if (available < streamEntryFee) {
+            showToast(`Not enough Stars. Need ${streamEntryFee}★, have ${available.toFixed(1)}★.`);
+            return;
+        }
+
+        try {
+            const { doc, addDoc, collection, serverTimestamp, updateDoc, increment, setDoc, getDoc, runTransaction } = window.fs;
+
+            // Fetch stream doc to get host address
+            const streamSnap = await getDoc(doc(window.db, LIVE_COL, _watchingStreamId));
+            if (!streamSnap.exists() || !streamSnap.data().active) {
+                showToast('Stream has ended.'); return;
+            }
+            const hostAddr = streamSnap.data().hostAddr;
+
+            // ── SAME SPLIT AS sendGift: 80% creator · 20% platform ──────
+            const creatorCut  = parseFloat((streamEntryFee * 0.8).toFixed(4));
+            const platformCut = parseFloat((streamEntryFee * 0.2).toFixed(4));
+
+            // 1. Deduct full fee from viewer's star balance (same as gift deduction)
+            const viewerRef = doc(window.db, 'user_balances', userAddress.toLowerCase());
+            await updateDoc(viewerRef, {
+                stars:           increment(-streamEntryFee),
+                spentStarsTotal: increment(streamEntryFee)
+            });
+            // Keep in-memory bridge in sync so UI reflects deduction immediately
+            if (typeof window._liveTotalSpendable === 'number') {
+                window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - streamEntryFee);
+                window._liveAvailableStars = window._liveTotalSpendable;
+            }
+
+            // 2. Credit 80% to creator's creatorStars balance (same mechanism as gift)
+            if (hostAddr) {
+                await updateDoc(doc(window.db, 'user_balances', hostAddr.toLowerCase()), {
+                    creatorStars: increment(creatorCut)
+                }).catch(() => {});
+            }
+
+            // 3. Credit 20% to platform — routes through logAdminRevenue (same as gift)
+            if (typeof window.logAdminRevenue === 'function') {
+                window.logAdminRevenue(userAddress.toLowerCase(), 'live_entry_fee', platformCut);
+            } else {
+                addDoc(collection(window.db, 'platform_revenue'), {
+                    sourceAddress: userAddress.toLowerCase(),
+                    actionType:    'live_entry_fee',
+                    amount:        platformCut,
+                    timestamp:     Date.now()
+                }).catch(() => {});
+                updateDoc(doc(window.db, 'admin_revenue', 'global'), {
+                    total: increment(platformCut)
+                }).catch(() => {});
+            }
+
+            // 4. Write spend record to viewer's transaction ledger
+            await addDoc(collection(window.db, 'user_transactions'), {
+                type:           'spend',
+                amount:         streamEntryFee,
+                fromAddress:    userAddress.toLowerCase(),
+                toAddress:      hostAddr || '',
+                address:        userAddress.toLowerCase(),
+                description:    `⭐ Stream entry fee — ${streamEntryFee}★ (creator gets ${creatorCut.toFixed(1)}★)`,
+                timestamp:      Date.now(),
+                schema_version: 2
+            }).catch(() => {});
+
+            // 5. Write earn record to host's transaction ledger
+            if (hostAddr) {
+                addDoc(collection(window.db, 'user_transactions'), {
+                    type:           'earn',
+                    amount:         creatorCut,
+                    fromAddress:    userAddress.toLowerCase(),
+                    toAddress:      hostAddr.toLowerCase(),
+                    address:        hostAddr.toLowerCase(),
+                    description:    `⭐ Stream entry fee from ${userHandle} (+${creatorCut.toFixed(1)}★)`,
+                    timestamp:      Date.now(),
+                    schema_version: 2
+                }).catch(() => {});
+            }
+
+            // 6. Update stream's starsEarned counter so leaderboard + goal bar reflect it
+            await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
+                starsEarned: increment(streamEntryFee)
+            }).catch(() => {});
+
+            // 7. Mark viewer as paid in paid_viewers subcollection (gate check on rejoin)
+            const gateRef = doc(window.db, 'live_streams', _watchingStreamId, 'paid_viewers', userAddress.toLowerCase());
+            await setDoc(gateRef, {
+                paid:      true,
+                amount:    streamEntryFee,
+                handle:    userHandle,
+                paidAt:    serverTimestamp()
+            });
+
+            // 8. Post a system message to live chat so host sees who paid
+            addDoc(collection(window.db, LIVE_CHAT_COL, _watchingStreamId, 'messages'), {
+                author:   userHandle,
+                avatar:   window._liveUserAvatar || '',
+                text:     `⭐ ${userHandle} paid the ${streamEntryFee}★ entry fee and joined!`,
+                ts:       serverTimestamp(),
+                isSystem: true,
+                isGift:   false
+            }).catch(() => {});
+
+            // 9. Unlock the stream — hide gate overlay
+            hasPassedGate = true;
+            const overlay = $('paid-gate-overlay');
+            if (overlay) overlay.classList.remove('visible');
+
+            if (typeof updateUI === 'function') updateUI();
+            showToast(`✅ Entry paid! Creator receives ${creatorCut.toFixed(1)}★ instantly.`);
+
+        } catch(e) {
+            console.error('[PaidEntry] payment error:', e);
+            showToast('Payment error: ' + (e.message || String(e)));
+        }
+    };
+
+    // ══════════════════════════════════════════════════════════════
+    // FEATURE 4 — RECORDING (MediaRecorder → Firebase Storage)
+    // Records the broadcaster's canvas/stream. On end, uploads to
+    // Firebase Storage and saves the URL in the stream doc.
+    // ══════════════════════════════════════════════════════════════
+
+    window.toggleRecording = async function() {
+        if (!isHosting) { showToast('Go live first to record.'); return; }
+        if (isRecording) {
+            _stopRecording();
+        } else {
+            await _startRecording();
+        }
+    };
+
+    async function _startRecording() {
+        try {
+            // Capture the broadcaster video container as a media stream
+            const container = $('live-broadcaster-video');
+            if (!container) { showToast('No video to record.'); return; }
+
+            // Get the underlying <video> element Agora injected
+            const videoEl = container.querySelector('video');
+            if (!videoEl || !videoEl.srcObject) {
+                showToast('Video not ready for recording yet.');
+                return;
+            }
+
+            // Combine video track with audio from localAudioTrack
+            const stream = new MediaStream();
+            videoEl.srcObject.getVideoTracks().forEach(t => stream.addTrack(t));
+            if (localAudioTrack) {
+                const audioCtx  = new AudioContext();
+                const source    = audioCtx.createMediaStreamSource(
+                    new MediaStream([localAudioTrack.getMediaStreamTrack()])
+                );
+                const dest = audioCtx.createMediaStreamDestination();
+                source.connect(dest);
+                dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+            }
+
+            recordedChunks = [];
+            const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+                ? 'video/webm;codecs=vp9,opus'
+                : 'video/webm';
+
+            mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2_500_000 });
+            mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.onstop = _uploadRecording;
+            mediaRecorder.start(1000); // collect chunks every 1s
+
+            isRecording    = true;
+            recordStreamId = currentStreamId;
+
+            const statusEl = $('recording-status');
+            if (statusEl) statusEl.classList.add('active');
+            const btn = $('btn-recording');
+            if (btn) { btn.innerHTML = '<span class="studio-btn-icon">⏹</span> Stop Rec'; btn.classList.add('active'); }
+            showToast('⏺ Recording started.');
+        } catch(e) {
+            console.error('[Rec] start error:', e);
+            showToast('Recording error: ' + (e.message || String(e)));
+        }
+    }
+
+    function _stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        isRecording = false;
+        const statusEl = $('recording-status');
+        if (statusEl) statusEl.classList.remove('active');
+        const btn = $('btn-recording');
+        if (btn) { btn.innerHTML = '<span class="studio-btn-icon">⏺</span> Record'; btn.classList.remove('active'); }
+        showToast('⏹ Recording stopped — uploading…');
+    }
+
+    async function _uploadRecording() {
+        if (!recordedChunks.length || !window.storage || !window.fsStorage) {
+            showToast('No recording data to save.'); return;
+        }
+        try {
+            const blob      = new Blob(recordedChunks, { type: 'video/webm' });
+            const filename  = `recordings/${recordStreamId || 'stream'}_${Date.now()}.webm`;
+            const storageRef = window.fsStorage.ref(window.storage, filename);
+            const uploadTask = window.fsStorage.uploadBytesResumable(storageRef, blob);
+
+            showToast('☁️ Uploading recording…');
+
+            uploadTask.on('state_changed',
+                snap => {
+                    const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+                    showToast(`☁️ Uploading: ${pct}%`);
+                },
+                err => { showToast('Upload error: ' + err.message); },
+                async () => {
+                    const url = await window.fsStorage.getDownloadURL(uploadTask.snapshot.ref);
+                    // Save URL to stream doc
+                    if (recordStreamId && window.db && window.fs) {
+                        const { doc, updateDoc, arrayUnion } = window.fs;
+                        await updateDoc(doc(window.db, 'live_streams', recordStreamId), {
+                            recordings: arrayUnion(url),
+                            hasReplay:  true
+                        }).catch(() => {});
+                    }
+                    recordedChunks = [];
+                    showToast('✅ Recording saved! Viewers can replay this stream.');
+                }
+            );
+        } catch(e) {
+            console.error('[Rec] upload error:', e);
+            showToast('Upload failed: ' + (e.message || String(e)));
+        }
+    }
 
     // ── PRE-LIVE MIC / CAM TOGGLES ───────────────────────────────
     // Unlocked once preview is running. State carries into the live stream.
