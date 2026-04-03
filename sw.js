@@ -16,14 +16,20 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 self.addEventListener('fetch', e => {
-  // Network-first for API/Firebase calls, cache fallback for the shell
-  if (e.request.url.includes('firestore') || 
-      e.request.url.includes('firebase') ||
-      e.request.url.includes('firebasestorage') ||
-      e.request.url.includes('googleapis') ||
-      e.request.url.includes('agora')) {
-    return; // Let these go straight to network
+  const url = e.request.url;
+ 
+  // Let these go straight to network — no SW interception
+  if (url.includes('firestore') || 
+      url.includes('firebase') ||
+      url.includes('firebasestorage') ||
+      url.includes('googleapis') ||
+      url.includes('agora') ||
+      url.includes('picr.de') ||
+      url.includes('postimg.cc') ||
+      !url.startsWith('https://apertumgrid.github.io')) {
+    return;
   }
+ 
   e.respondWith(
     fetch(e.request).catch(() => caches.match(e.request))
   );
