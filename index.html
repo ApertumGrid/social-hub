@@ -4404,6 +4404,11 @@
                             <div class="mcd-stream-val" id="mcd-s-mail">0 ★</div>
                             <div class="mcd-stream-count" id="mcd-c-mail">0 activations · <span id="mcd-active-mailboxes">0</span> active</div>
                         </div>
+                        <div class="mcd-stream">
+                            <div class="mcd-stream-label" style="color:#e03e3e;background:rgba(224,62,62,0.12);border-color:rgba(224,62,62,0.3);">[LIVE STREAM]</div>
+                            <div class="mcd-stream-val" id="mcd-s-live">0 ★</div>
+                            <div class="mcd-stream-count" id="mcd-c-live">0 events</div>
+                        </div>
                     </div>
 
                     <!-- Transaction ticker -->
@@ -4950,7 +4955,7 @@
                                 <span style="font-size:0.62rem;color:var(--text-muted);">creator Stars</span>
                             </div>
                             <button class="btn live-hype-btn" id="live-hype-btn" onclick="sendLiveHype()">
-                                ⚡ Hype  <span id="live-hype-count" style="opacity:0.75;font-size:0.7rem;">(0)</span>
+                                ⚡ Hype <span style="font-size:0.65rem;opacity:0.6;font-weight:600;"> · 1★</span>&nbsp;<span id="live-hype-count" style="opacity:0.75;font-size:0.7rem;">(0)</span>
                             </button>
                             <button class="btn btn-outline btn-sm" onclick="leaveLiveStream()">✕ Leave</button>
                         </div>
@@ -6743,6 +6748,7 @@
             txn.set(globalRef, { total: prev + amount, lastUpdated: Date.now() }, { merge: true });
         }).catch(e => console.warn("logAdminRevenue global:", e));
     }
+    window.logAdminRevenue = logAdminRevenue;  // expose so live stream IIFE can call it
 
     // ═══════════════════════════════════════════════════════════════════
     // TRANSACTION LEDGER — V19 PRIVATE
@@ -7074,6 +7080,8 @@
                 return 'pool-4040';
             if (t === 'mailbox_activation')
                 return 'mail';
+            if (t === 'live_hype' || t === 'live_gift')
+                return 'live-stream';
             // Everything else: hype_post, hype_comment, like_comment, comment,
             // follow_fee, profile_like, profile_tip
             return 'creator-eco';
@@ -7089,7 +7097,8 @@
                 'pool-4040':   '[40/40/20]',
                 'creator-eco': '[CREATOR_ECO]',
                 'follow':      '[FOLLOW]',
-                'mail':        '[COMMUNICATIONS]'
+                'mail':        '[COMMUNICATIONS]',
+                'live-stream': '[LIVE_STREAM]'
             }[cls] || '[REVENUE]';
         }
 
@@ -7114,6 +7123,8 @@
                 community_startup:    'Hub creation fee (100%)',
                 community_follow_fee: 'Hub follow fee (10%)',
                 mailbox_activation:   'Mailbox activation fee (100%)',
+                live_hype:            'Live Stream Hype cut (20%)',
+                live_gift:            'Live Stream Gift cut (20%)',
             };
             return map[actionType] || actionType;
         }
@@ -7132,6 +7143,7 @@
                 'pool-4040': { sum: 0, count: 0 },
                 'creator-eco': { sum: 0, count: 0 },
                 'mail': { sum: 0, count: 0 },
+                'live-stream': { sum: 0, count: 0 },
             };
             let grandTotal = 0;
 
@@ -7170,6 +7182,9 @@
             s('mcd-c-pool',      seg['pool-4040'].count + ' events');
             s('mcd-s-mail',      seg.mail.sum.toFixed(4) + ' ★');
             s('mcd-c-mail',      seg.mail.count + ' activations');
+            // Live stream revenue
+            s('mcd-s-live',      seg['live-stream'].sum.toFixed(4) + ' ★');
+            s('mcd-c-live',      seg['live-stream'].count + ' events');
             // Fetch active mailbox count from users collection (async, best-effort)
             if (window.db) {
                 window.fs.getDocs(window.fs.query(
@@ -16415,10 +16430,19 @@
                 }).catch(() => {});
             }
 
-            // Credit platform revenue 20%
-            updateDoc(doc(window.db, 'admin_revenue', 'global'), {
-                total: increment(platformCut)
-            }).catch(() => {});
+            // Credit platform revenue 20% — logAdminRevenue writes to platform_revenue
+            // collection (admin dashboard ledger) AND admin_revenue/global (withdrawable balance)
+            if (typeof window.logAdminRevenue === 'function') {
+                window.logAdminRevenue((userAddress || '').toLowerCase(), 'live_hype', platformCut);
+            } else {
+                // fallback: direct write to both collections
+                window.fs.addDoc(window.fs.collection(window.db, 'platform_revenue'), {
+                    sourceAddress: (userAddress || '').toLowerCase(),
+                    actionType: 'live_hype', amount: platformCut, timestamp: Date.now()
+                }).catch(() => {});
+                const { doc: d2, updateDoc: ud2, increment: inc2 } = window.fs;
+                ud2(d2(window.db, 'admin_revenue', 'global'), { total: inc2(platformCut) }).catch(() => {});
+            }
 
             // Log spend entry to viewer's ledger
             if (userAddress) {
@@ -16429,7 +16453,7 @@
                     fromAddress:    userAddress.toLowerCase(),
                     toAddress:      hostAddr || '',
                     address:        userAddress.toLowerCase(),
-                    description:    `Live Hype sent (${HYPE_STAR_COST}★ · creator gets ${creatorCut.toFixed(1)}★)`,
+                    description:    `⚡ Live Hype sent (${HYPE_STAR_COST}★ · creator gets ${creatorCut.toFixed(1)}★)`,
                     timestamp:      Date.now(),
                     schema_version: 2
                 }).catch(() => {});
@@ -16553,10 +16577,20 @@
                 }).catch(() => {});
             }
 
-            // 3. Credit 20% to platform instantly
-            await updateDoc(doc(window.db, 'admin_revenue', 'global'), {
-                total: increment(platformCut)
-            }).catch(() => {});
+            // 3. Credit 20% to platform — logAdminRevenue writes to platform_revenue
+            // collection (admin dashboard ledger) AND admin_revenue/global (withdrawable balance)
+            if (typeof window.logAdminRevenue === 'function') {
+                window.logAdminRevenue(userAddress.toLowerCase(), 'live_gift', platformCut);
+            } else {
+                // fallback: direct write to both collections
+                window.fs.addDoc(window.fs.collection(window.db, 'platform_revenue'), {
+                    sourceAddress: userAddress.toLowerCase(),
+                    actionType: 'live_gift', amount: platformCut, timestamp: Date.now()
+                }).catch(() => {});
+                await updateDoc(doc(window.db, 'admin_revenue', 'global'), {
+                    total: increment(platformCut)
+                }).catch(() => {});
+            }
 
             // 3b. Log spend entry to viewer's ledger
             await addDoc(collection(window.db, 'user_transactions'), {
