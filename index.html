@@ -5480,9 +5480,16 @@
 
                             <!-- Whiteboard overlay (inside video container so it overlays the feed) -->
                             <div id="whiteboard-overlay" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;z-index:25;flex-direction:column;">
+                                <!-- Solid background fill — shown in Blank Board mode -->
+                                <div id="wb-bg-fill" style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000;display:none;"></div>
                                 <canvas id="whiteboard-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair;touch-action:none;"></canvas>
-                                <div id="whiteboard-toolbar" style="position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center;background:rgba(10,10,20,0.88);border:1px solid rgba(124,92,191,0.5);border-radius:24px;padding:6px 14px;z-index:31;box-shadow:0 4px 20px rgba(0,0,0,0.5);white-space:nowrap;">
-                                    <span style="font-size:0.58rem;font-weight:700;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:1px;margin-right:2px;">Draw</span>
+                                <!-- Mode pill (top-left) -->
+                                <div id="wb-mode-pill" style="position:absolute;top:10px;left:12px;z-index:32;display:flex;gap:0;border-radius:20px;overflow:hidden;border:1px solid rgba(124,92,191,0.5);box-shadow:0 2px 10px rgba(0,0,0,0.4);">
+                                    <button id="wb-mode-overlay" onclick="wbSetMode('overlay')" style="padding:4px 10px;font-size:0.62rem;font-weight:700;background:rgba(124,92,191,0.85);color:#fff;border:none;cursor:pointer;letter-spacing:0.3px;">📹 Draw Over Stream</button>
+                                    <button id="wb-mode-blank"   onclick="wbSetMode('blank')"   style="padding:4px 10px;font-size:0.62rem;font-weight:700;background:rgba(10,10,20,0.75);color:rgba(255,255,255,0.55);border:none;cursor:pointer;letter-spacing:0.3px;">⬛ Blank Board</button>
+                                </div>
+                                <!-- Drawing toolbar (top-centre) -->
+                                <div id="whiteboard-toolbar" style="position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:5px;align-items:center;background:rgba(10,10,20,0.88);border:1px solid rgba(124,92,191,0.5);border-radius:24px;padding:5px 12px;z-index:31;box-shadow:0 4px 20px rgba(0,0,0,0.5);white-space:nowrap;">
                                     <button onclick="wbSetTool('pen')"    id="wb-btn-pen"    title="Pen"       style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;">✏️</button>
                                     <button onclick="wbSetTool('line')"   id="wb-btn-line"   title="Line"      style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;">╱</button>
                                     <button onclick="wbSetTool('rect')"   id="wb-btn-rect"   title="Rectangle" style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;">▭</button>
@@ -5502,8 +5509,8 @@
                                         <option value="16">Fat</option>
                                     </select>
                                     <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;flex-shrink:0;"></div>
-                                    <button onclick="wbClear()"           style="background:rgba(224,62,62,0.18);border:1px solid rgba(224,62,62,0.4);border-radius:8px;color:#e03e3e;padding:3px 8px;font-size:0.62rem;cursor:pointer;">Clear</button>
-                                    <button onclick="toggleWhiteboard()"  style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:rgba(255,255,255,0.65);padding:3px 8px;font-size:0.62rem;cursor:pointer;">✕ Close</button>
+                                    <button onclick="wbClear()"          style="background:rgba(224,62,62,0.18);border:1px solid rgba(224,62,62,0.4);border-radius:8px;color:#e03e3e;padding:3px 8px;font-size:0.62rem;cursor:pointer;">Clear</button>
+                                    <button onclick="toggleWhiteboard()" style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:rgba(255,255,255,0.65);padding:3px 8px;font-size:0.62rem;cursor:pointer;">✕ Close</button>
                                 </div>
                             </div>
                         </div>
@@ -17707,14 +17714,21 @@
         if (vbgExtension) return true; // already registered
         try {
             if (!window.VirtualBackgroundExtension) {
-                showToast('Virtual background extension not loaded.');
+                showToast('Virtual background extension not loaded — check your internet connection.');
                 return false;
             }
             vbgExtension = new window.VirtualBackgroundExtension();
+            // Check browser compatibility before registering
+            if (!vbgExtension.checkCompatibility()) {
+                showToast('Virtual background not supported in this browser. Try Chrome.');
+                vbgExtension = null;
+                return false;
+            }
             window.AgoraRTC.registerExtensions([vbgExtension]);
             return true;
         } catch(e) {
             console.error('[VBG] Extension init error:', e);
+            vbgExtension = null;
             return false;
         }
     }
@@ -17755,8 +17769,9 @@
             }
 
             vbgProcessor = vbgExtension.createProcessor();
-            // Pass empty string — lets the extension use its bundled WASM model
-            await vbgProcessor.init('');
+            // For agora-extension-virtual-background v1.3.1 loaded from CDN,
+            // pass null to use the bundled WASM model included in the CDN script.
+            await vbgProcessor.init(null);
             localVideoTrack.pipe(vbgProcessor).pipe(localVideoTrack.processorDestination);
 
             if (type === 'blur') {
@@ -18151,45 +18166,59 @@
 
     async function _uploadRecording() {
         if (!recordedChunks.length) { showToast('No recording data captured.'); return; }
-        if (!window.storage || !window.fsStorage) { showToast('Storage not ready — recording saved locally only.'); return; }
         try {
-            const blob       = new Blob(recordedChunks, { type: 'video/webm' });
-            recordedChunks   = []; // free memory immediately
-            const filename   = `recordings/${recordStreamId || 'stream'}_${Date.now()}.webm`;
-            const storageRef = window.fsStorage.ref(window.storage, filename);
-            const uploadTask = window.fsStorage.uploadBytesResumable(storageRef, blob);
+            const blob     = new Blob(recordedChunks, { type: 'video/webm' });
+            recordedChunks = []; // free memory
 
-            showToast('☁️ Uploading recording…');
+            // ── PRIMARY: Download directly to host's device ──────────
+            // This avoids Firebase Storage permission issues entirely and
+            // gives the host an immediate local copy of their recording.
+            const blobUrl  = URL.createObjectURL(blob);
+            const filename = `socialhub-stream-${recordStreamId || 'recording'}-${Date.now()}.webm`;
+            const a        = document.createElement('a');
+            a.href         = blobUrl;
+            a.download     = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            // Revoke after a short delay to allow the download to start
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
 
-            uploadTask.on('state_changed',
-                snap => {
-                    const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
-                    showToast(`☁️ Uploading: ${pct}%`);
-                },
-                err => {
-                    console.error('[Rec] upload error:', err);
-                    showToast('Upload error: ' + (err.message || String(err)));
-                },
-                async () => {
-                    try {
-                        const url = await window.fsStorage.getDownloadURL(uploadTask.snapshot.ref);
-                        if (recordStreamId && window.db && window.fs) {
-                            const { doc, updateDoc, arrayUnion } = window.fs;
-                            await updateDoc(doc(window.db, 'live_streams', recordStreamId), {
-                                recordings: arrayUnion(url),
-                                hasReplay:  true
-                            }).catch(() => {});
+            showToast('✅ Recording downloaded to your device!');
+
+            // ── SECONDARY: Also try Firebase Storage (best-effort) ───
+            // If storage rules are open, this saves the replay URL to Firestore.
+            // If it fails (e.g. 403), we silently ignore — download already happened.
+            if (window.storage && window.fsStorage && recordStreamId) {
+                try {
+                    // Re-create blob for upload (original was already URL-created above)
+                    const uploadBlob = new Blob([await blob.arrayBuffer()], { type: 'video/webm' });
+                    const path       = `recordings/${recordStreamId}_${Date.now()}.webm`;
+                    const storageRef = window.fsStorage.ref(window.storage, path);
+                    const uploadTask = window.fsStorage.uploadBytesResumable(storageRef, uploadBlob);
+                    uploadTask.on('state_changed', null,
+                        err => console.warn('[Rec] Cloud upload skipped (permissions):', err.message),
+                        async () => {
+                            try {
+                                const url = await window.fsStorage.getDownloadURL(uploadTask.snapshot.ref);
+                                const { doc, updateDoc, arrayUnion } = window.fs;
+                                await updateDoc(doc(window.db, 'live_streams', recordStreamId), {
+                                    recordings: arrayUnion(url),
+                                    hasReplay:  true
+                                }).catch(() => {});
+                                showToast('☁️ Recording also saved to cloud for replay.');
+                            } catch(_) {}
                         }
-                        showToast('✅ Recording saved! Viewers can replay this stream.');
-                    } catch(urlErr) {
-                        console.error('[Rec] getDownloadURL error:', urlErr);
-                        showToast('Recording uploaded but URL retrieval failed.');
-                    }
+                    );
+                } catch(uploadErr) {
+                    console.warn('[Rec] Cloud upload not available:', uploadErr.message);
+                    // Not a user-facing error — local download already succeeded
                 }
-            );
+            }
+
         } catch(e) {
-            console.error('[Rec] upload prep error:', e);
-            showToast('Upload failed: ' + (e.message || String(e)));
+            console.error('[Rec] download error:', e);
+            showToast('Recording save failed: ' + (e.message || String(e)));
         }
     }
 
@@ -18872,32 +18901,37 @@
 
     // ══════════════════════════════════════════════════════════════
     // FEATURE 5 — WHITEBOARD
-    // Canvas overlay on the broadcaster video with pen/line/rect/
-    // circle/eraser tools and colour + size pickers.
+    // Two modes:
+    //   "overlay" — transparent canvas drawn over live video feed
+    //   "blank"   — solid black fill behind canvas (camera still
+    //               publishing, viewers just see the board)
     // ══════════════════════════════════════════════════════════════
 
     let _wbActive   = false;
-    let _wbTool     = 'pen';   // pen | line | rect | circle | eraser
+    let _wbMode     = 'overlay'; // 'overlay' | 'blank'
+    let _wbTool     = 'pen';
     let _wbColor    = '#ffffff';
     let _wbSize     = 4;
     let _wbDrawing  = false;
     let _wbStartX   = 0;
     let _wbStartY   = 0;
-    let _wbSnapshot = null;    // ImageData for shape preview
+    let _wbSnapshot = null;
 
     function _getWBCanvas() { return document.getElementById('whiteboard-canvas'); }
 
     function _resizeWBCanvas() {
-        const canvas = _getWBCanvas();
-        if (!canvas) return;
+        const canvas  = _getWBCanvas();
         const overlay = document.getElementById('whiteboard-overlay');
-        if (!overlay) return;
-        // Save existing drawing
-        const ctx = canvas.getContext('2d');
-        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        canvas.width  = overlay.offsetWidth  || 640;
-        canvas.height = overlay.offsetHeight || 360;
-        ctx.putImageData(img, 0, 0);
+        if (!canvas || !overlay) return;
+        const w = overlay.offsetWidth  || 640;
+        const h = overlay.offsetHeight || 360;
+        if (canvas.width === w && canvas.height === h) return; // no change needed
+        // Preserve existing drawing via a temp canvas
+        const tmp = document.createElement('canvas');
+        tmp.width = canvas.width; tmp.height = canvas.height;
+        tmp.getContext('2d').drawImage(canvas, 0, 0);
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(tmp, 0, 0);
     }
 
     window.toggleWhiteboard = function() {
@@ -18907,19 +18941,53 @@
         _wbActive = !_wbActive;
         if (_wbActive) {
             overlay.classList.add('wb-active');
-            _resizeWBCanvas();
+            setTimeout(_resizeWBCanvas, 50); // let layout paint first
             _attachWBListeners();
+            _wbHighlightTool(_wbTool);
+            _applyWBMode(_wbMode);
             if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🖊️</span> Close WB'; btn.classList.add('active-teal'); }
-            showToast('🖊️ Whiteboard open — draw over your stream.');
+            showToast('🖊️ Whiteboard open. Switch between "Draw Over Stream" and "Blank Board" at top-left.');
         } else {
-            overlay.classList.remove('wb-active');
             _detachWBListeners();
+            overlay.classList.remove('wb-active');
+            // If blank-board mode was active, restore camera
+            if (_wbMode === 'blank') _restoreCameraFromWB();
             if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🖊️</span> Whiteboard'; btn.classList.remove('active-teal'); }
             showToast('Whiteboard closed.');
         }
-        // Highlight the active tool button
-        _wbHighlightTool(_wbTool);
     };
+
+    window.wbSetMode = function(mode) {
+        _wbMode = mode;
+        _applyWBMode(mode);
+    };
+
+    function _applyWBMode(mode) {
+        const bgFill       = document.getElementById('wb-bg-fill');
+        const btnOverlay   = document.getElementById('wb-mode-overlay');
+        const btnBlank     = document.getElementById('wb-mode-blank');
+
+        if (mode === 'blank') {
+            // Show solid black background so camera feed is hidden behind the board
+            if (bgFill) bgFill.style.display = 'block';
+            if (btnOverlay) { btnOverlay.style.background = 'rgba(10,10,20,0.75)'; btnOverlay.style.color = 'rgba(255,255,255,0.55)'; }
+            if (btnBlank)   { btnBlank.style.background   = 'rgba(124,92,191,0.85)'; btnBlank.style.color = '#fff'; }
+            // Note: camera track keeps publishing — viewers see the board overlay, not the blank fill
+            // The blank fill is only a local visual for the host's comfort while drawing
+            showToast('⬛ Blank board — draw freely. Camera is still sending the overlay to viewers.');
+        } else {
+            // Overlay mode — transparent canvas over live video
+            if (bgFill) bgFill.style.display = 'none';
+            if (btnOverlay) { btnOverlay.style.background = 'rgba(124,92,191,0.85)'; btnOverlay.style.color = '#fff'; }
+            if (btnBlank)   { btnBlank.style.background   = 'rgba(10,10,20,0.75)';   btnBlank.style.color   = 'rgba(255,255,255,0.55)'; }
+            showToast('📹 Draw over your live stream.');
+        }
+    }
+
+    function _restoreCameraFromWB() {
+        // Nothing to restore — we never actually turned the camera off
+        // The blank fill is purely cosmetic on the host's screen
+    }
 
     window.wbSetTool = function(tool) {
         _wbTool = tool;
@@ -18933,38 +19001,29 @@
         });
     }
 
-    window.wbSetColor = function(color) {
-        _wbColor = color;
-    };
-
-    window.wbSetSize = function(val) {
-        _wbSize = parseInt(val, 10) || 4;
-    };
+    window.wbSetColor = function(color) { _wbColor = color; };
+    window.wbSetSize  = function(val)   { _wbSize  = parseInt(val, 10) || 4; };
 
     window.wbClear = function() {
         const canvas = _getWBCanvas();
         if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
         showToast('Whiteboard cleared.');
     };
 
-    // ── Event listener management ────────────────────────────────
+    // ── Pointer event management ──────────────────────────────────
     let _wbPointerDown = null, _wbPointerMove = null, _wbPointerUp = null;
 
     function _attachWBListeners() {
         const canvas = _getWBCanvas();
-        if (!canvas || _wbPointerDown) return; // already attached
+        if (!canvas || _wbPointerDown) return;
 
         function _pos(e) {
-            const r = canvas.getBoundingClientRect();
+            const r     = canvas.getBoundingClientRect();
             const scaleX = canvas.width  / r.width;
             const scaleY = canvas.height / r.height;
-            const src = e.touches ? e.touches[0] : e;
-            return {
-                x: (src.clientX - r.left) * scaleX,
-                y: (src.clientY - r.top)  * scaleY
-            };
+            const src    = e.touches ? e.touches[0] : e;
+            return { x: (src.clientX - r.left) * scaleX, y: (src.clientY - r.top) * scaleY };
         }
 
         _wbPointerDown = function(e) {
@@ -18973,11 +19032,9 @@
             const p = _pos(e);
             _wbStartX = p.x; _wbStartY = p.y;
             const ctx = canvas.getContext('2d');
-            // Snapshot current canvas for shape preview
             _wbSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
             if (_wbTool === 'pen' || _wbTool === 'eraser') {
-                ctx.beginPath();
-                ctx.moveTo(p.x, p.y);
+                ctx.beginPath(); ctx.moveTo(p.x, p.y);
             }
         };
 
@@ -18987,18 +19044,14 @@
             const p   = _pos(e);
             const ctx = canvas.getContext('2d');
             _setupWBCtx(ctx);
-
             if (_wbTool === 'pen') {
-                ctx.lineTo(p.x, p.y);
-                ctx.stroke();
+                ctx.lineTo(p.x, p.y); ctx.stroke();
             } else if (_wbTool === 'eraser') {
                 ctx.globalCompositeOperation = 'destination-out';
-                ctx.lineWidth = _wbSize * 4;
-                ctx.lineTo(p.x, p.y);
-                ctx.stroke();
+                ctx.lineWidth = _wbSize * 5;
+                ctx.lineTo(p.x, p.y); ctx.stroke();
                 ctx.globalCompositeOperation = 'source-over';
             } else {
-                // Restore snapshot then draw preview shape
                 ctx.putImageData(_wbSnapshot, 0, 0);
                 _setupWBCtx(ctx);
                 const w = p.x - _wbStartX, h = p.y - _wbStartY;
@@ -19007,19 +19060,16 @@
                 } else if (_wbTool === 'rect') {
                     ctx.strokeRect(_wbStartX, _wbStartY, w, h);
                 } else if (_wbTool === 'circle') {
-                    const rx = Math.abs(w) / 2, ry = Math.abs(h) / 2;
-                    const cx = _wbStartX + w / 2, cy = _wbStartY + h / 2;
-                    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+                    const rx = Math.abs(w)/2, ry = Math.abs(h)/2;
+                    ctx.beginPath(); ctx.ellipse(_wbStartX + w/2, _wbStartY + h/2, rx, ry, 0, 0, Math.PI*2); ctx.stroke();
                 }
             }
         };
 
-        _wbPointerUp = function(e) {
+        _wbPointerUp = function() {
             if (!_wbDrawing) return;
-            _wbDrawing  = false;
-            _wbSnapshot = null;
-            const ctx = _getWBCanvas().getContext('2d');
-            ctx.closePath();
+            _wbDrawing = false; _wbSnapshot = null;
+            canvas.getContext('2d').closePath();
         };
 
         canvas.addEventListener('mousedown',  _wbPointerDown, { passive: false });
@@ -19052,14 +19102,13 @@
         ctx.globalCompositeOperation = 'source-over';
     }
 
-    // Close whiteboard when stream ends
+    // Close whiteboard cleanly when stream ends
     const _origEndLiveWB = window.endLiveStream;
     window.endLiveStream = async function() {
         if (_wbActive) window.toggleWhiteboard();
         await _origEndLiveWB();
     };
 
-    // Resize canvas if window resizes while whiteboard is open
     window.addEventListener('resize', () => { if (_wbActive) _resizeWBCanvas(); });
 
     console.log('[SocialHub] Studio features initialised — Screen Share, Noise Suppression, Name Tag, Poll, Star Goal, Leaderboard, Raise Hand, Reactions, Health Monitor, Milestones, Virtual Background, Co-Host, Paid Admission, Recording, Whiteboard ✓');
