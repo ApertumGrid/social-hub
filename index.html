@@ -34,7 +34,7 @@
     <!-- 2. Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc, writeBatch, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
         const firebaseConfig = {
@@ -51,7 +51,7 @@
         const storage = getStorage(app);
         window.db  = db;
         window.storage = storage;
-        window.fs  = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc, writeBatch };
+        window.fs  = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc, writeBatch, arrayUnion, arrayRemove };
         window.fsStorage = { ref, uploadBytesResumable, getDownloadURL };
     </script>
 
@@ -816,6 +816,217 @@
         }
         .live-stat-val { font-family:var(--font-mono); font-size:0.95rem; font-weight:700; color:var(--text-primary); }
         .live-stat-label { font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-top:2px; }
+
+        /* ── BROADCASTER STUDIO TOOLBAR ─────────────────────────── */
+        .studio-toolbar {
+            display:flex; flex-wrap:wrap; gap:8px;
+            padding:10px 0; margin-bottom:10px;
+        }
+        .studio-btn {
+            display:flex; align-items:center; gap:6px;
+            padding:8px 14px; border-radius:50px;
+            border:1.5px solid var(--border);
+            background:var(--bg-card2);
+            color:var(--text-secondary);
+            font-family:var(--font-body);
+            font-size:0.75rem; font-weight:600;
+            cursor:pointer; transition:all 0.15s;
+            white-space:nowrap;
+        }
+        .studio-btn:hover { border-color:var(--purple-lt); color:var(--purple-lt); background:var(--purple-dim); }
+        .studio-btn.active { border-color:#e03e3e; color:#e03e3e; background:rgba(224,62,62,0.1); }
+        .studio-btn.active-teal { border-color:var(--teal); color:var(--teal); background:var(--teal-dim); }
+        .studio-btn.active-gold { border-color:var(--gold); color:var(--gold); background:rgba(240,180,41,0.1); }
+        .studio-btn-icon { font-size:0.95rem; }
+
+        /* ── PiP CAMERA overlay ──────────────────────────────────── */
+        #pip-camera-overlay {
+            position:absolute; bottom:14px; right:14px;
+            width:140px; height:90px;
+            border-radius:10px; overflow:hidden;
+            border:2px solid rgba(255,255,255,0.25);
+            z-index:20; display:none;
+            box-shadow:0 4px 20px rgba(0,0,0,0.5);
+            cursor:move;
+        }
+        #pip-camera-overlay video,
+        #pip-camera-overlay > div {
+            width:100% !important; height:100% !important;
+            object-fit:cover !important;
+        }
+
+        /* ── LOWER THIRDS ────────────────────────────────────────── */
+        #lower-third-bar {
+            position:absolute; bottom:0; left:0; right:0;
+            background:linear-gradient(90deg, rgba(10,10,20,0.92) 0%, rgba(124,92,191,0.85) 100%);
+            padding:10px 16px 12px;
+            z-index:15; display:none;
+            border-top:2px solid var(--purple);
+        }
+        .lower-third-name { font-size:1rem; font-weight:800; color:#fff; line-height:1.2; }
+        .lower-third-title { font-size:0.68rem; color:rgba(255,255,255,0.75); margin-top:2px; letter-spacing:0.5px; }
+
+        /* ── COUNTDOWN OVERLAY ───────────────────────────────────── */
+        #stream-countdown-overlay {
+            position:absolute; inset:0; z-index:50;
+            background:rgba(10,10,20,0.92);
+            display:none; flex-direction:column;
+            align-items:center; justify-content:center; gap:12px;
+        }
+        #stream-countdown-overlay.visible { display:flex; }
+        .countdown-num {
+            font-size:7rem; font-weight:900;
+            color:#fff; line-height:1;
+            text-shadow:0 0 40px rgba(224,62,62,0.8);
+            animation:countdown-pop 0.4s ease both;
+        }
+        @keyframes countdown-pop {
+            0%   { transform:scale(1.4); opacity:0; }
+            100% { transform:scale(1);   opacity:1; }
+        }
+        .countdown-label { font-size:0.9rem; color:rgba(255,255,255,0.6); letter-spacing:2px; text-transform:uppercase; }
+
+        /* ── STREAM HEALTH INDICATOR ─────────────────────────────── */
+        #stream-health {
+            display:flex; align-items:center; gap:6px;
+            background:rgba(0,0,0,0.55); backdrop-filter:blur(4px);
+            padding:4px 10px; border-radius:20px;
+            font-size:0.6rem; font-weight:700; color:#fff;
+        }
+        .health-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+        .health-dot.good    { background:#22c55e; box-shadow:0 0 6px rgba(34,197,94,0.8); }
+        .health-dot.fair    { background:var(--gold); box-shadow:0 0 6px rgba(240,180,41,0.8); }
+        .health-dot.poor    { background:#ef4444; box-shadow:0 0 6px rgba(239,68,68,0.8); }
+
+        /* ── LIVE POLL ───────────────────────────────────────────── */
+        .live-poll-card {
+            background:var(--bg-card); border:1px solid var(--border);
+            border-radius:var(--radius-md); overflow:hidden; margin-bottom:10px;
+        }
+        .live-poll-head {
+            padding:9px 14px; font-size:0.68rem; font-weight:700;
+            color:var(--text-secondary); text-transform:uppercase;
+            letter-spacing:1px; border-bottom:1px solid var(--border);
+            display:flex; justify-content:space-between; align-items:center;
+        }
+        .live-poll-body { padding:12px 14px; }
+        .poll-option {
+            display:flex; align-items:center; gap:8px;
+            margin-bottom:8px; cursor:pointer;
+        }
+        .poll-option:last-child { margin-bottom:0; }
+        .poll-bar-wrap {
+            flex:1; background:var(--bg-input);
+            border-radius:4px; height:28px; position:relative;
+            overflow:hidden; border:1px solid var(--border);
+        }
+        .poll-bar-fill {
+            position:absolute; top:0; left:0; height:100%;
+            background:linear-gradient(90deg,rgba(124,92,191,0.35),rgba(45,212,191,0.25));
+            border-radius:4px; transition:width 0.5s ease;
+        }
+        .poll-bar-label {
+            position:absolute; inset:0;
+            display:flex; align-items:center; padding:0 10px;
+            font-size:0.75rem; font-weight:600; color:var(--text-primary);
+        }
+        .poll-bar-pct {
+            margin-left:auto; font-family:var(--font-mono);
+            font-size:0.7rem; font-weight:700; color:var(--purple-lt);
+        }
+        .poll-voted .poll-bar-fill { background:linear-gradient(90deg,rgba(45,212,191,0.5),rgba(45,212,191,0.25)); }
+
+        /* ── STAR GOAL BAR ───────────────────────────────────────── */
+        .star-goal-card {
+            background:linear-gradient(135deg,rgba(240,180,41,0.06),rgba(124,92,191,0.04));
+            border:1px solid rgba(240,180,41,0.25);
+            border-radius:var(--radius-md); padding:12px 14px; margin-bottom:10px;
+        }
+        .star-goal-label { font-size:0.65rem; font-weight:700; color:var(--gold); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; display:flex; justify-content:space-between; }
+        .star-goal-track { width:100%; height:10px; background:rgba(240,180,41,0.12); border-radius:10px; overflow:hidden; }
+        .star-goal-fill  { height:100%; background:linear-gradient(90deg,var(--gold),#ffdd70); border-radius:10px; transition:width 0.6s ease; box-shadow:0 0 10px rgba(240,180,41,0.4); }
+        .star-goal-nums  { display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:0.62rem; color:var(--text-muted); margin-top:4px; }
+
+        /* ── GIFT LEADERBOARD ────────────────────────────────────── */
+        .live-leaderboard {
+            background:var(--bg-card); border:1px solid var(--border);
+            border-radius:var(--radius-md); overflow:hidden; margin-bottom:10px;
+        }
+        .live-lb-head {
+            padding:9px 14px; font-size:0.68rem; font-weight:700;
+            color:var(--text-secondary); text-transform:uppercase;
+            letter-spacing:1px; border-bottom:1px solid var(--border);
+        }
+        .live-lb-row {
+            display:flex; align-items:center; gap:10px;
+            padding:7px 14px; border-bottom:1px solid var(--border);
+            font-size:0.75rem;
+        }
+        .live-lb-row:last-child { border-bottom:none; }
+        .live-lb-rank { font-family:var(--font-mono); font-weight:700; color:var(--text-muted); width:18px; flex-shrink:0; font-size:0.68rem; }
+        .live-lb-rank.gold   { color:var(--gold); }
+        .live-lb-rank.silver { color:#adb5bd; }
+        .live-lb-rank.bronze { color:#cd7f32; }
+        .live-lb-name { flex:1; font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .live-lb-amt  { font-family:var(--font-mono); font-size:0.72rem; font-weight:700; color:var(--gold); }
+
+        /* ── RAISE HAND / STAGE ──────────────────────────────────── */
+        .raise-hand-btn {
+            background:rgba(124,92,191,0.12); border:1.5px solid rgba(124,92,191,0.35);
+            color:var(--purple-lt); font-size:0.75rem; font-weight:700;
+            padding:7px 16px; border-radius:50px; cursor:pointer;
+            transition:all 0.15s; font-family:var(--font-body);
+        }
+        .raise-hand-btn:hover { background:rgba(124,92,191,0.22); }
+        .raise-hand-btn.raised { background:rgba(124,92,191,0.3); border-color:var(--purple); color:#fff; }
+        .hand-queue-item {
+            display:flex; align-items:center; gap:8px; padding:6px 10px;
+            background:var(--bg-card2); border-radius:8px; margin-bottom:6px;
+            border:1px solid var(--border);
+        }
+
+        /* ── FLOATING EMOJI REACTIONS ────────────────────────────── */
+        #reaction-container {
+            position:absolute; inset:0; pointer-events:none; z-index:30; overflow:hidden;
+        }
+        .floating-reaction {
+            position:absolute; bottom:20px; font-size:1.8rem;
+            animation:float-up 2.8s ease-out forwards;
+            pointer-events:none; user-select:none;
+        }
+        @keyframes float-up {
+            0%   { transform:translateY(0) scale(0.6); opacity:1; }
+            60%  { transform:translateY(-180px) scale(1.1); opacity:0.9; }
+            100% { transform:translateY(-280px) scale(0.8) rotate(15deg); opacity:0; }
+        }
+
+        /* ── VIEWER MILESTONE TOAST ──────────────────────────────── */
+        .milestone-toast {
+            position:fixed; top:80px; left:50%; transform:translateX(-50%);
+            background:linear-gradient(135deg,rgba(240,180,41,0.95),rgba(124,92,191,0.95));
+            color:#fff; font-size:0.85rem; font-weight:800;
+            padding:10px 24px; border-radius:50px;
+            z-index:9999; pointer-events:none;
+            animation:milestone-pop 3s ease forwards;
+            white-space:nowrap;
+        }
+        @keyframes milestone-pop {
+            0%   { opacity:0; transform:translateX(-50%) translateY(-10px) scale(0.9); }
+            10%  { opacity:1; transform:translateX(-50%) translateY(0) scale(1.05); }
+            80%  { opacity:1; transform:translateX(-50%) translateY(0) scale(1); }
+            100% { opacity:0; transform:translateX(-50%) translateY(-8px) scale(0.95); }
+        }
+
+        /* ── NOISE SUPPRESSION indicator ─────────────────────────── */
+        .ns-active { color:var(--teal) !important; border-color:var(--teal) !important; background:var(--teal-dim) !important; }
+
+        /* ── SCREEN SHARE label on video ─────────────────────────── */
+        #screen-share-label {
+            position:absolute; top:10px; left:50%; transform:translateX(-50%);
+            background:rgba(45,212,191,0.85); color:#fff;
+            font-size:0.62rem; font-weight:800; padding:3px 12px; border-radius:20px;
+            letter-spacing:0.5px; display:none; z-index:12;
+        }
 
         .live-stream-card {
             border:1px solid var(--border);
@@ -4957,7 +5168,49 @@
                             <button class="btn live-hype-btn" id="live-hype-btn" onclick="sendLiveHype()">
                                 ⚡ Hype <span style="font-size:0.65rem;opacity:0.6;font-weight:600;"> · 1★</span>&nbsp;<span id="live-hype-count" style="opacity:0.75;font-size:0.7rem;">(0)</span>
                             </button>
+                            <button class="raise-hand-btn" id="viewer-raise-hand-btn" onclick="toggleRaiseHand()">✋ Raise Hand</button>
                             <button class="btn btn-outline btn-sm" onclick="leaveLiveStream()">✕ Leave</button>
+                        </div>
+
+                        <!-- Viewer reactions bar -->
+                        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+                            <button onclick="sendReaction('❤️')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">❤️</button>
+                            <button onclick="sendReaction('🔥')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">🔥</button>
+                            <button onclick="sendReaction('😂')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">😂</button>
+                            <button onclick="sendReaction('🚀')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">🚀</button>
+                            <button onclick="sendReaction('💎')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">💎</button>
+                            <button onclick="sendReaction('👏')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">👏</button>
+                        </div>
+
+                        <!-- Active Poll (viewer side — shown when host launches one) -->
+                        <div id="viewer-poll-card" class="live-poll-card" style="display:none;">
+                            <div class="live-poll-head">
+                                <span>📊 Live Poll</span>
+                                <span id="viewer-poll-votes" style="font-size:0.62rem;color:var(--text-muted);font-weight:400;text-transform:none;">0 votes</span>
+                            </div>
+                            <div class="live-poll-body">
+                                <div id="viewer-poll-question" style="font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:10px;"></div>
+                                <div id="viewer-poll-options"></div>
+                            </div>
+                        </div>
+
+                        <!-- Star Goal bar (viewer side) -->
+                        <div id="viewer-star-goal" style="display:none;" class="star-goal-card">
+                            <div class="star-goal-label">
+                                <span>🎯 Stream Goal</span>
+                                <span id="viewer-goal-pct">0%</span>
+                            </div>
+                            <div class="star-goal-track"><div class="star-goal-fill" id="viewer-goal-fill" style="width:0%"></div></div>
+                            <div class="star-goal-nums">
+                                <span id="viewer-goal-current">0 ★</span>
+                                <span id="viewer-goal-target">— ★</span>
+                            </div>
+                        </div>
+
+                        <!-- Gift Leaderboard (viewer side) -->
+                        <div class="live-leaderboard" id="viewer-leaderboard" style="display:none;">
+                            <div class="live-lb-head">🏆 Top Gifters</div>
+                            <div id="viewer-lb-list"></div>
                         </div>
 
                         <!-- Gift Panel -->
@@ -5050,14 +5303,121 @@
 
                     <!-- Active broadcast dashboard (hidden until live) -->
                     <div id="live-active-panel" style="display:none;">
-                        <div class="live-stream-box" id="live-broadcaster-video-container">
+
+                        <!-- Video box with overlays -->
+                        <div class="live-stream-box" id="live-broadcaster-video-container" style="height:380px;">
+                            <!-- Top bar: LIVE badge + health + viewers -->
                             <div class="live-stream-overlay-top">
                                 <span class="live-badge-pill">🔴 YOU ARE LIVE</span>
+                                <div id="stream-health">
+                                    <div class="health-dot good" id="health-dot"></div>
+                                    <span id="health-label">Good</span>
+                                </div>
                                 <span class="live-viewer-chip" id="live-broadcast-viewers">👁 0 watching</span>
                             </div>
+
+                            <!-- Screen share label -->
+                            <div id="screen-share-label">🖥 Screen Share</div>
+
+                            <!-- Main video container -->
                             <div id="live-broadcaster-video" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
-                            <div class="live-stream-meta">
+
+                            <!-- PiP camera (shown when screen sharing) -->
+                            <div id="pip-camera-overlay"></div>
+
+                            <!-- Floating reactions container -->
+                            <div id="reaction-container"></div>
+
+                            <!-- Countdown overlay -->
+                            <div id="stream-countdown-overlay">
+                                <div class="countdown-num" id="countdown-num">3</div>
+                                <div class="countdown-label">Stream starting…</div>
+                            </div>
+
+                            <!-- Lower thirds bar -->
+                            <div id="lower-third-bar">
+                                <div class="lower-third-name" id="lower-third-name-text"></div>
+                                <div class="lower-third-title" id="lower-third-title-text"></div>
+                            </div>
+
+                            <!-- Stream meta bottom left -->
+                            <div class="live-stream-meta" id="bc-meta-nowrap" style="bottom:50px;">
                                 <div class="live-stream-host" id="live-broadcast-title-display"></div>
+                            </div>
+                        </div>
+
+                        <!-- Studio Toolbar -->
+                        <div class="studio-toolbar">
+                            <button class="studio-btn" id="btn-screen-share" onclick="toggleScreenShare()">
+                                <span class="studio-btn-icon">🖥</span> Share Screen
+                            </button>
+                            <button class="studio-btn" id="btn-noise-suppress" onclick="toggleNoiseSuppression()">
+                                <span class="studio-btn-icon">🎙</span> Noise Cancel
+                            </button>
+                            <button class="studio-btn" id="btn-lower-third" onclick="toggleLowerThird()">
+                                <span class="studio-btn-icon">📺</span> Lower Third
+                            </button>
+                            <button class="studio-btn" id="btn-mute-mic" onclick="toggleMic()">
+                                <span class="studio-btn-icon">🔇</span> Mute
+                            </button>
+                            <button class="studio-btn" id="btn-cam-off" onclick="toggleCamera()">
+                                <span class="studio-btn-icon">📷</span> Cam Off
+                            </button>
+                            <button class="studio-btn" id="btn-start-poll" onclick="togglePollCreator()">
+                                <span class="studio-btn-icon">📊</span> Poll
+                            </button>
+                            <button class="studio-btn" id="btn-set-goal" onclick="toggleGoalSetter()">
+                                <span class="studio-btn-icon">🎯</span> Star Goal
+                            </button>
+                        </div>
+
+                        <!-- Lower Third editor (hidden by default) -->
+                        <div id="lower-third-editor" style="display:none; padding:10px 14px; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px;">
+                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Lower Third</div>
+                            <input type="text" id="lt-name-input" class="field" placeholder="Your Name / Title" style="margin-bottom:6px;margin-top:0;">
+                            <input type="text" id="lt-title-input" class="field" placeholder="Subtitle (e.g. Crypto Analyst · Live)" style="margin-bottom:8px;margin-top:0;">
+                            <div style="display:flex;gap:8px;">
+                                <button class="btn btn-purple btn-sm" onclick="applyLowerThird()">✓ Apply</button>
+                                <button class="btn btn-sm btn-outline" onclick="hideLowerThird()">Remove</button>
+                            </div>
+                        </div>
+
+                        <!-- Poll Creator (hidden by default) -->
+                        <div id="poll-creator" style="display:none; padding:10px 14px; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px;">
+                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Create Poll</div>
+                            <input type="text" id="poll-question-input" class="field" placeholder="Ask your audience something…" style="margin-bottom:6px;margin-top:0;">
+                            <input type="text" id="poll-opt1-input" class="field" placeholder="Option A" style="margin-bottom:6px;margin-top:0;">
+                            <input type="text" id="poll-opt2-input" class="field" placeholder="Option B" style="margin-bottom:6px;margin-top:0;">
+                            <input type="text" id="poll-opt3-input" class="field" placeholder="Option C (optional)" style="margin-bottom:8px;margin-top:0;">
+                            <div style="display:flex;gap:8px;">
+                                <button class="btn btn-purple btn-sm" onclick="launchPoll()">📊 Launch Poll</button>
+                                <button class="btn btn-sm btn-outline" onclick="closePoll()">End Poll</button>
+                            </div>
+                        </div>
+
+                        <!-- Goal Setter (hidden by default) -->
+                        <div id="goal-setter" style="display:none; padding:10px 14px; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px;">
+                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Star Goal</div>
+                            <input type="number" id="goal-amount-input" class="field" placeholder="Goal e.g. 500" min="1" style="margin-bottom:8px;margin-top:0;">
+                            <button class="btn btn-sm" style="background:var(--gold);color:#111;border:none;font-weight:700;" onclick="setStarGoal()">🎯 Set Goal</button>
+                        </div>
+
+                        <!-- Raise hand queue (host view) -->
+                        <div id="hand-queue-card" style="display:none; padding:10px 14px; background:var(--bg-card2); border:1px solid rgba(124,92,191,0.3); border-radius:var(--radius-md); margin-bottom:10px;">
+                            <div style="font-size:0.65rem;font-weight:700;color:var(--purple-lt);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">✋ Raised Hands</div>
+                            <div id="hand-queue-list"></div>
+                        </div>
+
+                        <!-- Star Goal bar (shown when goal is set) -->
+                        <div id="star-goal-display" style="display:none;" class="star-goal-card">
+                            <div class="star-goal-label">
+                                <span>🎯 Star Goal</span>
+                                <span id="goal-label-pct">0%</span>
+                            </div>
+                            <div class="star-goal-track"><div class="star-goal-fill" id="goal-fill" style="width:0%"></div></div>
+                            <div class="star-goal-nums">
+                                <span id="goal-current">0 ★</span>
+                                <span id="goal-target">— ★</span>
                             </div>
                         </div>
 
@@ -5077,8 +5437,14 @@
                             </div>
                             <div class="live-stat-chip">
                                 <div class="live-stat-val" id="live-stat-viewers">0</div>
-                                <div class="live-stat-label">Viewers</div>
+                                <div class="live-stat-label">Peak Viewers</div>
                             </div>
+                        </div>
+
+                        <!-- Gift Leaderboard -->
+                        <div class="live-leaderboard" id="gift-leaderboard" style="display:none;">
+                            <div class="live-lb-head">🏆 Top Gifters This Stream</div>
+                            <div id="gift-lb-list"></div>
                         </div>
 
                         <!-- Live chat (broadcaster view) -->
@@ -16900,6 +17266,633 @@
     };
 
     console.log('[SocialHub] Live Stream Engine initialised — Agora App ID:', AGORA_APP_ID);
+
+    // ══════════════════════════════════════════════════════════════
+    // STUDIO FEATURES — Screen Share, Noise Suppression, Lower Third,
+    // Poll, Star Goal, Gift Leaderboard, Raise Hand, Reactions,
+    // Stream Health, Viewer Milestones, Countdown
+    // ══════════════════════════════════════════════════════════════
+
+    let screenTrack        = null;   // Agora screen video track
+    let isScreenSharing    = false;
+    let isMicMuted         = false;
+    let isCamOff           = false;
+    let noiseSuppressOn    = false;
+    let starGoalTarget     = 0;
+    let peakViewers        = 0;
+    let handRaised         = false;
+    let _handUnsub         = null;
+    let _pollUnsub         = null;
+    let _goalUnsub         = null;
+    let _lbMap             = {};     // address → total gifted (leaderboard)
+    let _viewerPollVote    = null;   // which option viewer voted for
+    const REACTIONS_COL    = 'live_reactions';
+
+    // ── COUNTDOWN before going live ───────────────────────────────
+    function runCountdown(seconds, onDone) {
+        const overlay = $('stream-countdown-overlay');
+        const numEl   = $('countdown-num');
+        if (!overlay || !numEl) { onDone(); return; }
+        overlay.classList.add('visible');
+        let n = seconds;
+        numEl.textContent = n;
+        const tick = setInterval(() => {
+            n--;
+            if (n <= 0) {
+                clearInterval(tick);
+                overlay.classList.remove('visible');
+                onDone();
+            } else {
+                numEl.style.animation = 'none';
+                void numEl.offsetWidth; // reflow to restart animation
+                numEl.style.animation = '';
+                numEl.textContent = n;
+            }
+        }, 1000);
+    }
+
+    // Wrap startLiveStream to include 3-second countdown
+    const _origStartLive = window.startLiveStream;
+    window.startLiveStream = async function() {
+        runCountdown(3, async () => { await _origStartLive(); });
+    };
+
+    // ── SCREEN SHARE ─────────────────────────────────────────────
+    window.toggleScreenShare = async function() {
+        const btn = $('btn-screen-share');
+        if (!isHosting) { showToast('Go live first to share your screen.'); return; }
+
+        if (isScreenSharing) {
+            // Stop screen share — switch back to camera
+            try {
+                if (screenTrack) {
+                    await agoraClient.unpublish(screenTrack);
+                    screenTrack.stop(); screenTrack.close(); screenTrack = null;
+                }
+                // Re-publish camera
+                if (localVideoTrack) await agoraClient.publish(localVideoTrack);
+                // Hide PiP
+                const pip = $('pip-camera-overlay');
+                if (pip) pip.style.display = 'none';
+                // Show screen back to main container
+                _playInContainer(localVideoTrack, 'live-broadcaster-video');
+                // Labels
+                const lbl = $('screen-share-label'); if (lbl) lbl.style.display = 'none';
+                isScreenSharing = false;
+                if (btn) { btn.textContent = '🖥 Share Screen'; btn.classList.remove('active'); }
+                showToast('📷 Back to camera.');
+            } catch(e) { showToast('Could not stop screen share: ' + e.message); }
+        } else {
+            // Start screen share
+            try {
+                screenTrack = await window.AgoraRTC.createScreenVideoTrack({ encoderConfig: '1080p_1' }, 'disable');
+                // Unpublish camera video, publish screen
+                if (localVideoTrack) await agoraClient.unpublish(localVideoTrack);
+                await agoraClient.publish(screenTrack);
+                // Play screen in main container
+                _playInContainer(screenTrack, 'live-broadcaster-video');
+                // PiP camera
+                const pip = $('pip-camera-overlay');
+                if (pip && localVideoTrack) {
+                    pip.style.display = 'block';
+                    pip.innerHTML = '';
+                    localVideoTrack.play(pip);
+                }
+                // Label
+                const lbl = $('screen-share-label'); if (lbl) lbl.style.display = 'block';
+                isScreenSharing = true;
+                if (btn) { btn.innerHTML = '🖥 Stop Sharing'; btn.classList.add('active'); }
+                // Handle user stopping via browser UI
+                screenTrack.on('track-ended', () => { if (isScreenSharing) window.toggleScreenShare(); });
+                showToast('🖥 Screen share active — viewers can see your screen.');
+            } catch(e) {
+                if (e.name === 'NotAllowedError' || e.message?.includes('cancel')) {
+                    showToast('Screen share cancelled.');
+                } else {
+                    showToast('Screen share error: ' + (e.message || String(e)));
+                }
+            }
+        }
+    };
+
+    // ── NOISE SUPPRESSION ────────────────────────────────────────
+    window.toggleNoiseSuppression = async function() {
+        const btn = $('btn-noise-suppress');
+        if (!localAudioTrack) { showToast('No microphone track — preview camera first.'); return; }
+        try {
+            noiseSuppressOn = !noiseSuppressOn;
+            await localAudioTrack.setAINSMode(noiseSuppressOn ? 'AGGRESSIVE' : 'DISABLE');
+            if (btn) {
+                btn.innerHTML = noiseSuppressOn ? '🎙 Noise Cancel ✓' : '🎙 Noise Cancel';
+                btn.classList.toggle('active-teal', noiseSuppressOn);
+            }
+            showToast(noiseSuppressOn ? '🎙 AI noise cancellation ON' : '🎙 Noise cancellation OFF');
+        } catch(e) {
+            // Fallback for older Agora SDK versions
+            showToast('Noise suppression: ' + (e.message || 'not supported on this SDK version'));
+        }
+    };
+
+    // ── MIC MUTE ──────────────────────────────────────────────────
+    window.toggleMic = function() {
+        const btn = $('btn-mute-mic');
+        if (!localAudioTrack) return;
+        isMicMuted = !isMicMuted;
+        localAudioTrack.setEnabled(!isMicMuted);
+        if (btn) {
+            btn.innerHTML = isMicMuted ? '🔇 Unmute' : '🔇 Mute';
+            btn.classList.toggle('active', isMicMuted);
+        }
+        showToast(isMicMuted ? '🔇 Microphone muted' : '🎙 Microphone live');
+    };
+
+    // ── CAMERA ON/OFF ─────────────────────────────────────────────
+    window.toggleCamera = function() {
+        const btn = $('btn-cam-off');
+        if (!localVideoTrack || isScreenSharing) return;
+        isCamOff = !isCamOff;
+        localVideoTrack.setEnabled(!isCamOff);
+        if (btn) {
+            btn.innerHTML = isCamOff ? '📷 Cam On' : '📷 Cam Off';
+            btn.classList.toggle('active', isCamOff);
+        }
+        showToast(isCamOff ? '📷 Camera off' : '📷 Camera on');
+    };
+
+    // ── LOWER THIRD ───────────────────────────────────────────────
+    window.toggleLowerThird = function() {
+        const ed = $('lower-third-editor');
+        if (ed) ed.style.display = ed.style.display === 'none' ? '' : 'none';
+    };
+    window.applyLowerThird = function() {
+        const name  = ($('lt-name-input') || {}).value  || '';
+        const title = ($('lt-title-input') || {}).value || '';
+        const bar   = $('lower-third-bar');
+        const nameEl  = $('lower-third-name-text');
+        const titleEl = $('lower-third-title-text');
+        if (!name && !title) { showToast('Enter a name or title first.'); return; }
+        if (nameEl)  nameEl.textContent  = name;
+        if (titleEl) titleEl.textContent = title;
+        if (bar) bar.style.display = '';
+        const btn = $('btn-lower-third');
+        if (btn) btn.classList.add('active-teal');
+        // Broadcast to Firestore so viewers see it
+        if (currentStreamId && window.db) {
+            const { doc, updateDoc } = window.fs;
+            updateDoc(doc(window.db, LIVE_COL, currentStreamId), {
+                lowerThirdName: name, lowerThirdTitle: title, lowerThirdActive: true
+            }).catch(() => {});
+        }
+        showToast('📺 Lower third applied — viewers can see it.');
+    };
+    window.hideLowerThird = function() {
+        const bar = $('lower-third-bar');
+        if (bar) bar.style.display = 'none';
+        const btn = $('btn-lower-third');
+        if (btn) btn.classList.remove('active-teal');
+        if (currentStreamId && window.db) {
+            const { doc, updateDoc } = window.fs;
+            updateDoc(doc(window.db, LIVE_COL, currentStreamId), { lowerThirdActive: false }).catch(() => {});
+        }
+    };
+    window.toggleLowerThirdEditor = window.toggleLowerThird;
+
+    // ── POLL ──────────────────────────────────────────────────────
+    window.togglePollCreator = function() {
+        const pc = $('poll-creator');
+        if (pc) pc.style.display = pc.style.display === 'none' ? '' : 'none';
+    };
+
+    window.launchPoll = async function() {
+        const q    = ($('poll-question-input') || {}).value.trim();
+        const o1   = ($('poll-opt1-input') || {}).value.trim();
+        const o2   = ($('poll-opt2-input') || {}).value.trim();
+        const o3   = ($('poll-opt3-input') || {}).value.trim();
+        if (!q || !o1 || !o2) { showToast('Enter a question and at least 2 options.'); return; }
+        if (!currentStreamId || !window.db) return;
+
+        const options = [o1, o2];
+        if (o3) options.push(o3);
+
+        const pollData = { question: q, options, votes: options.map(() => 0), active: true, createdAt: Date.now() };
+        const { doc, updateDoc } = window.fs;
+        await updateDoc(doc(window.db, LIVE_COL, currentStreamId), { activePoll: pollData }).catch(() => {});
+        $('poll-creator').style.display = 'none';
+        showToast('📊 Poll launched — viewers are voting!');
+    };
+
+    window.closePoll = async function() {
+        if (!currentStreamId || !window.db) return;
+        const { doc, updateDoc } = window.fs;
+        await updateDoc(doc(window.db, LIVE_COL, currentStreamId), {
+            'activePoll.active': false
+        }).catch(() => {});
+        showToast('Poll closed.');
+    };
+
+    // ── STAR GOAL ─────────────────────────────────────────────────
+    window.toggleGoalSetter = function() {
+        const gs = $('goal-setter');
+        if (gs) gs.style.display = gs.style.display === 'none' ? '' : 'none';
+    };
+
+    window.setStarGoal = async function() {
+        const amt = parseFloat(($('goal-amount-input') || {}).value) || 0;
+        if (amt <= 0) { showToast('Enter a valid goal amount.'); return; }
+        starGoalTarget = amt;
+        if (currentStreamId && window.db) {
+            const { doc, updateDoc } = window.fs;
+            await updateDoc(doc(window.db, LIVE_COL, currentStreamId), { starGoal: amt }).catch(() => {});
+        }
+        $('goal-setter').style.display = 'none';
+        _updateGoalBar(liveStarsEarned);
+        show('star-goal-display');
+        showToast(`🎯 Goal set: ${amt} ★ — viewers can see your goal!`);
+    };
+
+    function _updateGoalBar(current) {
+        if (!starGoalTarget) return;
+        const pct = Math.min(100, (current / starGoalTarget) * 100);
+        const fill = $('goal-fill');
+        const cur  = $('goal-current');
+        const tgt  = $('goal-target');
+        const lbl  = $('goal-label-pct');
+        if (fill) fill.style.width = pct.toFixed(1) + '%';
+        if (cur)  cur.textContent  = current.toFixed(1) + ' ★';
+        if (tgt)  tgt.textContent  = starGoalTarget + ' ★';
+        if (lbl)  lbl.textContent  = pct.toFixed(0) + '%';
+        if (pct >= 100) {
+            showMilestone('🎯 GOAL REACHED! 🎉');
+            // Flash gold
+            if (fill) { fill.style.background = 'linear-gradient(90deg,#22c55e,#4ade80)'; }
+        }
+    }
+
+    // ── GIFT LEADERBOARD ──────────────────────────────────────────
+    function _updateLeaderboard(senderHandle, amount) {
+        _lbMap[senderHandle] = (_lbMap[senderHandle] || 0) + amount;
+        _renderLeaderboard();
+    }
+
+    function _renderLeaderboard() {
+        const entries = Object.entries(_lbMap).sort((a,b) => b[1]-a[1]).slice(0,5);
+        if (!entries.length) return;
+        const card = $('gift-leaderboard'); if (card) card.style.display = '';
+        const list = $('gift-lb-list'); if (!list) return;
+        const medals = ['🥇','🥈','🥉','4.','5.'];
+        const rankCls = ['gold','silver','bronze','',''];
+        list.innerHTML = entries.map(([name, amt], i) =>
+            `<div class="live-lb-row">
+                <div class="live-lb-rank ${rankCls[i]}">${medals[i]}</div>
+                <div class="live-lb-name">${name}</div>
+                <div class="live-lb-amt">${amt} ★</div>
+            </div>`
+        ).join('');
+
+        // Mirror to viewer side
+        const vCard = $('viewer-leaderboard'); if (vCard) vCard.style.display = '';
+        const vList = $('viewer-lb-list'); if (vList) vList.innerHTML = list.innerHTML;
+    }
+
+    // ── RAISE HAND (viewer) ───────────────────────────────────────
+    window.toggleRaiseHand = async function() {
+        if (!_watchingStreamId || !window.db) return;
+        const userHandle = window._liveUserHandle || 'Viewer';
+        const userAddr   = window._liveUserAddress || '';
+        const btn = $('viewer-raise-hand-btn');
+        handRaised = !handRaised;
+        if (btn) {
+            btn.textContent = handRaised ? '✋ Hand Raised!' : '✋ Raise Hand';
+            btn.classList.toggle('raised', handRaised);
+        }
+        const { doc, updateDoc, arrayUnion, arrayRemove } = window.fs;
+        if (handRaised) {
+            await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
+                raisedHands: arrayUnion({ handle: userHandle, addr: userAddr, ts: Date.now() })
+            }).catch(() => {});
+            showToast('✋ Hand raised — the host can see you!');
+        } else {
+            await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
+                raisedHands: arrayRemove({ handle: userHandle, addr: userAddr })
+            }).catch(() => {});
+        }
+    };
+
+    // Subscribe to raised hands (host view)
+    function subscribeRaisedHands(streamId) {
+        const { doc, onSnapshot } = window.fs;
+        onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
+            if (!snap.exists()) return;
+            const hands = snap.data().raisedHands || [];
+            const card  = $('hand-queue-card');
+            const list  = $('hand-queue-list');
+            if (!card || !list) return;
+            if (!hands.length) { card.style.display = 'none'; return; }
+            card.style.display = '';
+            list.innerHTML = hands.map(h =>
+                `<div class="hand-queue-item">
+                    <span style="font-size:1rem;">✋</span>
+                    <span style="font-size:0.78rem;font-weight:600;color:var(--text-primary);flex:1;">${h.handle || 'Viewer'}</span>
+                    <span style="font-size:0.62rem;color:var(--text-muted);">${new Date(h.ts||0).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
+                </div>`
+            ).join('');
+        }, () => {});
+    }
+
+    // ── FLOATING REACTIONS ────────────────────────────────────────
+    window.sendReaction = function(emoji) {
+        // Show locally immediately
+        _spawnReaction(emoji, 'live-remote-video-container');
+        // Write to Firestore so everyone sees it
+        if (!_watchingStreamId || !window.db) return;
+        const { collection, addDoc, serverTimestamp } = window.fs;
+        addDoc(collection(window.db, REACTIONS_COL, _watchingStreamId, 'events'), {
+            emoji, ts: serverTimestamp(), sender: window._liveUserHandle || 'Viewer'
+        }).catch(() => {});
+    };
+
+    function _spawnReaction(emoji, containerId) {
+        const box = $(containerId || 'live-remote-video-container');
+        if (!box) return;
+        let rc = box.querySelector('#reaction-container');
+        if (!rc) {
+            rc = document.createElement('div');
+            rc.id = 'reaction-container';
+            rc.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:30;overflow:hidden;';
+            box.appendChild(rc);
+        }
+        const el = document.createElement('div');
+        el.className = 'floating-reaction';
+        el.textContent = emoji;
+        el.style.left = (10 + Math.random() * 80) + '%';
+        rc.appendChild(el);
+        setTimeout(() => el.remove(), 3000);
+    }
+
+    // Subscribe to reactions (viewer side)
+    function subscribeReactions(streamId) {
+        if (!window.db || !window.fs) return;
+        const { collection, query, orderBy, onSnapshot } = window.fs;
+        // Only listen for very recent reactions (last 5s)
+        let lastTs = Date.now();
+        const q = query(collection(window.db, REACTIONS_COL, streamId, 'events'), orderBy('ts', 'asc'));
+        onSnapshot(q, snap => {
+            snap.docChanges().forEach(change => {
+                if (change.type === 'added') {
+                    const d = change.doc.data();
+                    // Only animate if recent (avoids replaying old reactions on join)
+                    const ts = d.ts?.toMillis?.() || 0;
+                    if (ts > lastTs - 3000) {
+                        _spawnReaction(d.emoji, 'live-remote-video-container');
+                    }
+                }
+            });
+            lastTs = Date.now();
+        }, () => {});
+    }
+
+    // ── STREAM HEALTH MONITOR ─────────────────────────────────────
+    let _healthTimer = null;
+    function startHealthMonitor() {
+        _healthTimer = setInterval(() => {
+            if (!agoraClient || !isHosting) return;
+            try {
+                const stats = agoraClient.getRTCStats();
+                const lost  = stats.OutgoingAvailableBandwidth || 0;
+                const dot   = $('health-dot');
+                const lbl   = $('health-label');
+                // Use send bandwidth as proxy for connection quality
+                if (lost > 500) {
+                    if (dot) { dot.className = 'health-dot good'; }
+                    if (lbl) lbl.textContent = 'Good';
+                } else if (lost > 200) {
+                    if (dot) { dot.className = 'health-dot fair'; }
+                    if (lbl) lbl.textContent = 'Fair';
+                } else {
+                    if (dot) { dot.className = 'health-dot poor'; }
+                    if (lbl) lbl.textContent = 'Poor';
+                }
+            } catch(_) {}
+        }, 3000);
+    }
+    function stopHealthMonitor() {
+        if (_healthTimer) { clearInterval(_healthTimer); _healthTimer = null; }
+    }
+
+    // ── VIEWER MILESTONES ─────────────────────────────────────────
+    const _milestonesSeen = new Set();
+    const MILESTONE_COUNTS = [10, 25, 50, 100, 250, 500];
+    function checkViewerMilestone(count) {
+        for (const m of MILESTONE_COUNTS) {
+            if (count >= m && !_milestonesSeen.has(m)) {
+                _milestonesSeen.add(m);
+                showMilestone(`🎉 ${m} viewers watching!`);
+                break;
+            }
+        }
+        // Track peak
+        if (count > peakViewers) {
+            peakViewers = count;
+            const el = $('live-stat-viewers');
+            if (el) el.textContent = String(peakViewers);
+        }
+    }
+
+    function showMilestone(text) {
+        const el = document.createElement('div');
+        el.className = 'milestone-toast';
+        el.textContent = text;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 3100);
+    }
+
+    // ── POLL SUBSCRIPTION (viewer side) ──────────────────────────
+    function subscribePoll(streamId) {
+        if (!window.db || !window.fs) return;
+        const { doc, onSnapshot } = window.fs;
+        _pollUnsub = onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
+            if (!snap.exists()) return;
+            const d = snap.data();
+
+            // Poll
+            const poll = d.activePoll;
+            const pollCard = $('viewer-poll-card');
+            if (poll && poll.active) {
+                if (pollCard) pollCard.style.display = '';
+                _renderViewerPoll(poll);
+            } else {
+                if (pollCard) pollCard.style.display = 'none';
+            }
+
+            // Star goal
+            const goal = d.starGoal || 0;
+            const earned = d.starsEarned || 0;
+            const vGoal = $('viewer-star-goal');
+            if (goal > 0) {
+                if (vGoal) vGoal.style.display = '';
+                const pct = Math.min(100, (earned / goal) * 100);
+                const vFill = $('viewer-goal-fill');
+                const vCur  = $('viewer-goal-current');
+                const vTgt  = $('viewer-goal-target');
+                const vPct  = $('viewer-goal-pct');
+                if (vFill) vFill.style.width = pct.toFixed(1) + '%';
+                if (vCur)  vCur.textContent  = earned.toFixed(1) + ' ★';
+                if (vTgt)  vTgt.textContent  = goal + ' ★';
+                if (vPct)  vPct.textContent  = pct.toFixed(0) + '%';
+            } else {
+                if (vGoal) vGoal.style.display = 'none';
+            }
+
+            // Lower third (viewer side)
+            const ltActive = d.lowerThirdActive;
+            let viewerLt = document.getElementById('viewer-lower-third');
+            if (ltActive && (d.lowerThirdName || d.lowerThirdTitle)) {
+                if (!viewerLt) {
+                    viewerLt = document.createElement('div');
+                    viewerLt.id = 'viewer-lower-third';
+                    viewerLt.style.cssText = 'position:absolute;bottom:0;left:0;right:0;background:linear-gradient(90deg,rgba(10,10,20,0.92),rgba(124,92,191,0.85));padding:10px 16px 12px;z-index:15;border-top:2px solid var(--purple);';
+                    const rc = $('live-remote-video-container');
+                    if (rc) rc.appendChild(viewerLt);
+                }
+                viewerLt.innerHTML = `<div style="font-size:1rem;font-weight:800;color:#fff;">${d.lowerThirdName||''}</div><div style="font-size:0.68rem;color:rgba(255,255,255,0.75);margin-top:2px;">${d.lowerThirdTitle||''}</div>`;
+            } else if (viewerLt) {
+                viewerLt.remove();
+            }
+
+            // Viewer milestones
+            checkViewerMilestone(d.viewers || 0);
+        }, () => {});
+    }
+
+    function _renderViewerPoll(poll) {
+        const qEl   = $('viewer-poll-question');
+        const optsEl = $('viewer-poll-options');
+        const votesEl = $('viewer-poll-votes');
+        if (!qEl || !optsEl) return;
+        qEl.textContent = poll.question;
+        const total = (poll.votes || []).reduce((a,b) => a+b, 0);
+        if (votesEl) votesEl.textContent = total + ' vote' + (total !== 1 ? 's' : '');
+        optsEl.innerHTML = poll.options.map((opt, i) => {
+            const v   = poll.votes[i] || 0;
+            const pct = total > 0 ? Math.round((v / total) * 100) : 0;
+            const voted = _viewerPollVote === i;
+            return `<div class="poll-option ${voted ? 'poll-voted' : ''}" onclick="castPollVote(${i})">
+                <div class="poll-bar-wrap">
+                    <div class="poll-bar-fill" style="width:${pct}%"></div>
+                    <div class="poll-bar-label">
+                        ${opt}
+                        <span class="poll-bar-pct">${pct}%</span>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    window.castPollVote = async function(optionIndex) {
+        if (_viewerPollVote !== null) { showToast('You already voted!'); return; }
+        if (!_watchingStreamId || !window.db) return;
+        _viewerPollVote = optionIndex;
+        const { doc, getDoc, updateDoc } = window.fs;
+        const snap = await getDoc(doc(window.db, LIVE_COL, _watchingStreamId)).catch(() => null);
+        if (!snap || !snap.exists()) return;
+        const poll = snap.data().activePoll;
+        if (!poll || !poll.active) { showToast('Poll has ended.'); return; }
+        const votes = [...(poll.votes || poll.options.map(() => 0))];
+        votes[optionIndex] = (votes[optionIndex] || 0) + 1;
+        await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
+            'activePoll.votes': votes
+        }).catch(() => {});
+        showToast('✓ Vote cast!');
+    };
+
+    // ── PATCH subscribeStreamDoc to feed milestone + goal updates ─
+    const _origSubscribeStreamDoc = subscribeStreamDoc;
+    function subscribeStreamDoc(streamId) {
+        if (!window.db || !window.fs) { waitForFb(() => subscribeStreamDoc(streamId)); return; }
+        const { doc, onSnapshot } = window.fs;
+        onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
+            if (!snap.exists()) return;
+            const d = snap.data();
+
+            setText('live-watch-viewers',       '👁 ' + (d.viewers || 0) + ' watching');
+            setText('live-creator-stars-watch',  (d.starsEarned || 0).toFixed(1));
+            setText('live-hype-count',           '(' + (d.hypeCount || 0) + ')');
+
+            liveStarsEarned  = d.starsEarned || 0;
+            liveHypeCount    = d.hypeCount   || 0;
+            liveViewerCount  = d.viewers     || 0;
+            setText('live-stat-stars',   liveStarsEarned.toFixed(1) + ' ★');
+            setText('live-stat-hypes',   String(liveHypeCount));
+            setText('live-broadcast-viewers', '👁 ' + liveViewerCount + ' watching');
+
+            // Update goal bar on broadcaster side
+            if (starGoalTarget > 0) _updateGoalBar(liveStarsEarned);
+
+            // Viewer milestones
+            checkViewerMilestone(d.viewers || 0);
+
+            const badge = $('live-viewer-badge');
+            if (badge && isHosting) badge.textContent = liveViewerCount + ' live';
+
+            if (!d.active && !isHosting) {
+                showToast('The stream has ended.');
+                leaveLiveStream();
+            }
+        });
+    }
+
+    // ── PATCH startLiveStream to start health monitor + hand queue ─
+    const _origGoLive = window.startLiveStream;
+    window.startLiveStream = async function() {
+        await _origGoLive();
+        if (isHosting) {
+            startHealthMonitor();
+            subscribeRaisedHands(currentStreamId);
+        }
+    };
+
+    // ── PATCH joinLiveStream to start poll/goal/reaction subs ────
+    const _origJoinLive = window.joinLiveStream;
+    window.joinLiveStream = async function(streamId) {
+        await _origJoinLive(streamId);
+        // Start supplemental subscriptions
+        if (window.db && window.fs) {
+            subscribePoll(streamId);
+            subscribeReactions(streamId);
+        }
+    };
+
+    // ── PATCH endLiveStream to stop health monitor ────────────────
+    const _origEndLive = window.endLiveStream;
+    window.endLiveStream = async function() {
+        stopHealthMonitor();
+        _lbMap = {};
+        peakViewers = 0;
+        starGoalTarget = 0;
+        await _origEndLive();
+    };
+
+    // ── PATCH leaveLiveStream to clean up subscriptions ───────────
+    const _origLeaveLive = window.leaveLiveStream;
+    window.leaveLiveStream = async function() {
+        if (_pollUnsub) { try { _pollUnsub(); } catch(_) {} _pollUnsub = null; }
+        _viewerPollVote = null;
+        handRaised = false;
+        await _origLeaveLive();
+    };
+
+    // ── PATCH sendGift to update leaderboard ─────────────────────
+    const _origSendGift = window.sendGift;
+    window.sendGift = async function(tierKey) {
+        await _origSendGift(tierKey);
+        const tier = { spark:1, fire:5, diamond:20, rocket:50 }[tierKey] || 0;
+        if (tier > 0) {
+            const handle = window._liveUserHandle || 'Viewer';
+            _updateLeaderboard(handle, tier);
+        }
+    };
+
+    console.log('[SocialHub] Studio features initialised — Screen Share, Noise Suppression, Lower Third, Poll, Star Goal, Leaderboard, Raise Hand, Reactions, Health Monitor, Milestones ✓');
 
 })();
 </script>
