@@ -5511,7 +5511,7 @@
                                     <button id="wb-mode-blank"   onclick="wbSetMode('blank')"   style="padding:4px 10px;font-size:0.62rem;font-weight:700;background:rgba(10,10,20,0.75);color:rgba(255,255,255,0.55);border:none;cursor:pointer;letter-spacing:0.3px;">⬛ Blank Board</button>
                                 </div>
                                 <!-- Drawing toolbar (top-centre) -->
-                                <div id="whiteboard-toolbar" style="position:absolute;top:48px;left:50%;transform:translateX(-50%);display:flex;gap:5px;align-items:center;background:rgba(10,10,20,0.88);border:1px solid rgba(124,92,191,0.5);border-radius:24px;padding:5px 12px;z-index:31;box-shadow:0 4px 20px rgba(0,0,0,0.5);white-space:nowrap;max-width:calc(100vw - 24px);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;">
+                                <div id="whiteboard-toolbar" style="position:absolute;top:48px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;justify-content:center;gap:5px;align-items:center;background:rgba(10,10,20,0.88);border:1px solid rgba(124,92,191,0.5);border-radius:16px;padding:6px 12px;z-index:31;box-shadow:0 4px 20px rgba(0,0,0,0.5);max-width:calc(100vw - 24px);">
                                     <button onclick="wbSetTool('pen')"    id="wb-btn-pen"    title="Pen"       style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">✏️</button>
                                     <button onclick="wbSetTool('line')"   id="wb-btn-line"   title="Line"      style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">╱</button>
                                     <button onclick="wbSetTool('rect')"   id="wb-btn-rect"   title="Rectangle" style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">▭</button>
@@ -17741,7 +17741,9 @@
     // Wrap startLiveStream to include 3-second countdown
     const _origStartLive = window.startLiveStream;
     window.startLiveStream = async function() {
-        runCountdown(3, async () => { await _origStartLive(); });
+        return new Promise((resolve) => {
+            runCountdown(3, async () => { await _origStartLive(); resolve(); });
+        });
     };
 
     // ══════════════════════════════════════════════════════════════
@@ -17856,8 +17858,13 @@
 
     let _prevPendingCount = 0;
     function _subscribeCohostRequests() {
-        if (!currentStreamId || !window.db || !window.fs) return;
+        if (!window.db || !window.fs) return;
         if (_cohostUnsub) return; // already subscribed
+        // Wait for currentStreamId if not set yet
+        if (!currentStreamId) {
+            setTimeout(_subscribeCohostRequests, 300);
+            return;
+        }
         const { collection, onSnapshot } = window.fs;
         const col = collection(window.db, 'live_streams', currentStreamId, 'cohost_requests');
         _cohostUnsub = onSnapshot(col, snap => {
@@ -18510,6 +18517,8 @@
             }).catch(() => {});
         }
         showToast('📺 Name tag applied — viewers can see it.');
+        // Also show on host's own preview
+        if (bar) bar.style.display = '';
     };
     window.hideLowerThird = function() {
         const bar = $('lower-third-bar');
@@ -18668,6 +18677,7 @@
     // Subscribe to raised hands (host view)
     let _prevHandCount = 0;
     function subscribeRaisedHands(streamId) {
+        if (!streamId || !window.db || !window.fs) { setTimeout(() => subscribeRaisedHands(streamId), 300); return; }
         const { doc, onSnapshot } = window.fs;
         onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
             if (!snap.exists()) return;
@@ -18699,9 +18709,10 @@
         const localContainer = isHosting ? 'live-broadcaster-video' : 'live-remote-video-container';
         _spawnReaction(emoji, localContainer);
         // Write to Firestore so everyone sees it
-        if (!_watchingStreamId || !window.db) return;
+        const streamId = isHosting ? currentStreamId : _watchingStreamId;
+        if (!streamId || !window.db) return;
         const { collection, addDoc, serverTimestamp } = window.fs;
-        addDoc(collection(window.db, REACTIONS_COL, _watchingStreamId, 'events'), {
+        addDoc(collection(window.db, REACTIONS_COL, streamId, 'events'), {
             emoji, ts: serverTimestamp(), sender: window._liveUserHandle || 'Viewer'
         }).catch(() => {});
     };
@@ -18922,7 +18933,7 @@
         showToast('✓ Vote cast!');
     };
 
-    // ── PATCH subscribeStreamDoc to feed milestone + goal updates ─
+    // ── PATCH subscribeStreamDoc — unified stream doc listener ─────
     const _origSubscribeStreamDoc = subscribeStreamDoc;
     function subscribeStreamDoc(streamId) {
         if (!window.db || !window.fs) { waitForFb(() => subscribeStreamDoc(streamId)); return; }
@@ -18955,6 +18966,46 @@
                 showToast('The stream has ended.');
                 leaveLiveStream();
             }
+
+            // ── NAME TAG (lower third) — show on BOTH host preview and viewer side ──
+            const ltActive = d.lowerThirdActive;
+            // Viewer side
+            let viewerLt = document.getElementById('viewer-lower-third');
+            if (!isHosting) {
+                if (ltActive && (d.lowerThirdName || d.lowerThirdTitle)) {
+                    if (!viewerLt) {
+                        viewerLt = document.createElement('div');
+                        viewerLt.id = 'viewer-lower-third';
+                        viewerLt.style.cssText = 'position:absolute;bottom:0;left:0;right:0;background:linear-gradient(90deg,rgba(10,10,20,0.92),rgba(124,92,191,0.85));padding:10px 16px 12px;z-index:15;border-top:2px solid var(--purple);';
+                        const rc = document.getElementById('live-remote-video-container');
+                        if (rc) rc.appendChild(viewerLt);
+                    }
+                    viewerLt.innerHTML = '<div style="font-size:1rem;font-weight:800;color:#fff;">' + (d.lowerThirdName||'') + '</div><div style="font-size:0.68rem;color:rgba(255,255,255,0.75);margin-top:2px;">' + (d.lowerThirdTitle||'') + '</div>';
+                } else if (viewerLt) { viewerLt.remove(); }
+            }
+            // Host preview side — also show name tag on broadcaster video
+            if (isHosting) {
+                const hostBar = document.getElementById('lower-third-bar');
+                if (hostBar) hostBar.style.display = ltActive ? '' : 'none';
+            }
+
+            // ── POLL RESULTS visible to host in real time ──────────────
+            if (isHosting && d.activePoll && d.activePoll.active) {
+                const hostCard = document.getElementById('host-poll-card');
+                const hostQ    = document.getElementById('host-poll-question');
+                const hostOpts = document.getElementById('host-poll-options');
+                const hostVotes= document.getElementById('host-poll-votes');
+                if (hostCard) hostCard.style.display = '';
+                const poll  = d.activePoll;
+                const total = (poll.votes || []).reduce((a,b) => a+b, 0);
+                if (hostQ) hostQ.textContent = poll.question || '';
+                if (hostVotes) hostVotes.textContent = total + ' vote' + (total !== 1 ? 's' : '');
+                if (hostOpts) hostOpts.innerHTML = (poll.options || []).map((opt, i) => {
+                    const v   = (poll.votes || [])[i] || 0;
+                    const pct = total > 0 ? Math.round((v / total) * 100) : 0;
+                    return '<div class="poll-option"><div class="poll-bar-wrap"><div class="poll-bar-fill" style="width:' + pct + '%"></div><div class="poll-bar-label">' + opt + ' <span class="poll-bar-pct">' + pct + '%</span></div></div></div>';
+                }).join('');
+            }
         });
     }
 
@@ -18963,14 +19014,23 @@
     window.startLiveStream = async function() {
         await _origGoLive();
         if (isHosting) {
-            startHealthMonitor();
-            subscribeRaisedHands(currentStreamId);
-            _subscribeCohostRequests();
-            // Streamer also needs these subscriptions so they see reactions, polls, name tag
-            if (window.db && window.fs) {
-                subscribePoll(currentStreamId);
-                subscribeReactions(currentStreamId);
-            }
+            // Wait for currentStreamId to be set inside _origGoLive before subscribing
+            let _waitTries = 0;
+            const _waitForId = setInterval(() => {
+                _waitTries++;
+                if (currentStreamId || _waitTries > 20) {
+                    clearInterval(_waitForId);
+                    if (!currentStreamId) return;
+                    startHealthMonitor();
+                    subscribeRaisedHands(currentStreamId);
+                    _subscribeCohostRequests();
+                    if (window.db && window.fs) {
+                        subscribePoll(currentStreamId);
+                        subscribeReactions(currentStreamId);
+                        _subscribeWhiteboardSync(currentStreamId);
+                    }
+                }
+            }, 200);
         }
     };
 
@@ -18978,10 +19038,10 @@
     const _origJoinLive = window.joinLiveStream;
     window.joinLiveStream = async function(streamId) {
         await _origJoinLive(streamId);
-        // Start supplemental subscriptions
         if (window.db && window.fs) {
             subscribePoll(streamId);
             subscribeReactions(streamId);
+            _subscribeWhiteboardSync(streamId);
         }
     };
 
@@ -19026,6 +19086,59 @@
     let _wbActive   = false;
     let _wbMode     = 'overlay'; // 'overlay' | 'blank'
     let _wbTool     = 'pen';
+    let _wbSyncTimer = null;
+    let _wbViewerUnsub = null;
+
+    // Send canvas data to Firestore every 300ms while whiteboard is open
+    function _startWBSync() {
+        if (_wbSyncTimer) return;
+        _wbSyncTimer = setInterval(() => {
+            if (!_wbActive || !currentStreamId || !window.db) return;
+            const canvas = _getWBCanvas();
+            if (!canvas) return;
+            const dataUrl = canvas.toDataURL('image/png', 0.5);
+            const { doc, updateDoc } = window.fs;
+            updateDoc(doc(window.db, LIVE_COL, currentStreamId), {
+                whiteboardData: dataUrl,
+                whiteboardActive: true
+            }).catch(() => {});
+        }, 300);
+    }
+
+    function _stopWBSync() {
+        if (_wbSyncTimer) { clearInterval(_wbSyncTimer); _wbSyncTimer = null; }
+        if (currentStreamId && window.db) {
+            const { doc, updateDoc } = window.fs;
+            updateDoc(doc(window.db, LIVE_COL, currentStreamId), {
+                whiteboardActive: false, whiteboardData: ''
+            }).catch(() => {});
+        }
+    }
+
+    // Viewer side — subscribe to whiteboard updates
+    function _subscribeViewerWB(streamId) {
+        if (_wbViewerUnsub) { try { _wbViewerUnsub(); } catch(_) {} }
+        if (!window.db || !window.fs) return;
+        const { doc, onSnapshot } = window.fs;
+        _wbViewerUnsub = onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
+            if (!snap.exists()) return;
+            const d = snap.data();
+            let vwb = document.getElementById('viewer-wb-overlay');
+            if (d.whiteboardActive && d.whiteboardData) {
+                const rc = $('live-remote-video-container');
+                if (!rc) return;
+                if (!vwb) {
+                    vwb = document.createElement('img');
+                    vwb.id = 'viewer-wb-overlay';
+                    vwb.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:fill;z-index:25;pointer-events:none;';
+                    rc.appendChild(vwb);
+                }
+                vwb.src = d.whiteboardData;
+            } else if (vwb) {
+                vwb.remove();
+            }
+        }, () => {});
+    }
     let _wbColor    = '#ffffff';
     let _wbSize     = 4;
     let _wbDrawing  = false;
@@ -19063,6 +19176,7 @@
             _applyWBMode(_wbMode);
             if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🖊️</span> Close WB'; btn.classList.add('active-teal'); }
             showToast('🖊️ Whiteboard open. Switch between "Draw Over Stream" and "Blank Board" at top-left.');
+            if (isHosting) _startWBSync();
         } else {
             _detachWBListeners();
             overlay.classList.remove('wb-active');
@@ -19070,6 +19184,7 @@
             if (_wbMode === 'blank') _restoreCameraFromWB();
             if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🖊️</span> Whiteboard'; btn.classList.remove('active-teal'); }
             showToast('Whiteboard closed.');
+            if (isHosting) _stopWBSync();
         }
     };
 
@@ -19124,8 +19239,91 @@
         const canvas = _getWBCanvas();
         if (!canvas) return;
         canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+        _wbPushToFirestore(true); // push cleared state to viewers
         showToast('Whiteboard cleared.');
     };
+
+    // ── WHITEBOARD FIRESTORE SYNC ─────────────────────────────────
+    // Host draws → pushes canvas dataURL to Firestore every 400ms
+    // Viewers receive it and render it on an overlay canvas
+    let _wbSyncTimer = null;
+    let _wbLastPush  = '';
+
+    function _wbPushToFirestore(force) {
+        if (!currentStreamId || !window.db || !window.fs || !isHosting) return;
+        const canvas = _getWBCanvas();
+        if (!canvas) return;
+        const dataUrl = canvas.toDataURL('image/webp', 0.5);
+        if (!force && dataUrl === _wbLastPush) return; // nothing changed
+        _wbLastPush = dataUrl;
+        const { doc, updateDoc } = window.fs;
+        updateDoc(doc(window.db, LIVE_COL, currentStreamId), {
+            wbActive: _wbActive,
+            wbData:   dataUrl,
+            wbMode:   _wbMode
+        }).catch(() => {});
+    }
+
+    // Start/stop sync timer when whiteboard opens/closes
+    const _origToggleWB = window.toggleWhiteboard;
+    window.toggleWhiteboard = function() {
+        _origToggleWB();
+        if (_wbActive) {
+            _wbSyncTimer = setInterval(() => _wbPushToFirestore(false), 400);
+        } else {
+            if (_wbSyncTimer) { clearInterval(_wbSyncTimer); _wbSyncTimer = null; }
+            // Tell viewers board is closed
+            if (currentStreamId && window.db && window.fs) {
+                const { doc, updateDoc } = window.fs;
+                updateDoc(doc(window.db, LIVE_COL, currentStreamId), { wbActive: false, wbData: '' }).catch(() => {});
+            }
+        }
+    };
+
+    // Viewer/host side: subscribe to whiteboard data and render it
+    function _subscribeWhiteboardSync(streamId) {
+        if (!window.db || !window.fs) return;
+        const { doc, onSnapshot } = window.fs;
+        onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
+            if (!snap.exists()) return;
+            const d = snap.data();
+            // Hosts draw locally — only viewers render the remote canvas
+            if (isHosting) return;
+            const container = document.getElementById('live-remote-video-container');
+            if (!container) return;
+            let viewerWB = document.getElementById('viewer-wb-canvas');
+            if (d.wbActive && d.wbData) {
+                if (!viewerWB) {
+                    viewerWB = document.createElement('canvas');
+                    viewerWB.id = 'viewer-wb-canvas';
+                    viewerWB.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:25;pointer-events:none;';
+                    container.appendChild(viewerWB);
+                }
+                // Render the background if blank mode
+                const bgDiv = document.getElementById('viewer-wb-bg');
+                if (d.wbMode === 'blank') {
+                    if (!bgDiv) {
+                        const bg = document.createElement('div');
+                        bg.id = 'viewer-wb-bg';
+                        bg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;background:#000;z-index:24;';
+                        container.appendChild(bg);
+                    }
+                } else if (bgDiv) { bgDiv.remove(); }
+                // Draw the image onto the viewer canvas
+                const img = new Image();
+                img.onload = () => {
+                    viewerWB.width  = img.width;
+                    viewerWB.height = img.height;
+                    viewerWB.getContext('2d').drawImage(img, 0, 0);
+                };
+                img.src = d.wbData;
+            } else {
+                if (viewerWB) viewerWB.remove();
+                const bgDiv = document.getElementById('viewer-wb-bg');
+                if (bgDiv) bgDiv.remove();
+            }
+        }, () => {});
+    }
 
     // ── Pointer event management ──────────────────────────────────
     let _wbPointerDown = null, _wbPointerMove = null, _wbPointerUp = null;
@@ -19164,7 +19362,9 @@
                 ctx.lineTo(p.x, p.y); ctx.stroke();
             } else if (_wbTool === 'eraser') {
                 ctx.globalCompositeOperation = 'destination-out';
-                ctx.lineWidth = _wbSize * 5;
+                ctx.lineWidth = _wbSize * 8;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
                 ctx.lineTo(p.x, p.y); ctx.stroke();
                 ctx.globalCompositeOperation = 'source-over';
             } else {
@@ -19186,6 +19386,7 @@
             if (!_wbDrawing) return;
             _wbDrawing = false; _wbSnapshot = null;
             canvas.getContext('2d').closePath();
+            _wbPushToFirestore(true); // push immediately after each stroke
         };
 
         canvas.addEventListener('mousedown',  _wbPointerDown, { passive: false });
