@@ -880,13 +880,12 @@
 
         /* ── LOWER THIRDS ────────────────────────────────────────── */
         #lower-third-bar {
-            position:absolute; bottom:0; left:0; right:0;
+            position:absolute; bottom:0; left:0; right:0; top:auto;
             background:linear-gradient(90deg, rgba(10,10,20,0.92) 0%, rgba(124,92,191,0.85) 100%);
             padding:10px 16px 12px;
-            z-index:15; display:none;
+            z-index:20; display:none;
             border-top:2px solid var(--purple);
-            max-height:60px; overflow:hidden;
-            top:auto !important;
+            max-height:64px; overflow:hidden;
         }
         .lower-third-name { font-size:1rem; font-weight:800; color:#fff; line-height:1.2; }
         .lower-third-title { font-size:0.68rem; color:rgba(255,255,255,0.75); margin-top:2px; letter-spacing:0.5px; }
@@ -5512,7 +5511,7 @@
                                     <button id="wb-mode-blank"   onclick="wbSetMode('blank')"   style="padding:4px 10px;font-size:0.62rem;font-weight:700;background:rgba(10,10,20,0.75);color:rgba(255,255,255,0.55);border:none;cursor:pointer;letter-spacing:0.3px;">⬛ Blank Board</button>
                                 </div>
                                 <!-- Drawing toolbar (top-centre) -->
-                                <div id="whiteboard-toolbar" style="position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:5px;align-items:center;background:rgba(10,10,20,0.88);border:1px solid rgba(124,92,191,0.5);border-radius:24px;padding:5px 12px;z-index:31;box-shadow:0 4px 20px rgba(0,0,0,0.5);white-space:nowrap;max-width:calc(100vw - 24px);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;">
+                                <div id="whiteboard-toolbar" style="position:absolute;top:48px;left:50%;transform:translateX(-50%);display:flex;gap:5px;align-items:center;background:rgba(10,10,20,0.88);border:1px solid rgba(124,92,191,0.5);border-radius:24px;padding:5px 12px;z-index:31;box-shadow:0 4px 20px rgba(0,0,0,0.5);white-space:nowrap;max-width:calc(100vw - 24px);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;">
                                     <button onclick="wbSetTool('pen')"    id="wb-btn-pen"    title="Pen"       style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">✏️</button>
                                     <button onclick="wbSetTool('line')"   id="wb-btn-line"   title="Line"      style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">╱</button>
                                     <button onclick="wbSetTool('rect')"   id="wb-btn-rect"   title="Rectangle" style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">▭</button>
@@ -5623,7 +5622,7 @@
                             </div>
                         </div>
 
-                        <!-- Poll Results (broadcaster side — live vote tally) -->
+                        <!-- Poll Results — broadcaster sees live vote tallies here -->
                         <div id="host-poll-card" class="live-poll-card" style="display:none;">
                             <div class="live-poll-head">
                                 <span>📊 Live Poll Results</span>
@@ -5632,7 +5631,7 @@
                             <div class="live-poll-body">
                                 <div id="host-poll-question" style="font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:10px;"></div>
                                 <div id="host-poll-options"></div>
-                                <button class="btn btn-sm btn-outline" onclick="closePoll()" style="margin-top:8px;width:100%;font-size:0.7rem;">End Poll</button>
+                                <button class="btn btn-sm btn-outline" onclick="closePoll()" style="margin-top:8px;width:100%;font-size:0.7rem;">⛔ End Poll</button>
                             </div>
                         </div>
 
@@ -18491,7 +18490,8 @@
         if (!name && !title) { showToast('Enter a name or title first.'); return; }
         if (nameEl)  nameEl.textContent  = name;
         if (titleEl) titleEl.textContent = title;
-        if (bar) bar.style.display = '';
+        // Show the bar — it sits at z-index:20 above the video, bottom of the container
+        if (bar) { bar.style.display = ''; bar.style.top = 'auto'; }
         const btn = $('btn-lower-third');
         if (btn) btn.classList.add('active-teal');
         // Broadcast to Firestore so viewers see it
@@ -18541,7 +18541,7 @@
         const pollCard = $('viewer-poll-card');
         if (pollCard) pollCard.style.display = '';
         _renderViewerPoll(pollData);
-        // Also show host results card immediately
+        // Also show host results card immediately (no waiting for Firestore round-trip)
         const hostCard = $('host-poll-card');
         if (hostCard) {
             hostCard.style.display = '';
@@ -18801,14 +18801,14 @@
             if (!snap.exists()) return;
             const d = snap.data();
 
-            // Poll — show on viewer card AND host results card
+            // Poll — update viewer card and host results card
             const poll = d.activePoll;
             const pollCard = $('viewer-poll-card');
             const hostCard = $('host-poll-card');
             if (poll && poll.active) {
                 if (pollCard) pollCard.style.display = '';
                 _renderViewerPoll(poll);
-                // Broadcaster sees live vote tally
+                // Update broadcaster's live tally card
                 if (hostCard) {
                     hostCard.style.display = '';
                     const hq = $('host-poll-question');
