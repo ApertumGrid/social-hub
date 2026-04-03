@@ -16556,8 +16556,14 @@
 (function initLiveStream() {
 
     // ── Config ────────────────────────────────────────────────────
-    const AGORA_APP_ID  = '59f975efccbf40a7b36eb30778da13a5';
-    const AGORA_TOKEN   = '007eJxTYJh6sc+6pUTLZr/Hdiu22snqvOet+M3P7vTniDk05fK9ewcVGFKNzFLNLRMN0iwtTUzMgKRhUmqSQYpZspmFkblhorGi0rnMhkBGhtZVN5gZGSAQxBdmKM5PzkzMyShNis/JLEuNL0ktLmFgAAALliUJ';
+    const AGORA_APP_ID  = 'e26e79a0f99446f991beb0d6c68271a3';
+    let   AGORA_TOKEN   = '';
+
+    async function fetchAgoraToken(channel) {
+        const res  = await fetch(`https://us-central1-socialhub-33014.cloudfunctions.net/getAgoraToken?channel=${encodeURIComponent(channel)}&uid=0`);
+        const data = await res.json();
+        AGORA_TOKEN = data.token;
+    }
     const LIVE_CHANNEL  = 'socialhub_live_test';
     const LIVE_COL      = 'live_streams';
     const LIVE_CHAT_COL = 'live_chat';
@@ -16840,6 +16846,7 @@
             const HOST_UID = 1 + Math.floor(Math.random() * 99998); // unique per session
             agoraClient = window.AgoraRTC.createClient({ mode: 'live', codec: 'h264' });
             await agoraClient.setClientRole('host');
+            await fetchAgoraToken(LIVE_CHANNEL);
             await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, HOST_UID);
 
             // Store host UID so viewers know which publisher to subscribe to
@@ -16993,6 +17000,7 @@
             // Init Agora as audience — join shared channel, subscribe only to this stream's host UID
             agoraClient = window.AgoraRTC.createClient({ mode: 'live', codec: 'h264' });
             await agoraClient.setClientRole('audience');
+            await fetchAgoraToken(LIVE_CHANNEL);
             await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, Math.floor(Math.random() * 99998) + 100000);
 
             // hostUid tells us which publisher in the shared channel belongs to THIS stream
