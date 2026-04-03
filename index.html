@@ -964,6 +964,22 @@
         }
         #recording-status.active { display:flex; }
 
+        /* ── WHITEBOARD OVERLAY ───────────────────────────────────── */
+        #whiteboard-overlay {
+            pointer-events: none; /* disabled until active */
+        }
+        #whiteboard-overlay.wb-active {
+            display: flex !important;
+            pointer-events: all;
+        }
+        #whiteboard-canvas {
+            pointer-events: all;
+        }
+        .wb-tool-active {
+            background: rgba(124,92,191,0.5) !important;
+            border-color: var(--purple-lt) !important;
+        }
+
         /* ── STREAM HEALTH INDICATOR ─────────────────────────────── */
         #stream-health {
             display:flex; align-items:center; gap:6px;
@@ -5461,6 +5477,35 @@
                             <div class="live-stream-meta" id="bc-meta-nowrap" style="bottom:50px;">
                                 <div class="live-stream-host" id="live-broadcast-title-display"></div>
                             </div>
+
+                            <!-- Whiteboard overlay (inside video container so it overlays the feed) -->
+                            <div id="whiteboard-overlay" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;z-index:25;flex-direction:column;">
+                                <canvas id="whiteboard-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair;touch-action:none;"></canvas>
+                                <div id="whiteboard-toolbar" style="position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center;background:rgba(10,10,20,0.88);border:1px solid rgba(124,92,191,0.5);border-radius:24px;padding:6px 14px;z-index:31;box-shadow:0 4px 20px rgba(0,0,0,0.5);white-space:nowrap;">
+                                    <span style="font-size:0.58rem;font-weight:700;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:1px;margin-right:2px;">Draw</span>
+                                    <button onclick="wbSetTool('pen')"    id="wb-btn-pen"    title="Pen"       style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;">✏️</button>
+                                    <button onclick="wbSetTool('line')"   id="wb-btn-line"   title="Line"      style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;">╱</button>
+                                    <button onclick="wbSetTool('rect')"   id="wb-btn-rect"   title="Rectangle" style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;">▭</button>
+                                    <button onclick="wbSetTool('circle')" id="wb-btn-circle" title="Circle"    style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;">○</button>
+                                    <button onclick="wbSetTool('eraser')" id="wb-btn-eraser" title="Eraser"    style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;">🧹</button>
+                                    <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;flex-shrink:0;"></div>
+                                    <div onclick="wbSetColor('#ffffff')" style="width:16px;height:16px;border-radius:50%;background:#ffffff;border:2px solid rgba(255,255,255,0.7);cursor:pointer;flex-shrink:0;" title="White"></div>
+                                    <div onclick="wbSetColor('#f0b429')" style="width:16px;height:16px;border-radius:50%;background:#f0b429;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Gold"></div>
+                                    <div onclick="wbSetColor('#2dd4bf')" style="width:16px;height:16px;border-radius:50%;background:#2dd4bf;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Teal"></div>
+                                    <div onclick="wbSetColor('#e03e3e')" style="width:16px;height:16px;border-radius:50%;background:#e03e3e;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Red"></div>
+                                    <div onclick="wbSetColor('#9b7de0')" style="width:16px;height:16px;border-radius:50%;background:#9b7de0;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Purple"></div>
+                                    <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;flex-shrink:0;"></div>
+                                    <select id="wb-size" onchange="wbSetSize(this.value)" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:6px;padding:2px 4px;font-size:0.62rem;cursor:pointer;">
+                                        <option value="2">Thin</option>
+                                        <option value="4" selected>Med</option>
+                                        <option value="8">Thick</option>
+                                        <option value="16">Fat</option>
+                                    </select>
+                                    <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;flex-shrink:0;"></div>
+                                    <button onclick="wbClear()"           style="background:rgba(224,62,62,0.18);border:1px solid rgba(224,62,62,0.4);border-radius:8px;color:#e03e3e;padding:3px 8px;font-size:0.62rem;cursor:pointer;">Clear</button>
+                                    <button onclick="toggleWhiteboard()"  style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:rgba(255,255,255,0.65);padding:3px 8px;font-size:0.62rem;cursor:pointer;">✕ Close</button>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Studio Toolbar -->
@@ -5481,7 +5526,7 @@
                                 <span class="studio-btn-icon">⏺</span> Record
                             </button>
                             <button class="studio-btn" id="btn-lower-third" onclick="toggleLowerThird()">
-                                <span class="studio-btn-icon">📺</span> Lower Third
+                                <span class="studio-btn-icon">🏷️</span> Name Tag
                             </button>
                             <button class="studio-btn" id="btn-mute-mic" onclick="toggleMic()">
                                 <span class="studio-btn-icon">🔇</span> Mute
@@ -5495,11 +5540,14 @@
                             <button class="studio-btn" id="btn-set-goal" onclick="toggleGoalSetter()">
                                 <span class="studio-btn-icon">🎯</span> Star Goal
                             </button>
+                            <button class="studio-btn" id="btn-whiteboard" onclick="toggleWhiteboard()">
+                                <span class="studio-btn-icon">🖊️</span> Whiteboard
+                            </button>
                         </div>
 
                         <!-- Lower Third editor (hidden by default) -->
                         <div id="lower-third-editor" style="display:none; padding:10px 14px; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px;">
-                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Lower Third</div>
+                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🏷️ Name Tag</div>
                             <input type="text" id="lt-name-input" class="field" placeholder="Your Name / Title" style="margin-bottom:6px;margin-top:0;">
                             <input type="text" id="lt-title-input" class="field" placeholder="Subtitle (e.g. Crypto Analyst · Live)" style="margin-bottom:8px;margin-top:0;">
                             <div style="display:flex;gap:8px;">
@@ -17672,25 +17720,26 @@
     }
 
     window.setVBG = async function(type, value) {
-        if (!localVideoTrack) { showToast('Start camera preview first.'); return; }
+        if (!localVideoTrack) { showToast('Start your camera preview first.'); return; }
 
         // Mark active swatch
         document.querySelectorAll('.vbg-swatch').forEach(s => s.classList.remove('active'));
         const activeId = type === 'none' ? 'vbg-none' : type === 'blur' ? 'vbg-blur' : null;
-        if (activeId) $$(activeId)?.classList.add('active');
+        if (activeId) { const el = document.getElementById(activeId); if (el) el.classList.add('active'); }
 
         if (type === 'none') {
-            // Disable — remove processor
+            // Tear down processor cleanly
             try {
                 if (vbgProcessor) {
-                    await vbgProcessor.disable();
+                    localVideoTrack.unpipe();
+                    vbgProcessor.release && await vbgProcessor.release().catch(() => {});
                     vbgProcessor = null;
                 }
                 currentVBG = 'none';
                 const btn = $('btn-vbg');
                 if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🌅</span> Background'; btn.classList.remove('active-teal'); }
                 showToast('Background removed.');
-            } catch(e) { showToast('Could not remove background: ' + e.message); }
+            } catch(e) { console.error('[VBG] remove error:', e); showToast('Could not remove background: ' + (e.message || String(e))); }
             return;
         }
 
@@ -17698,29 +17747,35 @@
             const ok = await _initVBGExtension();
             if (!ok) return;
 
-            if (!vbgProcessor) {
-                vbgProcessor = vbgExtension.createProcessor();
-                await vbgProcessor.init('/agora_bg_model'); // model path (CDN served)
-                localVideoTrack.pipe(vbgProcessor).pipe(localVideoTrack.processorDestination);
+            // Create a fresh processor each time (safest approach across SDK versions)
+            if (vbgProcessor) {
+                try { localVideoTrack.unpipe(); } catch(_) {}
+                try { vbgProcessor.release && await vbgProcessor.release(); } catch(_) {}
+                vbgProcessor = null;
             }
+
+            vbgProcessor = vbgExtension.createProcessor();
+            // Pass empty string — lets the extension use its bundled WASM model
+            await vbgProcessor.init('');
+            localVideoTrack.pipe(vbgProcessor).pipe(localVideoTrack.processorDestination);
 
             if (type === 'blur') {
                 await vbgProcessor.setOptions({ type: 'blur', blurDegree: 2 });
                 currentVBG = 'blur';
                 showToast('🌫 Background blur on.');
             } else if (type === 'color') {
-                // Convert hex to rgb
                 const r = parseInt(value.slice(1,3),16), g = parseInt(value.slice(3,5),16), b = parseInt(value.slice(5,7),16);
                 await vbgProcessor.setOptions({ type: 'color', color: { red: r, green: g, blue: b } });
                 currentVBG = 'color';
                 showToast('🎨 Virtual background set.');
             }
 
-            await vbgProcessor.enable();
             const btn = $('btn-vbg');
             if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🌅</span> BG: On'; btn.classList.add('active-teal'); }
         } catch(e) {
             console.error('[VBG] setVBG error:', e);
+            // Tear down if it partially initialised
+            if (vbgProcessor) { try { localVideoTrack.unpipe(); } catch(_) {} vbgProcessor = null; }
             showToast('Background error: ' + (e.message || String(e)));
         }
     };
@@ -18002,8 +18057,8 @@
 
     // ══════════════════════════════════════════════════════════════
     // FEATURE 4 — RECORDING (MediaRecorder → Firebase Storage)
-    // Records the broadcaster's canvas/stream. On end, uploads to
-    // Firebase Storage and saves the URL in the stream doc.
+    // Records the broadcaster's video+audio tracks directly via
+    // Agora's MediaStreamTrack API — no DOM video srcObject dependency.
     // ══════════════════════════════════════════════════════════════
 
     window.toggleRecording = async function() {
@@ -18017,43 +18072,60 @@
 
     async function _startRecording() {
         try {
-            // Capture the broadcaster video container as a media stream
-            const container = $('live-broadcaster-video');
-            if (!container) { showToast('No video to record.'); return; }
+            // Build a MediaStream from Agora track objects — much more reliable than
+            // grabbing srcObject from the injected <video> element.
+            const stream = new MediaStream();
 
-            // Get the underlying <video> element Agora injected
-            const videoEl = container.querySelector('video');
-            if (!videoEl || !videoEl.srcObject) {
-                showToast('Video not ready for recording yet.');
+            // Video track — use screen track if sharing, otherwise camera
+            const activeVideoTrack = isScreenSharing ? screenTrack : localVideoTrack;
+            if (activeVideoTrack) {
+                const vt = activeVideoTrack.getMediaStreamTrack();
+                if (vt) stream.addTrack(vt);
+            }
+
+            // Audio track via Web Audio API routing
+            if (localAudioTrack) {
+                try {
+                    const audioCtx = new AudioContext();
+                    const source   = audioCtx.createMediaStreamSource(
+                        new MediaStream([localAudioTrack.getMediaStreamTrack()])
+                    );
+                    const dest = audioCtx.createMediaStreamDestination();
+                    source.connect(dest);
+                    dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+                } catch(audioErr) {
+                    console.warn('[Rec] Audio routing failed, recording without audio:', audioErr);
+                }
+            }
+
+            if (stream.getTracks().length === 0) {
+                showToast('No active tracks to record — ensure camera is on.');
                 return;
             }
 
-            // Combine video track with audio from localAudioTrack
-            const stream = new MediaStream();
-            videoEl.srcObject.getVideoTracks().forEach(t => stream.addTrack(t));
-            if (localAudioTrack) {
-                const audioCtx  = new AudioContext();
-                const source    = audioCtx.createMediaStreamSource(
-                    new MediaStream([localAudioTrack.getMediaStreamTrack()])
-                );
-                const dest = audioCtx.createMediaStreamDestination();
-                source.connect(dest);
-                dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
-            }
-
             recordedChunks = [];
-            const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-                ? 'video/webm;codecs=vp9,opus'
-                : 'video/webm';
-
-            mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2_500_000 });
-            mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-            mediaRecorder.onstop = _uploadRecording;
-            mediaRecorder.start(1000); // collect chunks every 1s
-
-            isRecording    = true;
             recordStreamId = currentStreamId;
 
+            const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+                ? 'video/webm;codecs=vp9,opus'
+                : MediaRecorder.isTypeSupported('video/webm')
+                    ? 'video/webm'
+                    : '';
+
+            const opts = mimeType ? { mimeType, videoBitsPerSecond: 2_500_000 } : { videoBitsPerSecond: 2_500_000 };
+            mediaRecorder = new MediaRecorder(stream, opts);
+
+            mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+
+            // onstop fires AFTER the final ondataavailable — safe to upload here
+            mediaRecorder.onstop = () => {
+                // Small timeout ensures any last chunk is pushed before upload
+                setTimeout(_uploadRecording, 100);
+            };
+
+            mediaRecorder.start(1000); // collect a chunk every second
+
+            isRecording = true;
             const statusEl = $('recording-status');
             if (statusEl) statusEl.classList.add('active');
             const btn = $('btn-recording');
@@ -18067,7 +18139,7 @@
 
     function _stopRecording() {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
+            try { mediaRecorder.stop(); } catch(e) { console.warn('[Rec] stop error:', e); }
         }
         isRecording = false;
         const statusEl = $('recording-status');
@@ -18078,12 +18150,12 @@
     }
 
     async function _uploadRecording() {
-        if (!recordedChunks.length || !window.storage || !window.fsStorage) {
-            showToast('No recording data to save.'); return;
-        }
+        if (!recordedChunks.length) { showToast('No recording data captured.'); return; }
+        if (!window.storage || !window.fsStorage) { showToast('Storage not ready — recording saved locally only.'); return; }
         try {
-            const blob      = new Blob(recordedChunks, { type: 'video/webm' });
-            const filename  = `recordings/${recordStreamId || 'stream'}_${Date.now()}.webm`;
+            const blob       = new Blob(recordedChunks, { type: 'video/webm' });
+            recordedChunks   = []; // free memory immediately
+            const filename   = `recordings/${recordStreamId || 'stream'}_${Date.now()}.webm`;
             const storageRef = window.fsStorage.ref(window.storage, filename);
             const uploadTask = window.fsStorage.uploadBytesResumable(storageRef, blob);
 
@@ -18094,23 +18166,29 @@
                     const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
                     showToast(`☁️ Uploading: ${pct}%`);
                 },
-                err => { showToast('Upload error: ' + err.message); },
+                err => {
+                    console.error('[Rec] upload error:', err);
+                    showToast('Upload error: ' + (err.message || String(err)));
+                },
                 async () => {
-                    const url = await window.fsStorage.getDownloadURL(uploadTask.snapshot.ref);
-                    // Save URL to stream doc
-                    if (recordStreamId && window.db && window.fs) {
-                        const { doc, updateDoc, arrayUnion } = window.fs;
-                        await updateDoc(doc(window.db, 'live_streams', recordStreamId), {
-                            recordings: arrayUnion(url),
-                            hasReplay:  true
-                        }).catch(() => {});
+                    try {
+                        const url = await window.fsStorage.getDownloadURL(uploadTask.snapshot.ref);
+                        if (recordStreamId && window.db && window.fs) {
+                            const { doc, updateDoc, arrayUnion } = window.fs;
+                            await updateDoc(doc(window.db, 'live_streams', recordStreamId), {
+                                recordings: arrayUnion(url),
+                                hasReplay:  true
+                            }).catch(() => {});
+                        }
+                        showToast('✅ Recording saved! Viewers can replay this stream.');
+                    } catch(urlErr) {
+                        console.error('[Rec] getDownloadURL error:', urlErr);
+                        showToast('Recording uploaded but URL retrieval failed.');
                     }
-                    recordedChunks = [];
-                    showToast('✅ Recording saved! Viewers can replay this stream.');
                 }
             );
         } catch(e) {
-            console.error('[Rec] upload error:', e);
+            console.error('[Rec] upload prep error:', e);
             showToast('Upload failed: ' + (e.message || String(e)));
         }
     }
@@ -18176,58 +18254,76 @@
         if (isScreenSharing) {
             // Stop screen share — switch back to camera
             try {
+                // Mark sharing as stopped FIRST to prevent re-entry from track-ended event
+                isScreenSharing = false;
+
                 if (screenTrack) {
-                    screenTrack.off('track-ended'); // remove listener first to avoid re-entry
-                    await agoraClient.unpublish(screenTrack);
+                    screenTrack.off('track-ended');
+                    try { await agoraClient.unpublish(screenTrack); } catch(_) {}
                     screenTrack.stop(); screenTrack.close(); screenTrack = null;
                 }
-                // CRITICAL: Re-enable camera track before republishing.
-                // If the camera was disabled (isCamOff=true) while screen sharing started,
-                // publishing a disabled track throws TRACK_IS_DISABLED.
+
+                // Re-publish camera. Must be enabled first or Agora throws TRACK_IS_DISABLED.
                 if (localVideoTrack) {
-                    await localVideoTrack.setEnabled(true); // ensure enabled so publish works
+                    await localVideoTrack.setEnabled(true); // temporarily enable so publish succeeds
                     await agoraClient.publish(localVideoTrack);
-                    // Now restore the disabled state visually if cam was off before
+                    // Now restore cam-off state if that's what the user had selected
                     if (isCamOff) {
                         await localVideoTrack.setEnabled(false);
                     }
+                    // Play camera in main container
+                    _playInContainer(localVideoTrack, 'live-broadcaster-video');
                 }
+
                 // Hide PiP
                 const pip = $('pip-camera-overlay');
-                if (pip) pip.style.display = 'none';
-                // Show camera back to main container
-                _playInContainer(localVideoTrack, 'live-broadcaster-video');
+                if (pip) { pip.style.display = 'none'; pip.innerHTML = ''; }
+
                 // Labels
                 const lbl = $('screen-share-label'); if (lbl) lbl.style.display = 'none';
-                isScreenSharing = false;
-                if (btn) { btn.textContent = '🖥 Share Screen'; btn.classList.remove('active'); }
+
+                if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🖥</span> Share Screen'; btn.classList.remove('active'); }
                 showToast('📷 Back to camera.');
-            } catch(e) { showToast('Could not stop screen share: ' + e.message); console.error('[Live] stopScreenShare error:', e); }
+            } catch(e) {
+                isScreenSharing = false; // ensure state is consistent
+                showToast('Could not stop screen share: ' + (e.message || String(e)));
+                console.error('[Live] stopScreenShare error:', e);
+            }
         } else {
             // Start screen share
             try {
                 screenTrack = await window.AgoraRTC.createScreenVideoTrack({ encoderConfig: '1080p_1' }, 'disable');
-                // Unpublish camera video, publish screen
-                if (localVideoTrack) await agoraClient.unpublish(localVideoTrack);
+
+                // Unpublish camera, publish screen
+                if (localVideoTrack) {
+                    try { await agoraClient.unpublish(localVideoTrack); } catch(_) {}
+                }
                 await agoraClient.publish(screenTrack);
+
                 // Play screen in main container
                 _playInContainer(screenTrack, 'live-broadcaster-video');
-                // PiP camera
+
+                // PiP camera (small overlay)
                 const pip = $('pip-camera-overlay');
                 if (pip && localVideoTrack) {
                     pip.style.display = 'block';
                     pip.innerHTML = '';
                     localVideoTrack.play(pip);
                 }
-                // Label
+
                 const lbl = $('screen-share-label'); if (lbl) lbl.style.display = 'block';
                 isScreenSharing = true;
-                if (btn) { btn.innerHTML = '🖥 Stop Sharing'; btn.classList.add('active'); }
-                // Handle user stopping via browser UI
-                screenTrack.on('track-ended', () => { if (isScreenSharing) window.toggleScreenShare(); });
+                if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🖥</span> Stop Sharing'; btn.classList.add('active'); }
+
+                // Handle user clicking "Stop" in browser's native share dialog
+                screenTrack.on('track-ended', () => {
+                    if (isScreenSharing) window.toggleScreenShare();
+                });
+
                 showToast('🖥 Screen share active — viewers can see your screen.');
             } catch(e) {
-                if (e.name === 'NotAllowedError' || e.message?.includes('cancel')) {
+                screenTrack = null;
+                if (e.name === 'NotAllowedError' || (e.message && e.message.includes('cancel'))) {
                     showToast('Screen share cancelled.');
                 } else {
                     showToast('Screen share error: ' + (e.message || String(e)));
@@ -18278,17 +18374,23 @@
     window.toggleCamera = async function() {
         const btn = $('btn-cam-off');
         if (!localVideoTrack) { showToast('No camera track — preview camera first.'); return; }
-        if (isScreenSharing) { showToast('Stop screen sharing first to toggle camera.'); return; }
+        // When screen sharing, toggling camera affects the PiP overlay, not main feed — allow it
         try {
             isCamOff = !isCamOff;
             await localVideoTrack.setEnabled(!isCamOff);
             if (btn) {
-                btn.innerHTML = isCamOff ? '📷 Cam On' : '📷 Cam Off';
+                btn.innerHTML = isCamOff
+                    ? '<span class="studio-btn-icon">📷</span> Cam On'
+                    : '<span class="studio-btn-icon">📷</span> Cam Off';
                 btn.classList.toggle('active', isCamOff);
+            }
+            // If screen sharing, update PiP visibility
+            if (isScreenSharing) {
+                const pip = $('pip-camera-overlay');
+                if (pip) pip.style.display = isCamOff ? 'none' : 'block';
             }
             showToast(isCamOff ? '📷 Camera off' : '📷 Camera on');
         } catch(e) {
-            // Roll back state on failure so button stays consistent
             isCamOff = !isCamOff;
             console.error('[Live] toggleCamera error:', e);
             showToast('Camera error: ' + (e.message || String(e)));
@@ -18768,7 +18870,199 @@
         }
     };
 
-    console.log('[SocialHub] Studio features initialised — Screen Share, Noise Suppression, Lower Third, Poll, Star Goal, Leaderboard, Raise Hand, Reactions, Health Monitor, Milestones ✓');
+    // ══════════════════════════════════════════════════════════════
+    // FEATURE 5 — WHITEBOARD
+    // Canvas overlay on the broadcaster video with pen/line/rect/
+    // circle/eraser tools and colour + size pickers.
+    // ══════════════════════════════════════════════════════════════
+
+    let _wbActive   = false;
+    let _wbTool     = 'pen';   // pen | line | rect | circle | eraser
+    let _wbColor    = '#ffffff';
+    let _wbSize     = 4;
+    let _wbDrawing  = false;
+    let _wbStartX   = 0;
+    let _wbStartY   = 0;
+    let _wbSnapshot = null;    // ImageData for shape preview
+
+    function _getWBCanvas() { return document.getElementById('whiteboard-canvas'); }
+
+    function _resizeWBCanvas() {
+        const canvas = _getWBCanvas();
+        if (!canvas) return;
+        const overlay = document.getElementById('whiteboard-overlay');
+        if (!overlay) return;
+        // Save existing drawing
+        const ctx = canvas.getContext('2d');
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        canvas.width  = overlay.offsetWidth  || 640;
+        canvas.height = overlay.offsetHeight || 360;
+        ctx.putImageData(img, 0, 0);
+    }
+
+    window.toggleWhiteboard = function() {
+        const overlay = document.getElementById('whiteboard-overlay');
+        const btn     = $('btn-whiteboard');
+        if (!overlay) return;
+        _wbActive = !_wbActive;
+        if (_wbActive) {
+            overlay.classList.add('wb-active');
+            _resizeWBCanvas();
+            _attachWBListeners();
+            if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🖊️</span> Close WB'; btn.classList.add('active-teal'); }
+            showToast('🖊️ Whiteboard open — draw over your stream.');
+        } else {
+            overlay.classList.remove('wb-active');
+            _detachWBListeners();
+            if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🖊️</span> Whiteboard'; btn.classList.remove('active-teal'); }
+            showToast('Whiteboard closed.');
+        }
+        // Highlight the active tool button
+        _wbHighlightTool(_wbTool);
+    };
+
+    window.wbSetTool = function(tool) {
+        _wbTool = tool;
+        _wbHighlightTool(tool);
+    };
+
+    function _wbHighlightTool(tool) {
+        ['pen','line','rect','circle','eraser'].forEach(t => {
+            const el = document.getElementById('wb-btn-' + t);
+            if (el) el.classList.toggle('wb-tool-active', t === tool);
+        });
+    }
+
+    window.wbSetColor = function(color) {
+        _wbColor = color;
+    };
+
+    window.wbSetSize = function(val) {
+        _wbSize = parseInt(val, 10) || 4;
+    };
+
+    window.wbClear = function() {
+        const canvas = _getWBCanvas();
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        showToast('Whiteboard cleared.');
+    };
+
+    // ── Event listener management ────────────────────────────────
+    let _wbPointerDown = null, _wbPointerMove = null, _wbPointerUp = null;
+
+    function _attachWBListeners() {
+        const canvas = _getWBCanvas();
+        if (!canvas || _wbPointerDown) return; // already attached
+
+        function _pos(e) {
+            const r = canvas.getBoundingClientRect();
+            const scaleX = canvas.width  / r.width;
+            const scaleY = canvas.height / r.height;
+            const src = e.touches ? e.touches[0] : e;
+            return {
+                x: (src.clientX - r.left) * scaleX,
+                y: (src.clientY - r.top)  * scaleY
+            };
+        }
+
+        _wbPointerDown = function(e) {
+            e.preventDefault();
+            _wbDrawing = true;
+            const p = _pos(e);
+            _wbStartX = p.x; _wbStartY = p.y;
+            const ctx = canvas.getContext('2d');
+            // Snapshot current canvas for shape preview
+            _wbSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            if (_wbTool === 'pen' || _wbTool === 'eraser') {
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+            }
+        };
+
+        _wbPointerMove = function(e) {
+            if (!_wbDrawing) return;
+            e.preventDefault();
+            const p   = _pos(e);
+            const ctx = canvas.getContext('2d');
+            _setupWBCtx(ctx);
+
+            if (_wbTool === 'pen') {
+                ctx.lineTo(p.x, p.y);
+                ctx.stroke();
+            } else if (_wbTool === 'eraser') {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.lineWidth = _wbSize * 4;
+                ctx.lineTo(p.x, p.y);
+                ctx.stroke();
+                ctx.globalCompositeOperation = 'source-over';
+            } else {
+                // Restore snapshot then draw preview shape
+                ctx.putImageData(_wbSnapshot, 0, 0);
+                _setupWBCtx(ctx);
+                const w = p.x - _wbStartX, h = p.y - _wbStartY;
+                if (_wbTool === 'line') {
+                    ctx.beginPath(); ctx.moveTo(_wbStartX, _wbStartY); ctx.lineTo(p.x, p.y); ctx.stroke();
+                } else if (_wbTool === 'rect') {
+                    ctx.strokeRect(_wbStartX, _wbStartY, w, h);
+                } else if (_wbTool === 'circle') {
+                    const rx = Math.abs(w) / 2, ry = Math.abs(h) / 2;
+                    const cx = _wbStartX + w / 2, cy = _wbStartY + h / 2;
+                    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+                }
+            }
+        };
+
+        _wbPointerUp = function(e) {
+            if (!_wbDrawing) return;
+            _wbDrawing  = false;
+            _wbSnapshot = null;
+            const ctx = _getWBCanvas().getContext('2d');
+            ctx.closePath();
+        };
+
+        canvas.addEventListener('mousedown',  _wbPointerDown, { passive: false });
+        canvas.addEventListener('mousemove',  _wbPointerMove, { passive: false });
+        canvas.addEventListener('mouseup',    _wbPointerUp);
+        canvas.addEventListener('mouseleave', _wbPointerUp);
+        canvas.addEventListener('touchstart', _wbPointerDown, { passive: false });
+        canvas.addEventListener('touchmove',  _wbPointerMove, { passive: false });
+        canvas.addEventListener('touchend',   _wbPointerUp);
+    }
+
+    function _detachWBListeners() {
+        const canvas = _getWBCanvas();
+        if (!canvas || !_wbPointerDown) return;
+        canvas.removeEventListener('mousedown',  _wbPointerDown);
+        canvas.removeEventListener('mousemove',  _wbPointerMove);
+        canvas.removeEventListener('mouseup',    _wbPointerUp);
+        canvas.removeEventListener('mouseleave', _wbPointerUp);
+        canvas.removeEventListener('touchstart', _wbPointerDown);
+        canvas.removeEventListener('touchmove',  _wbPointerMove);
+        canvas.removeEventListener('touchend',   _wbPointerUp);
+        _wbPointerDown = _wbPointerMove = _wbPointerUp = null;
+    }
+
+    function _setupWBCtx(ctx) {
+        ctx.strokeStyle = _wbColor;
+        ctx.lineWidth   = _wbSize;
+        ctx.lineCap     = 'round';
+        ctx.lineJoin    = 'round';
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // Close whiteboard when stream ends
+    const _origEndLiveWB = window.endLiveStream;
+    window.endLiveStream = async function() {
+        if (_wbActive) window.toggleWhiteboard();
+        await _origEndLiveWB();
+    };
+
+    // Resize canvas if window resizes while whiteboard is open
+    window.addEventListener('resize', () => { if (_wbActive) _resizeWBCanvas(); });
+
+    console.log('[SocialHub] Studio features initialised — Screen Share, Noise Suppression, Name Tag, Poll, Star Goal, Leaderboard, Raise Hand, Reactions, Health Monitor, Milestones, Virtual Background, Co-Host, Paid Admission, Recording, Whiteboard ✓');
 
 })();
 </script>
