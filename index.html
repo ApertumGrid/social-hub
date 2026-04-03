@@ -5523,11 +5523,11 @@
                                     <div onclick="wbSetColor('#e03e3e')" style="width:16px;height:16px;border-radius:50%;background:#e03e3e;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Red"></div>
                                     <div onclick="wbSetColor('#9b7de0')" style="width:16px;height:16px;border-radius:50%;background:#9b7de0;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Purple"></div>
                                     <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;flex-shrink:0;"></div>
-                                    <select id="wb-size" onchange="wbSetSize(this.value)" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:6px;padding:2px 4px;font-size:0.62rem;cursor:pointer;">
-                                        <option value="2">Thin</option>
-                                        <option value="4" selected>Med</option>
-                                        <option value="8">Thick</option>
-                                        <option value="16">Fat</option>
+                                    <select id="wb-size" onchange="wbSetSize(this.value)" style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:6px;padding:2px 4px;font-size:0.62rem;cursor:pointer;">
+                                        <option value="2" style="background:#1a1a2e;color:#fff;">Thin</option>
+                                        <option value="4" selected style="background:#1a1a2e;color:#fff;">Med</option>
+                                        <option value="8" style="background:#1a1a2e;color:#fff;">Thick</option>
+                                        <option value="16" style="background:#1a1a2e;color:#fff;">Fat</option>
                                     </select>
                                     <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;flex-shrink:0;"></div>
                                     <button onclick="wbClear()"          style="background:rgba(224,62,62,0.18);border:1px solid rgba(224,62,62,0.4);border-radius:8px;color:#e03e3e;padding:3px 8px;font-size:0.62rem;cursor:pointer;">Clear</button>
@@ -17832,6 +17832,7 @@
         if (el && el.style.display !== 'none') _subscribeCohostRequests();
     };
 
+    let _prevPendingCount = 0;
     function _subscribeCohostRequests() {
         if (!currentStreamId || !window.db || !window.fs) return;
         if (_cohostUnsub) return; // already subscribed
@@ -17843,6 +17844,12 @@
             const docs = [];
             snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
             const pending = docs.filter(d => d.status === 'pending');
+            // Notify streamer when a new stage request arrives
+            if (pending.length > _prevPendingCount) {
+                const newest = pending[pending.length - 1];
+                showToast('🎤 ' + (newest.handle || 'Someone') + ' wants to join your stage! Tap Co-Host to approve.');
+            }
+            _prevPendingCount = pending.length;
             if (!pending.length) {
                 listEl.innerHTML = '<div style="font-size:0.75rem;color:var(--text-muted);">No co-host requests yet.</div>';
                 return;
@@ -18342,7 +18349,15 @@
         } else {
             // Start screen share
             try {
-                screenTrack = await window.AgoraRTC.createScreenVideoTrack({ encoderConfig: '1080p_1' }, 'disable');
+                screenTrack = await window.AgoraRTC.createScreenVideoTrack({
+                    encoderConfig: {
+                        width: { ideal: 1920, max: 1920 },
+                        height: { ideal: 1080, max: 1080 },
+                        frameRate: { ideal: 30, max: 30 },
+                        bitrateMax: 4000,
+                        bitrateMin: 1500
+                    }
+                }, 'disable');
 
                 // Unpublish camera, publish screen
                 if (localVideoTrack) {
@@ -18464,6 +18479,16 @@
         if (bar) bar.style.display = '';
         const btn = $('btn-lower-third');
         if (btn) btn.classList.add('active-teal');
+        // Also show on the broadcaster's own video container
+        let hostLt = document.getElementById('host-lower-third');
+        if (!hostLt) {
+            hostLt = document.createElement('div');
+            hostLt.id = 'host-lower-third';
+            hostLt.style.cssText = 'position:absolute;bottom:0;left:0;right:0;background:linear-gradient(90deg,rgba(10,10,20,0.92),rgba(124,92,191,0.85));padding:10px 16px 12px;z-index:15;border-top:2px solid var(--purple);pointer-events:none;';
+            const bc = $('live-broadcaster-video');
+            if (bc) bc.appendChild(hostLt);
+        }
+        hostLt.innerHTML = `<div style="font-size:1rem;font-weight:800;color:#fff;">${name}</div><div style="font-size:0.68rem;color:rgba(255,255,255,0.75);margin-top:2px;">${title}</div>`;
         // Broadcast to Firestore so viewers see it
         if (currentStreamId && window.db) {
             const { doc, updateDoc } = window.fs;
@@ -18471,13 +18496,16 @@
                 lowerThirdName: name, lowerThirdTitle: title, lowerThirdActive: true
             }).catch(() => {});
         }
-        showToast('📺 Lower third applied — viewers can see it.');
+        showToast('📺 Name tag applied — viewers can see it.');
     };
     window.hideLowerThird = function() {
         const bar = $('lower-third-bar');
         if (bar) bar.style.display = 'none';
         const btn = $('btn-lower-third');
         if (btn) btn.classList.remove('active-teal');
+        // Remove from broadcaster container too
+        const hostLt = document.getElementById('host-lower-third');
+        if (hostLt) hostLt.remove();
         if (currentStreamId && window.db) {
             const { doc, updateDoc } = window.fs;
             updateDoc(doc(window.db, LIVE_COL, currentStreamId), { lowerThirdActive: false }).catch(() => {});
@@ -18506,6 +18534,12 @@
         const { doc, updateDoc } = window.fs;
         await updateDoc(doc(window.db, LIVE_COL, currentStreamId), { activePoll: pollData }).catch(() => {});
         $('poll-creator').style.display = 'none';
+
+        // Show poll immediately on the streamer's own screen
+        const pollCard = $('viewer-poll-card');
+        if (pollCard) pollCard.style.display = '';
+        _renderViewerPoll(pollData);
+
         showToast('📊 Poll launched — viewers are voting!');
     };
 
@@ -18607,6 +18641,7 @@
     };
 
     // Subscribe to raised hands (host view)
+    let _prevHandCount = 0;
     function subscribeRaisedHands(streamId) {
         const { doc, onSnapshot } = window.fs;
         onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
@@ -18615,6 +18650,12 @@
             const card  = $('hand-queue-card');
             const list  = $('hand-queue-list');
             if (!card || !list) return;
+            // Notify streamer when a new hand is raised
+            if (hands.length > _prevHandCount) {
+                const newest = hands[hands.length - 1];
+                showToast('✋ ' + (newest.handle || 'Someone') + ' raised their hand!');
+            }
+            _prevHandCount = hands.length;
             if (!hands.length) { card.style.display = 'none'; return; }
             card.style.display = '';
             list.innerHTML = hands.map(h =>
@@ -18629,8 +18670,9 @@
 
     // ── FLOATING REACTIONS ────────────────────────────────────────
     window.sendReaction = function(emoji) {
-        // Show locally immediately
-        _spawnReaction(emoji, 'live-remote-video-container');
+        // Show locally immediately — use correct container for host vs viewer
+        const localContainer = isHosting ? 'live-broadcaster-video' : 'live-remote-video-container';
+        _spawnReaction(emoji, localContainer);
         // Write to Firestore so everyone sees it
         if (!_watchingStreamId || !window.db) return;
         const { collection, addDoc, serverTimestamp } = window.fs;
@@ -18661,17 +18703,17 @@
     function subscribeReactions(streamId) {
         if (!window.db || !window.fs) return;
         const { collection, query, orderBy, onSnapshot } = window.fs;
-        // Only listen for very recent reactions (last 5s)
         let lastTs = Date.now();
         const q = query(collection(window.db, REACTIONS_COL, streamId, 'events'), orderBy('ts', 'asc'));
         onSnapshot(q, snap => {
             snap.docChanges().forEach(change => {
                 if (change.type === 'added') {
                     const d = change.doc.data();
-                    // Only animate if recent (avoids replaying old reactions on join)
                     const ts = d.ts?.toMillis?.() || 0;
                     if (ts > lastTs - 3000) {
-                        _spawnReaction(d.emoji, 'live-remote-video-container');
+                        // Use correct video container depending on role
+                        const container = isHosting ? 'live-broadcaster-video' : 'live-remote-video-container';
+                        _spawnReaction(d.emoji, container);
                     }
                 }
             });
@@ -18876,6 +18918,12 @@
         if (isHosting) {
             startHealthMonitor();
             subscribeRaisedHands(currentStreamId);
+            _subscribeCohostRequests();
+            // Streamer also needs these subscriptions so they see reactions, polls, name tag
+            if (window.db && window.fs) {
+                subscribePoll(currentStreamId);
+                subscribeReactions(currentStreamId);
+            }
         }
     };
 
