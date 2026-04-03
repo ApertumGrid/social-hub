@@ -868,8 +868,8 @@
 
         /* ── COUNTDOWN OVERLAY ───────────────────────────────────── */
         #stream-countdown-overlay {
-            position:absolute; inset:0; z-index:50;
-            background:rgba(10,10,20,0.92);
+            position:fixed; inset:0; z-index:9999;
+            background:rgba(10,10,20,0.95);
             display:none; flex-direction:column;
             align-items:center; justify-content:center; gap:12px;
         }
@@ -5292,6 +5292,16 @@
                             <video id="live-local-video" autoplay muted playsinline style="width:100%;height:100%;position:absolute;top:0;left:0;object-fit:cover;display:none;"></video>
                         </div>
 
+                        <!-- Pre-live mic / camera toggles (only active once preview is running) -->
+                        <div id="pre-live-controls" style="display:flex; gap:8px; margin-bottom:10px;">
+                            <button class="btn btn-outline btn-sm" id="pre-btn-mic" onclick="preToggleMic()" style="flex:1; opacity:0.45; pointer-events:none;" title="Preview camera first">
+                                🎙 Mute
+                            </button>
+                            <button class="btn btn-outline btn-sm" id="pre-btn-cam" onclick="preToggleCam()" style="flex:1; opacity:0.45; pointer-events:none;" title="Preview camera first">
+                                📷 Cam Off
+                            </button>
+                        </div>
+
                         <div style="display:flex; gap:10px;">
                             <button class="btn btn-outline btn-sm" id="live-preview-btn" onclick="startLocalPreview()" style="flex:1;">📷 Preview Camera</button>
                             <button class="btn btn-sm" id="live-go-live-btn" onclick="startLiveStream()" style="flex:1; background:#e03e3e; color:#fff; border:none; font-weight:700;">🔴 Go Live</button>
@@ -5328,11 +5338,7 @@
                             <!-- Floating reactions container -->
                             <div id="reaction-container"></div>
 
-                            <!-- Countdown overlay -->
-                            <div id="stream-countdown-overlay">
-                                <div class="countdown-num" id="countdown-num">3</div>
-                                <div class="countdown-label">Stream starting…</div>
-                            </div>
+                            <!-- Countdown overlay moved to body level -->
 
                             <!-- Lower thirds bar -->
                             <div id="lower-third-bar">
@@ -16379,12 +16385,31 @@
             }));
         }
         // Re-attach broadcaster video when switching back while actively hosting
-        if (tab === 'broadcast' && isHosting && localVideoTrack) {
+        if (tab === 'broadcast' && isHosting) {
             show('live-active-panel');
             hide('live-setup-panel');
             requestAnimationFrame(() => requestAnimationFrame(() => {
                 console.log('[Live] Re-attaching broadcaster video after tab switch');
-                _playInContainer(localVideoTrack, 'live-broadcaster-video');
+                // Use the correct track — screen or camera
+                const activeTrack = isScreenSharing ? screenTrack : localVideoTrack;
+                if (activeTrack) _playInContainer(activeTrack, 'live-broadcaster-video');
+
+                // Re-sync PiP camera if screen sharing
+                if (isScreenSharing && localVideoTrack) {
+                    const pip = $('pip-camera-overlay');
+                    if (pip && pip.style.display !== 'none') {
+                        pip.innerHTML = '';
+                        localVideoTrack.play(pip);
+                    }
+                }
+
+                // Re-sync button labels to actual state (fixes ghost button issue after tab switch)
+                const micBtn = $('btn-mute-mic');
+                const camBtn = $('btn-cam-off');
+                const scrBtn = $('btn-screen-share');
+                if (micBtn) { micBtn.innerHTML = isMicMuted ? '🔇 Unmute' : '🔇 Mute'; micBtn.classList.toggle('active', isMicMuted); }
+                if (camBtn) { camBtn.innerHTML = isCamOff ? '📷 Cam On' : '📷 Cam Off'; camBtn.classList.toggle('active', isCamOff); }
+                if (scrBtn) { scrBtn.innerHTML = isScreenSharing ? '🖥 Stop Sharing' : '🖥 Share Screen'; scrBtn.classList.toggle('active', isScreenSharing); }
             }));
         }
     };
@@ -16496,6 +16521,15 @@
 
             [localAudioTrack, localVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
 
+            // Re-apply noise suppression if it was enabled before tracks were recreated
+            if (noiseSuppressOn) {
+                try { await localAudioTrack.setAINSMode('AGGRESSIVE'); } catch(_) {}
+            }
+            // Re-apply muted state if it was set
+            if (isMicMuted) {
+                try { await localAudioTrack.setEnabled(false); } catch(_) {}
+            }
+
             const ph = $('live-preview-placeholder');
             if (ph) ph.style.display = 'none';
 
@@ -16505,6 +16539,9 @@
 
             // Play into the preview container div
             _playInContainer(localVideoTrack, 'live-local-preview');
+
+            // Enable the pre-live mic/cam toggle buttons now that tracks exist
+            _enablePreLiveControls();
 
         } catch(e) {
             console.error('[Live] Preview error:', e);
@@ -16589,6 +16626,12 @@
 
             // Play local video into the broadcaster container div
             _playInContainer(localVideoTrack, 'live-broadcaster-video');
+
+            // Sync studio toolbar button labels to match any pre-live mic/cam states
+            const _micBtn = $('btn-mute-mic');
+            const _camBtn = $('btn-cam-off');
+            if (_micBtn) { _micBtn.innerHTML = isMicMuted ? '🔇 Unmute' : '🔇 Mute'; _micBtn.classList.toggle('active', isMicMuted); }
+            if (_camBtn) { _camBtn.innerHTML = isCamOff  ? '📷 Cam On'  : '📷 Cam Off'; _camBtn.classList.toggle('active', isCamOff); }
 
             // 6. Show LIVE badge in sidebar
             const badge = $('live-viewer-badge');
@@ -17317,6 +17360,59 @@
         runCountdown(3, async () => { await _origStartLive(); });
     };
 
+    // ── PRE-LIVE MIC / CAM TOGGLES ───────────────────────────────
+    // Unlocked once preview is running. State carries into the live stream.
+    function _enablePreLiveControls() {
+        const micBtn = $('pre-btn-mic');
+        const camBtn = $('pre-btn-cam');
+        if (micBtn) { micBtn.style.opacity = '1'; micBtn.style.pointerEvents = ''; }
+        if (camBtn) { camBtn.style.opacity = '1'; camBtn.style.pointerEvents = ''; }
+    }
+
+    window.preToggleMic = async function() {
+        if (!localAudioTrack) { showToast('Click "Preview Camera" first.'); return; }
+        const btn = $('pre-btn-mic');
+        try {
+            isMicMuted = !isMicMuted;
+            await localAudioTrack.setEnabled(!isMicMuted);
+            if (btn) {
+                btn.innerHTML = isMicMuted ? '🔇 Unmute' : '🎙 Mute';
+                btn.style.borderColor = isMicMuted ? 'var(--red)' : '';
+                btn.style.color       = isMicMuted ? 'var(--red)' : '';
+            }
+            showToast(isMicMuted ? '🔇 You will join muted' : '🎙 Mic will be live');
+        } catch(e) {
+            isMicMuted = !isMicMuted;
+            showToast('Mic error: ' + (e.message || String(e)));
+        }
+    };
+
+    window.preToggleCam = async function() {
+        if (!localVideoTrack) { showToast('Click "Preview Camera" first.'); return; }
+        const btn = $('pre-btn-cam');
+        const placeholder = $('live-preview-placeholder');
+        try {
+            isCamOff = !isCamOff;
+            await localVideoTrack.setEnabled(!isCamOff);
+            if (btn) {
+                btn.innerHTML = isCamOff ? '📷 Cam On' : '📷 Cam Off';
+                btn.style.borderColor = isCamOff ? 'var(--red)' : '';
+                btn.style.color       = isCamOff ? 'var(--red)' : '';
+            }
+            // Show/hide the placeholder text when camera is off in preview
+            if (placeholder) {
+                placeholder.innerHTML = isCamOff
+                    ? '<div style="font-size:2rem;opacity:0.4;">🚫</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.45);">Camera off — will start hidden</div>'
+                    : '<div style="font-size:2rem;opacity:0.3;">📷</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.35);">Camera preview will appear here</div>';
+                placeholder.style.display = isCamOff ? 'flex' : 'none';
+            }
+            showToast(isCamOff ? '📷 Camera will start off' : '📷 Camera will be live');
+        } catch(e) {
+            isCamOff = !isCamOff;
+            showToast('Camera error: ' + (e.message || String(e)));
+        }
+    };
+
     // ── SCREEN SHARE ─────────────────────────────────────────────
     window.toggleScreenShare = async function() {
         const btn = $('btn-screen-share');
@@ -17326,22 +17422,32 @@
             // Stop screen share — switch back to camera
             try {
                 if (screenTrack) {
+                    screenTrack.off('track-ended'); // remove listener first to avoid re-entry
                     await agoraClient.unpublish(screenTrack);
                     screenTrack.stop(); screenTrack.close(); screenTrack = null;
                 }
-                // Re-publish camera
-                if (localVideoTrack) await agoraClient.publish(localVideoTrack);
+                // CRITICAL: Re-enable camera track before republishing.
+                // If the camera was disabled (isCamOff=true) while screen sharing started,
+                // publishing a disabled track throws TRACK_IS_DISABLED.
+                if (localVideoTrack) {
+                    await localVideoTrack.setEnabled(true); // ensure enabled so publish works
+                    await agoraClient.publish(localVideoTrack);
+                    // Now restore the disabled state visually if cam was off before
+                    if (isCamOff) {
+                        await localVideoTrack.setEnabled(false);
+                    }
+                }
                 // Hide PiP
                 const pip = $('pip-camera-overlay');
                 if (pip) pip.style.display = 'none';
-                // Show screen back to main container
+                // Show camera back to main container
                 _playInContainer(localVideoTrack, 'live-broadcaster-video');
                 // Labels
                 const lbl = $('screen-share-label'); if (lbl) lbl.style.display = 'none';
                 isScreenSharing = false;
                 if (btn) { btn.textContent = '🖥 Share Screen'; btn.classList.remove('active'); }
                 showToast('📷 Back to camera.');
-            } catch(e) { showToast('Could not stop screen share: ' + e.message); }
+            } catch(e) { showToast('Could not stop screen share: ' + e.message); console.error('[Live] stopScreenShare error:', e); }
         } else {
             // Start screen share
             try {
@@ -17394,29 +17500,44 @@
     };
 
     // ── MIC MUTE ──────────────────────────────────────────────────
-    window.toggleMic = function() {
+    window.toggleMic = async function() {
         const btn = $('btn-mute-mic');
-        if (!localAudioTrack) return;
-        isMicMuted = !isMicMuted;
-        localAudioTrack.setEnabled(!isMicMuted);
-        if (btn) {
-            btn.innerHTML = isMicMuted ? '🔇 Unmute' : '🔇 Mute';
-            btn.classList.toggle('active', isMicMuted);
+        if (!localAudioTrack) { showToast('No microphone — preview camera first.'); return; }
+        try {
+            isMicMuted = !isMicMuted;
+            await localAudioTrack.setEnabled(!isMicMuted);
+            if (btn) {
+                btn.innerHTML = isMicMuted ? '🔇 Unmute' : '🔇 Mute';
+                btn.classList.toggle('active', isMicMuted);
+            }
+            showToast(isMicMuted ? '🔇 Microphone muted' : '🎙 Microphone live');
+        } catch(e) {
+            // Roll back state on failure so button stays consistent
+            isMicMuted = !isMicMuted;
+            console.error('[Live] toggleMic error:', e);
+            showToast('Mic error: ' + (e.message || String(e)));
         }
-        showToast(isMicMuted ? '🔇 Microphone muted' : '🎙 Microphone live');
     };
 
     // ── CAMERA ON/OFF ─────────────────────────────────────────────
-    window.toggleCamera = function() {
+    window.toggleCamera = async function() {
         const btn = $('btn-cam-off');
-        if (!localVideoTrack || isScreenSharing) return;
-        isCamOff = !isCamOff;
-        localVideoTrack.setEnabled(!isCamOff);
-        if (btn) {
-            btn.innerHTML = isCamOff ? '📷 Cam On' : '📷 Cam Off';
-            btn.classList.toggle('active', isCamOff);
+        if (!localVideoTrack) { showToast('No camera track — preview camera first.'); return; }
+        if (isScreenSharing) { showToast('Stop screen sharing first to toggle camera.'); return; }
+        try {
+            isCamOff = !isCamOff;
+            await localVideoTrack.setEnabled(!isCamOff);
+            if (btn) {
+                btn.innerHTML = isCamOff ? '📷 Cam On' : '📷 Cam Off';
+                btn.classList.toggle('active', isCamOff);
+            }
+            showToast(isCamOff ? '📷 Camera off' : '📷 Camera on');
+        } catch(e) {
+            // Roll back state on failure so button stays consistent
+            isCamOff = !isCamOff;
+            console.error('[Live] toggleCamera error:', e);
+            showToast('Camera error: ' + (e.message || String(e)));
         }
-        showToast(isCamOff ? '📷 Camera off' : '📷 Camera on');
     };
 
     // ── LOWER THIRD ───────────────────────────────────────────────
@@ -17897,5 +18018,10 @@
 })();
 </script>
 
+    <!-- Global countdown overlay — fixed fullscreen, shown before going live -->
+    <div id="stream-countdown-overlay">
+        <div class="countdown-num" id="countdown-num">3</div>
+        <div class="countdown-label">Stream starting…</div>
+    </div>
 </body>
 </html>
