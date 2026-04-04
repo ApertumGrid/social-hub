@@ -772,11 +772,12 @@
         body.cinema-mode #app-body { grid-template-columns:1fr !important; }
         body.cinema-mode .page-heading,
         body.cinema-mode #live-tabs { display:none !important; }
-        body.cinema-mode #page-live { height:calc(100vh - 88px); overflow:hidden; padding:0 !important; }
+        body.cinema-mode #topnav { display:none !important; }
+        body.cinema-mode #page-live { height:100vh; overflow:hidden; padding:0 !important; }
 
         #cinema-shell { display:none; }
         body.cinema-mode #cinema-shell {
-            display:flex !important; height:calc(100vh - 88px); overflow:hidden;
+            display:flex !important; height:100vh; overflow:hidden;
         }
         #cinema-video-col {
             flex:1; display:flex; flex-direction:column;
@@ -816,7 +817,7 @@
             position:absolute !important;
         }
         .cinema-fs-btn {
-            position:absolute; top:10px; right:10px; z-index:20;
+            position:absolute; bottom:10px; right:10px; z-index:20;
             background:rgba(0,0,0,0.6); border:none; color:#fff;
             border-radius:6px; padding:5px 10px; cursor:pointer; font-size:0.78rem;
         }
@@ -833,7 +834,7 @@
         body.cinema-fullscreen #cinema-shell { height:100vh !important; top:0 !important; }
         body.cinema-fullscreen #page-live { height:100vh !important; }
         @media(max-width:700px){
-            body.cinema-mode #cinema-shell { flex-direction:column; top:74px; height:calc(100vh - 74px); }
+            body.cinema-mode #cinema-shell { flex-direction:column; top:0; height:100vh; }
             #cinema-video-col { flex:none; height:52vw; }
             #cinema-chat-col { width:100%; flex:1; border-left:none; border-top:1px solid var(--border); }
         }
@@ -5586,6 +5587,7 @@
                                 <!-- Drawing toolbar (top-centre) -->
                                 <div id="whiteboard-toolbar" style="position:absolute;top:48px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;justify-content:center;gap:5px;align-items:center;background:rgba(10,10,20,0.88);border:1px solid rgba(124,92,191,0.5);border-radius:16px;padding:6px 12px;z-index:31;box-shadow:0 4px 20px rgba(0,0,0,0.5);max-width:calc(100vw - 24px);">
                                     <button onclick="wbSetTool('pen')"    id="wb-btn-pen"    title="Pen"       style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">✏️</button>
+                                    <button onclick="wbSetTool('text')"   id="wb-btn-text"   title="Text"      style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">T</button>
                                     <button onclick="wbSetTool('line')"   id="wb-btn-line"   title="Line"      style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">╱</button>
                                     <button onclick="wbSetTool('rect')"   id="wb-btn-rect"   title="Rectangle" style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">▭</button>
                                     <button onclick="wbSetTool('circle')" id="wb-btn-circle" title="Circle"    style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">○</button>
@@ -17072,7 +17074,8 @@
 
             // Init Agora as audience — join shared channel, subscribe only to this stream's host UID
             agoraClient = window.AgoraRTC.createClient({ mode: 'live', codec: 'h264' });
-            await agoraClient.setClientRole('audience');
+            // audienceLatencyLevel:1 = low-latency mode required for setClientRole('host') promotion (Join Stage)
+            await agoraClient.setClientRole('audience', { level: 1 });
             await fetchAgoraToken(LIVE_CHANNEL);
             await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, Math.floor(Math.random() * 99998) + 100000);
 
@@ -18738,24 +18741,42 @@
     window.toggleRaiseHand = async function() {
         if (!_watchingStreamId || !window.db) return;
         const userHandle = window._liveUserHandle || 'Viewer';
-        const userAddr   = window._liveUserAddress || '';
+        const userAddr   = (window._liveUserAddress || '').toLowerCase();
         const btn = $('viewer-raise-hand-btn');
         handRaised = !handRaised;
         if (btn) {
             btn.textContent = handRaised ? '✋ Hand Raised!' : '✋ Raise Hand';
             btn.classList.toggle('raised', handRaised);
         }
-        const { doc, updateDoc, arrayUnion, arrayRemove } = window.fs;
+        const { doc, updateDoc, arrayUnion, getDoc } = window.fs;
+        const streamRef = doc(window.db, LIVE_COL, _watchingStreamId);
         if (handRaised) {
-            await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
+            await updateDoc(streamRef, {
                 raisedHands: arrayUnion({ handle: userHandle, addr: userAddr, ts: Date.now() })
             }).catch(() => {});
             showToast('✋ Hand raised — the host can see you!');
         } else {
-            await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
-                raisedHands: arrayRemove({ handle: userHandle, addr: userAddr })
-            }).catch(() => {});
+            // arrayRemove won't match objects with different ts — filter by addr instead
+            try {
+                const snap = await getDoc(streamRef);
+                const hands = (snap.exists() ? snap.data().raisedHands : null) || [];
+                const filtered = hands.filter(h => (h.addr || '').toLowerCase() !== userAddr);
+                await updateDoc(streamRef, { raisedHands: filtered });
+            } catch(e) { console.warn('[RaiseHand] lower error', e); }
         }
+    };
+
+    // Host: dismiss a single raised hand by address
+    window.dismissRaisedHand = async function(addr) {
+        if (!currentStreamId || !window.db || !window.fs) return;
+        const { doc, getDoc, updateDoc } = window.fs;
+        const streamRef = doc(window.db, LIVE_COL, currentStreamId);
+        try {
+            const snap = await getDoc(streamRef);
+            const hands = (snap.exists() ? snap.data().raisedHands : null) || [];
+            const filtered = hands.filter(h => (h.addr || '').toLowerCase() !== (addr || '').toLowerCase());
+            await updateDoc(streamRef, { raisedHands: filtered });
+        } catch(e) { console.warn('[RaiseHand] dismiss error', e); }
     };
 
     // Subscribe to raised hands (host view)
@@ -18765,11 +18786,14 @@
         const { doc, onSnapshot } = window.fs;
         onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
             if (!snap.exists()) return;
-            const hands = snap.data().raisedHands || [];
+            // Deduplicate by addr (keep latest ts)
+            const raw   = snap.data().raisedHands || [];
+            const seen  = {};
+            raw.forEach(h => { const a = (h.addr||'anon').toLowerCase(); if (!seen[a] || h.ts > seen[a].ts) seen[a] = h; });
+            const hands = Object.values(seen);
             const card  = $('hand-queue-card');
             const list  = $('hand-queue-list');
             if (!card || !list) return;
-            // Notify streamer when a new hand is raised
             if (hands.length > _prevHandCount) {
                 const newest = hands[hands.length - 1];
                 showToast('✋ ' + (newest.handle || 'Someone') + ' raised their hand!');
@@ -18782,6 +18806,7 @@
                     <span style="font-size:1rem;">✋</span>
                     <span style="font-size:0.78rem;font-weight:600;color:var(--text-primary);flex:1;">${h.handle || 'Viewer'}</span>
                     <span style="font-size:0.62rem;color:var(--text-muted);">${new Date(h.ts||0).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
+                    <button onclick="dismissRaisedHand('${(h.addr||'').replace(/'/g,"\\'")}') " title="Dismiss" style="background:rgba(255,60,60,0.15);border:1px solid rgba(255,60,60,0.3);border-radius:6px;color:#ff6060;font-size:0.7rem;padding:2px 7px;cursor:pointer;margin-left:6px;flex-shrink:0;">✕</button>
                 </div>`
             ).join('');
         }, () => {});
@@ -19283,7 +19308,7 @@
     };
 
     function _wbHighlightTool(tool) {
-        ['pen','line','rect','circle','eraser'].forEach(t => {
+        ['pen','text','line','rect','circle','eraser'].forEach(t => {
             const el = document.getElementById('wb-btn-' + t);
             if (el) el.classList.toggle('wb-tool-active', t === tool);
         });
@@ -19325,11 +19350,14 @@
     const _origToggleWB = window.toggleWhiteboard;
     window.toggleWhiteboard = function() {
         _origToggleWB();
+        // NOTE: _wbActive is already flipped by _origToggleWB, so read it AFTER the call
         if (_wbActive) {
+            // Board just opened — start pushing to Firestore
+            if (_wbSyncTimer) clearInterval(_wbSyncTimer);
             _wbSyncTimer = setInterval(() => _wbPushToFirestore(false), 400);
         } else {
+            // Board just closed — stop timer and explicitly tell viewers wbActive:false
             if (_wbSyncTimer) { clearInterval(_wbSyncTimer); _wbSyncTimer = null; }
-            // Tell viewers board is closed
             if (currentStreamId && window.db && window.fs) {
                 const { doc, updateDoc } = window.fs;
                 updateDoc(doc(window.db, LIVE_COL, currentStreamId), { wbActive: false, wbData: '' }).catch(() => {});
@@ -19399,6 +19427,37 @@
 
         _wbPointerDown = function(e) {
             e.preventDefault();
+            // Text tool: show an input at click position instead of drawing
+            if (_wbTool === 'text') {
+                const p = _pos(e);
+                const ctx = canvas.getContext('2d');
+                // Create a floating input box over the canvas
+                const r = canvas.getBoundingClientRect();
+                const scaleX = r.width  / canvas.width;
+                const scaleY = r.height / canvas.height;
+                const inp = document.createElement('input');
+                inp.type = 'text';
+                inp.placeholder = 'Type text…';
+                inp.style.cssText = `position:fixed;left:${r.left + p.x * scaleX}px;top:${r.top + p.y * scaleY - 14}px;`
+                    + `z-index:9999;background:rgba(10,10,20,0.85);color:${_wbColor};border:1px solid ${_wbColor};`
+                    + `border-radius:4px;padding:2px 6px;font-size:${Math.max(14, _wbSize * 3)}px;outline:none;min-width:80px;`;
+                document.body.appendChild(inp);
+                inp.focus();
+                const commit = () => {
+                    const txt = inp.value.trim();
+                    if (txt) {
+                        _setupWBCtx(ctx);
+                        ctx.font = `${Math.max(16, _wbSize * 3)}px sans-serif`;
+                        ctx.fillStyle = _wbColor;
+                        ctx.fillText(txt, p.x, p.y);
+                        _wbPushToFirestore(true);
+                    }
+                    inp.remove();
+                };
+                inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); commit(); } if (ev.key === 'Escape') inp.remove(); });
+                inp.addEventListener('blur', commit);
+                return;
+            }
             _wbDrawing = true;
             const p = _pos(e);
             _wbStartX = p.x; _wbStartY = p.y;
