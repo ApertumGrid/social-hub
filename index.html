@@ -781,79 +781,94 @@
         body.cinema-mode #cinema-shell {
             display:flex !important; height:100vh; overflow:hidden; top:0 !important;
         }
+        /* Left col: just the video, fills all remaining space */
         #cinema-video-col {
             flex:1; display:flex; flex-direction:column;
-            background:#000; position:relative; overflow:visible; min-width:0;
-        }
-        #cinema-chat-col {
-            width:320px; flex-shrink:0; display:flex; flex-direction:column;
-            background:var(--bg-panel); border-left:1px solid var(--border); overflow:hidden;
-        }
-        #cinema-chat-col .live-chat-card {
-            display:flex; flex-direction:column; flex:1;
-            border-radius:0 !important; border:none !important; background:transparent !important;
-            overflow:hidden;
-        }
-        #cinema-chat-col .live-chat-feed { flex:1; height:auto !important; overflow-y:auto; }
-        #cinema-controls {
-            background:var(--bg-panel); border-top:1px solid var(--border);
-            padding:5px 8px; display:flex; flex-wrap:nowrap; gap:4px;
-            align-items:center; flex-shrink:0; height:44px;
-            overflow-x:auto; overflow-y:visible;
-            scrollbar-width:thin; position:relative;
-        }
-        /* Make studio buttons smaller inside cinema controls bar */
-        #cinema-controls .studio-btn {
-            padding:4px 8px !important;
-            font-size:0.7rem !important;
-            gap:4px !important;
-            white-space:nowrap !important;
-            flex-shrink:0 !important;
-        }
-        #cinema-controls .studio-btn-icon {
-            font-size:0.8rem !important;
-        }
-        /* studio-toolbar div inside cinema-controls should flex inline */
-        #cinema-controls .studio-toolbar {
-            display:contents !important;
-        }
-        /* Panels float ABOVE the controls bar so they're never clipped */
-        #cinema-controls #poll-creator,
-        #cinema-controls #lower-third-editor,
-        #cinema-controls #vbg-picker,
-        #cinema-controls #cohost-panel,
-        #cinema-controls #goal-setter,
-        #cinema-controls #hand-queue-card,
-        #cinema-controls #host-poll-card,
-        #cinema-controls #star-goal-display {
-            position:fixed !important;
-            bottom:54px !important;
-            left:8px !important;
-            right:330px !important;
-            max-height:50vh !important;
-            overflow-y:auto !important;
-            z-index:200 !important;
-            margin:0 !important;
+            background:#000; position:relative; overflow:hidden; min-width:0;
         }
         #cinema-video-col .live-stream-box {
             flex:1 !important; height:auto !important; min-height:0 !important;
-            border-radius:0 !important; overflow:hidden !important;
+            border-radius:0 !important; overflow:hidden !important; position:relative !important;
         }
         #cinema-video-col .live-stream-box > div[style*="position:absolute"],
         #cinema-video-col .live-stream-box > div[style*="position: absolute"] {
             position:absolute !important;
+        }
+        /* Right col: split into chat (top, scrollable) + controls (bottom, fixed height) */
+        #cinema-chat-col {
+            width:340px; flex-shrink:0; display:flex; flex-direction:column;
+            background:var(--bg-panel); border-left:1px solid var(--border); overflow:hidden;
+        }
+        /* Chat fills top half of right column */
+        #cinema-chat-col .live-chat-card {
+            display:flex; flex-direction:column; flex:1; min-height:0;
+            border-radius:0 !important; border:none !important; background:transparent !important;
+            overflow:hidden;
+        }
+        #cinema-chat-col .live-chat-feed { flex:1; height:auto !important; overflow-y:auto; }
+        /* Controls section — bottom half of right column */
+        #cinema-controls {
+            flex-shrink:0;
+            background:var(--bg-card2); border-top:2px solid var(--border);
+            display:flex; flex-direction:column; gap:0;
+            overflow:hidden; position:relative;
+            max-height:50%;
+        }
+        /* Buttons row inside controls */
+        #cinema-controls-btns {
+            display:flex; flex-wrap:wrap; gap:4px; padding:6px 8px;
+            overflow-x:auto; overflow-y:hidden; flex-shrink:0;
+            scrollbar-width:thin;
+        }
+        /* Panels area inside controls — scrollable */
+        #cinema-controls-panels {
+            flex:1; overflow-y:auto; overflow-x:hidden;
+            padding:0 8px 6px;
+            scrollbar-width:thin;
+        }
+        #cinema-controls-panels > * { margin-bottom:8px !important; }
+        /* Studio buttons in cinema controls */
+        #cinema-controls .studio-btn {
+            padding:4px 8px !important; font-size:0.7rem !important;
+            gap:4px !important; white-space:nowrap !important; flex-shrink:0 !important;
+        }
+        #cinema-controls .studio-btn-icon { font-size:0.8rem !important; }
+        #cinema-controls .studio-toolbar { display:contents !important; }
+        /* Panels inside controls — displayed normally, no more fixed positioning */
+        #cinema-controls-panels #poll-creator,
+        #cinema-controls-panels #lower-third-editor,
+        #cinema-controls-panels #vbg-picker,
+        #cinema-controls-panels #cohost-panel,
+        #cinema-controls-panels #goal-setter,
+        #cinema-controls-panels #hand-queue-card,
+        #cinema-controls-panels #host-poll-card,
+        #cinema-controls-panels #star-goal-display {
+            position:relative !important;
+            bottom:auto !important; left:auto !important; right:auto !important;
+            max-height:none !important;
+            overflow-y:visible !important;
+            z-index:1 !important;
+            margin:0 0 6px 0 !important;
+            display:none; /* shown by JS toggle */
         }
         .cinema-fs-btn {
             position:absolute; bottom:10px; right:10px; z-index:20;
             background:rgba(0,0,0,0.6); border:none; color:#fff;
             border-radius:6px; padding:5px 10px; cursor:pointer; font-size:0.78rem;
         }
-        /* End Stream button in cinema chat col */
-        #cinema-chat-col > button {
-            flex-shrink:0;
-            margin:8px;
-            width:calc(100% - 16px) !important;
+        /* End Stream button always at very bottom of right column */
+        #cinema-end-btn-wrap {
+            flex-shrink:0; padding:6px 8px;
+            border-top:1px solid var(--border);
+            background:var(--bg-panel);
         }
+        #cinema-end-btn-wrap button {
+            width:100%; background:rgba(224,62,62,0.12);
+            border:1px solid rgba(224,62,62,0.4); color:#e03e3e;
+            font-weight:700; border-radius:var(--radius-sm);
+            padding:7px; cursor:pointer; font-size:0.8rem;
+        }
+        #cinema-end-btn-wrap button:hover { background:rgba(224,62,62,0.22); }
         body.cinema-fullscreen #topnav,
         body.cinema-fullscreen #hype-ticker,
         body.cinema-fullscreen #cinema-chat-col,
@@ -863,7 +878,8 @@
         @media(max-width:700px){
             body.cinema-mode #cinema-shell { flex-direction:column; top:0; height:100vh; }
             #cinema-video-col { flex:none; height:52vw; }
-            #cinema-chat-col { width:100%; flex:1; border-left:none; border-top:1px solid var(--border); }
+            #cinema-chat-col { width:100%; flex:1; border-left:none; border-top:1px solid var(--border); max-height:48vh; }
+            #cinema-controls { max-height:40%; }
         }
 
         /* ── Gift System CSS ─────────────────────────────────────── */
@@ -1017,6 +1033,9 @@
             display:none; padding:10px 14px;
             background:var(--bg-card2); border:1px solid var(--border);
             border-radius:var(--radius-md); margin-bottom:10px;
+            position:relative !important;
+            max-height:300px !important;
+            overflow-y:auto !important;
         }
         .vbg-options { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
         .vbg-swatch {
@@ -5688,7 +5707,7 @@
                         </div>
 
                         <!-- Virtual Background Picker -->
-                        <div id="vbg-picker">
+                        <div id="vbg-picker" style="display:none;">
                             <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">🌅 Virtual Background</div>
                             <div class="vbg-options">
                                 <div class="vbg-swatch" id="vbg-none" onclick="setVBG('none')" title="Off" style="background:var(--bg-card2); border-color:var(--border); font-size:0.6rem; color:var(--text-muted);">Off</div>
@@ -17857,12 +17876,16 @@
         const el = $('vbg-picker');
         if (!el) return;
         const isOpen = el.style.display !== 'none' && el.style.display !== '';
-        el.style.display = isOpen ? 'none' : '';
+        el.style.display = isOpen ? 'none' : 'block';
+        // Ensure the picker never escapes its container
+        el.style.position = 'relative';
+        el.style.maxHeight = '280px';
+        el.style.overflowY = 'auto';
         if (!isOpen) {
-            // Scroll the picker into view within cinema-controls
+            // Scroll into view within the panels area
             setTimeout(function() {
-                const controls = document.getElementById('cinema-controls');
-                if (controls) controls.scrollTop = controls.scrollHeight;
+                const panels = document.getElementById('cinema-controls-panels');
+                if (panels) panels.scrollTop = panels.scrollHeight;
                 el.scrollIntoView && el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }, 50);
         }
@@ -17966,8 +17989,13 @@
 
     window.toggleCohostPanel = function() {
         const el = $('cohost-panel');
-        if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
-        if (el && el.style.display !== 'none') _subscribeCohostRequests();
+        if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        if (el && el.style.display !== 'none') {
+            _subscribeCohostRequests();
+            // Clear the notification badge
+            var cohostBtn = document.getElementById('btn-cohost');
+            if (cohostBtn) { cohostBtn.innerHTML = '<span class="studio-btn-icon">🎤</span> Co-Host'; cohostBtn.classList.remove('active-teal'); }
+        }
     };
 
     let _prevPendingCount = 0;
@@ -17991,6 +18019,9 @@
             if (pending.length > _prevPendingCount) {
                 const newest = pending[pending.length - 1];
                 showToast('🎤 ' + (newest.handle || 'Someone') + ' wants to join your stage! Tap Co-Host to approve.');
+                // Badge the Co-Host button so it's impossible to miss
+                var cohostBtn = document.getElementById('btn-cohost');
+                if (cohostBtn) { cohostBtn.classList.add('active-teal'); cohostBtn.innerHTML = '<span class="studio-btn-icon">🎤</span> Co-Host 🔴'; }
             }
             _prevPendingCount = pending.length;
             if (!pending.length) {
@@ -18614,7 +18645,7 @@
     // ── LOWER THIRD ───────────────────────────────────────────────
     window.toggleLowerThird = function() {
         const ed = $('lower-third-editor');
-        if (ed) ed.style.display = ed.style.display === 'none' ? '' : 'none';
+        if (ed) ed.style.display = ed.style.display === 'none' ? 'block' : 'none';
     };
     window.applyLowerThird = function() {
         const name  = ($('lt-name-input') || {}).value  || '';
@@ -18626,7 +18657,7 @@
         if (nameEl)  nameEl.textContent  = name;
         if (titleEl) titleEl.textContent = title;
         // Show the bar — it sits at z-index:20 above the video, bottom of the container
-        if (bar) { bar.style.display = ''; bar.style.top = 'auto'; }
+        if (bar) { bar.style.display = 'block'; bar.style.top = 'auto'; }
         const btn = $('btn-lower-third');
         if (btn) btn.classList.add('active-teal');
         // Broadcast to Firestore so viewers see it
@@ -18637,8 +18668,7 @@
             }).catch(() => {});
         }
         showToast('📺 Name tag applied — viewers can see it.');
-        // Also show on host's own preview
-        if (bar) bar.style.display = '';
+        // Also show on host's own preview — already done above
     };
     window.hideLowerThird = function() {
         const bar = $('lower-third-bar');
@@ -18655,7 +18685,7 @@
     // ── POLL ──────────────────────────────────────────────────────
     window.togglePollCreator = function() {
         const pc = $('poll-creator');
-        if (pc) pc.style.display = pc.style.display === 'none' ? '' : 'none';
+        if (pc) pc.style.display = pc.style.display === 'none' ? 'block' : 'none';
     };
 
     window.launchPoll = async function() {
@@ -18709,7 +18739,7 @@
     // ── STAR GOAL ─────────────────────────────────────────────────
     window.toggleGoalSetter = function() {
         const gs = $('goal-setter');
-        if (gs) gs.style.display = gs.style.display === 'none' ? '' : 'none';
+        if (gs) gs.style.display = gs.style.display === 'none' ? 'block' : 'none';
     };
 
     window.setStarGoal = async function() {
@@ -19131,7 +19161,7 @@
             // Host preview side — also show name tag on broadcaster video
             if (isHosting) {
                 const hostBar = document.getElementById('lower-third-bar');
-                if (hostBar) hostBar.style.display = ltActive ? '' : 'none';
+                if (hostBar) hostBar.style.display = ltActive ? 'block' : 'none';
             }
 
             // ── POLL RESULTS visible to host in real time ──────────────
@@ -19606,10 +19636,13 @@
     <!-- Cinema shell — empty until enterCinema() moves content into it -->
     <div id="cinema-shell" style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:50;">
         <div id="cinema-video-col">
-            <!-- video + controls injected here by JS -->
+            <!-- video injected here by JS -->
         </div>
         <div id="cinema-chat-col">
-            <!-- chat card injected here by JS -->
+            <!-- chat card + cinema-controls injected by JS above this end-btn -->
+            <div id="cinema-end-btn-wrap" style="display:none;">
+                <button onclick="if(window.endLiveStream)window.endLiveStream()">&#9632; End Stream</button>
+            </div>
         </div>
     </div>
 
@@ -19629,10 +19662,11 @@
         var chatEl  = feedEl ? feedEl.closest('.live-chat-card') : null;
         var cinemaVideoCol = document.getElementById('cinema-video-col');
         var cinemaChatCol  = document.getElementById('cinema-chat-col');
+        var endBtnWrap     = document.getElementById('cinema-end-btn-wrap');
 
         if (!videoEl || !chatEl) { _inCinema = false; return; }
 
-        // Insert placeholders in original positions
+        // Insert placeholders in original positions so we can restore later
         videoEl.parentNode.insertBefore(_videoPlaceholder, videoEl);
         chatEl.parentNode.insertBefore(_chatPlaceholder, chatEl);
 
@@ -19641,7 +19675,7 @@
         videoEl.style.flex = '1';
         videoEl.style.minHeight = '0';
 
-        // Add fullscreen button inside video
+        // Add fullscreen button inside video element
         var fsBtn = document.createElement('button');
         fsBtn.className = 'cinema-fs-btn';
         fsBtn.id = 'cinema-fs-btn';
@@ -19649,59 +19683,60 @@
         fsBtn.onclick = window.toggleCinemaFullscreen;
         videoEl.appendChild(fsBtn);
 
-        // Build controls bar
-        var controlsBar = document.createElement('div');
-        controlsBar.id = 'cinema-controls';
-
-        // Move video into video col
+        // Move video into video col (only the video — no controls bar here)
         cinemaVideoCol.innerHTML = '';
         cinemaVideoCol.appendChild(videoEl);
-        cinemaVideoCol.appendChild(controlsBar);
 
-        // Move all siblings between placeholders into controls bar
-        // EXCEPT the end-stream button — that goes to chat col
-        var endBtn = null;
+        // Build controls section for bottom of right column
+        // Structure: #cinema-controls > #cinema-controls-btns + #cinema-controls-panels
+        var controlsBar   = document.createElement('div');
+        controlsBar.id    = 'cinema-controls';
+
+        var ctrlBtns      = document.createElement('div');
+        ctrlBtns.id       = 'cinema-controls-btns';
+        controlsBar.appendChild(ctrlBtns);
+
+        var ctrlPanels    = document.createElement('div');
+        ctrlPanels.id     = 'cinema-controls-panels';
+        controlsBar.appendChild(ctrlPanels);
+
+        // Scan siblings between placeholders: buttons/toolbars → ctrlBtns, panels → ctrlPanels
+        // Skip the original End Stream button (handled by the static wrap)
+        var panelIds = ['poll-creator','lower-third-editor','vbg-picker','cohost-panel',
+                        'goal-setter','hand-queue-card','host-poll-card','star-goal-display'];
         var node = _videoPlaceholder.nextSibling;
         while (node && node !== _chatPlaceholder) {
             var next = node.nextSibling;
             if (node.nodeType === 1) {
-                // detect end stream button by text OR by id/onclick containing 'end'
-                var btnText = node.textContent || '';
+                var btnText    = (node.textContent || '').trim();
                 var btnOnclick = node.getAttribute('onclick') || '';
+                var nodeId     = node.id || '';
+                // Skip original End Stream button — we use the static one
                 if (node.tagName === 'BUTTON' && (
                     btnText.indexOf('End Stream') !== -1 ||
                     btnOnclick.indexOf('endLiveStream') !== -1
                 )) {
-                    endBtn = node;
+                    // hide the original, keep in DOM so exitCinema can restore
+                    node.style.display = 'none';
+                } else if (panelIds.indexOf(nodeId) !== -1) {
+                    // Panel elements go into panels area
+                    ctrlPanels.appendChild(node);
                 } else {
-                    controlsBar.appendChild(node);
+                    // Buttons, toolbars go into buttons row
+                    ctrlBtns.appendChild(node);
                 }
             }
             node = next;
         }
 
-        // Move chat into chat col
-        cinemaChatCol.innerHTML = '';
-        cinemaChatCol.appendChild(chatEl);
+        // Move chat card into top of right column (before the controls)
+        // cinemaChatCol already contains cinema-end-btn-wrap; insert before it
+        cinemaChatCol.insertBefore(chatEl, cinemaChatCol.firstChild);
+        // Insert controls bar after the chat card, before end-btn-wrap
+        cinemaChatCol.insertBefore(controlsBar, endBtnWrap);
 
-        // End stream button at bottom of chat col
-        if (endBtn) {
-            endBtn.style.width = 'calc(100% - 16px)';
-            endBtn.style.margin = '8px';
-            endBtn.style.flexShrink = '0';
-            endBtn.style.display = 'block';
-            endBtn.style.position = 'relative';
-            endBtn.style.zIndex = '5';
-            cinemaChatCol.appendChild(endBtn);
-        } else {
-            // Fallback: create an End Stream button if none was found
-            var fallbackEndBtn = document.createElement('button');
-            fallbackEndBtn.className = 'btn btn-sm';
-            fallbackEndBtn.style.cssText = 'width:calc(100% - 16px);margin:8px;background:rgba(224,62,62,0.12);border:1px solid rgba(224,62,62,0.4);color:#e03e3e;font-weight:700;flex-shrink:0;display:block;';
-            fallbackEndBtn.textContent = '■ End Stream';
-            fallbackEndBtn.onclick = function() { if (window.endLiveStream) window.endLiveStream(); };
-            cinemaChatCol.appendChild(fallbackEndBtn);
-        }
+        // Show the end stream button wrap
+        if (endBtnWrap) endBtnWrap.style.display = '';
 
         document.body.classList.add('cinema-mode');
     }
@@ -19710,20 +19745,35 @@
         if (!_inCinema) return;
         _inCinema = false;
 
-        var videoEl = document.getElementById('live-broadcaster-video-container') ||
-                      document.getElementById('live-remote-video-container');
+        var videoEl        = document.getElementById('live-broadcaster-video-container') ||
+                             document.getElementById('live-remote-video-container');
         var cinemaVideoCol = document.getElementById('cinema-video-col');
         var cinemaChatCol  = document.getElementById('cinema-chat-col');
         var controlsBar    = document.getElementById('cinema-controls');
+        var endBtnWrap     = document.getElementById('cinema-end-btn-wrap');
 
         // Remove fullscreen btn
         var fsBtn = document.getElementById('cinema-fs-btn');
         if (fsBtn) fsBtn.parentNode.removeChild(fsBtn);
 
-        // Restore controls back before chat placeholder
+        // Restore all controls children back before the chat placeholder
+        // (btns and panels divs contain the original elements)
         if (controlsBar) {
-            while (controlsBar.firstChild) {
-                _chatPlaceholder.parentNode.insertBefore(controlsBar.firstChild, _chatPlaceholder);
+            var btnsDiv   = controlsBar.querySelector('#cinema-controls-btns');
+            var panelsDiv = controlsBar.querySelector('#cinema-controls-panels');
+            // Restore from btns div
+            if (btnsDiv) {
+                while (btnsDiv.firstChild) {
+                    var el = btnsDiv.firstChild;
+                    el.style.display = ''; // un-hide any we hid
+                    _chatPlaceholder.parentNode.insertBefore(el, _chatPlaceholder);
+                }
+            }
+            // Restore from panels div
+            if (panelsDiv) {
+                while (panelsDiv.firstChild) {
+                    _chatPlaceholder.parentNode.insertBefore(panelsDiv.firstChild, _chatPlaceholder);
+                }
             }
             controlsBar.parentNode.removeChild(controlsBar);
         }
@@ -19738,6 +19788,9 @@
         if (chatEl && _chatPlaceholder.parentNode) {
             _chatPlaceholder.parentNode.insertBefore(chatEl, _chatPlaceholder);
         }
+
+        // Hide end btn wrap
+        if (endBtnWrap) endBtnWrap.style.display = 'none';
 
         // Clean up placeholders
         if (_videoPlaceholder.parentNode) _videoPlaceholder.parentNode.removeChild(_videoPlaceholder);
