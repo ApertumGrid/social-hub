@@ -806,13 +806,14 @@
             overflow:hidden;
         }
         #cinema-chat-col .live-chat-feed { flex:1; height:auto !important; overflow-y:auto; }
-        /* Controls section — bottom half of right column */
+        /* Controls section — bottom of right column, grows with content up to 55% height */
         #cinema-controls {
             flex-shrink:0;
             background:var(--bg-card2); border-top:2px solid var(--border);
             display:flex; flex-direction:column; gap:0;
             overflow:hidden; position:relative;
-            max-height:50%;
+            max-height:55%;
+            min-height:44px;
         }
         /* Buttons row inside controls */
         #cinema-controls-btns {
@@ -820,12 +821,14 @@
             overflow-x:auto; overflow-y:hidden; flex-shrink:0;
             scrollbar-width:thin;
         }
-        /* Panels area inside controls — scrollable */
+        /* Panels area inside controls — scrollable, shows panels when opened */
         #cinema-controls-panels {
             flex:1; overflow-y:auto; overflow-x:hidden;
-            padding:0 8px 6px;
+            padding:4px 8px 8px;
             scrollbar-width:thin;
+            /* Give it a minimum visible height when a panel is open */
         }
+        #cinema-controls-panels:not(:empty) { min-height:80px; }
         #cinema-controls-panels > * { margin-bottom:8px !important; }
         /* Studio buttons in cinema controls */
         #cinema-controls .studio-btn {
@@ -5669,8 +5672,8 @@
                             <button class="studio-btn" id="btn-vbg" onclick="toggleVBGPicker()">
                                 <span class="studio-btn-icon">🌅</span> Background
                             </button>
-                            <button class="studio-btn" id="btn-cohost" onclick="toggleCohostPanel()">
-                                <span class="studio-btn-icon">🎤</span> Co-Host
+                            <button class="studio-btn" id="btn-cohost" onclick="toggleCohostPanel()" title="Manage viewer requests to join your stage">
+                                <span class="studio-btn-icon">🎤</span> Stage Requests
                             </button>
                             <button class="studio-btn" id="btn-recording" onclick="toggleRecording()">
                                 <span class="studio-btn-icon">⏺</span> Record
@@ -5708,7 +5711,7 @@
 
                         <!-- Virtual Background Picker -->
                         <div id="vbg-picker" style="display:none;">
-                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">🌅 Virtual Background</div>
+                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">🌅 Virtual Background</div><div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:6px;">Requires Chrome/Edge + HTTPS</div>
                             <div class="vbg-options">
                                 <div class="vbg-swatch" id="vbg-none" onclick="setVBG('none')" title="Off" style="background:var(--bg-card2); border-color:var(--border); font-size:0.6rem; color:var(--text-muted);">Off</div>
                                 <div class="vbg-swatch" id="vbg-blur" onclick="setVBG('blur')" title="Blur" style="background:linear-gradient(135deg,#667eea,#764ba2);">💫</div>
@@ -17877,12 +17880,11 @@
         if (!el) return;
         const isOpen = el.style.display !== 'none' && el.style.display !== '';
         el.style.display = isOpen ? 'none' : 'block';
-        // Ensure the picker never escapes its container
         el.style.position = 'relative';
         el.style.maxHeight = '280px';
         el.style.overflowY = 'auto';
+        _setCinemaControlsHeight(!isOpen);
         if (!isOpen) {
-            // Scroll into view within the panels area
             setTimeout(function() {
                 const panels = document.getElementById('cinema-controls-panels');
                 if (panels) panels.scrollTop = panels.scrollHeight;
@@ -17895,13 +17897,13 @@
         if (vbgExtension) return true; // already registered
         try {
             if (!window.VirtualBackgroundExtension) {
-                showToast('⚠️ VBG extension not loaded. Check your internet connection or try Chrome.');
+                showToast('⚠️ Background feature requires HTTPS and Chrome/Edge. Make sure the site is served over https:// and try again.');
                 return false;
             }
             vbgExtension = new window.VirtualBackgroundExtension();
             // Check browser compatibility before registering
             if (!vbgExtension.checkCompatibility()) {
-                showToast('⚠️ Virtual background requires Chrome or Edge with WebGL. Try a different browser.');
+                showToast('⚠️ Your browser does not support virtual backgrounds. Please use Chrome or Edge on desktop.');
                 vbgExtension = null;
                 return false;
             }
@@ -17973,7 +17975,11 @@
             console.error('[VBG] setVBG error:', e);
             // Tear down if it partially initialised
             if (vbgProcessor) { try { localVideoTrack.unpipe(); } catch(_) {} vbgProcessor = null; }
-            showToast('⚠️ Background failed: ' + (e.message || String(e)) + ' — Try Chrome/Edge with HTTPS.');
+            const vbgErrMsg = (e.message || String(e));
+            const hint = vbgErrMsg.includes('internet') || vbgErrMsg.includes('network') || vbgErrMsg.includes('load')
+                ? 'The AI background model could not be downloaded. Check you are on HTTPS and have a stable connection.'
+                : 'Background error: ' + vbgErrMsg + ' — Requires Chrome/Edge on HTTPS.';
+            showToast('⚠️ ' + hint);
         }
     };
 
@@ -17989,12 +17995,15 @@
 
     window.toggleCohostPanel = function() {
         const el = $('cohost-panel');
-        if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
-        if (el && el.style.display !== 'none') {
+        if (!el) return;
+        const opening = el.style.display === 'none';
+        el.style.display = opening ? 'block' : 'none';
+        _setCinemaControlsHeight(opening);
+        if (opening) {
             _subscribeCohostRequests();
             // Clear the notification badge
             var cohostBtn = document.getElementById('btn-cohost');
-            if (cohostBtn) { cohostBtn.innerHTML = '<span class="studio-btn-icon">🎤</span> Co-Host'; cohostBtn.classList.remove('active-teal'); }
+            if (cohostBtn) { cohostBtn.innerHTML = '<span class="studio-btn-icon">🎤</span> Stage Requests'; cohostBtn.classList.remove('active-teal'); }
         }
     };
 
@@ -18021,7 +18030,7 @@
                 showToast('🎤 ' + (newest.handle || 'Someone') + ' wants to join your stage! Tap Co-Host to approve.');
                 // Badge the Co-Host button so it's impossible to miss
                 var cohostBtn = document.getElementById('btn-cohost');
-                if (cohostBtn) { cohostBtn.classList.add('active-teal'); cohostBtn.innerHTML = '<span class="studio-btn-icon">🎤</span> Co-Host 🔴'; }
+                if (cohostBtn) { cohostBtn.classList.add('active-teal'); cohostBtn.innerHTML = '<span class="studio-btn-icon">🎤</span> Stage Requests 🔴'; }
             }
             _prevPendingCount = pending.length;
             if (!pending.length) {
@@ -18645,7 +18654,10 @@
     // ── LOWER THIRD ───────────────────────────────────────────────
     window.toggleLowerThird = function() {
         const ed = $('lower-third-editor');
-        if (ed) ed.style.display = ed.style.display === 'none' ? 'block' : 'none';
+        if (!ed) return;
+        const opening = ed.style.display === 'none';
+        ed.style.display = opening ? 'block' : 'none';
+        _setCinemaControlsHeight(opening);
     };
     window.applyLowerThird = function() {
         const name  = ($('lt-name-input') || {}).value  || '';
@@ -18683,9 +18695,19 @@
     window.toggleLowerThirdEditor = window.toggleLowerThird;
 
     // ── POLL ──────────────────────────────────────────────────────
+    // Expand/contract cinema controls area when a panel is open
+    function _setCinemaControlsHeight(panelOpen) {
+        const ctrl = document.getElementById('cinema-controls');
+        if (!ctrl) return;
+        ctrl.style.maxHeight = panelOpen ? '70%' : '55%';
+    }
+
     window.togglePollCreator = function() {
         const pc = $('poll-creator');
-        if (pc) pc.style.display = pc.style.display === 'none' ? 'block' : 'none';
+        if (!pc) return;
+        const opening = pc.style.display === 'none';
+        pc.style.display = opening ? 'block' : 'none';
+        _setCinemaControlsHeight(opening);
     };
 
     window.launchPoll = async function() {
@@ -18739,7 +18761,10 @@
     // ── STAR GOAL ─────────────────────────────────────────────────
     window.toggleGoalSetter = function() {
         const gs = $('goal-setter');
-        if (gs) gs.style.display = gs.style.display === 'none' ? 'block' : 'none';
+        if (!gs) return;
+        const opening = gs.style.display === 'none';
+        gs.style.display = opening ? 'block' : 'none';
+        _setCinemaControlsHeight(opening);
     };
 
     window.setStarGoal = async function() {
