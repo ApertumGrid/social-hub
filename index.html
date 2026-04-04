@@ -766,7 +766,7 @@
         .live-chat-input-row .field { margin-top:0 !important; flex:1; width:0 !important; min-width:0; }
         .live-chat-input-row .btn   { width:auto !important; margin-top:0 !important; flex-shrink:0; }
 
-        /* ── Cinema Mode ─────────────────────────────────────────── */
+        /* ── Cinema Mode — only active when body.cinema-mode ──────── */
         body.cinema-mode #sidebar,
         body.cinema-mode #right-panel { display:none !important; }
         body.cinema-mode #app-body { grid-template-columns: 1fr !important; }
@@ -774,50 +774,62 @@
         body.cinema-mode .page-heading { display:none !important; }
         body.cinema-mode #live-tabs { display:none !important; }
 
-        .cinema-wrap {
-            display:flex; height:calc(100vh - 56px); overflow:hidden;
+        /* cinema-wrap is invisible until cinema-mode is on */
+        .cinema-wrap { display:contents; }
+        .cinema-video-col { display:contents; }
+        .cinema-chat-col { display:none; }
+        .cinema-controls { display:contents; }
+        .cinema-fs-btn { display:none; }
+
+        body.cinema-mode .cinema-wrap {
+            display:flex !important; height:calc(100vh - 56px); overflow:hidden;
         }
-        .cinema-video-col {
-            flex:1; display:flex; flex-direction:column;
-            background:#000; overflow:hidden; position:relative; min-width:0;
+        body.cinema-mode .cinema-video-col {
+            display:flex !important; flex-direction:column;
+            background:#000; overflow:hidden; position:relative; flex:1; min-width:0;
         }
-        .cinema-chat-col {
-            width:300px; flex-shrink:0; display:flex; flex-direction:column;
+        body.cinema-mode .cinema-chat-col {
+            display:flex !important; flex-direction:column;
+            width:300px; flex-shrink:0;
             background:var(--bg-panel); border-left:1px solid var(--border); overflow:hidden;
         }
-        .cinema-chat-col .live-chat-card {
-            display:flex; flex-direction:column; height:100%; border-radius:0 !important;
-            border:none !important; background:transparent !important;
+        body.cinema-mode .cinema-chat-col .live-chat-card {
+            display:flex !important; flex-direction:column; height:100%;
+            border-radius:0 !important; border:none !important; background:transparent !important;
         }
-        .cinema-chat-col .live-chat-feed {
+        body.cinema-mode .cinema-chat-col .live-chat-feed {
             flex:1; height:auto !important; overflow-y:auto;
         }
-        .cinema-video-col .live-stream-box,
-        .cinema-video-col #live-broadcaster-video-container,
-        .cinema-video-col #live-remote-video-container {
+        body.cinema-mode .cinema-video-col .live-stream-box,
+        body.cinema-mode .cinema-video-col #live-broadcaster-video-container,
+        body.cinema-mode .cinema-video-col #live-remote-video-container {
             flex:1; height:auto !important; border-radius:0 !important;
         }
-        .cinema-controls {
+        body.cinema-mode .cinema-controls {
+            display:flex !important; flex-wrap:wrap; gap:6px; align-items:center;
             background:var(--bg-panel); border-top:1px solid var(--border);
-            padding:8px 12px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;
-            flex-shrink:0;
+            padding:8px 12px; flex-shrink:0;
         }
-        .cinema-fs-btn {
+        body.cinema-mode .cinema-fs-btn {
+            display:block !important;
             position:absolute; top:10px; right:10px; z-index:20;
             background:rgba(0,0,0,0.55); border:none; color:#fff;
             border-radius:6px; padding:5px 10px; cursor:pointer;
-            font-size:0.78rem; backdrop-filter:blur(4px); transition:background 0.2s;
+            font-size:0.78rem; backdrop-filter:blur(4px);
         }
-        .cinema-fs-btn:hover { background:rgba(0,0,0,0.85); }
+        body.cinema-mode .cinema-fs-btn:hover { background:rgba(0,0,0,0.85); }
+
+        /* Fullscreen — hide chat and controls */
         body.cinema-fullscreen #topnav { display:none !important; }
         body.cinema-fullscreen .cinema-chat-col { display:none !important; }
         body.cinema-fullscreen .cinema-controls { display:none !important; }
-        body.cinema-fullscreen .cinema-wrap { height:100vh; }
+        body.cinema-fullscreen .cinema-wrap { height:100vh !important; }
         body.cinema-fullscreen #page-live { height:100vh !important; }
+
         @media (max-width:700px) {
-            .cinema-wrap { flex-direction:column; }
-            .cinema-video-col { flex:none; height:52vw; }
-            .cinema-chat-col { width:100%; flex:1; border-left:none; border-top:1px solid var(--border); }
+            body.cinema-mode .cinema-wrap { flex-direction:column; }
+            body.cinema-mode .cinema-video-col { flex:none; height:52vw; }
+            body.cinema-mode .cinema-chat-col { width:100%; flex:1; border-left:none; border-top:1px solid var(--border); }
         }
 
         /* ── Gift System CSS ─────────────────────────────────────── */
@@ -5318,7 +5330,6 @@
                     <!-- Active stream player -->
                     <div id="live-player-wrap" style="display:none;">
                         <div class="cinema-wrap">
-                        <!-- VIDEO COLUMN -->
                         <div class="cinema-video-col">
                         <!-- Co-host stage (shown when viewer is promoted to co-host) -->
                         <div id="cohost-stage-wrap">
@@ -5344,11 +5355,8 @@
                                 <div class="live-stream-host" id="live-stream-host-name">Loading…</div>
                                 <div class="live-stream-title-sm" id="live-stream-title-sm"></div>
                             </div>
-                            <!-- Fullscreen button -->
-                            <button class="cinema-fs-btn" onclick="toggleCinemaFullscreen()" title="Fullscreen">⛶ Fullscreen</button>
+                            <button class="cinema-fs-btn" onclick="toggleCinemaFullscreen()">⛶ Fullscreen</button>
                         </div>
-
-                        <!-- Controls bar in cinema mode -->
                         <div class="cinema-controls">
                         <!-- Hype + Stars row -->
                         <div class="live-action-row">
@@ -5436,7 +5444,6 @@
                         <!-- Live Chat -->
                         </div><!-- /cinema-controls -->
                         </div><!-- /cinema-video-col -->
-                        <!-- CHAT COLUMN -->
                         <div class="cinema-chat-col">
                         <div class="card live-chat-card">
                             <div class="live-chat-head">💬 Live Chat</div>
@@ -5528,10 +5535,9 @@
                         </div>
                     </div>
 
-                    <!-- Active broadcast dashboard (hidden until live) -->\
+                    <!-- Active broadcast dashboard (hidden until live) -->
                     <div id="live-active-panel" style="display:none;">
                         <div class="cinema-wrap">
-                        <!-- VIDEO COLUMN -->
                         <div class="cinema-video-col">
                         <!-- Video box with overlays -->
                         <div class="live-stream-box" id="live-broadcaster-video-container" style="height:380px;">
@@ -5606,10 +5612,7 @@
                                 </div>
                             </div>
                         </div>
-                        <!-- Fullscreen button -->
-                        <button class="cinema-fs-btn" onclick="toggleCinemaFullscreen()" title="Fullscreen">⛶ Fullscreen</button>
-
-                        <!-- Studio controls in cinema bar -->
+                        <button class="cinema-fs-btn" onclick="toggleCinemaFullscreen()">⛶ Fullscreen</button>
                         <div class="cinema-controls">
                         <!-- Studio Toolbar -->
                         <div class="studio-toolbar">
@@ -5764,7 +5767,6 @@
                         <!-- Live chat (broadcaster view) -->
                         </div><!-- /cinema-controls -->
                         </div><!-- /cinema-video-col -->
-                        <!-- CHAT COLUMN -->
                         <div class="cinema-chat-col">
                         <div class="card live-chat-card">
                             <div class="live-chat-head">💬 Live Chat</div>
@@ -16943,7 +16945,7 @@
             if (bcPanel) bcPanel.style.display = '';
             hide('live-setup-panel');
             show('live-active-panel');
-            document.body.classList.add('cinema-mode'); // cinema mode on
+            document.body.classList.add('cinema-mode');
             setText('live-broadcast-title-display', title + (streamEntryFee > 0 ? ' <span class="paid-badge">⭐ ' + streamEntryFee + '★ entry</span>' : ''));
 
             // Update tab buttons
@@ -17122,7 +17124,7 @@
             // Show player, hide browser
             hide('live-stream-browser');
             show('live-player-wrap');
-            document.body.classList.add('cinema-mode'); // cinema mode on
+            document.body.classList.add('cinema-mode');
 
             // Populate stream info
             setText('live-stream-host-name', streamData.hostName || 'Creator');
@@ -19500,18 +19502,15 @@
 <script>
     window.toggleCinemaFullscreen = function() {
         const isFS = document.body.classList.toggle('cinema-fullscreen');
-        // Update button text on both panels
         document.querySelectorAll('.cinema-fs-btn').forEach(btn => {
             btn.textContent = isFS ? '✕ Exit Fullscreen' : '⛶ Fullscreen';
         });
-        // If using native fullscreen API, try it too
         if (isFS) {
             document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(() => {});
         } else {
             document.fullscreenElement && document.exitFullscreen && document.exitFullscreen().catch(() => {});
         }
     };
-    // Sync if user presses Escape (native fullscreen exit)
     document.addEventListener('fullscreenchange', () => {
         if (!document.fullscreenElement) {
             document.body.classList.remove('cinema-fullscreen');
