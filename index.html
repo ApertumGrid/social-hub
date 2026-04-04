@@ -797,10 +797,10 @@
         #cinema-chat-col .live-chat-feed { flex:1; height:auto !important; overflow-y:auto; }
         #cinema-controls {
             background:var(--bg-panel); border-top:1px solid var(--border);
-            padding:5px 8px; display:flex; flex-wrap:wrap; gap:4px;
-            align-items:center; flex-shrink:0;
-            overflow-x:auto; overflow-y:hidden; max-height:120px;
-            scrollbar-width:thin;
+            padding:5px 8px; display:flex; flex-wrap:nowrap; gap:4px;
+            align-items:center; flex-shrink:0; height:44px;
+            overflow-x:auto; overflow-y:visible;
+            scrollbar-width:thin; position:relative;
         }
         /* Make studio buttons smaller inside cinema controls bar */
         #cinema-controls .studio-btn {
@@ -816,6 +816,24 @@
         /* studio-toolbar div inside cinema-controls should flex inline */
         #cinema-controls .studio-toolbar {
             display:contents !important;
+        }
+        /* Panels float ABOVE the controls bar so they're never clipped */
+        #cinema-controls #poll-creator,
+        #cinema-controls #lower-third-editor,
+        #cinema-controls #vbg-picker,
+        #cinema-controls #cohost-panel,
+        #cinema-controls #goal-setter,
+        #cinema-controls #hand-queue-card,
+        #cinema-controls #host-poll-card,
+        #cinema-controls #star-goal-display {
+            position:fixed !important;
+            bottom:54px !important;
+            left:8px !important;
+            right:330px !important;
+            max-height:50vh !important;
+            overflow-y:auto !important;
+            z-index:200 !important;
+            margin:0 !important;
         }
         #cinema-video-col .live-stream-box {
             flex:1 !important; height:auto !important; min-height:0 !important;
@@ -18564,17 +18582,23 @@
     window.toggleCamera = async function() {
         const btn = $('btn-cam-off');
         if (!localVideoTrack) { showToast('No camera track — preview camera first.'); return; }
-        // When screen sharing, toggling camera affects the PiP overlay, not main feed — allow it
         try {
             isCamOff = !isCamOff;
-            await localVideoTrack.setEnabled(!isCamOff);
+            if (isCamOff) {
+                await localVideoTrack.setEnabled(false);
+                try { await agoraClient.unpublish(localVideoTrack); } catch(_) {}
+            } else {
+                await localVideoTrack.setEnabled(true);
+                try { await agoraClient.publish(localVideoTrack); } catch(_) {}
+                const container = $('live-broadcaster-video');
+                if (container) localVideoTrack.play(container);
+            }
             if (btn) {
                 btn.innerHTML = isCamOff
                     ? '<span class="studio-btn-icon">📷</span> Cam On'
                     : '<span class="studio-btn-icon">📷</span> Cam Off';
                 btn.classList.toggle('active', isCamOff);
             }
-            // If screen sharing, update PiP visibility
             if (isScreenSharing) {
                 const pip = $('pip-camera-overlay');
                 if (pip) pip.style.display = isCamOff ? 'none' : 'block';
@@ -18823,25 +18847,27 @@
 
     // ── FLOATING REACTIONS ────────────────────────────────────────
     window.sendReaction = function(emoji) {
-        // Show locally immediately — use correct container for host vs viewer
+        // Show locally immediately
         const localContainer = isHosting ? 'live-broadcaster-video' : 'live-remote-video-container';
         _spawnReaction(emoji, localContainer);
-        // Write to Firestore so everyone sees it
+        // Write to Firestore so OTHER people see it (tag with sender so we can skip our own)
         const streamId = isHosting ? currentStreamId : _watchingStreamId;
         if (!streamId || !window.db) return;
         const { collection, addDoc, serverTimestamp } = window.fs;
         addDoc(collection(window.db, REACTIONS_COL, streamId, 'events'), {
-            emoji, ts: serverTimestamp(), sender: window._liveUserHandle || 'Viewer'
+            emoji, ts: serverTimestamp(),
+            sender: window._liveUserHandle || 'Viewer',
+            senderAddr: (window._liveUserAddress || Math.random().toString()).toLowerCase()
         }).catch(() => {});
     };
 
     function _spawnReaction(emoji, containerId) {
         const box = $(containerId || 'live-remote-video-container');
         if (!box) return;
-        let rc = box.querySelector('#reaction-container');
+        let rc = box.querySelector('.reaction-container');
         if (!rc) {
             rc = document.createElement('div');
-            rc.id = 'reaction-container';
+            rc.className = 'reaction-container';
             rc.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:30;overflow:hidden;';
             box.appendChild(rc);
         }
@@ -18853,25 +18879,26 @@
         setTimeout(() => el.remove(), 3000);
     }
 
-    // Subscribe to reactions (viewer side)
+    // Subscribe to reactions — shows OTHER people's reactions (skip own to avoid double-spawn)
     function subscribeReactions(streamId) {
         if (!window.db || !window.fs) return;
         const { collection, query, orderBy, onSnapshot } = window.fs;
-        let lastTs = Date.now();
+        const subStart = Date.now();
+        const myAddr = (window._liveUserAddress || '').toLowerCase();
         const q = query(collection(window.db, REACTIONS_COL, streamId, 'events'), orderBy('ts', 'asc'));
         onSnapshot(q, snap => {
             snap.docChanges().forEach(change => {
-                if (change.type === 'added') {
-                    const d = change.doc.data();
-                    const ts = d.ts?.toMillis?.() || 0;
-                    if (ts > lastTs - 3000) {
-                        // Use correct video container depending on role
-                        const container = isHosting ? 'live-broadcaster-video' : 'live-remote-video-container';
-                        _spawnReaction(d.emoji, container);
-                    }
-                }
+                if (change.type !== 'added') return;
+                const d = change.doc.data();
+                // Skip reactions we sent ourselves (already spawned locally)
+                const senderAddr = (d.senderAddr || '').toLowerCase();
+                if (myAddr && senderAddr && senderAddr === myAddr) return;
+                // ts may be null if serverTimestamp is still pending — treat null as "just now"
+                const ts = d.ts?.toMillis?.() ?? Date.now();
+                if (ts < subStart - 5000) return; // skip old history
+                const container = isHosting ? 'live-broadcaster-video' : 'live-remote-video-container';
+                _spawnReaction(d.emoji, container);
             });
-            lastTs = Date.now();
         }, () => {});
     }
 
@@ -19339,6 +19366,18 @@
     // Viewers receive it and render it on an overlay canvas
     let _wbSyncTimer = null;
     let _wbLastPush  = '';
+
+    function _startWBSync() {
+        if (_wbSyncTimer) clearInterval(_wbSyncTimer);
+        _wbSyncTimer = setInterval(() => _wbPushToFirestore(false), 400);
+    }
+    function _stopWBSync() {
+        if (_wbSyncTimer) { clearInterval(_wbSyncTimer); _wbSyncTimer = null; }
+        if (currentStreamId && window.db && window.fs) {
+            const { doc, updateDoc } = window.fs;
+            updateDoc(doc(window.db, LIVE_COL, currentStreamId), { wbActive: false, wbData: '' }).catch(() => {});
+        }
+    }
 
     function _wbPushToFirestore(force) {
         if (!currentStreamId || !window.db || !window.fs || !isHosting) return;
