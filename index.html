@@ -787,16 +787,25 @@
             background:var(--bg-panel); border-left:1px solid var(--border); overflow:hidden;
         }
         #cinema-chat-col .live-chat-card {
-            display:flex; flex-direction:column; height:100%;
+            display:flex; flex-direction:column; flex:1;
             border-radius:0 !important; border:none !important; background:transparent !important;
+            overflow:hidden;
         }
         #cinema-chat-col .live-chat-feed { flex:1; height:auto !important; overflow-y:auto; }
         #cinema-controls {
             background:var(--bg-panel); border-top:1px solid var(--border);
             padding:8px 12px; display:flex; flex-wrap:wrap; gap:6px;
-            align-items:center; flex-shrink:0;
+            align-items:flex-start; flex-shrink:0;
+            overflow-y:auto; max-height:220px;
         }
-        #cinema-video-col .live-stream-box { flex:1; height:auto !important; border-radius:0 !important; }
+        #cinema-video-col .live-stream-box {
+            flex:1 !important; height:auto !important; min-height:0 !important;
+            border-radius:0 !important;
+        }
+        #cinema-video-col .live-stream-box > div[style*="position:absolute"],
+        #cinema-video-col .live-stream-box > div[style*="position: absolute"] {
+            position:absolute !important;
+        }
         .cinema-fs-btn {
             position:absolute; top:10px; right:10px; z-index:20;
             background:rgba(0,0,0,0.6); border:none; color:#fff;
@@ -19493,36 +19502,56 @@
         videoEl.parentNode.insertBefore(_videoPlaceholder, videoEl);
         chatEl.parentNode.insertBefore(_chatPlaceholder, chatEl);
 
+        // Remove hardcoded height so flex takes over
+        videoEl.style.height = '';
+        videoEl.style.flex = '1';
+        videoEl.style.minHeight = '0';
+
         // Add fullscreen button inside video
         var fsBtn = document.createElement('button');
         fsBtn.className = 'cinema-fs-btn';
         fsBtn.id = 'cinema-fs-btn';
         fsBtn.textContent = '⛶ Fullscreen';
         fsBtn.onclick = window.toggleCinemaFullscreen;
-        videoEl.style.flex = '1';
-        videoEl.style.height = '';
         videoEl.appendChild(fsBtn);
 
         // Build controls bar
         var controlsBar = document.createElement('div');
         controlsBar.id = 'cinema-controls';
 
-        // Move video into video col first
+        // Move video into video col
         cinemaVideoCol.innerHTML = '';
         cinemaVideoCol.appendChild(videoEl);
         cinemaVideoCol.appendChild(controlsBar);
 
         // Move all siblings between placeholders into controls bar
+        // EXCEPT the end-stream button — that goes to chat col
+        var endBtn = null;
         var node = _videoPlaceholder.nextSibling;
         while (node && node !== _chatPlaceholder) {
             var next = node.nextSibling;
-            if (node.nodeType === 1) controlsBar.appendChild(node);
+            if (node.nodeType === 1) {
+                // detect end stream button
+                if (node.tagName === 'BUTTON' && node.textContent.indexOf('End Stream') !== -1) {
+                    endBtn = node;
+                } else {
+                    controlsBar.appendChild(node);
+                }
+            }
             node = next;
         }
 
         // Move chat into chat col
         cinemaChatCol.innerHTML = '';
         cinemaChatCol.appendChild(chatEl);
+
+        // End stream button at bottom of chat col
+        if (endBtn) {
+            endBtn.style.width = '100%';
+            endBtn.style.marginTop = '8px';
+            endBtn.style.flexShrink = '0';
+            cinemaChatCol.appendChild(endBtn);
+        }
 
         document.body.classList.add('cinema-mode');
     }
