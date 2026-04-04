@@ -772,18 +772,18 @@
         body.cinema-mode #app-body { grid-template-columns:1fr !important; }
         body.cinema-mode .page-heading,
         body.cinema-mode #live-tabs { display:none !important; }
-        body.cinema-mode #page-live { height:calc(100vh - 56px); overflow:hidden; padding:0 !important; }
+        body.cinema-mode #page-live { height:calc(100vh - 88px); overflow:hidden; padding:0 !important; }
 
         #cinema-shell { display:none; }
         body.cinema-mode #cinema-shell {
-            display:flex !important; height:calc(100vh - 56px); overflow:hidden;
+            display:flex !important; height:calc(100vh - 88px); overflow:hidden;
         }
         #cinema-video-col {
             flex:1; display:flex; flex-direction:column;
             background:#000; position:relative; overflow:hidden; min-width:0;
         }
         #cinema-chat-col {
-            width:300px; flex-shrink:0; display:flex; flex-direction:column;
+            width:320px; flex-shrink:0; display:flex; flex-direction:column;
             background:var(--bg-panel); border-left:1px solid var(--border); overflow:hidden;
         }
         #cinema-chat-col .live-chat-card {
@@ -794,9 +794,18 @@
         #cinema-chat-col .live-chat-feed { flex:1; height:auto !important; overflow-y:auto; }
         #cinema-controls {
             background:var(--bg-panel); border-top:1px solid var(--border);
-            padding:8px 12px; display:flex; flex-wrap:wrap; gap:6px;
+            padding:6px 10px; display:flex; flex-wrap:wrap; gap:4px;
             align-items:flex-start; flex-shrink:0;
-            overflow-y:auto; max-height:220px;
+            overflow-y:auto; max-height:180px;
+        }
+        /* Make studio buttons smaller inside cinema controls bar */
+        #cinema-controls .studio-btn {
+            padding:4px 8px !important;
+            font-size:0.7rem !important;
+            gap:4px !important;
+        }
+        #cinema-controls .studio-btn-icon {
+            font-size:0.8rem !important;
         }
         #cinema-video-col .live-stream-box {
             flex:1 !important; height:auto !important; min-height:0 !important;
@@ -811,13 +820,20 @@
             background:rgba(0,0,0,0.6); border:none; color:#fff;
             border-radius:6px; padding:5px 10px; cursor:pointer; font-size:0.78rem;
         }
+        /* End Stream button in cinema chat col */
+        #cinema-chat-col > button {
+            flex-shrink:0;
+            margin:8px;
+            width:calc(100% - 16px) !important;
+        }
         body.cinema-fullscreen #topnav,
+        body.cinema-fullscreen #hype-ticker,
         body.cinema-fullscreen #cinema-chat-col,
         body.cinema-fullscreen #cinema-controls { display:none !important; }
-        body.cinema-fullscreen #cinema-shell { height:100vh !important; }
+        body.cinema-fullscreen #cinema-shell { height:100vh !important; top:0 !important; }
         body.cinema-fullscreen #page-live { height:100vh !important; }
         @media(max-width:700px){
-            body.cinema-mode #cinema-shell { flex-direction:column; }
+            body.cinema-mode #cinema-shell { flex-direction:column; top:74px; height:calc(100vh - 74px); }
             #cinema-video-col { flex:none; height:52vw; }
             #cinema-chat-col { width:100%; flex:1; border-left:none; border-top:1px solid var(--border); }
         }
@@ -5521,7 +5537,7 @@
                     <div id="live-active-panel" style="display:none;">
 
                         <!-- Video box with overlays -->
-                        <div class="live-stream-box" id="live-broadcaster-video-container" style="height:380px;">
+                        <div class="live-stream-box" id="live-broadcaster-video-container" style="height:clamp(300px, 40vh, 520px);">
                             <!-- Top bar: LIVE badge + health + viewers -->
                             <div class="live-stream-overlay-top">
                                 <span class="live-badge-pill">🔴 YOU ARE LIVE</span>
@@ -17809,20 +17825,30 @@
 
     window.toggleVBGPicker = function() {
         const el = $('vbg-picker');
-        if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+        if (!el) return;
+        const isOpen = el.style.display !== 'none' && el.style.display !== '';
+        el.style.display = isOpen ? 'none' : '';
+        if (!isOpen) {
+            // Scroll the picker into view within cinema-controls
+            setTimeout(function() {
+                const controls = document.getElementById('cinema-controls');
+                if (controls) controls.scrollTop = controls.scrollHeight;
+                el.scrollIntoView && el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 50);
+        }
     };
 
     async function _initVBGExtension() {
         if (vbgExtension) return true; // already registered
         try {
             if (!window.VirtualBackgroundExtension) {
-                showToast('Virtual background extension not loaded — check your internet connection.');
+                showToast('⚠️ VBG extension not loaded. Check your internet connection or try Chrome.');
                 return false;
             }
             vbgExtension = new window.VirtualBackgroundExtension();
             // Check browser compatibility before registering
             if (!vbgExtension.checkCompatibility()) {
-                showToast('Virtual background not supported in this browser. Try Chrome.');
+                showToast('⚠️ Virtual background requires Chrome or Edge with WebGL. Try a different browser.');
                 vbgExtension = null;
                 return false;
             }
@@ -17830,6 +17856,7 @@
             return true;
         } catch(e) {
             console.error('[VBG] Extension init error:', e);
+            showToast('⚠️ Background init failed: ' + (e.message || String(e)));
             vbgExtension = null;
             return false;
         }
@@ -17893,7 +17920,7 @@
             console.error('[VBG] setVBG error:', e);
             // Tear down if it partially initialised
             if (vbgProcessor) { try { localVideoTrack.unpipe(); } catch(_) {} vbgProcessor = null; }
-            showToast('Background error: ' + (e.message || String(e)));
+            showToast('⚠️ Background failed: ' + (e.message || String(e)) + ' — Try Chrome/Edge with HTTPS.');
         }
     };
 
@@ -19470,7 +19497,7 @@
     </div>
 
     <!-- Cinema shell — empty until enterCinema() moves content into it -->
-    <div id="cinema-shell" style="position:fixed;top:56px;left:0;right:0;bottom:0;z-index:50;">
+    <div id="cinema-shell" style="position:fixed;top:88px;left:0;right:0;bottom:0;z-index:50;">
         <div id="cinema-video-col">
             <!-- video + controls injected here by JS -->
         </div>
@@ -19531,8 +19558,13 @@
         while (node && node !== _chatPlaceholder) {
             var next = node.nextSibling;
             if (node.nodeType === 1) {
-                // detect end stream button
-                if (node.tagName === 'BUTTON' && node.textContent.indexOf('End Stream') !== -1) {
+                // detect end stream button by text OR by id/onclick containing 'end'
+                var btnText = node.textContent || '';
+                var btnOnclick = node.getAttribute('onclick') || '';
+                if (node.tagName === 'BUTTON' && (
+                    btnText.indexOf('End Stream') !== -1 ||
+                    btnOnclick.indexOf('endLiveStream') !== -1
+                )) {
                     endBtn = node;
                 } else {
                     controlsBar.appendChild(node);
@@ -19547,10 +19579,21 @@
 
         // End stream button at bottom of chat col
         if (endBtn) {
-            endBtn.style.width = '100%';
-            endBtn.style.marginTop = '8px';
+            endBtn.style.width = 'calc(100% - 16px)';
+            endBtn.style.margin = '8px';
             endBtn.style.flexShrink = '0';
+            endBtn.style.display = 'block';
+            endBtn.style.position = 'relative';
+            endBtn.style.zIndex = '5';
             cinemaChatCol.appendChild(endBtn);
+        } else {
+            // Fallback: create an End Stream button if none was found
+            var fallbackEndBtn = document.createElement('button');
+            fallbackEndBtn.className = 'btn btn-sm';
+            fallbackEndBtn.style.cssText = 'width:calc(100% - 16px);margin:8px;background:rgba(224,62,62,0.12);border:1px solid rgba(224,62,62,0.4);color:#e03e3e;font-weight:700;flex-shrink:0;display:block;';
+            fallbackEndBtn.textContent = '■ End Stream';
+            fallbackEndBtn.onclick = function() { if (window.endLiveStream) window.endLiveStream(); };
+            cinemaChatCol.appendChild(fallbackEndBtn);
         }
 
         document.body.classList.add('cinema-mode');
