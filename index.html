@@ -835,9 +835,26 @@
             padding:4px 8px !important; font-size:0.7rem !important;
             gap:4px !important; white-space:nowrap !important; flex-shrink:0 !important;
         }
+        /* Action row and its buttons inside cinema controls */
+        #cinema-controls-btns .live-action-row {
+            display:flex; flex-wrap:wrap; gap:4px; width:100%; padding:2px 0;
+        }
+        #cinema-controls-btns .live-action-row .btn,
+        #cinema-controls-btns .live-action-row button {
+            font-size:0.68rem !important; padding:4px 8px !important;
+            flex-shrink:0 !important;
+        }
+        #cinema-controls-btns .live-stars-pill {
+            font-size:0.65rem !important;
+        }
+        /* Reaction buttons in cinema */
+        #cinema-controls-btns > div[style*="display:flex"] button {
+            font-size:1rem !important; padding:2px !important;
+        }
         #cinema-controls .studio-btn-icon { font-size:0.8rem !important; }
         #cinema-controls .studio-toolbar { display:contents !important; }
         /* Panels inside controls — displayed normally, no more fixed positioning */
+        /* Host-only toggleable panels — hidden until button clicked */
         #cinema-controls-panels #poll-creator,
         #cinema-controls-panels #lower-third-editor,
         #cinema-controls-panels #vbg-picker,
@@ -853,6 +870,19 @@
             z-index:1 !important;
             margin:0 0 6px 0 !important;
             display:none; /* shown by JS toggle */
+        }
+        /* Viewer panels — shown/hidden by Firestore, keep their natural display state */
+        #cinema-controls-panels #viewer-poll-card,
+        #cinema-controls-panels #viewer-star-goal,
+        #cinema-controls-panels #viewer-leaderboard,
+        #cinema-controls-panels #viewer-gift-panel {
+            position:relative !important;
+            bottom:auto !important; left:auto !important; right:auto !important;
+            max-height:none !important;
+            overflow-y:visible !important;
+            z-index:1 !important;
+            margin:0 0 6px 0 !important;
+            /* display controlled by Firestore listener */
         }
         .cinema-fs-btn {
             position:absolute; bottom:10px; right:10px; z-index:20;
@@ -1003,9 +1033,10 @@
             position:absolute; bottom:0; left:0; right:0; top:auto;
             background:linear-gradient(90deg, rgba(10,10,20,0.92) 0%, rgba(124,92,191,0.85) 100%);
             padding:10px 16px 12px;
-            z-index:20; display:none;
+            z-index:25; display:none;
             border-top:2px solid var(--purple);
             max-height:64px; overflow:hidden;
+            pointer-events:none;
         }
         .lower-third-name { font-size:1rem; font-weight:800; color:#fff; line-height:1.2; }
         .lower-third-title { font-size:0.68rem; color:rgba(255,255,255,0.75); margin-top:2px; letter-spacing:0.5px; }
@@ -5384,7 +5415,7 @@
                 <!-- ── WATCH TAB ── -->
                 <div id="live-watch-panel">
                     <!-- Active stream player -->
-                    <div id="live-player-wrap" style="display:none;">
+                    <div id="live-player-wrap" style="display:none;overflow-y:auto;max-height:calc(100vh - 60px);">
                         <!-- Co-host stage (shown when viewer is promoted to co-host) -->
                         <div id="cohost-stage-wrap">
                             <div id="cohost-local-video"></div>
@@ -5448,14 +5479,14 @@
                             </div>
                         </div>
 
-                        <!-- Star Goal bar (viewer side) -->
-                        <div id="viewer-star-goal" style="display:none;" class="star-goal-card">
-                            <div class="star-goal-label">
-                                <span>🎯 Stream Goal</span>
-                                <span id="viewer-goal-pct">0%</span>
+                        <!-- Star Goal bar (viewer side) — compact, above gifts -->
+                        <div id="viewer-star-goal" style="display:none;margin-bottom:8px;padding:8px 12px;background:rgba(240,180,41,0.08);border:1px solid rgba(240,180,41,0.25);border-radius:10px;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                                <span style="font-size:0.65rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:1px;">🎯 Stream Goal</span>
+                                <span id="viewer-goal-pct" style="font-size:0.65rem;font-weight:700;color:var(--gold);">0%</span>
                             </div>
-                            <div class="star-goal-track"><div class="star-goal-fill" id="viewer-goal-fill" style="width:0%"></div></div>
-                            <div class="star-goal-nums">
+                            <div class="star-goal-track" style="height:7px;"><div class="star-goal-fill" id="viewer-goal-fill" style="width:0%"></div></div>
+                            <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:0.6rem;color:var(--text-muted);margin-top:3px;">
                                 <span id="viewer-goal-current">0 ★</span>
                                 <span id="viewer-goal-target">— ★</span>
                             </div>
@@ -5468,7 +5499,7 @@
                         </div>
 
                         <!-- Gift Panel -->
-                        <div class="live-gift-card">
+                        <div class="live-gift-card" id="viewer-gift-panel">
                             <div class="live-gift-head">🎁 Send a Gift &nbsp;<span style="font-size:0.58rem;color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;">80% to creator · instant</span></div>
                             <div class="live-gift-grid">
                                 <button class="gift-btn spark" onclick="sendGift('spark')">
@@ -5642,6 +5673,7 @@
                                     <button onclick="wbSetTool('circle')" id="wb-btn-circle" title="Circle"    style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">○</button>
                                     <button onclick="wbSetTool('eraser')" id="wb-btn-eraser" title="Eraser"    style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">🧹</button>
                                     <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;flex-shrink:0;"></div>
+                                    <div onclick="wbSetColor('#000000')" style="width:16px;height:16px;border-radius:50%;background:#000000;border:2px solid rgba(255,255,255,0.5);cursor:pointer;flex-shrink:0;" title="Black"></div>
                                     <div onclick="wbSetColor('#ffffff')" style="width:16px;height:16px;border-radius:50%;background:#ffffff;border:2px solid rgba(255,255,255,0.7);cursor:pointer;flex-shrink:0;" title="White"></div>
                                     <div onclick="wbSetColor('#f0b429')" style="width:16px;height:16px;border-radius:50%;background:#f0b429;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Gold"></div>
                                     <div onclick="wbSetColor('#2dd4bf')" style="width:16px;height:16px;border-radius:50%;background:#2dd4bf;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Teal"></div>
@@ -5678,8 +5710,8 @@
                             <button class="studio-btn" id="btn-recording" onclick="toggleRecording()">
                                 <span class="studio-btn-icon">⏺</span> Record
                             </button>
-                            <button class="studio-btn" id="btn-lower-third" onclick="toggleLowerThird()">
-                                <span class="studio-btn-icon">🏷️</span> Name Tag
+                            <button class="studio-btn" id="btn-lower-third" onclick="toggleLowerThird()" title="Show a custom title/label at the bottom of your stream">
+                                <span class="studio-btn-icon">📺</span> Stream Label
                             </button>
                             <button class="studio-btn" id="btn-mute-mic" onclick="toggleMic()">
                                 <span class="studio-btn-icon">🔇</span> Mute
@@ -5700,7 +5732,7 @@
 
                         <!-- Lower Third editor (hidden by default) -->
                         <div id="lower-third-editor" style="display:none; padding:10px 14px; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px;">
-                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🏷️ Name Tag</div>
+                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">📺 Stream Label</div><div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:8px;">Shows at the bottom of your stream — e.g. your topic or role</div>
                             <input type="text" id="lt-name-input" class="field" placeholder="Your Name / Title" style="margin-bottom:6px;margin-top:0;">
                             <input type="text" id="lt-title-input" class="field" placeholder="Subtitle (e.g. Crypto Analyst · Live)" style="margin-bottom:8px;margin-top:0;">
                             <div style="display:flex;gap:8px;">
@@ -12616,7 +12648,7 @@
         var card = document.getElementById('trending-hubs-card');
         if (!row) return;
         if (!communities || communities.length === 0) { if (card) card.style.display = 'none'; return; }
-        if (card) card.style.display = '';
+        if (card) card.style.display = 'block';
 
         var sorted = communities.slice().sort(function(a,b){ return (b.postCount||0)-(a.postCount||0); }).slice(0,8);
         var now    = Date.now();
@@ -16712,7 +16744,7 @@
     // ── Helpers ───────────────────────────────────────────────────
     function $(id) { return document.getElementById(id); }
     function setText(id, val) { const el = $(id); if (el) el.textContent = val; }
-    function show(id)  { const el = $(id); if (el) el.style.display = ''; }
+    function show(id)  { const el = $(id); if (el) el.style.display = 'block'; }
     function hide(id)  { const el = $(id); if (el) el.style.display = 'none'; }
 
     function waitForFb(cb) {
@@ -16739,7 +16771,7 @@
                 if (localVideoTrack) { try { localVideoTrack.stop(); localVideoTrack.close(); } catch(_) {} localVideoTrack = null; }
                 if (localAudioTrack) { try { localAudioTrack.stop(); localAudioTrack.close(); } catch(_) {} localAudioTrack = null; }
                 const ph = $('live-preview-placeholder');
-                if (ph) ph.style.display = '';
+                if (ph) ph.style.display = 'flex';
             }
         }
         // Auto-start camera preview when switching to broadcast tab (not yet live)
@@ -16983,9 +17015,48 @@
             }
             await agoraClient.publish([localVideoTrack, localAudioTrack]);
 
+            // Subscribe to co-hosts who join the stage
+            agoraClient.on('user-published', async (remoteUser, mediaType) => {
+                try {
+                    await agoraClient.subscribe(remoteUser, mediaType);
+                    if (mediaType === 'video') {
+                        // Show co-host video in a floating PiP on broadcaster's screen
+                        let cohostPip = document.getElementById('cohost-pip-host');
+                        if (!cohostPip) {
+                            cohostPip = document.createElement('div');
+                            cohostPip.id = 'cohost-pip-host';
+                            cohostPip.style.cssText = 'position:absolute;bottom:50px;right:10px;width:140px;height:90px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+                            const label = document.createElement('div');
+                            label.style.cssText = 'position:absolute;top:2px;left:4px;font-size:0.55rem;color:#fff;background:rgba(124,92,191,0.8);padding:1px 5px;border-radius:4px;z-index:1;';
+                            label.textContent = '🎤 Co-host';
+                            cohostPip.appendChild(label);
+                            const closeBtn = document.createElement('button');
+                            closeBtn.textContent = '✕';
+                            closeBtn.style.cssText = 'position:absolute;top:2px;right:4px;background:rgba(0,0,0,0.5);border:none;color:#fff;border-radius:50%;width:16px;height:16px;font-size:0.55rem;cursor:pointer;z-index:2;line-height:1;';
+                            closeBtn.onclick = function(){ cohostPip.style.display='none'; };
+                            cohostPip.appendChild(closeBtn);
+                            const videoDiv = document.createElement('div');
+                            videoDiv.id = 'cohost-pip-video';
+                            videoDiv.style.cssText = 'width:100%;height:100%;';
+                            cohostPip.appendChild(videoDiv);
+                            const lsBox = document.getElementById('live-broadcaster-video-container');
+                            if (lsBox) lsBox.appendChild(cohostPip);
+                        }
+                        remoteUser.videoTrack.play(document.getElementById('cohost-pip-video'));
+                    }
+                    if (mediaType === 'audio') remoteUser.audioTrack.play();
+                    showToast('🎤 Co-host joined the stage!');
+                } catch(e) { console.warn('[CoHost] host subscribe error:', e); }
+            });
+            agoraClient.on('user-unpublished', (remoteUser) => {
+                // Remove co-host PiP if they leave
+                const pip = document.getElementById('cohost-pip-host');
+                if (pip) pip.remove();
+            });
+
             // Show ALL panels in the hierarchy before playing video
             const bcPanel = $('live-broadcast-panel');
-            if (bcPanel) bcPanel.style.display = '';
+            if (bcPanel) bcPanel.style.display = 'block';
             hide('live-setup-panel');
             show('live-active-panel');
             setText('live-broadcast-title-display', title + (streamEntryFee > 0 ? ' <span class="paid-badge">⭐ ' + streamEntryFee + '★ entry</span>' : ''));
@@ -17133,32 +17204,58 @@
 
             // Listen for remote video — only render the matching host UID
             agoraClient.on('user-published', async (remoteUser, mediaType) => {
-                // If we know the hostUid, skip any other publisher (another stream's host)
-                if (hostUid && remoteUser.uid !== hostUid) return;
                 await agoraClient.subscribe(remoteUser, mediaType);
-                if (mediaType === 'video') {
-                    const remoteEl = $('live-remote-video');
-                    if (remoteEl) {
-                        remoteEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-                        const playRemoteWhenReady = () => {
-                            if (remoteEl.offsetWidth > 0 || remoteEl.offsetHeight > 0) {
-                                remoteUser.videoTrack.play(remoteEl);
-                            } else {
-                                setTimeout(playRemoteWhenReady, 100);
-                            }
-                        };
-                        setTimeout(playRemoteWhenReady, 50);
+                if (remoteUser.uid === hostUid) {
+                    // Main host video/audio
+                    if (mediaType === 'video') {
+                        const remoteEl = $('live-remote-video');
+                        if (remoteEl) {
+                            remoteEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+                            const playRemoteWhenReady = () => {
+                                if (remoteEl.offsetWidth > 0 || remoteEl.offsetHeight > 0) {
+                                    remoteUser.videoTrack.play(remoteEl);
+                                } else {
+                                    setTimeout(playRemoteWhenReady, 100);
+                                }
+                            };
+                            setTimeout(playRemoteWhenReady, 50);
+                        }
                     }
-                }
-                if (mediaType === 'audio') {
-                    remoteUser.audioTrack.play();
+                    if (mediaType === 'audio') remoteUser.audioTrack.play();
+                } else {
+                    // Co-host: show as a small PiP overlay on the viewer's stream
+                    if (mediaType === 'video') {
+                        let cohostPip = document.getElementById('cohost-pip-viewer');
+                        if (!cohostPip) {
+                            cohostPip = document.createElement('div');
+                            cohostPip.id = 'cohost-pip-viewer';
+                            cohostPip.style.cssText = 'position:absolute;bottom:50px;right:10px;width:140px;height:90px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+                            const label = document.createElement('div');
+                            label.style.cssText = 'position:absolute;top:2px;left:4px;font-size:0.55rem;color:#fff;background:rgba(124,92,191,0.8);padding:1px 5px;border-radius:4px;z-index:1;';
+                            label.textContent = '🎤 Co-host';
+                            cohostPip.appendChild(label);
+                            const videoDiv = document.createElement('div');
+                            videoDiv.id = 'cohost-pip-viewer-video';
+                            videoDiv.style.cssText = 'width:100%;height:100%;';
+                            cohostPip.appendChild(videoDiv);
+                            const rc = document.getElementById('live-remote-video-container');
+                            if (rc) rc.appendChild(cohostPip);
+                        }
+                        remoteUser.videoTrack.play(document.getElementById('cohost-pip-viewer-video'));
+                        showToast('🎤 Co-host joined the stage!');
+                    }
+                    if (mediaType === 'audio') remoteUser.audioTrack.play();
                 }
             });
 
             agoraClient.on('user-unpublished', (remoteUser) => {
-                // Only leave if the host (our stream's publisher) drops — ignore other streams
                 if (!hostUid || remoteUser.uid === hostUid) {
+                    // Main host dropped — leave stream
                     leaveLiveStream();
+                } else {
+                    // Co-host left — remove their PiP
+                    const pip = document.getElementById('cohost-pip-viewer');
+                    if (pip) pip.remove();
                 }
             });
 
@@ -17650,6 +17747,8 @@
             setText('live-stat-hypes',   String(liveHypeCount));
             setText('live-stat-viewers', String(liveViewerCount));
             setText('live-broadcast-viewers', '👁 ' + liveViewerCount + ' watching');
+            // Update host goal bar in real-time as stars come in
+            if (isHosting && starGoalTarget > 0) _updateGoalBar(liveStarsEarned);
 
             // Sidebar badge viewer count
             const badge = $('live-viewer-badge');
@@ -18725,15 +18824,16 @@
         const { doc, updateDoc } = window.fs;
         await updateDoc(doc(window.db, LIVE_COL, currentStreamId), { activePoll: pollData }).catch(() => {});
         $('poll-creator').style.display = 'none';
+        _setCinemaControlsHeight(false); // collapse controls back after closing panel
 
         // Show poll immediately on the streamer's own screen
         const pollCard = $('viewer-poll-card');
-        if (pollCard) pollCard.style.display = '';
+        if (pollCard) pollCard.style.display = 'block';
         _renderViewerPoll(pollData);
         // Also show host results card immediately (no waiting for Firestore round-trip)
         const hostCard = $('host-poll-card');
         if (hostCard) {
-            hostCard.style.display = '';
+            hostCard.style.display = 'block';
             const hq = $('host-poll-question');
             const ho = $('host-poll-options');
             const hv = $('host-poll-votes');
@@ -18777,7 +18877,7 @@
         }
         $('goal-setter').style.display = 'none';
         _updateGoalBar(liveStarsEarned);
-        show('star-goal-display');
+        const _sgd = $('star-goal-display'); if (_sgd) _sgd.style.display = 'block';
         showToast(`🎯 Goal set: ${amt} ★ — viewers can see your goal!`);
     };
 
@@ -18808,7 +18908,7 @@
     function _renderLeaderboard() {
         const entries = Object.entries(_lbMap).sort((a,b) => b[1]-a[1]).slice(0,5);
         if (!entries.length) return;
-        const card = $('gift-leaderboard'); if (card) card.style.display = '';
+        const card = $('gift-leaderboard'); if (card) card.style.display = 'block';
         const list = $('gift-lb-list'); if (!list) return;
         const medals = ['🥇','🥈','🥉','4.','5.'];
         const rankCls = ['gold','silver','bronze','',''];
@@ -18821,7 +18921,7 @@
         ).join('');
 
         // Mirror to viewer side
-        const vCard = $('viewer-leaderboard'); if (vCard) vCard.style.display = '';
+        const vCard = $('viewer-leaderboard'); if (vCard) vCard.style.display = 'block';
         const vList = $('viewer-lb-list'); if (vList) vList.innerHTML = list.innerHTML;
     }
 
@@ -19025,11 +19125,11 @@
             const pollCard = $('viewer-poll-card');
             const hostCard = $('host-poll-card');
             if (poll && poll.active) {
-                if (pollCard) pollCard.style.display = '';
+                if (pollCard) pollCard.style.display = 'block';
                 _renderViewerPoll(poll);
                 // Update broadcaster's live tally card
                 if (hostCard) {
-                    hostCard.style.display = '';
+                    hostCard.style.display = 'block';
                     const hq = $('host-poll-question');
                     const ho = $('host-poll-options');
                     const hv = $('host-poll-votes');
@@ -19057,7 +19157,7 @@
             const earned = d.starsEarned || 0;
             const vGoal = $('viewer-star-goal');
             if (goal > 0) {
-                if (vGoal) vGoal.style.display = '';
+                if (vGoal) vGoal.style.display = 'block';
                 const pct = Math.min(100, (earned / goal) * 100);
                 const vFill = $('viewer-goal-fill');
                 const vCur  = $('viewer-goal-current');
@@ -19195,7 +19295,7 @@
                 const hostQ    = document.getElementById('host-poll-question');
                 const hostOpts = document.getElementById('host-poll-options');
                 const hostVotes= document.getElementById('host-poll-votes');
-                if (hostCard) hostCard.style.display = '';
+                if (hostCard) hostCard.style.display = 'block';
                 const poll  = d.activePoll;
                 const total = (poll.votes || []).reduce((a,b) => a+b, 0);
                 if (hostQ) hostQ.textContent = poll.question || '';
@@ -19534,31 +19634,68 @@
             if (_wbTool === 'text') {
                 const p = _pos(e);
                 const ctx = canvas.getContext('2d');
-                // Create a floating input box over the canvas
                 const r = canvas.getBoundingClientRect();
                 const scaleX = r.width  / canvas.width;
                 const scaleY = r.height / canvas.height;
+                const fontSize = Math.max(14, _wbSize * 3);
+
+                // Draggable wrapper + input
+                const wrapper = document.createElement('div');
+                let wLeft = r.left + p.x * scaleX;
+                let wTop  = r.top  + p.y * scaleY - fontSize;
+                wrapper.style.cssText = `position:fixed;left:${wLeft}px;top:${wTop}px;z-index:9999;`
+                    + `cursor:move;display:flex;align-items:center;gap:4px;`;
+
+                // Drag handle
+                const handle = document.createElement('span');
+                handle.textContent = '✥';
+                handle.title = 'Drag to move';
+                handle.style.cssText = `color:${_wbColor};opacity:0.7;font-size:1rem;user-select:none;padding:2px;`;
+
                 const inp = document.createElement('input');
                 inp.type = 'text';
-                inp.placeholder = 'Type text…';
-                inp.style.cssText = `position:fixed;left:${r.left + p.x * scaleX}px;top:${r.top + p.y * scaleY - 14}px;`
-                    + `z-index:9999;background:rgba(10,10,20,0.85);color:${_wbColor};border:1px solid ${_wbColor};`
-                    + `border-radius:4px;padding:2px 6px;font-size:${Math.max(14, _wbSize * 3)}px;outline:none;min-width:80px;`;
-                document.body.appendChild(inp);
+                inp.placeholder = 'Type… Enter to place';
+                inp.style.cssText = `background:rgba(10,10,20,0.85);color:${_wbColor};border:1px solid ${_wbColor};`
+                    + `border-radius:4px;padding:2px 6px;font-size:${fontSize}px;outline:none;min-width:120px;`;
+
+                wrapper.appendChild(handle);
+                wrapper.appendChild(inp);
+                document.body.appendChild(wrapper);
                 inp.focus();
+
+                // Drag logic on the handle
+                let _drag = false, _dx = 0, _dy = 0;
+                handle.addEventListener('mousedown', ev => {
+                    _drag = true; _dx = ev.clientX - wLeft; _dy = ev.clientY - wTop;
+                    ev.preventDefault();
+                });
+                document.addEventListener('mousemove', ev => {
+                    if (!_drag) return;
+                    wLeft = ev.clientX - _dx; wTop = ev.clientY - _dy;
+                    wrapper.style.left = wLeft + 'px'; wrapper.style.top = wTop + 'px';
+                });
+                document.addEventListener('mouseup', () => { _drag = false; }, { once: false });
+
                 const commit = () => {
                     const txt = inp.value.trim();
                     if (txt) {
+                        // Recapture canvas rect at commit time (user may have scrolled/resized)
+                        const rNow = canvas.getBoundingClientRect();
+                        const sxNow = rNow.width  / canvas.width;
+                        const syNow = rNow.height / canvas.height;
+                        const cx = (wLeft + handle.offsetWidth + 4 - rNow.left) / sxNow;
+                        const cy = (wTop + fontSize - rNow.top) / syNow;
                         _setupWBCtx(ctx);
-                        ctx.font = `${Math.max(16, _wbSize * 3)}px sans-serif`;
+                        ctx.font = `${fontSize}px sans-serif`;
                         ctx.fillStyle = _wbColor;
-                        ctx.fillText(txt, p.x, p.y);
+                        ctx.fillText(txt, cx, cy);
                         _wbPushToFirestore(true);
                     }
-                    inp.remove();
+                    wrapper.remove();
                 };
-                inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); commit(); } if (ev.key === 'Escape') inp.remove(); });
-                inp.addEventListener('blur', commit);
+                inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); commit(); } if (ev.key === 'Escape') wrapper.remove(); });
+                // Commit on blur only if not dragging
+                inp.addEventListener('blur', () => { setTimeout(() => { if (!_drag) commit(); }, 150); });
                 return;
             }
             _wbDrawing = true;
@@ -19728,7 +19865,9 @@
         // Scan siblings between placeholders: buttons/toolbars → ctrlBtns, panels → ctrlPanels
         // Skip the original End Stream button (handled by the static wrap)
         var panelIds = ['poll-creator','lower-third-editor','vbg-picker','cohost-panel',
-                        'goal-setter','hand-queue-card','host-poll-card','star-goal-display'];
+                        'goal-setter','hand-queue-card','host-poll-card','star-goal-display',
+                        // Viewer-side panels
+                        'viewer-poll-card','viewer-star-goal','viewer-leaderboard','viewer-gift-panel'];
         var node = _videoPlaceholder.nextSibling;
         while (node && node !== _chatPlaceholder) {
             var next = node.nextSibling;
@@ -19761,7 +19900,7 @@
         cinemaChatCol.insertBefore(controlsBar, endBtnWrap);
 
         // Show the end stream button wrap
-        if (endBtnWrap) endBtnWrap.style.display = '';
+        if (endBtnWrap) endBtnWrap.style.display = 'flex';
 
         document.body.classList.add('cinema-mode');
     }
