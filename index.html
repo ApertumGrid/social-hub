@@ -1141,6 +1141,122 @@
         #recording-status.active { display:flex; }
 
         /* ── WHITEBOARD OVERLAY ───────────────────────────────────── */
+        /* ── TikTok-style in-video overlays ────────────────────── */
+        .vid-overlay-poll,
+        .vid-overlay-goal {
+            position: absolute;
+            z-index: 22;
+            pointer-events: all;
+            display: none; /* shown via JS */
+        }
+        /* Poll — bottom-left of video */
+        .vid-overlay-poll {
+            bottom: 54px;
+            left: 10px;
+            width: clamp(180px, 46%, 240px);
+            background: rgba(10, 10, 20, 0.60);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 14px;
+            padding: 10px 12px;
+            color: #fff;
+        }
+        .vid-overlay-poll .vop-head {
+            font-size: 0.58rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: rgba(255,255,255,0.55);
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .vid-overlay-poll .vop-question {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 8px;
+            line-height: 1.3;
+        }
+        .vid-overlay-poll .vop-option {
+            position: relative;
+            margin-bottom: 5px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: rgba(255,255,255,0.08);
+            cursor: pointer;
+        }
+        .vid-overlay-poll .vop-option:last-child { margin-bottom: 0; }
+        .vid-overlay-poll .vop-bar {
+            position: absolute;
+            top: 0; left: 0; height: 100%;
+            background: rgba(124,92,191,0.35);
+            border-radius: 8px;
+            transition: width 0.5s ease;
+        }
+        .vid-overlay-poll .vop-label {
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 8px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: #fff;
+            z-index: 1;
+        }
+        .vid-overlay-poll .vop-option.voted .vop-bar {
+            background: rgba(124,92,191,0.55);
+        }
+        /* Star Goal — top-right of video */
+        .vid-overlay-goal {
+            top: 44px;
+            right: 10px;
+            width: clamp(160px, 42%, 210px);
+            background: rgba(10, 10, 20, 0.60);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(240,180,41,0.25);
+            border-radius: 14px;
+            padding: 8px 12px;
+            color: #fff;
+        }
+        .vid-overlay-goal .vog-head {
+            font-size: 0.58rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--gold);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .vid-overlay-goal .vog-track {
+            width: 100%;
+            height: 6px;
+            background: rgba(240,180,41,0.15);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 4px;
+        }
+        .vid-overlay-goal .vog-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--gold), #ffdd70);
+            border-radius: 10px;
+            transition: width 0.6s ease;
+            box-shadow: 0 0 8px rgba(240,180,41,0.5);
+        }
+        .vid-overlay-goal .vog-nums {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 0.58rem;
+            color: rgba(255,255,255,0.55);
+        }
+
         #whiteboard-overlay {
             pointer-events: none; /* disabled until active */
         }
@@ -5440,6 +5556,28 @@
                                 <div class="live-stream-host" id="live-stream-host-name">Loading…</div>
                                 <div class="live-stream-title-sm" id="live-stream-title-sm"></div>
                             </div>
+
+                            <!-- ★ TikTok-style overlays: poll (bottom-left) + star goal (top-right) -->
+                            <div class="vid-overlay-poll" id="viewer-vid-poll">
+                                <div class="vop-head">
+                                    <span>📊 Live Poll</span>
+                                    <span id="viewer-vid-poll-votes">0 votes</span>
+                                </div>
+                                <div class="vop-question" id="viewer-vid-poll-question"></div>
+                                <div id="viewer-vid-poll-options"></div>
+                            </div>
+
+                            <div class="vid-overlay-goal" id="viewer-vid-goal">
+                                <div class="vog-head">
+                                    <span>🎯 Stream Goal</span>
+                                    <span id="viewer-vid-goal-pct">0%</span>
+                                </div>
+                                <div class="vog-track"><div class="vog-fill" id="viewer-vid-goal-fill" style="width:0%"></div></div>
+                                <div class="vog-nums">
+                                    <span id="viewer-vid-goal-current">0 ★</span>
+                                    <span id="viewer-vid-goal-target">— ★</span>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Hype + Stars row -->
@@ -5652,6 +5790,28 @@
                             <!-- Stream meta bottom left -->
                             <div class="live-stream-meta" id="bc-meta-nowrap" style="bottom:50px;">
                                 <div class="live-stream-host" id="live-broadcast-title-display"></div>
+                            </div>
+
+                            <!-- ★ TikTok-style overlays: poll (bottom-left) + star goal (top-right) -->
+                            <div class="vid-overlay-poll" id="bc-vid-poll">
+                                <div class="vop-head">
+                                    <span>📊 Poll Results</span>
+                                    <span id="bc-vid-poll-votes">0 votes</span>
+                                </div>
+                                <div class="vop-question" id="bc-vid-poll-question"></div>
+                                <div id="bc-vid-poll-options"></div>
+                            </div>
+
+                            <div class="vid-overlay-goal" id="bc-vid-goal">
+                                <div class="vog-head">
+                                    <span>🎯 Stream Goal</span>
+                                    <span id="bc-vid-goal-pct">0%</span>
+                                </div>
+                                <div class="vog-track"><div class="vog-fill" id="bc-vid-goal-fill" style="width:0%"></div></div>
+                                <div class="vog-nums">
+                                    <span id="bc-vid-goal-current">0 ★</span>
+                                    <span id="bc-vid-goal-target">— ★</span>
+                                </div>
                             </div>
 
                             <!-- Whiteboard overlay (inside video container so it overlays the feed) -->
@@ -18843,6 +19003,19 @@
                 `<div class="poll-option" style="cursor:default;"><div class="poll-bar-wrap"><div class="poll-bar-fill" style="width:0%"></div><div class="poll-bar-label">${opt}<span class="poll-bar-pct">0% (0)</span></div></div></div>`
             ).join('');
         }
+        // ★ Show broadcaster in-video poll overlay immediately
+        const bcVidPoll = $('bc-vid-poll');
+        if (bcVidPoll) {
+            bcVidPoll.style.display = 'block';
+            const bq = $('bc-vid-poll-question');
+            const bo = $('bc-vid-poll-options');
+            const bv = $('bc-vid-poll-votes');
+            if (bq) bq.textContent = pollData.question;
+            if (bv) bv.textContent = '0 votes';
+            if (bo) bo.innerHTML = pollData.options.map(opt =>
+                `<div class="vop-option"><div class="vop-bar" style="width:0%"></div><div class="vop-label"><span>${opt}</span><span>0%</span></div></div>`
+            ).join('');
+        }
 
         showToast('📊 Poll launched — viewers are voting!');
     };
@@ -18855,6 +19028,8 @@
         }).catch(() => {});
         const hostCard = $('host-poll-card');
         if (hostCard) hostCard.style.display = 'none';
+        const bcVidPoll = $('bc-vid-poll');
+        if (bcVidPoll) bcVidPoll.style.display = 'none';
         showToast('Poll closed.');
     };
 
@@ -18884,6 +19059,7 @@
     function _updateGoalBar(current) {
         if (!starGoalTarget) return;
         const pct = Math.min(100, (current / starGoalTarget) * 100);
+        // Original sidebar card (broadcaster)
         const fill = $('goal-fill');
         const cur  = $('goal-current');
         const tgt  = $('goal-target');
@@ -18892,10 +19068,24 @@
         if (cur)  cur.textContent  = current.toFixed(1) + ' ★';
         if (tgt)  tgt.textContent  = starGoalTarget + ' ★';
         if (lbl)  lbl.textContent  = pct.toFixed(0) + '%';
+        // ★ Broadcaster in-video overlay
+        const bcVidGoal = $('bc-vid-goal');
+        if (bcVidGoal) {
+            bcVidGoal.style.display = 'block';
+            const bFill = $('bc-vid-goal-fill');
+            const bCur  = $('bc-vid-goal-current');
+            const bTgt  = $('bc-vid-goal-target');
+            const bPct  = $('bc-vid-goal-pct');
+            if (bFill) bFill.style.width = pct.toFixed(1) + '%';
+            if (bCur)  bCur.textContent  = current.toFixed(1) + ' ★';
+            if (bTgt)  bTgt.textContent  = starGoalTarget + ' ★';
+            if (bPct)  bPct.textContent  = pct.toFixed(0) + '%';
+        }
         if (pct >= 100) {
             showMilestone('🎯 GOAL REACHED! 🎉');
-            // Flash gold
             if (fill) { fill.style.background = 'linear-gradient(90deg,#22c55e,#4ade80)'; }
+            const bFill2 = $('bc-vid-goal-fill');
+            if (bFill2) bFill2.style.background = 'linear-gradient(90deg,#22c55e,#4ade80)';
         }
     }
 
@@ -19147,9 +19337,32 @@
                         </div>`;
                     }).join('');
                 }
+                // ★ Broadcaster in-video poll overlay
+                const bcVidPoll = $('bc-vid-poll');
+                if (bcVidPoll) {
+                    bcVidPoll.style.display = 'block';
+                    const bq = $('bc-vid-poll-question');
+                    const bo = $('bc-vid-poll-options');
+                    const bv = $('bc-vid-poll-votes');
+                    const total = (poll.votes || []).reduce((a,b) => a+b, 0);
+                    if (bq) bq.textContent = poll.question;
+                    if (bv) bv.textContent = total + ' vote' + (total !== 1 ? 's' : '');
+                    if (bo) bo.innerHTML = poll.options.map((opt, i) => {
+                        const v   = poll.votes[i] || 0;
+                        const pct = total > 0 ? Math.round((v / total) * 100) : 0;
+                        return `<div class="vop-option">
+                            <div class="vop-bar" style="width:${pct}%"></div>
+                            <div class="vop-label"><span>${opt}</span><span>${pct}% (${v})</span></div>
+                        </div>`;
+                    }).join('');
+                }
             } else {
                 if (pollCard) pollCard.style.display = 'none';
                 if (hostCard) hostCard.style.display = 'none';
+                const bcVidPoll = $('bc-vid-poll');
+                if (bcVidPoll) bcVidPoll.style.display = 'none';
+                const viewerVidPoll = $('viewer-vid-poll');
+                if (viewerVidPoll) viewerVidPoll.style.display = 'none';
             }
 
             // Star goal
@@ -19167,8 +19380,27 @@
                 if (vCur)  vCur.textContent  = earned.toFixed(1) + ' ★';
                 if (vTgt)  vTgt.textContent  = goal + ' ★';
                 if (vPct)  vPct.textContent  = pct.toFixed(0) + '%';
+                // ★ Viewer in-video goal overlay
+                const vidGoal = $('viewer-vid-goal');
+                if (vidGoal) {
+                    vidGoal.style.display = 'block';
+                    const gFill = $('viewer-vid-goal-fill');
+                    const gCur  = $('viewer-vid-goal-current');
+                    const gTgt  = $('viewer-vid-goal-target');
+                    const gPct  = $('viewer-vid-goal-pct');
+                    if (gFill) gFill.style.width = pct.toFixed(1) + '%';
+                    if (gCur)  gCur.textContent  = earned.toFixed(1) + ' ★';
+                    if (gTgt)  gTgt.textContent  = goal + ' ★';
+                    if (gPct)  gPct.textContent  = pct.toFixed(0) + '%';
+                    if (pct >= 100) {
+                        const gf2 = $('viewer-vid-goal-fill');
+                        if (gf2) gf2.style.background = 'linear-gradient(90deg,#22c55e,#4ade80)';
+                    }
+                }
             } else {
                 if (vGoal) vGoal.style.display = 'none';
+                const vidGoal = $('viewer-vid-goal');
+                if (vidGoal) vidGoal.style.display = 'none';
             }
 
             // Lower third (viewer side)
@@ -19214,6 +19446,26 @@
                 </div>
             </div>`;
         }).join('');
+
+        // ★ Also update viewer in-video overlay
+        const vidPoll = $('viewer-vid-poll');
+        if (vidPoll) {
+            vidPoll.style.display = 'block';
+            const vq = $('viewer-vid-poll-question');
+            const vo = $('viewer-vid-poll-options');
+            const vv = $('viewer-vid-poll-votes');
+            if (vq) vq.textContent = poll.question;
+            if (vv) vv.textContent = total + ' vote' + (total !== 1 ? 's' : '');
+            if (vo) vo.innerHTML = poll.options.map((opt, i) => {
+                const v   = poll.votes[i] || 0;
+                const pct = total > 0 ? Math.round((v / total) * 100) : 0;
+                const voted = _viewerPollVote === i;
+                return `<div class="vop-option ${voted ? 'voted' : ''}" onclick="castPollVote(${i})">
+                    <div class="vop-bar" style="width:${pct}%"></div>
+                    <div class="vop-label"><span>${opt}</span><span>${pct}%</span></div>
+                </div>`;
+            }).join('');
+        }
     }
 
     window.castPollVote = async function(optionIndex) {
@@ -19305,6 +19557,24 @@
                     const pct = total > 0 ? Math.round((v / total) * 100) : 0;
                     return '<div class="poll-option"><div class="poll-bar-wrap"><div class="poll-bar-fill" style="width:' + pct + '%"></div><div class="poll-bar-label">' + opt + ' <span class="poll-bar-pct">' + pct + '%</span></div></div></div>';
                 }).join('');
+                // ★ Also update broadcaster in-video poll overlay
+                const bcVid = document.getElementById('bc-vid-poll');
+                if (bcVid) {
+                    bcVid.style.display = 'block';
+                    const bq = document.getElementById('bc-vid-poll-question');
+                    const bo = document.getElementById('bc-vid-poll-options');
+                    const bv = document.getElementById('bc-vid-poll-votes');
+                    if (bq) bq.textContent = poll.question || '';
+                    if (bv) bv.textContent = total + ' vote' + (total !== 1 ? 's' : '');
+                    if (bo) bo.innerHTML = (poll.options || []).map((opt, i) => {
+                        const v   = (poll.votes || [])[i] || 0;
+                        const pct = total > 0 ? Math.round((v / total) * 100) : 0;
+                        return '<div class="vop-option"><div class="vop-bar" style="width:' + pct + '%"></div><div class="vop-label"><span>' + opt + '</span><span>' + pct + '%</span></div></div>';
+                    }).join('');
+                }
+            } else if (isHosting) {
+                const bcVid = document.getElementById('bc-vid-poll');
+                if (bcVid) bcVid.style.display = 'none';
             }
         });
     }
