@@ -17208,6 +17208,32 @@
                             closeBtn.style.cssText = 'position:absolute;top:2px;right:4px;background:rgba(0,0,0,0.5);border:none;color:#fff;border-radius:50%;width:16px;height:16px;font-size:0.55rem;cursor:pointer;z-index:2;line-height:1;';
                             closeBtn.onclick = function(){ cohostPip.style.display='none'; };
                             cohostPip.appendChild(closeBtn);
+                            // Spotlight button — give co-host fullscreen
+                            const spotBtn = document.createElement('button');
+                            spotBtn.textContent = '⛶';
+                            spotBtn.title = 'Give co-host full screen (click again to restore)';
+                            spotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:1px 5px;font-size:0.7rem;cursor:pointer;z-index:2;';
+                            let _spotlightActive = false;
+                            spotBtn.onclick = function(){
+                                const lsBox = document.getElementById('live-broadcaster-video-container');
+                                if (!_spotlightActive) {
+                                    _spotlightActive = true;
+                                    spotBtn.textContent = '⊠';
+                                    spotBtn.title = 'Restore your video to main stage';
+                                    cohostPip.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border-radius:0;border:none;z-index:18;background:#000;';
+                                    spotBtn.style.cssText = 'position:absolute;bottom:8px;right:8px;background:rgba(124,92,191,0.9);border:none;color:#fff;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:22;';
+                                    if (lsBox) lsBox.style.position = 'relative';
+                                    showToast('⛶ Co-host is now in spotlight');
+                                } else {
+                                    _spotlightActive = false;
+                                    spotBtn.textContent = '⛶';
+                                    spotBtn.title = 'Give co-host full screen';
+                                    cohostPip.style.cssText = 'position:absolute;bottom:50px;right:10px;width:140px;height:90px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+                                    spotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:1px 5px;font-size:0.7rem;cursor:pointer;z-index:2;';
+                                    showToast('⊠ Restored to PiP');
+                                }
+                            };
+                            cohostPip.appendChild(spotBtn);
                             const videoDiv = document.createElement('div');
                             videoDiv.id = 'cohost-pip-video';
                             videoDiv.style.cssText = 'width:100%;height:100%;';
@@ -17420,8 +17446,28 @@
                             label.style.cssText = 'position:absolute;top:2px;left:4px;font-size:0.55rem;color:#fff;background:rgba(124,92,191,0.8);padding:1px 5px;border-radius:4px;z-index:1;';
                             label.textContent = '🎤 Co-host';
                             cohostPip.appendChild(label);
-                            const videoDiv = document.createElement('div');
-                            videoDiv.id = 'cohost-pip-viewer-video';
+                            // Spotlight button — viewer can spotlight the co-host to fill the stage
+                            const vSpotBtn = document.createElement('button');
+                            vSpotBtn.textContent = '⛶';
+                            vSpotBtn.title = 'Spotlight co-host (click again to restore)';
+                            vSpotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:1px 5px;font-size:0.7rem;cursor:pointer;z-index:2;';
+                            let _vSpotActive = false;
+                            vSpotBtn.onclick = function(){
+                                if (!_vSpotActive) {
+                                    _vSpotActive = true;
+                                    vSpotBtn.textContent = '⊠';
+                                    vSpotBtn.title = 'Restore host video to main stage';
+                                    cohostPip.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border-radius:0;border:none;z-index:18;background:#000;';
+                                    vSpotBtn.style.cssText = 'position:absolute;bottom:8px;right:8px;background:rgba(124,92,191,0.9);border:none;color:#fff;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:22;';
+                                } else {
+                                    _vSpotActive = false;
+                                    vSpotBtn.textContent = '⛶';
+                                    vSpotBtn.title = 'Spotlight co-host';
+                                    cohostPip.style.cssText = 'position:absolute;bottom:50px;right:10px;width:140px;height:90px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+                                    vSpotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:1px 5px;font-size:0.7rem;cursor:pointer;z-index:2;';
+                                }
+                            };
+                            cohostPip.appendChild(vSpotBtn);
                             videoDiv.style.cssText = 'width:100%;height:100%;';
                             cohostPip.appendChild(videoDiv);
                             const rc = document.getElementById('live-remote-video-container');
@@ -20064,7 +20110,10 @@
                 });
                 document.addEventListener('mouseup', () => { _drag = false; }, { once: false });
 
+                let _wbCommitted = false;
                 const commit = () => {
+                    if (_wbCommitted) return;
+                    _wbCommitted = true;
                     const txt = inp.value.trim();
                     if (txt) {
                         const rNow = canvas.getBoundingClientRect();
@@ -20079,7 +20128,7 @@
                     }
                     wrapper.remove();
                 };
-                inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); commit(); } if (ev.key === 'Escape') wrapper.remove(); });
+                inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); commit(); } if (ev.key === 'Escape') { _wbCommitted = true; wrapper.remove(); } });
                 inp.addEventListener('blur', () => { setTimeout(() => { if (!_drag) commit(); }, 150); });
                 return;
             }
