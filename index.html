@@ -17415,10 +17415,27 @@
                 }
             });
 
-            agoraClient.on('user-unpublished', (remoteUser) => {
-                if (!hostUid || remoteUser.uid === hostUid) {
-                    // Main host dropped — leave stream
-                    leaveLiveStream();
+            agoraClient.on('user-unpublished', (remoteUser, mediaType) => {
+                if (hostUid && remoteUser.uid === hostUid) {
+                    // Host unpublished something.
+                    // Video unpublish fires when host stops screen share or toggles camera — NOT a stream end.
+                    // Only treat as stream-ended when audio drops, and even then confirm via Firestore.
+                    if (mediaType === 'audio') {
+                        setTimeout(() => {
+                            if (_watchingStreamId && window.db && window.fs) {
+                                const { doc: _d, getDoc: _g } = window.fs;
+                                _g(_d(window.db, LIVE_COL, _watchingStreamId)).then(snap => {
+                                    if (!snap.exists() || snap.data().active === false) {
+                                        leaveLiveStream();
+                                    }
+                                }).catch(() => {});
+                            }
+                        }, 2000);
+                    }
+                    // Video unpublish (screen share ended / cam toggle) — ignore here;
+                    // subscribeStreamDoc handles real stream-end via the active flag.
+                } else if (!hostUid) {
+                    // hostUid not yet loaded — ignore; subscribeStreamDoc handles real stream-end
                 } else {
                     // Co-host left — remove their PiP
                     const pip = document.getElementById('cohost-pip-viewer');
