@@ -17858,9 +17858,10 @@
         }).catch(() => {});
     }
 
+    const _liveChatUnsubs = {};
     function subscribeLiveChat(streamId, feedElId) {
         if (!window.db || !window.fs) { waitForFb(() => subscribeLiveChat(streamId, feedElId)); return; }
-        if (_liveChatUnsub) { try { _liveChatUnsub(); } catch(_) {} }
+        if (_liveChatUnsubs[feedElId]) { try { _liveChatUnsubs[feedElId](); } catch(_) {} }
 
         const { collection, query, orderBy, onSnapshot } = window.fs;
         // Note: limit not available in window.fs — query without it, render last 50 client-side
@@ -17869,7 +17870,7 @@
             orderBy('ts', 'asc')
         );
 
-        _liveChatUnsub = onSnapshot(q, snap => {
+        _liveChatUnsubs[feedElId] = onSnapshot(q, snap => {
             const msgs = [];
             snap.forEach(d => msgs.push({ id: d.id, ...d.data() }));
             // Keep last 50 messages client-side
@@ -17900,6 +17901,12 @@
                         <div class="live-chat-user">${_esc(m.author)}</div>
                         <div class="live-chat-body live-chat-hype-msg">${_esc(m.text)}</div>
                     </div>
+                </div>`;
+            }
+            // Hype notification — gold banner in chat
+            if (m.isHype) {
+                return `<div class="live-chat-msg" style="background:rgba(240,180,41,0.13);border-radius:6px;padding:5px 8px;margin:2px 0;border-left:3px solid var(--gold);">
+                    <div style="font-size:0.72rem;color:var(--gold);font-weight:700;">⚡ ${_esc(m.author)} hyped the stream!</div>
                 </div>`;
             }
             // Join notification
@@ -20007,6 +20014,12 @@
                         _wbDragTextIdx = i;
                         _wbDragOffX = p.x - t.x;
                         _wbDragOffY = p.y - t.y;
+                        // Snapshot canvas WITHOUT the dragged text so move is ghost-free
+                        { const _dctx = canvas.getContext('2d');
+                          const _saved = _wbTexts.splice(i, 1)[0];
+                          _wbRenderTexts();
+                          _wbTexts.splice(i, 0, _saved);
+                          _wbSnapshot = _dctx.getImageData(0, 0, canvas.width, canvas.height); }
                         return;
                     }
                 }
@@ -20059,12 +20072,9 @@
                         const syNow = rNow.height / canvas.height;
                         const cx = (wLeft + handle.offsetWidth + 4 - rNow.left) / sxNow;
                         const cy = (wTop + fontSize - rNow.top) / syNow;
-                        // Store as a persistent draggable text object
+                        // Store text object — _wbRenderTexts() draws it (no direct draw to avoid doubles)
                         _wbTexts.push({ text: txt, x: cx, y: cy, fontSize: fontSize, color: _wbColor });
-                        // Draw immediately
-                        ctx.font = `${fontSize}px sans-serif`;
-                        ctx.fillStyle = _wbColor;
-                        ctx.fillText(txt, cx, cy);
+                        _wbRenderTexts();
                         _wbPushToFirestore(true);
                     }
                     wrapper.remove();
@@ -20092,9 +20102,10 @@
                 const t = _wbTexts[_wbDragTextIdx];
                 t.x = p.x - _wbDragOffX;
                 t.y = p.y - _wbDragOffY;
-                // Redraw: clear canvas back to snapshot, re-draw strokes, re-render all texts
+                // Restore strokes-only snapshot, then draw all texts fresh (no ghost)
                 const ctx = canvas.getContext('2d');
                 if (_wbSnapshot) ctx.putImageData(_wbSnapshot, 0, 0);
+                else ctx.clearRect(0, 0, canvas.width, canvas.height);
                 _wbRenderTexts();
                 return;
             }
@@ -20132,9 +20143,11 @@
             // Finish text drag
             if (_wbTool === 'text' && _wbDragTextIdx >= 0) {
                 _wbDragTextIdx = -1;
-                // Burn current positions into canvas permanently
+                // Restore clean base then burn final positions permanently
                 const ctx = canvas.getContext('2d');
+                if (_wbSnapshot) ctx.putImageData(_wbSnapshot, 0, 0);
                 _wbRenderTexts();
+                _wbSnapshot = null;
                 _wbPushToFirestore(true);
                 return;
             }
