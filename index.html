@@ -1151,7 +1151,7 @@
         }
         /* Poll — bottom-left of video */
         .vid-overlay-poll {
-            bottom: 54px;
+            bottom: 90px;
             left: 10px;
             width: clamp(180px, 46%, 240px);
             background: rgba(10, 10, 20, 0.60);
@@ -5606,7 +5606,8 @@
                         </div>
 
                         <!-- Active Poll (viewer side — shown when host launches one) -->
-                        <div id="viewer-poll-card" class="live-poll-card" style="display:none;">
+                        <!-- viewer-poll-card: now shown as in-video overlay; kept in DOM for JS references only -->
+                        <div id="viewer-poll-card" class="live-poll-card" style="display:none!important;visibility:hidden;position:absolute;pointer-events:none;width:0;height:0;overflow:hidden;">
                             <div class="live-poll-head">
                                 <span>📊 Live Poll</span>
                                 <span id="viewer-poll-votes" style="font-size:0.62rem;color:var(--text-muted);font-weight:400;text-transform:none;">0 votes</span>
@@ -5617,8 +5618,8 @@
                             </div>
                         </div>
 
-                        <!-- Star Goal bar (viewer side) — compact, above gifts -->
-                        <div id="viewer-star-goal" style="display:none;margin-bottom:8px;padding:8px 12px;background:rgba(240,180,41,0.08);border:1px solid rgba(240,180,41,0.25);border-radius:10px;">
+                        <!-- viewer-star-goal: now shown as in-video overlay; kept in DOM for JS references only -->
+                        <div id="viewer-star-goal" style="display:none!important;visibility:hidden;position:absolute;pointer-events:none;width:0;height:0;overflow:hidden;">
                             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
                                 <span style="font-size:0.65rem;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:1px;">🎯 Stream Goal</span>
                                 <span id="viewer-goal-pct" style="font-size:0.65rem;font-weight:700;color:var(--gold);">0%</span>
@@ -5796,7 +5797,10 @@
                             <div class="vid-overlay-poll" id="bc-vid-poll">
                                 <div class="vop-head">
                                     <span>📊 Poll Results</span>
-                                    <span id="bc-vid-poll-votes">0 votes</span>
+                                    <span style="display:flex;align-items:center;gap:6px;">
+                                        <span id="bc-vid-poll-votes">0 votes</span>
+                                        <button onclick="closePoll()" title="End poll" style="background:rgba(224,62,62,0.25);border:1px solid rgba(224,62,62,0.4);color:#ff8080;border-radius:4px;font-size:0.52rem;padding:1px 5px;cursor:pointer;font-weight:700;">End</button>
+                                    </span>
                                 </div>
                                 <div class="vop-question" id="bc-vid-poll-question"></div>
                                 <div id="bc-vid-poll-options"></div>
@@ -5805,7 +5809,10 @@
                             <div class="vid-overlay-goal" id="bc-vid-goal">
                                 <div class="vog-head">
                                     <span>🎯 Stream Goal</span>
-                                    <span id="bc-vid-goal-pct">0%</span>
+                                    <span style="display:flex;align-items:center;gap:6px;">
+                                        <span id="bc-vid-goal-pct">0%</span>
+                                        <button onclick="dismissStarGoal()" title="Hide goal" style="background:rgba(255,255,255,0.12);border:none;color:rgba(255,255,255,0.7);border-radius:50%;width:16px;height:16px;font-size:0.55rem;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;">✕</button>
+                                    </span>
                                 </div>
                                 <div class="vog-track"><div class="vog-fill" id="bc-vid-goal-fill" style="width:0%"></div></div>
                                 <div class="vog-nums">
@@ -5938,8 +5945,8 @@
                             </div>
                         </div>
 
-                        <!-- Poll Results — broadcaster sees live vote tallies here -->
-                        <div id="host-poll-card" class="live-poll-card" style="display:none;">
+                        <!-- Poll Results — now shown as in-video overlay; this card is kept in DOM for JS references but hidden -->
+                        <div id="host-poll-card" class="live-poll-card" style="display:none!important; visibility:hidden; position:absolute; pointer-events:none; width:0; height:0; overflow:hidden;">
                             <div class="live-poll-head">
                                 <span>📊 Live Poll Results</span>
                                 <span id="host-poll-votes" style="font-size:0.62rem;color:var(--text-muted);font-weight:400;text-transform:none;">0 votes</span>
@@ -5964,8 +5971,8 @@
                             <div id="hand-queue-list"></div>
                         </div>
 
-                        <!-- Star Goal bar (shown when goal is set) -->
-                        <div id="star-goal-display" style="display:none;" class="star-goal-card">
+                        <!-- Star Goal bar — now shown as in-video overlay; kept in DOM for JS references but hidden -->
+                        <div id="star-goal-display" style="display:none!important; visibility:hidden; position:absolute; pointer-events:none; width:0; height:0; overflow:hidden;" class="star-goal-card">
                             <div class="star-goal-label">
                                 <span>🎯 Star Goal</span>
                                 <span id="goal-label-pct">0%</span>
@@ -19054,6 +19061,23 @@
         _updateGoalBar(liveStarsEarned);
         const _sgd = $('star-goal-display'); if (_sgd) _sgd.style.display = 'block';
         showToast(`🎯 Goal set: ${amt} ★ — viewers can see your goal!`);
+    };
+
+    window.dismissStarGoal = async function() {
+        // Hide overlays immediately on both screens
+        const bcVidGoal = $('bc-vid-goal');
+        if (bcVidGoal) bcVidGoal.style.display = 'none';
+        const viewerVidGoal = $('viewer-vid-goal');
+        if (viewerVidGoal) viewerVidGoal.style.display = 'none';
+        const vGoal = $('viewer-star-goal');
+        if (vGoal) vGoal.style.display = 'none';
+        // Clear goal in Firestore so viewers stop seeing it
+        starGoalTarget = 0;
+        if (currentStreamId && window.db) {
+            const { doc, updateDoc } = window.fs;
+            await updateDoc(doc(window.db, LIVE_COL, currentStreamId), { starGoal: 0 }).catch(() => {});
+        }
+        showToast('Star goal removed.');
     };
 
     function _updateGoalBar(current) {
