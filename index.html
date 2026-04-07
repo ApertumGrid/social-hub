@@ -5847,11 +5847,17 @@
                                     <div onclick="wbSetColor('#e03e3e')" style="width:16px;height:16px;border-radius:50%;background:#e03e3e;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Red"></div>
                                     <div onclick="wbSetColor('#9b7de0')" style="width:16px;height:16px;border-radius:50%;background:#9b7de0;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Purple"></div>
                                     <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;flex-shrink:0;"></div>
-                                    <select id="wb-size" onchange="wbSetSize(this.value)" style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:6px;padding:2px 4px;font-size:0.62rem;cursor:pointer;flex-shrink:0;">
+                                    <select id="wb-size" onchange="wbSetSize(this.value)" style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:6px;padding:2px 4px;font-size:0.62rem;cursor:pointer;flex-shrink:0;" title="Brush size">
                                         <option value="2" style="background:#1a1a2e;color:#fff;">Thin</option>
                                         <option value="4" selected style="background:#1a1a2e;color:#fff;">Med</option>
                                         <option value="8" style="background:#1a1a2e;color:#fff;">Thick</option>
                                         <option value="16" style="background:#1a1a2e;color:#fff;">Fat</option>
+                                    </select>
+                                    <select id="wb-text-size" onchange="wbSetTextSize(this.value)" style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:6px;padding:2px 4px;font-size:0.62rem;cursor:pointer;flex-shrink:0;" title="Text size">
+                                        <option value="14" style="background:#1a1a2e;color:#fff;">T-Sm</option>
+                                        <option value="24" selected style="background:#1a1a2e;color:#fff;">T-Med</option>
+                                        <option value="36" style="background:#1a1a2e;color:#fff;">T-Lg</option>
+                                        <option value="52" style="background:#1a1a2e;color:#fff;">T-XL</option>
                                     </select>
                                     <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;flex-shrink:0;"></div>
                                     <button onclick="wbClear()"          style="background:rgba(224,62,62,0.18);border:1px solid rgba(224,62,62,0.4);border-radius:8px;color:#e03e3e;padding:3px 8px;font-size:0.62rem;cursor:pointer;flex-shrink:0;">Clear</button>
@@ -17359,6 +17365,19 @@
             // Update viewer count
             await updateDoc(doc(window.db, LIVE_COL, streamId), { viewers: increment(1) });
 
+            // Post join notification to live chat
+            if (userHandle && window.fs) {
+                const { collection: _col, addDoc: _add, serverTimestamp: _sts } = window.fs;
+                _add(_col(window.db, LIVE_CHAT_COL, streamId, 'messages'), {
+                    author:   userHandle,
+                    avatar:   userAvatar || '',
+                    text:     `👋 ${userHandle} joined`,
+                    ts:       _sts(),
+                    isJoin:   true,
+                    isSystem: false
+                }).catch(() => {});
+            }
+
             // Init Agora as audience — join shared channel, subscribe only to this stream's host UID
             agoraClient = window.AgoraRTC.createClient({ mode: 'live', codec: 'h264' });
             // audienceLatencyLevel:1 = low-latency mode required for setClientRole('host') promotion (Join Stage)
@@ -17619,8 +17638,15 @@
                 hypeCount:   increment(1)
             });
 
-            // 4. Add hype message to chat
-            sendSystemChat(_watchingStreamId, `${userHandle} hyped the stream! ⚡`);
+            // 4. Add hype message to chat (as user, not system)
+            addDoc(collection(window.db, LIVE_CHAT_COL, _watchingStreamId, 'messages'), {
+                author:   userHandle,
+                avatar:   userAvatar || '',
+                text:     `⚡ ${userHandle} hyped the stream!`,
+                ts:       serverTimestamp(),
+                isSystem: false,
+                isHype:   true
+            }).catch(() => {});
 
             // 5. Feed into Live Activity ticker (right panel)
             if (typeof window.tickerLog === 'function') {
@@ -17789,7 +17815,6 @@
                 avatar:    userAvatar,
                 text:      `${tier.icon} ${userHandle} sent a ${tier.name}! (${tier.cost} ★)`,
                 ts:        serverTimestamp(),
-                isSystem:  true,
                 isGift:    true,
                 giftTier:  tierKey,
                 giftIcon:  tier.icon,
@@ -17877,6 +17902,12 @@
                     </div>
                 </div>`;
             }
+            // Join notification
+            if (m.isJoin) {
+                return `<div class="live-chat-msg" style="background:rgba(45,212,191,0.07);border-radius:6px;padding:4px 8px;margin:2px 0;border-left:2px solid rgba(45,212,191,0.4);">
+                    <div style="font-size:0.7rem;color:var(--teal);font-weight:600;">${_esc(m.text)}</div>
+                </div>`;
+            }
             // Host message — purple crown
             if (m.isHost) {
                 return `<div class="live-chat-msg" style="background:rgba(124,92,191,0.07);border-radius:6px;padding:4px 6px;margin:2px 0;">
@@ -17919,7 +17950,7 @@
             const d = snap.data();
 
             // Viewer side
-            setText('live-watch-viewers',       '👁 ' + (d.viewers || 0) + ' watching');
+            setText('live-watch-viewers',       '👁 ' + (d.viewers || 0) + ((d.viewers === 1) ? ' person watching' : ' watching'));
             setText('live-creator-stars-watch',  (d.starsEarned || 0).toFixed(1));
             setText('live-hype-count',           '(' + (d.hypeCount || 0) + ')');
 
@@ -17930,7 +17961,7 @@
             setText('live-stat-stars',   liveStarsEarned.toFixed(1) + ' ★');
             setText('live-stat-hypes',   String(liveHypeCount));
             setText('live-stat-viewers', String(liveViewerCount));
-            setText('live-broadcast-viewers', '👁 ' + liveViewerCount + ' watching');
+            setText('live-broadcast-viewers', '👁 ' + liveViewerCount + (liveViewerCount === 1 ? ' person watching' : ' watching'));
             // Update host goal bar in real-time as stars come in
             if (isHosting && starGoalTarget > 0) _updateGoalBar(liveStarsEarned);
 
@@ -19535,7 +19566,7 @@
             if (!snap.exists()) return;
             const d = snap.data();
 
-            setText('live-watch-viewers',       '👁 ' + (d.viewers || 0) + ' watching');
+            setText('live-watch-viewers',       '👁 ' + (d.viewers || 0) + ((d.viewers === 1) ? ' person watching' : ' watching'));
             setText('live-creator-stars-watch',  (d.starsEarned || 0).toFixed(1));
             setText('live-hype-count',           '(' + (d.hypeCount || 0) + ')');
 
@@ -19544,7 +19575,7 @@
             liveViewerCount  = d.viewers     || 0;
             setText('live-stat-stars',   liveStarsEarned.toFixed(1) + ' ★');
             setText('live-stat-hypes',   String(liveHypeCount));
-            setText('live-broadcast-viewers', '👁 ' + liveViewerCount + ' watching');
+            setText('live-broadcast-viewers', '👁 ' + liveViewerCount + ((liveViewerCount === 1) ? ' person watching' : ' watching'));
 
             // Update goal bar on broadcaster side
             if (starGoalTarget > 0) _updateGoalBar(liveStarsEarned);
@@ -19697,6 +19728,8 @@
     let _wbActive   = false;
     let _wbMode     = 'overlay'; // 'overlay' | 'blank'
     let _wbTool     = 'pen';
+    let _wbTextSize = 24; // separate text size, independent of brush size
+    let _wbTexts    = []; // [{text, x, y, fontSize, color}] — persistent text objects
     let _wbViewerUnsub = null;
 
     // Viewer side — subscribe to whiteboard updates
@@ -19818,12 +19851,26 @@
 
     window.wbSetColor = function(color) { _wbColor = color; };
     window.wbSetSize  = function(val)   { _wbSize  = parseInt(val, 10) || 4; };
+    window.wbSetTextSize = function(val) { _wbTextSize = parseInt(val, 10) || 24; };
+
+    // Re-render all text objects on top of canvas (called after every stroke)
+    function _wbRenderTexts() {
+        const canvas = _getWBCanvas();
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        _wbTexts.forEach(t => {
+            ctx.font = `${t.fontSize}px sans-serif`;
+            ctx.fillStyle = t.color;
+            ctx.fillText(t.text, t.x, t.y);
+        });
+    }
 
     window.wbClear = function() {
         const canvas = _getWBCanvas();
         if (!canvas) return;
         canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-        _wbPushToFirestore(true); // push cleared state to viewers
+        _wbTexts = []; // clear draggable text objects too
+        _wbPushToFirestore(true);
         showToast('Whiteboard cleared.');
     };
 
@@ -19939,25 +19986,43 @@
             return { x: (src.clientX - r.left) * scaleX, y: (src.clientY - r.top) * scaleY };
         }
 
+        // Drag state for moving placed text objects
+        let _wbDragTextIdx = -1, _wbDragOffX = 0, _wbDragOffY = 0;
+
         _wbPointerDown = function(e) {
             e.preventDefault();
-            // Text tool: show an input at click position instead of drawing
+            let p = _pos(e);
+
+            // Text tool — check if clicking near an existing text object first (to drag it)
             if (_wbTool === 'text') {
-                const p = _pos(e);
                 const ctx = canvas.getContext('2d');
+                const HIT = 20; // px hit radius on canvas coords
+                for (let i = _wbTexts.length - 1; i >= 0; i--) {
+                    const t = _wbTexts[i];
+                    ctx.font = `${t.fontSize}px sans-serif`;
+                    const w = ctx.measureText(t.text).width;
+                    if (p.x >= t.x - HIT && p.x <= t.x + w + HIT &&
+                        p.y >= t.y - t.fontSize - HIT && p.y <= t.y + HIT) {
+                        // Hit — start dragging this text object
+                        _wbDragTextIdx = i;
+                        _wbDragOffX = p.x - t.x;
+                        _wbDragOffY = p.y - t.y;
+                        return;
+                    }
+                }
+
+                // No existing text hit — open input to create new text
                 const r = canvas.getBoundingClientRect();
                 const scaleX = r.width  / canvas.width;
                 const scaleY = r.height / canvas.height;
-                const fontSize = Math.max(14, _wbSize * 3);
+                const fontSize = _wbTextSize;
 
-                // Draggable wrapper + input
                 const wrapper = document.createElement('div');
                 let wLeft = r.left + p.x * scaleX;
                 let wTop  = r.top  + p.y * scaleY - fontSize;
                 wrapper.style.cssText = `position:fixed;left:${wLeft}px;top:${wTop}px;z-index:9999;`
                     + `cursor:move;display:flex;align-items:center;gap:4px;`;
 
-                // Drag handle
                 const handle = document.createElement('span');
                 handle.textContent = '✥';
                 handle.title = 'Drag to move';
@@ -19974,7 +20039,6 @@
                 document.body.appendChild(wrapper);
                 inp.focus();
 
-                // Drag logic on the handle
                 let _drag = false, _dx = 0, _dy = 0;
                 handle.addEventListener('mousedown', ev => {
                     _drag = true; _dx = ev.clientX - wLeft; _dy = ev.clientY - wTop;
@@ -19990,13 +20054,14 @@
                 const commit = () => {
                     const txt = inp.value.trim();
                     if (txt) {
-                        // Recapture canvas rect at commit time (user may have scrolled/resized)
                         const rNow = canvas.getBoundingClientRect();
                         const sxNow = rNow.width  / canvas.width;
                         const syNow = rNow.height / canvas.height;
                         const cx = (wLeft + handle.offsetWidth + 4 - rNow.left) / sxNow;
                         const cy = (wTop + fontSize - rNow.top) / syNow;
-                        _setupWBCtx(ctx);
+                        // Store as a persistent draggable text object
+                        _wbTexts.push({ text: txt, x: cx, y: cy, fontSize: fontSize, color: _wbColor });
+                        // Draw immediately
                         ctx.font = `${fontSize}px sans-serif`;
                         ctx.fillStyle = _wbColor;
                         ctx.fillText(txt, cx, cy);
@@ -20005,14 +20070,14 @@
                     wrapper.remove();
                 };
                 inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); commit(); } if (ev.key === 'Escape') wrapper.remove(); });
-                // Commit on blur only if not dragging
                 inp.addEventListener('blur', () => { setTimeout(() => { if (!_drag) commit(); }, 150); });
                 return;
             }
             _wbDrawing = true;
-            const p = _pos(e);
+            p = _pos(e);
             _wbStartX = p.x; _wbStartY = p.y;
             const ctx = canvas.getContext('2d');
+            _wbRenderTexts(); // ensure texts are burned in before snapshot
             _wbSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
             if (_wbTool === 'pen' || _wbTool === 'eraser') {
                 ctx.beginPath(); ctx.moveTo(p.x, p.y);
@@ -20020,6 +20085,19 @@
         };
 
         _wbPointerMove = function(e) {
+            // Text drag in progress
+            if (_wbTool === 'text' && _wbDragTextIdx >= 0) {
+                e.preventDefault();
+                const p = _pos(e);
+                const t = _wbTexts[_wbDragTextIdx];
+                t.x = p.x - _wbDragOffX;
+                t.y = p.y - _wbDragOffY;
+                // Redraw: clear canvas back to snapshot, re-draw strokes, re-render all texts
+                const ctx = canvas.getContext('2d');
+                if (_wbSnapshot) ctx.putImageData(_wbSnapshot, 0, 0);
+                _wbRenderTexts();
+                return;
+            }
             if (!_wbDrawing) return;
             e.preventDefault();
             const p   = _pos(e);
@@ -20037,6 +20115,7 @@
             } else {
                 ctx.putImageData(_wbSnapshot, 0, 0);
                 _setupWBCtx(ctx);
+                _wbRenderTexts();
                 const w = p.x - _wbStartX, h = p.y - _wbStartY;
                 if (_wbTool === 'line') {
                     ctx.beginPath(); ctx.moveTo(_wbStartX, _wbStartY); ctx.lineTo(p.x, p.y); ctx.stroke();
@@ -20050,10 +20129,22 @@
         };
 
         _wbPointerUp = function() {
+            // Finish text drag
+            if (_wbTool === 'text' && _wbDragTextIdx >= 0) {
+                _wbDragTextIdx = -1;
+                // Burn current positions into canvas permanently
+                const ctx = canvas.getContext('2d');
+                _wbRenderTexts();
+                _wbPushToFirestore(true);
+                return;
+            }
             if (!_wbDrawing) return;
-            _wbDrawing = false; _wbSnapshot = null;
-            canvas.getContext('2d').closePath();
-            _wbPushToFirestore(true); // push immediately after each stroke
+            _wbDrawing = false;
+            const ctx = canvas.getContext('2d');
+            ctx.closePath();
+            _wbRenderTexts(); // ensure texts stay on top after strokes
+            _wbSnapshot = null;
+            _wbPushToFirestore(true);
         };
 
         canvas.addEventListener('mousedown',  _wbPointerDown, { passive: false });
