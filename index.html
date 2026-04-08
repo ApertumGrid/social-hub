@@ -17208,29 +17208,34 @@
                             closeBtn.style.cssText = 'position:absolute;top:2px;right:4px;background:rgba(0,0,0,0.5);border:none;color:#fff;border-radius:50%;width:16px;height:16px;font-size:0.55rem;cursor:pointer;z-index:2;line-height:1;';
                             closeBtn.onclick = function(){ cohostPip.style.display='none'; };
                             cohostPip.appendChild(closeBtn);
-                            // Spotlight button — give co-host fullscreen
+                            // Spotlight button — give co-host fullscreen + broadcast to all viewers via Firestore
                             const spotBtn = document.createElement('button');
-                            spotBtn.textContent = '⛶';
-                            spotBtn.title = 'Give co-host full screen (click again to restore)';
-                            spotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:1px 5px;font-size:0.7rem;cursor:pointer;z-index:2;';
+                            spotBtn.textContent = '⛶ Spotlight';
+                            spotBtn.title = 'Give co-host full screen for everyone (click again to restore)';
+                            spotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:2px 7px;font-size:0.65rem;cursor:pointer;z-index:2;white-space:nowrap;';
                             let _spotlightActive = false;
-                            spotBtn.onclick = function(){
-                                const lsBox = document.getElementById('live-broadcaster-video-container');
-                                if (!_spotlightActive) {
-                                    _spotlightActive = true;
-                                    spotBtn.textContent = '⊠';
+                            function _applyHostSpotlight(on) {
+                                _spotlightActive = on;
+                                if (on) {
+                                    spotBtn.textContent = '⊠ Restore';
                                     spotBtn.title = 'Restore your video to main stage';
-                                    cohostPip.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border-radius:0;border:none;z-index:18;background:#000;';
-                                    spotBtn.style.cssText = 'position:absolute;bottom:8px;right:8px;background:rgba(124,92,191,0.9);border:none;color:#fff;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:22;';
-                                    if (lsBox) lsBox.style.position = 'relative';
-                                    showToast('⛶ Co-host is now in spotlight');
+                                    cohostPip.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border-radius:0;border:none;z-index:18;background:#000;overflow:hidden;';
+                                    spotBtn.style.cssText = 'position:absolute;bottom:8px;right:8px;background:rgba(124,92,191,0.9);border:none;color:#fff;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:22;white-space:nowrap;';
+                                    showToast('⛶ Co-host spotlighted for all viewers');
                                 } else {
-                                    _spotlightActive = false;
-                                    spotBtn.textContent = '⛶';
-                                    spotBtn.title = 'Give co-host full screen';
+                                    spotBtn.textContent = '⛶ Spotlight';
+                                    spotBtn.title = 'Give co-host full screen for everyone';
                                     cohostPip.style.cssText = 'position:absolute;bottom:50px;right:10px;width:140px;height:90px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
-                                    spotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:1px 5px;font-size:0.7rem;cursor:pointer;z-index:2;';
-                                    showToast('⊠ Restored to PiP');
+                                    spotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:2px 7px;font-size:0.65rem;cursor:pointer;z-index:2;white-space:nowrap;';
+                                    showToast('⊠ Co-host restored to PiP');
+                                }
+                            }
+                            spotBtn.onclick = function(){
+                                const newState = !_spotlightActive;
+                                _applyHostSpotlight(newState);
+                                // Write to Firestore so all viewers sync instantly
+                                if (currentStreamId && window.db && window.fs) {
+                                    window.fs.updateDoc(window.fs.doc(window.db, LIVE_COL, currentStreamId), { cohostSpotlight: newState }).catch(function(){});
                                 }
                             };
                             cohostPip.appendChild(spotBtn);
@@ -17248,9 +17253,12 @@
                 } catch(e) { console.warn('[CoHost] host subscribe error:', e); }
             });
             agoraClient.on('user-unpublished', (remoteUser) => {
-                // Remove co-host PiP if they leave
+                // Remove co-host PiP if they leave + clear spotlight for all viewers
                 const pip = document.getElementById('cohost-pip-host');
                 if (pip) pip.remove();
+                if (currentStreamId && window.db && window.fs) {
+                    window.fs.updateDoc(window.fs.doc(window.db, LIVE_COL, currentStreamId), { cohostSpotlight: false }).catch(function(){});
+                }
             });
 
             // Show ALL panels in the hierarchy before playing video
@@ -17446,28 +17454,41 @@
                             label.style.cssText = 'position:absolute;top:2px;left:4px;font-size:0.55rem;color:#fff;background:rgba(124,92,191,0.8);padding:1px 5px;border-radius:4px;z-index:1;';
                             label.textContent = '🎤 Co-host';
                             cohostPip.appendChild(label);
-                            // Spotlight button — viewer can spotlight the co-host to fill the stage
+                            // Spotlight button — viewer can locally toggle, OR host can force it via Firestore
                             const vSpotBtn = document.createElement('button');
                             vSpotBtn.textContent = '⛶';
                             vSpotBtn.title = 'Spotlight co-host (click again to restore)';
-                            vSpotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:1px 5px;font-size:0.7rem;cursor:pointer;z-index:2;';
+                            vSpotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:1px 5px;font-size:0.65rem;cursor:pointer;z-index:2;';
                             let _vSpotActive = false;
-                            vSpotBtn.onclick = function(){
-                                if (!_vSpotActive) {
-                                    _vSpotActive = true;
-                                    vSpotBtn.textContent = '⊠';
+                            // Expose apply fn so subscribeStreamDoc can drive it
+                            // Spotlight banner — shown when host activates spotlight so late joiners see who's presenting
+                            const _vSpotBanner = document.createElement('div');
+                            _vSpotBanner.style.cssText = 'display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(124,92,191,0.92);color:#fff;font-size:0.68rem;font-weight:700;letter-spacing:1px;padding:4px 14px;border-radius:20px;z-index:25;white-space:nowrap;pointer-events:none;';
+                            _vSpotBanner.textContent = '⛶ CO-HOST PRESENTING';
+                            cohostPip.appendChild(_vSpotBanner);
+
+                            window._applyViewerSpotlight = function(on) {
+                                _vSpotActive = on;
+                                if (on) {
+                                    vSpotBtn.textContent = '⊠ Restore';
                                     vSpotBtn.title = 'Restore host video to main stage';
-                                    cohostPip.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border-radius:0;border:none;z-index:18;background:#000;';
+                                    cohostPip.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border-radius:0;border:none;z-index:18;background:#000;overflow:hidden;';
                                     vSpotBtn.style.cssText = 'position:absolute;bottom:8px;right:8px;background:rgba(124,92,191,0.9);border:none;color:#fff;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:22;';
+                                    _vSpotBanner.style.display = 'block';
                                 } else {
-                                    _vSpotActive = false;
                                     vSpotBtn.textContent = '⛶';
                                     vSpotBtn.title = 'Spotlight co-host';
                                     cohostPip.style.cssText = 'position:absolute;bottom:50px;right:10px;width:140px;height:90px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
-                                    vSpotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:1px 5px;font-size:0.7rem;cursor:pointer;z-index:2;';
+                                    vSpotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:1px 5px;font-size:0.65rem;cursor:pointer;z-index:2;';
+                                    _vSpotBanner.style.display = 'none';
                                 }
                             };
+                            vSpotBtn.onclick = function(){ window._applyViewerSpotlight(!_vSpotActive); };
                             cohostPip.appendChild(vSpotBtn);
+                            // Late-joiner: if host already had spotlight on before this viewer joined, apply it now
+                            if (window._pendingViewerSpotlight) {
+                                setTimeout(function(){ window._applyViewerSpotlight(true); window._pendingViewerSpotlight = false; }, 200);
+                            }
                             videoDiv.style.cssText = 'width:100%;height:100%;';
                             cohostPip.appendChild(videoDiv);
                             const rc = document.getElementById('live-remote-video-container');
@@ -17502,9 +17523,11 @@
                 } else if (!hostUid) {
                     // hostUid not yet loaded — ignore; subscribeStreamDoc handles real stream-end
                 } else {
-                    // Co-host left — remove their PiP
+                    // Co-host left — remove their PiP and restore normal view
                     const pip = document.getElementById('cohost-pip-viewer');
                     if (pip) pip.remove();
+                    window._applyViewerSpotlight = null;
+                    showToast('Co-host left the stage.');
                 }
             });
 
@@ -17593,6 +17616,7 @@
         show('live-stream-browser');
         if (_liveChatUnsub) { try { _liveChatUnsub(); } catch(_) {} _liveChatUnsub = null; }
         _watchingStreamId = null;
+        window._applyViewerSpotlight = null; // clear stale closure from previous session
         loadStreamBrowser();
     };
 
@@ -18027,6 +18051,18 @@
                 showToast('The stream has ended.');
                 leaveLiveStream();
             }
+
+            // ── SYNCHRONIZED CO-HOST SPOTLIGHT ───────────────────────
+            // Host writes cohostSpotlight:true/false → all viewers auto-apply
+            if (!isHosting) {
+                if (typeof window._applyViewerSpotlight === 'function') {
+                    window._applyViewerSpotlight(!!d.cohostSpotlight);
+                } else if (d.cohostSpotlight) {
+                    // Co-host PiP not created yet (late joiner, co-host video still loading)
+                    // Store pending flag; it will be applied once the PiP is built
+                    window._pendingViewerSpotlight = true;
+                }
+            }
         });
     }
 
@@ -18082,7 +18118,7 @@
             const { doc, updateDoc } = window.fs;
             // sendBeacon-safe: use fetch with keepalive as fallback
             await updateDoc(doc(window.db, LIVE_COL, currentStreamId), {
-                active: false, endedAt: Date.now()
+                active: false, endedAt: Date.now(), cohostSpotlight: false
             });
         } catch(e) {}
         currentStreamId = null;
