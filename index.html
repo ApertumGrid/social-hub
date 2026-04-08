@@ -859,6 +859,7 @@
         #cinema-controls-panels #lower-third-editor,
         #cinema-controls-panels #vbg-picker,
         #cinema-controls-panels #cohost-panel,
+        #cinema-controls-panels #layout-picker,
         #cinema-controls-panels #goal-setter,
         #cinema-controls-panels #hand-queue-card,
         #cinema-controls-panels #host-poll-card,
@@ -884,8 +885,79 @@
             margin:0 0 6px 0 !important;
             /* display controlled by Firestore listener */
         }
+        /* ── STREAM LAYOUT SYSTEM ───────────────────────────────────── */
+        .layout-opt-btn {
+            display:flex; flex-direction:column; align-items:center; gap:5px;
+            background:var(--bg-card); border:1.5px solid var(--border);
+            border-radius:var(--radius-sm); padding:8px 6px;
+            cursor:pointer; font-size:0.62rem; font-weight:600;
+            color:var(--text-secondary); transition:all 0.15s;
+        }
+        .layout-opt-btn:hover { border-color:var(--purple-lt); color:var(--purple); }
+        .layout-opt-btn.active { border-color:var(--purple); color:var(--purple); background:var(--purple-dim); }
+        .layout-preview {
+            width:60px; height:38px; border-radius:4px; overflow:hidden;
+            border:1px solid rgba(255,255,255,0.08); background:rgba(0,0,0,0.5);
+        }
+        .layout-preview-solo { display:flex; }
+        .layout-preview-split2 { display:flex; gap:2px; padding:3px; }
+        .layout-preview-pip-bottom { display:flex; flex-direction:column; gap:2px; padding:3px; }
+        .layout-preview-grid4 { display:grid; grid-template-columns:1fr 1fr; gap:2px; padding:3px; }
+
+        /* ── Split-screen video area layouts ─── applied to #live-broadcaster-video-container */
+        #live-broadcaster-video-container.layout-split2 #live-broadcaster-video,
+        #live-broadcaster-video-container.layout-split2 #cohost-pip-host {
+            position:relative !important; inset:auto !important;
+            width:50% !important; height:100% !important;
+            border-radius:0 !important; border:none !important;
+        }
+        #live-broadcaster-video-container.layout-split2 {
+            display:flex !important; flex-direction:row !important;
+            gap:2px !important;
+        }
+        #live-broadcaster-video-container.layout-pip-bottom #live-broadcaster-video {
+            position:absolute !important; top:0 !important; left:0 !important;
+            width:100% !important; height:72% !important;
+        }
+        #live-broadcaster-video-container.layout-pip-bottom #cohost-pip-host {
+            position:absolute !important; bottom:0 !important; left:0 !important;
+            right:auto !important; width:100% !important; height:28% !important;
+            border-radius:0 !important; border:none !important;
+            border-top:2px solid var(--purple) !important;
+        }
+        #live-broadcaster-video-container.layout-grid4 {
+            display:grid !important;
+            grid-template-columns:1fr 1fr !important;
+            grid-template-rows:1fr 1fr !important;
+            gap:2px !important;
+        }
+        #live-broadcaster-video-container.layout-grid4 #live-broadcaster-video {
+            position:relative !important; inset:auto !important;
+            width:100% !important; height:100% !important;
+            grid-column:1; grid-row:1;
+            border-radius:0 !important;
+        }
+        #live-broadcaster-video-container.layout-grid4 #cohost-pip-host {
+            position:relative !important; inset:auto !important;
+            width:100% !important; height:100% !important;
+            border-radius:0 !important; border:none !important;
+            grid-column:2; grid-row:1;
+        }
+        /* Overlay elements should stay on top in any layout */
+        #live-broadcaster-video-container .live-stream-overlay-top,
+        #live-broadcaster-video-container #screen-share-label,
+        #live-broadcaster-video-container #lower-third-bar,
+        #live-broadcaster-video-container #bc-meta-nowrap,
+        #live-broadcaster-video-container #bc-vid-poll,
+        #live-broadcaster-video-container #bc-vid-goal,
+        #live-broadcaster-video-container #whiteboard-overlay,
+        #live-broadcaster-video-container #reaction-container,
+        #live-broadcaster-video-container #stream-countdown-overlay,
+        #live-broadcaster-video-container .live-stream-overlay-top {
+            z-index:30 !important;
+        }
         .cinema-fs-btn {
-            position:absolute; bottom:10px; right:10px; z-index:20;
+            position:absolute; bottom:10px; left:10px; z-index:20;
             background:rgba(0,0,0,0.6); border:none; color:#fff;
             border-radius:6px; padding:5px 10px; cursor:pointer; font-size:0.78rem;
         }
@@ -5898,6 +5970,9 @@
                             <button class="studio-btn" id="btn-set-goal" onclick="toggleGoalSetter()">
                                 <span class="studio-btn-icon">🎯</span> Star Goal
                             </button>
+                            <button class="studio-btn" id="btn-layout" onclick="toggleLayoutPicker()" title="Change stream layout">
+                                <span class="studio-btn-icon">⊞</span> Layout
+                            </button>
                             <button class="studio-btn" id="btn-whiteboard" onclick="toggleWhiteboard()">
                                 <span class="studio-btn-icon">🖊️</span> Whiteboard
                             </button>
@@ -5928,6 +6003,43 @@
                         </div>
 
                         <!-- Co-Host Management Panel (host side) -->
+                        <!-- Layout Picker -->
+                        <div id="layout-picker" style="display:none; padding:10px 14px; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px;">
+                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">⊞ Stream Layout</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                                <button class="layout-opt-btn" id="layout-btn-solo" onclick="setStreamLayout('solo')" title="Solo — just you">
+                                    <div class="layout-preview layout-preview-solo">
+                                        <div style="background:rgba(124,92,191,0.7);border-radius:3px;width:100%;height:100%;"></div>
+                                    </div>
+                                    <span>Solo</span>
+                                </button>
+                                <button class="layout-opt-btn" id="layout-btn-split2" onclick="setStreamLayout('split2')" title="Side by side — you + 1 co-host">
+                                    <div class="layout-preview layout-preview-split2">
+                                        <div style="background:rgba(124,92,191,0.7);border-radius:3px;flex:1;height:100%;"></div>
+                                        <div style="background:rgba(45,212,191,0.6);border-radius:3px;flex:1;height:100%;"></div>
+                                    </div>
+                                    <span>Side by Side</span>
+                                </button>
+                                <button class="layout-opt-btn" id="layout-btn-pip-bottom" onclick="setStreamLayout('pip-bottom')" title="Co-host strip at the bottom">
+                                    <div class="layout-preview layout-preview-pip-bottom">
+                                        <div style="background:rgba(124,92,191,0.7);border-radius:3px;flex:1;width:100%;"></div>
+                                        <div style="background:rgba(45,212,191,0.6);border-radius:3px;height:28%;width:100%;"></div>
+                                    </div>
+                                    <span>Co-host Bottom</span>
+                                </button>
+                                <button class="layout-opt-btn" id="layout-btn-grid4" onclick="setStreamLayout('grid4')" title="2×2 grid — up to 4 people">
+                                    <div class="layout-preview layout-preview-grid4">
+                                        <div style="background:rgba(124,92,191,0.7);border-radius:2px;"></div>
+                                        <div style="background:rgba(45,212,191,0.6);border-radius:2px;"></div>
+                                        <div style="background:rgba(240,180,41,0.6);border-radius:2px;"></div>
+                                        <div style="background:rgba(224,62,62,0.5);border-radius:2px;"></div>
+                                    </div>
+                                    <span>2×2 Grid</span>
+                                </button>
+                            </div>
+                            <div style="font-size:0.6rem;color:var(--text-muted);margin-top:8px;">Co-host slots fill automatically when viewers join the stage.</div>
+                        </div>
+
                         <div id="cohost-panel">
                             <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎤 Co-Host Requests</div>
                             <div id="cohost-requests-list"><div style="font-size:0.75rem;color:var(--text-muted);">No co-host requests yet.</div></div>
@@ -17278,7 +17390,17 @@
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
             // Play local video into the broadcaster container div
-            _playInContainer(localVideoTrack, 'live-broadcaster-video');
+            // Retry loop: Agora needs a visible (non-zero-size) container
+            (function _retryPlay(attempts) {
+                const vc = document.getElementById('live-broadcaster-video');
+                if (vc && (vc.offsetWidth > 0 || vc.offsetHeight > 0)) {
+                    _playInContainer(localVideoTrack, 'live-broadcaster-video');
+                } else if (attempts < 15) {
+                    setTimeout(() => _retryPlay(attempts + 1), 150);
+                } else {
+                    _playInContainer(localVideoTrack, 'live-broadcaster-video');
+                }
+            })(0);
 
             // Sync studio toolbar button labels to match any pre-live mic/cam states
             const _micBtn = $('btn-mute-mic');
@@ -17396,8 +17518,15 @@
             }
             const streamData = snap.data();
 
-            // Update viewer count
-            await updateDoc(doc(window.db, LIVE_COL, streamId), { viewers: increment(1) });
+            // Update viewer count — only increment once per browser session per stream
+            // This prevents F5 refresh from inflating the counter
+            const _sessionKey = 'sh_viewing_' + streamId;
+            let _alreadyCounted = false;
+            try { _alreadyCounted = sessionStorage.getItem(_sessionKey) === '1'; } catch(_) {}
+            if (!_alreadyCounted) {
+                await updateDoc(doc(window.db, LIVE_COL, streamId), { viewers: increment(1) });
+                try { sessionStorage.setItem(_sessionKey, '1'); } catch(_) {}
+            }
 
             // Post join notification to live chat
             if (userHandle && window.fs) {
@@ -17594,6 +17723,8 @@
             try {
                 const { doc, updateDoc, increment } = window.fs;
                 await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), { viewers: increment(-1) });
+                // Clear session tracking so re-joining works correctly
+                try { sessionStorage.removeItem('sh_viewing_' + _watchingStreamId); } catch(_) {}
             } catch(_) {}
         }
         await _cleanupAgora();
@@ -18142,6 +18273,33 @@
             );
             _forceEndStream();
         }
+        // Viewer cleanup: decrement viewer count on tab close/refresh
+        if (_watchingStreamId && window.db && window.fs) {
+            try {
+                const streamPath2 = `projects/${window.db.app.options.projectId}/databases/(default)/documents/${LIVE_COL}/${_watchingStreamId}`;
+                // Use sendBeacon to write a decrement — Firestore REST doesn't support increment natively,
+                // so we rely on the session key: clear it so re-join after refresh re-counts correctly
+                // The actual decrement happens via leaveLiveStream when the user deliberately leaves.
+                // For refresh scenarios, we clear the session key so the next join is counted fresh,
+                // and the viewer count is decremented via the cleanup below.
+                const decrementBody = JSON.stringify({
+                    writes: [{
+                        transform: {
+                            document: streamPath2,
+                            fieldTransforms: [{
+                                fieldPath: 'viewers',
+                                increment: { integerValue: '-1' }
+                            }]
+                        }
+                    }]
+                });
+                const projectId = window.db.app.options.projectId;
+                navigator.sendBeacon && navigator.sendBeacon(
+                    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`,
+                    new Blob([decrementBody], { type: 'application/json' })
+                );
+            } catch(_) {}
+        }
     });
 
     // visibilitychange intentionally NOT used to end stream —
@@ -18537,14 +18695,39 @@
     window.leaveCoHost = async function() {
         if (!isCoHost) return;
         try {
-            if (cohostVideoTrack) { cohostVideoTrack.stop(); cohostVideoTrack.close(); cohostVideoTrack = null; }
-            if (cohostAudioTrack) { cohostAudioTrack.stop(); cohostAudioTrack.close(); cohostAudioTrack = null; }
-            if (agoraClient) await agoraClient.setClientRole('audience');
+            // Unpublish tracks first before stopping/closing them
+            if (agoraClient && cohostVideoTrack && cohostAudioTrack) {
+                try { await agoraClient.unpublish([cohostVideoTrack, cohostAudioTrack]); } catch(_) {}
+            } else if (agoraClient && cohostVideoTrack) {
+                try { await agoraClient.unpublish(cohostVideoTrack); } catch(_) {}
+            } else if (agoraClient && cohostAudioTrack) {
+                try { await agoraClient.unpublish(cohostAudioTrack); } catch(_) {}
+            }
+            if (cohostVideoTrack) { try { cohostVideoTrack.stop(); cohostVideoTrack.close(); } catch(_) {} cohostVideoTrack = null; }
+            if (cohostAudioTrack) { try { cohostAudioTrack.stop(); cohostAudioTrack.close(); } catch(_) {} cohostAudioTrack = null; }
+            // Demote back to audience so they stop broadcasting
+            if (agoraClient) { try { await agoraClient.setClientRole('audience', { level: 1 }); } catch(_) {} }
             const stageWrap = $('cohost-stage-wrap');
             if (stageWrap) stageWrap.style.display = 'none';
             isCoHost = false;
+            // Reset button back to "Join Stage"
             const btn = $('viewer-cohost-btn');
-            if (btn) { btn.textContent = '🎤 Join Stage'; btn.classList.remove('active'); }
+            if (btn) {
+                btn.textContent = '🎤 Join Stage';
+                btn.style.opacity = '';
+                btn.style.pointerEvents = '';
+                btn.classList.remove('active');
+            }
+            // Clean up cohost request doc in Firestore so host sees slot freed
+            if (_watchingStreamId && window.db && window.fs) {
+                const userAddress = window._liveUserAddress || '';
+                if (userAddress) {
+                    try {
+                        const { doc, deleteDoc } = window.fs;
+                        await deleteDoc(doc(window.db, 'live_streams', _watchingStreamId, 'cohost_requests', userAddress));
+                    } catch(_) {}
+                }
+            }
             showToast('Left the stage.');
         } catch(e) { console.error('[CoHost] leave error:', e); }
     };
@@ -20284,7 +20467,90 @@
 
     window.addEventListener('resize', () => { if (_wbActive) _resizeWBCanvas(); });
 
-    console.log('[SocialHub] Studio features initialised — Screen Share, Noise Suppression, Name Tag, Poll, Star Goal, Leaderboard, Raise Hand, Reactions, Health Monitor, Milestones, Virtual Background, Co-Host, Paid Admission, Recording, Whiteboard ✓');
+    // ══════════════════════════════════════════════════════════════
+    // STREAM LAYOUT SYSTEM — Solo / Side-by-Side / Co-host Bottom / 2×2 Grid
+    // ══════════════════════════════════════════════════════════════
+    let _currentLayout = 'solo';
+
+    window.toggleLayoutPicker = function() {
+        const el = document.getElementById('layout-picker');
+        if (!el) return;
+        const opening = el.style.display === 'none' || !el.style.display;
+        el.style.display = opening ? 'block' : 'none';
+        if (typeof _setCinemaControlsHeight === 'function') _setCinemaControlsHeight(opening);
+    };
+
+    window.setStreamLayout = function(mode) {
+        _currentLayout = mode;
+        const container = document.getElementById('live-broadcaster-video-container');
+        if (!container) return;
+
+        // Remove all layout classes
+        container.classList.remove('layout-split2', 'layout-pip-bottom', 'layout-grid4');
+
+        // Mark active button
+        ['solo','split2','pip-bottom','grid4'].forEach(function(m) {
+            var btn = document.getElementById('layout-btn-' + m);
+            if (btn) btn.classList.toggle('active', m === mode);
+        });
+
+        if (mode === 'solo') {
+            // Reset everything to default absolute positioning
+            var bcVid = document.getElementById('live-broadcaster-video');
+            if (bcVid) { bcVid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;'; }
+            var pip = document.getElementById('cohost-pip-host');
+            if (pip) { pip.style.cssText = 'position:absolute;bottom:50px;right:10px;width:140px;height:90px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;'; }
+        } else if (mode === 'split2') {
+            container.classList.add('layout-split2');
+            var bcVid = document.getElementById('live-broadcaster-video');
+            if (bcVid) { bcVid.style.cssText = 'position:relative;width:50%;height:100%;'; }
+            var pip = document.getElementById('cohost-pip-host');
+            if (pip) { pip.style.cssText = 'position:relative;width:50%;height:100%;border-radius:0;border:none;border-left:2px solid var(--purple);z-index:1;background:#000;'; }
+            if (!pip) showToast('ℹ️ Co-host slot ready — approve a viewer from Stage Requests to fill it.');
+        } else if (mode === 'pip-bottom') {
+            container.classList.add('layout-pip-bottom');
+            var bcVid = document.getElementById('live-broadcaster-video');
+            if (bcVid) { bcVid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:72%;'; }
+            var pip = document.getElementById('cohost-pip-host');
+            if (pip) { pip.style.cssText = 'position:absolute;bottom:0;left:0;width:100%;height:28%;border-radius:0;border:none;border-top:2px solid var(--purple);z-index:20;background:#000;overflow:hidden;'; }
+            if (!pip) showToast('ℹ️ Co-host strip ready — approve a viewer from Stage Requests.');
+        } else if (mode === 'grid4') {
+            container.classList.add('layout-grid4');
+            var bcVid = document.getElementById('live-broadcaster-video');
+            if (bcVid) { bcVid.style.cssText = 'position:relative;width:100%;height:100%;'; }
+            var pip = document.getElementById('cohost-pip-host');
+            if (pip) { pip.style.cssText = 'position:relative;width:100%;height:100%;border-radius:0;border:none;background:#000;'; }
+            if (!pip) showToast('ℹ️ Grid ready — up to 3 co-hosts can join. Approve from Stage Requests.');
+        }
+
+        // Broadcast layout choice to Firestore so viewers see matching layout
+        if (typeof currentStreamId !== 'undefined' && currentStreamId && window.db && window.fs) {
+            window.fs.updateDoc(window.fs.doc(window.db, 'live_streams', currentStreamId), {
+                streamLayout: mode
+            }).catch(function(){});
+        }
+
+        // Close the picker after selection
+        var picker = document.getElementById('layout-picker');
+        if (picker) picker.style.display = 'none';
+        if (typeof _setCinemaControlsHeight === 'function') _setCinemaControlsHeight(false);
+
+        showToast('⊞ Layout: ' + { solo: 'Solo', split2: 'Side by Side', 'pip-bottom': 'Co-host Bottom', grid4: '2×2 Grid' }[mode]);
+    };
+
+    // Apply layout when a new co-host pip is created dynamically
+    // Patch: after approveCoHost fires and pip appears, re-apply current layout
+    var _origApproveCoHost = window.approveCoHost;
+    if (_origApproveCoHost) {
+        window.approveCoHost = async function(docId, uid) {
+            await _origApproveCoHost.apply(this, arguments);
+            setTimeout(function() {
+                if (_currentLayout !== 'solo') window.setStreamLayout(_currentLayout);
+            }, 800);
+        };
+    }
+
+    console.log('[SocialHub] Studio features initialised — Screen Share, Noise Suppression, Name Tag, Poll, Star Goal, Leaderboard, Raise Hand, Reactions, Health Monitor, Milestones, Virtual Background, Co-Host, Paid Admission, Recording, Whiteboard, Layout ✓');
 
 })();
 </script>
@@ -20364,7 +20630,7 @@
 
         // Scan siblings between placeholders: buttons/toolbars → ctrlBtns, panels → ctrlPanels
         // Skip the original End Stream button (handled by the static wrap)
-        var panelIds = ['poll-creator','lower-third-editor','vbg-picker','cohost-panel',
+        var panelIds = ['poll-creator','lower-third-editor','vbg-picker','cohost-panel','layout-picker',
                         'goal-setter','hand-queue-card','host-poll-card','star-goal-display',
                         // Viewer-side panels
                         'viewer-poll-card','viewer-star-goal','viewer-leaderboard','viewer-gift-panel'];
