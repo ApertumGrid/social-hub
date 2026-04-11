@@ -917,11 +917,11 @@
         }
         #live-broadcaster-video-container.layout-pip-bottom #live-broadcaster-video {
             position:absolute !important; top:0 !important; left:0 !important;
-            width:100% !important; height:72% !important;
+            width:100% !important; height:50% !important;
         }
         #live-broadcaster-video-container.layout-pip-bottom #cohost-pip-host {
             position:absolute !important; bottom:0 !important; left:0 !important;
-            right:auto !important; width:100% !important; height:28% !important;
+            right:auto !important; width:100% !important; height:50% !important;
             border-radius:0 !important; border:none !important;
             border-top:2px solid var(--purple) !important;
         }
@@ -6020,12 +6020,12 @@
                                     </div>
                                     <span>Side by Side</span>
                                 </button>
-                                <button class="layout-opt-btn" id="layout-btn-pip-bottom" onclick="setStreamLayout('pip-bottom')" title="Co-host strip at the bottom">
+                                <button class="layout-opt-btn" id="layout-btn-pip-bottom" onclick="setStreamLayout('pip-bottom')" title="Equal top/bottom split — you + 1 co-host stacked">
                                     <div class="layout-preview layout-preview-pip-bottom">
                                         <div style="background:rgba(124,92,191,0.7);border-radius:3px;flex:1;width:100%;"></div>
-                                        <div style="background:rgba(45,212,191,0.6);border-radius:3px;height:28%;width:100%;"></div>
+                                        <div style="background:rgba(45,212,191,0.6);border-radius:3px;flex:1;width:100%;"></div>
                                     </div>
-                                    <span>Co-host Bottom</span>
+                                    <span>Top / Bottom</span>
                                 </button>
                                 <button class="layout-opt-btn" id="layout-btn-grid4" onclick="setStreamLayout('grid4')" title="2×2 grid — up to 4 people">
                                     <div class="layout-preview layout-preview-grid4">
@@ -17572,29 +17572,39 @@
                     }
                     if (mediaType === 'audio') remoteUser.audioTrack.play();
                 } else {
-                    // Co-host: show as a small PiP overlay on the viewer's stream
+                    // Co-host: show their video in the viewer's stream
                     if (mediaType === 'video') {
+                        // Build or reuse the co-host PiP container
                         let cohostPip = document.getElementById('cohost-pip-viewer');
                         if (!cohostPip) {
                             cohostPip = document.createElement('div');
                             cohostPip.id = 'cohost-pip-viewer';
-                            cohostPip.style.cssText = 'position:absolute;bottom:50px;right:10px;width:140px;height:90px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+                            cohostPip.style.cssText = 'position:absolute;bottom:60px;right:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+
+                            // Label
                             const label = document.createElement('div');
-                            label.style.cssText = 'position:absolute;top:2px;left:4px;font-size:0.55rem;color:#fff;background:rgba(124,92,191,0.8);padding:1px 5px;border-radius:4px;z-index:1;';
-                            label.textContent = '🎤 Co-host';
+                            label.style.cssText = 'position:absolute;top:2px;left:4px;font-size:0.55rem;color:#fff;background:rgba(124,92,191,0.8);padding:1px 5px;border-radius:4px;z-index:3;pointer-events:none;';
+                            label.textContent = '🎤 On Stage';
                             cohostPip.appendChild(label);
-                            // Spotlight button — viewer can locally toggle, OR host can force it via Firestore
+
+                            // The actual video render target — Agora will inject a <video> inside this div
+                            const videoDiv = document.createElement('div');
+                            videoDiv.id = 'cohost-pip-viewer-video';
+                            videoDiv.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;';
+                            cohostPip.appendChild(videoDiv);
+
+                            // Spotlight banner
+                            const _vSpotBanner = document.createElement('div');
+                            _vSpotBanner.style.cssText = 'display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(124,92,191,0.92);color:#fff;font-size:0.68rem;font-weight:700;letter-spacing:1px;padding:4px 14px;border-radius:20px;z-index:25;white-space:nowrap;pointer-events:none;';
+                            _vSpotBanner.textContent = '⛶ ON STAGE';
+                            cohostPip.appendChild(_vSpotBanner);
+
+                            // Spotlight toggle button
                             const vSpotBtn = document.createElement('button');
                             vSpotBtn.textContent = '⛶';
                             vSpotBtn.title = 'Spotlight co-host (click again to restore)';
-                            vSpotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:1px 5px;font-size:0.65rem;cursor:pointer;z-index:2;';
+                            vSpotBtn.style.cssText = 'position:absolute;bottom:4px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:2px 6px;font-size:0.65rem;cursor:pointer;z-index:4;';
                             let _vSpotActive = false;
-                            // Expose apply fn so subscribeStreamDoc can drive it
-                            // Spotlight banner — shown when host activates spotlight so late joiners see who's presenting
-                            const _vSpotBanner = document.createElement('div');
-                            _vSpotBanner.style.cssText = 'display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(124,92,191,0.92);color:#fff;font-size:0.68rem;font-weight:700;letter-spacing:1px;padding:4px 14px;border-radius:20px;z-index:25;white-space:nowrap;pointer-events:none;';
-                            _vSpotBanner.textContent = '⛶ CO-HOST PRESENTING';
-                            cohostPip.appendChild(_vSpotBanner);
 
                             window._applyViewerSpotlight = function(on) {
                                 _vSpotActive = on;
@@ -17607,24 +17617,33 @@
                                 } else {
                                     vSpotBtn.textContent = '⛶';
                                     vSpotBtn.title = 'Spotlight co-host';
-                                    cohostPip.style.cssText = 'position:absolute;bottom:50px;right:10px;width:140px;height:90px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
-                                    vSpotBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:1px 5px;font-size:0.65rem;cursor:pointer;z-index:2;';
+                                    cohostPip.style.cssText = 'position:absolute;bottom:60px;right:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+                                    vSpotBtn.style.cssText = 'position:absolute;bottom:4px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:2px 6px;font-size:0.65rem;cursor:pointer;z-index:4;';
                                     _vSpotBanner.style.display = 'none';
                                 }
                             };
-                            vSpotBtn.onclick = function(){ window._applyViewerSpotlight(!_vSpotActive); };
+                            vSpotBtn.onclick = function() { window._applyViewerSpotlight(!_vSpotActive); };
                             cohostPip.appendChild(vSpotBtn);
-                            // Late-joiner: if host already had spotlight on before this viewer joined, apply it now
-                            if (window._pendingViewerSpotlight) {
-                                setTimeout(function(){ window._applyViewerSpotlight(true); window._pendingViewerSpotlight = false; }, 200);
-                            }
-                            videoDiv.style.cssText = 'width:100%;height:100%;';
-                            cohostPip.appendChild(videoDiv);
+
+                            // Append to viewer video container
                             const rc = document.getElementById('live-remote-video-container');
                             if (rc) rc.appendChild(cohostPip);
+
+                            // Apply pending spotlight if host already spotlighted before this viewer joined
+                            if (window._pendingViewerSpotlight) {
+                                setTimeout(function() { window._applyViewerSpotlight(true); window._pendingViewerSpotlight = false; }, 200);
+                            }
                         }
-                        remoteUser.videoTrack.play(document.getElementById('cohost-pip-viewer-video'));
-                        showToast('🎤 Co-host joined the stage!');
+
+                        // Play co-host video into the render div — this is what was broken before
+                        const renderTarget = document.getElementById('cohost-pip-viewer-video');
+                        if (renderTarget) {
+                            remoteUser.videoTrack.play(renderTarget);
+                        } else {
+                            // Fallback: play directly into the pip container
+                            remoteUser.videoTrack.play(cohostPip);
+                        }
+                        showToast('🎤 Someone joined the stage!');
                     }
                     if (mediaType === 'audio') remoteUser.audioTrack.play();
                 }
@@ -20510,10 +20529,10 @@
         } else if (mode === 'pip-bottom') {
             container.classList.add('layout-pip-bottom');
             var bcVid = document.getElementById('live-broadcaster-video');
-            if (bcVid) { bcVid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:72%;'; }
+            if (bcVid) { bcVid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:50%;'; }
             var pip = document.getElementById('cohost-pip-host');
-            if (pip) { pip.style.cssText = 'position:absolute;bottom:0;left:0;width:100%;height:28%;border-radius:0;border:none;border-top:2px solid var(--purple);z-index:20;background:#000;overflow:hidden;'; }
-            if (!pip) showToast('ℹ️ Co-host strip ready — approve a viewer from Stage Requests.');
+            if (pip) { pip.style.cssText = 'position:absolute;bottom:0;left:0;width:100%;height:50%;border-radius:0;border:none;border-top:2px solid var(--purple);z-index:20;background:#000;overflow:hidden;'; }
+            if (!pip) showToast('ℹ️ Top/Bottom split ready — approve a viewer from Stage Requests.');
         } else if (mode === 'grid4') {
             container.classList.add('layout-grid4');
             var bcVid = document.getElementById('live-broadcaster-video');
@@ -20535,7 +20554,7 @@
         if (picker) picker.style.display = 'none';
         if (typeof _setCinemaControlsHeight === 'function') _setCinemaControlsHeight(false);
 
-        showToast('⊞ Layout: ' + { solo: 'Solo', split2: 'Side by Side', 'pip-bottom': 'Co-host Bottom', grid4: '2×2 Grid' }[mode]);
+        showToast('⊞ Layout: ' + { solo: 'Solo', split2: 'Side by Side', 'pip-bottom': 'Top / Bottom', grid4: '2×2 Grid' }[mode]);
     };
 
     // Apply layout when a new co-host pip is created dynamically
