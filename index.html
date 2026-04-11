@@ -17572,77 +17572,81 @@
                     }
                     if (mediaType === 'audio') remoteUser.audioTrack.play();
                 } else {
-                    // Co-host: show their video in the viewer's stream
+                    // Co-host joined the stage — show their video as a PiP on the viewer's screen
                     if (mediaType === 'video') {
-                        // Build or reuse the co-host PiP container
-                        let cohostPip = document.getElementById('cohost-pip-viewer');
-                        if (!cohostPip) {
-                            cohostPip = document.createElement('div');
-                            cohostPip.id = 'cohost-pip-viewer';
-                            cohostPip.style.cssText = 'position:absolute;bottom:60px;right:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+                        // Remove any stale pip first
+                        var stalePip = document.getElementById('cohost-pip-viewer');
+                        if (stalePip && stalePip.parentNode) stalePip.parentNode.removeChild(stalePip);
 
-                            // Label
-                            const label = document.createElement('div');
-                            label.style.cssText = 'position:absolute;top:2px;left:4px;font-size:0.55rem;color:#fff;background:rgba(124,92,191,0.8);padding:1px 5px;border-radius:4px;z-index:3;pointer-events:none;';
-                            label.textContent = '🎤 On Stage';
-                            cohostPip.appendChild(label);
+                        // Build the PiP container
+                        var cohostPip = document.createElement('div');
+                        cohostPip.id = 'cohost-pip-viewer';
+                        cohostPip.style.cssText = 'position:absolute;bottom:60px;right:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
 
-                            // The actual video render target — Agora will inject a <video> inside this div
-                            const videoDiv = document.createElement('div');
-                            videoDiv.id = 'cohost-pip-viewer-video';
-                            videoDiv.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;';
-                            cohostPip.appendChild(videoDiv);
+                        // Label
+                        var pipLabel = document.createElement('div');
+                        pipLabel.style.cssText = 'position:absolute;top:2px;left:4px;font-size:0.55rem;font-weight:700;color:#fff;background:rgba(124,92,191,0.8);padding:1px 5px;border-radius:4px;z-index:3;pointer-events:none;';
+                        pipLabel.textContent = '🎤 On Stage';
+                        cohostPip.appendChild(pipLabel);
 
-                            // Spotlight banner
-                            const _vSpotBanner = document.createElement('div');
-                            _vSpotBanner.style.cssText = 'display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(124,92,191,0.92);color:#fff;font-size:0.68rem;font-weight:700;letter-spacing:1px;padding:4px 14px;border-radius:20px;z-index:25;white-space:nowrap;pointer-events:none;';
-                            _vSpotBanner.textContent = '⛶ ON STAGE';
-                            cohostPip.appendChild(_vSpotBanner);
+                        // Video render target — Agora injects a <video> inside this div
+                        var pipVideoDiv = document.createElement('div');
+                        pipVideoDiv.id = 'cohost-pip-viewer-video';
+                        pipVideoDiv.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;';
+                        cohostPip.appendChild(pipVideoDiv);
 
-                            // Spotlight toggle button
-                            const vSpotBtn = document.createElement('button');
-                            vSpotBtn.textContent = '⛶';
-                            vSpotBtn.title = 'Spotlight co-host (click again to restore)';
-                            vSpotBtn.style.cssText = 'position:absolute;bottom:4px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:2px 6px;font-size:0.65rem;cursor:pointer;z-index:4;';
-                            let _vSpotActive = false;
+                        // Spotlight banner
+                        var spotBanner = document.createElement('div');
+                        spotBanner.style.cssText = 'display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(124,92,191,0.92);color:#fff;font-size:0.68rem;font-weight:700;letter-spacing:1px;padding:4px 14px;border-radius:20px;z-index:25;white-space:nowrap;pointer-events:none;';
+                        spotBanner.textContent = '⛶ ON STAGE';
+                        cohostPip.appendChild(spotBanner);
 
-                            window._applyViewerSpotlight = function(on) {
-                                _vSpotActive = on;
-                                if (on) {
-                                    vSpotBtn.textContent = '⊠ Restore';
-                                    vSpotBtn.title = 'Restore host video to main stage';
-                                    cohostPip.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border-radius:0;border:none;z-index:18;background:#000;overflow:hidden;';
-                                    vSpotBtn.style.cssText = 'position:absolute;bottom:8px;right:8px;background:rgba(124,92,191,0.9);border:none;color:#fff;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:22;';
-                                    _vSpotBanner.style.display = 'block';
-                                } else {
-                                    vSpotBtn.textContent = '⛶';
-                                    vSpotBtn.title = 'Spotlight co-host';
-                                    cohostPip.style.cssText = 'position:absolute;bottom:60px;right:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
-                                    vSpotBtn.style.cssText = 'position:absolute;bottom:4px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:2px 6px;font-size:0.65rem;cursor:pointer;z-index:4;';
-                                    _vSpotBanner.style.display = 'none';
-                                }
-                            };
-                            vSpotBtn.onclick = function() { window._applyViewerSpotlight(!_vSpotActive); };
-                            cohostPip.appendChild(vSpotBtn);
-
-                            // Append to viewer video container
-                            const rc = document.getElementById('live-remote-video-container');
-                            if (rc) rc.appendChild(cohostPip);
-
-                            // Apply pending spotlight if host already spotlighted before this viewer joined
-                            if (window._pendingViewerSpotlight) {
-                                setTimeout(function() { window._applyViewerSpotlight(true); window._pendingViewerSpotlight = false; }, 200);
+                        // Spotlight toggle button
+                        var spotBtn = document.createElement('button');
+                        spotBtn.textContent = '⛶';
+                        spotBtn.title = 'Spotlight co-host';
+                        spotBtn.style.cssText = 'position:absolute;bottom:4px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:2px 6px;font-size:0.65rem;cursor:pointer;z-index:4;';
+                        var _vSpotActive = false;
+                        window._applyViewerSpotlight = function(on) {
+                            _vSpotActive = on;
+                            if (on) {
+                                spotBtn.textContent = '⊠ Restore';
+                                cohostPip.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border-radius:0;border:none;z-index:18;background:#000;overflow:hidden;';
+                                spotBtn.style.cssText = 'position:absolute;bottom:8px;right:8px;background:rgba(124,92,191,0.9);border:none;color:#fff;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:22;';
+                                spotBanner.style.display = 'block';
+                            } else {
+                                spotBtn.textContent = '⛶';
+                                cohostPip.style.cssText = 'position:absolute;bottom:60px;right:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+                                spotBtn.style.cssText = 'position:absolute;bottom:4px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:2px 6px;font-size:0.65rem;cursor:pointer;z-index:4;';
+                                spotBanner.style.display = 'none';
                             }
+                        };
+                        spotBtn.onclick = function() { window._applyViewerSpotlight(!_vSpotActive); };
+                        cohostPip.appendChild(spotBtn);
+
+                        // Append to the currently active video container (works in cinema mode too)
+                        var rc = document.getElementById('live-remote-video-container');
+                        if (rc) rc.appendChild(cohostPip);
+
+                        // Apply pending spotlight (late joiner case)
+                        if (window._pendingViewerSpotlight) {
+                            setTimeout(function() { window._applyViewerSpotlight(true); window._pendingViewerSpotlight = false; }, 200);
                         }
 
-                        // Play co-host video into the render div — this is what was broken before
-                        const renderTarget = document.getElementById('cohost-pip-viewer-video');
-                        if (renderTarget) {
-                            remoteUser.videoTrack.play(renderTarget);
-                        } else {
-                            // Fallback: play directly into the pip container
-                            remoteUser.videoTrack.play(cohostPip);
-                        }
+                        // Play video into render target with retry until it has dimensions
+                        var _pipRetry = 0;
+                        (function _playPip() {
+                            var rt = document.getElementById('cohost-pip-viewer-video');
+                            if (rt && (rt.offsetWidth > 0 || rt.offsetHeight > 0 || _pipRetry > 10)) {
+                                try { remoteUser.videoTrack.play(rt); } catch(_pipErr) {
+                                    try { remoteUser.videoTrack.play(cohostPip); } catch(_) {}
+                                }
+                            } else if (_pipRetry < 20) {
+                                _pipRetry++;
+                                setTimeout(_playPip, 150);
+                            }
+                        })();
+
                         showToast('🎤 Someone joined the stage!');
                     }
                     if (mediaType === 'audio') remoteUser.audioTrack.play();
@@ -18695,19 +18699,69 @@
             await agoraClient.setClientRole('host');
             [cohostAudioTrack, cohostVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
             await agoraClient.publish([cohostAudioTrack, cohostVideoTrack]);
-            // Show local video in stage area
-            const stageWrap = $('cohost-stage-wrap');
-            if (stageWrap) {
-                stageWrap.style.display = 'block';
-                cohostVideoTrack.play($('cohost-local-video'));
+
+            // ── Self-view: inject a "YOU" PiP directly inside the stream video container
+            // This works in both normal and cinema mode because the container is always visible.
+            // We do NOT use cohost-stage-wrap (which lives outside cinema) for the video feed.
+            var selfPip = document.getElementById('cohost-self-pip');
+            if (!selfPip) {
+                selfPip = document.createElement('div');
+                selfPip.id = 'cohost-self-pip';
+                selfPip.style.cssText = [
+                    'position:absolute',
+                    'bottom:60px',
+                    'left:10px',
+                    'width:160px',
+                    'height:100px',
+                    'border-radius:8px',
+                    'overflow:hidden',
+                    'border:2px solid #e03e3e',
+                    'z-index:22',
+                    'background:#000'
+                ].join(';');
+
+                var selfLabel = document.createElement('div');
+                selfLabel.style.cssText = 'position:absolute;top:2px;left:4px;font-size:0.55rem;font-weight:700;color:#fff;background:rgba(224,62,62,0.85);padding:1px 6px;border-radius:4px;z-index:3;pointer-events:none;letter-spacing:0.5px;';
+                selfLabel.textContent = '🎤 YOU';
+                selfPip.appendChild(selfLabel);
+
+                var selfVideoDiv = document.createElement('div');
+                selfVideoDiv.id = 'cohost-self-video';
+                selfVideoDiv.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;';
+                selfPip.appendChild(selfVideoDiv);
             }
-            const btn = $('viewer-cohost-btn');
+
+            // Append to whichever video container is currently visible
+            // Prefer the remote container (viewer watching the host), fall back to broadcaster container
+            var targetContainer = document.getElementById('live-remote-video-container') ||
+                                  document.getElementById('live-broadcaster-video-container');
+            if (targetContainer) {
+                targetContainer.appendChild(selfPip);
+            }
+
+            // Play local cam into the self-view pip with retry until container has dimensions
+            var _selfRetry = 0;
+            (function _playSelf() {
+                var svDiv = document.getElementById('cohost-self-video');
+                if (svDiv && (svDiv.offsetWidth > 0 || svDiv.offsetHeight > 0 || _selfRetry > 10)) {
+                    cohostVideoTrack.play(svDiv);
+                } else if (_selfRetry < 20) {
+                    _selfRetry++;
+                    setTimeout(_playSelf, 150);
+                }
+            })();
+
+            // Also show the cohost-stage-wrap label/button (but don't rely on it for video)
+            var stageWrap = $('cohost-stage-wrap');
+            if (stageWrap) stageWrap.style.display = 'block';
+
+            var btn = $('viewer-cohost-btn');
             if (btn) { btn.textContent = '🎤 Leave Stage'; btn.style.opacity = ''; btn.style.pointerEvents = ''; btn.classList.add('active'); }
             isCoHost = true;
             showToast('🎤 You are now on stage! Everyone can see and hear you.');
         } catch(e) {
             console.error('[CoHost] promote error:', e);
-            showToast('Could not join stage: ' + e.message);
+            showToast('Could not join stage: ' + (e.message || String(e)));
         }
     }
 
@@ -18724,26 +18778,32 @@
             }
             if (cohostVideoTrack) { try { cohostVideoTrack.stop(); cohostVideoTrack.close(); } catch(_) {} cohostVideoTrack = null; }
             if (cohostAudioTrack) { try { cohostAudioTrack.stop(); cohostAudioTrack.close(); } catch(_) {} cohostAudioTrack = null; }
-            // Demote back to audience so they stop broadcasting
+            // Demote back to audience
             if (agoraClient) { try { await agoraClient.setClientRole('audience', { level: 1 }); } catch(_) {} }
-            const stageWrap = $('cohost-stage-wrap');
+
+            // Remove self-view pip
+            var selfPip = document.getElementById('cohost-self-pip');
+            if (selfPip && selfPip.parentNode) selfPip.parentNode.removeChild(selfPip);
+
+            // Hide cohost-stage-wrap
+            var stageWrap = $('cohost-stage-wrap');
             if (stageWrap) stageWrap.style.display = 'none';
+
             isCoHost = false;
-            // Reset button back to "Join Stage"
-            const btn = $('viewer-cohost-btn');
+            var btn = $('viewer-cohost-btn');
             if (btn) {
                 btn.textContent = '🎤 Join Stage';
                 btn.style.opacity = '';
                 btn.style.pointerEvents = '';
                 btn.classList.remove('active');
             }
-            // Clean up cohost request doc in Firestore so host sees slot freed
+            // Clean up cohost request doc so host sees slot freed
             if (_watchingStreamId && window.db && window.fs) {
-                const userAddress = window._liveUserAddress || '';
+                var userAddress = window._liveUserAddress || '';
                 if (userAddress) {
                     try {
-                        const { doc, deleteDoc } = window.fs;
-                        await deleteDoc(doc(window.db, 'live_streams', _watchingStreamId, 'cohost_requests', userAddress));
+                        var _df = window.fs.doc(window.db, 'live_streams', _watchingStreamId, 'cohost_requests', userAddress);
+                        window.fs.deleteDoc(_df).catch(function(){});
                     } catch(_) {}
                 }
             }
@@ -20532,7 +20592,7 @@
             if (bcVid) { bcVid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:50%;'; }
             var pip = document.getElementById('cohost-pip-host');
             if (pip) { pip.style.cssText = 'position:absolute;bottom:0;left:0;width:100%;height:50%;border-radius:0;border:none;border-top:2px solid var(--purple);z-index:20;background:#000;overflow:hidden;'; }
-            if (!pip) showToast('ℹ️ Top/Bottom split ready — approve a viewer from Stage Requests.');
+            if (!pip) showToast('ℹ️ Co-host strip ready — approve a viewer from Stage Requests.');
         } else if (mode === 'grid4') {
             container.classList.add('layout-grid4');
             var bcVid = document.getElementById('live-broadcaster-video');
