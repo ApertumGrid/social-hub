@@ -17659,19 +17659,22 @@
                     // Video unpublish fires when host stops screen share or toggles camera — NOT a stream end.
                     // Only treat as stream-ended when audio drops, and even then confirm via Firestore.
                     if (mediaType === 'audio') {
+                        // Wait 3s then confirm via Firestore before leaving.
+                        // This prevents a brief audio glitch during screen-share transitions
+                        // or co-host promotion from being mistaken for a stream end.
                         setTimeout(() => {
-                            if (_watchingStreamId && window.db && window.fs) {
-                                const { doc: _d, getDoc: _g } = window.fs;
-                                _g(_d(window.db, LIVE_COL, _watchingStreamId)).then(snap => {
-                                    if (!snap.exists() || snap.data().active === false) {
-                                        leaveLiveStream();
-                                    }
-                                }).catch(() => {});
-                            }
-                        }, 2000);
+                            if (!_watchingStreamId || !window.db || !window.fs) return;
+                            const { doc: _d, getDoc: _g } = window.fs;
+                            _g(_d(window.db, LIVE_COL, _watchingStreamId)).then(snap => {
+                                if (!snap.exists() || snap.data().active === false) {
+                                    leaveLiveStream();
+                                }
+                                // If stream is still active, do nothing — host is still live
+                            }).catch(() => {});
+                        }, 3000);
                     }
-                    // Video unpublish (screen share ended / cam toggle) — ignore here;
-                    // subscribeStreamDoc handles real stream-end via the active flag.
+                    // Video unpublish (screen share ended / cam toggle / co-host join renegotiation)
+                    // — always ignore; subscribeStreamDoc is the single source of truth for stream-end.
                 } else if (!hostUid) {
                     // hostUid not yet loaded — ignore; subscribeStreamDoc handles real stream-end
                 } else {
@@ -20122,13 +20125,16 @@
         if (!canvas || !overlay) return;
         const w = overlay.offsetWidth  || 640;
         const h = overlay.offsetHeight || 360;
-        if (canvas.width === w && canvas.height === h) return; // no change needed
-        // Preserve existing drawing via a temp canvas
+        if (canvas.width === w && canvas.height === h) return;
+        // Preserve strokes via a temp canvas
         const tmp = document.createElement('canvas');
         tmp.width = canvas.width; tmp.height = canvas.height;
         tmp.getContext('2d').drawImage(canvas, 0, 0);
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(tmp, 0, 0);
+        // Rebuild base snapshot at new size, then redraw texts on top
+        _wbBaseSnap = canvas.getContext('2d').getImageData(0, 0, w, h);
+        _wbRedraw();
     }
 
     window.toggleWhiteboard = function() {
@@ -20205,22 +20211,49 @@
     window.wbSetTextSize = function(val) { _wbTextSize = parseInt(val, 10) || 24; };
 
     // Re-render all text objects on top of canvas (called after every stroke)
-    function _wbRenderTexts() {
+    // _wbBaseSnap = ImageData of strokes-only (no text baked in).
+    // We always render as: restore base → draw texts on top.
+    // This keeps texts as a live layer that can be moved without ghosting.
+    let _wbBaseSnap = null;
+
+    function _wbSaveBase() {
+        // Call this after any stroke operation to snapshot the base (strokes only, no text).
         const canvas = _getWBCanvas();
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
+        // Temporarily clear texts from canvas, snapshot, then redraw texts
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (_wbBaseSnap) ctx.putImageData(_wbBaseSnap, 0, 0);
+        // (base is already clean at this point — just save what's there)
+        _wbBaseSnap = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    }
+
+    function _wbRedraw() {
+        // Full redraw: restore base strokes then paint all texts on top — NO baking.
+        const canvas = _getWBCanvas();
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (_wbBaseSnap) {
+            ctx.putImageData(_wbBaseSnap, 0, 0);
+        } else {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
         _wbTexts.forEach(t => {
-            ctx.font = `${t.fontSize}px sans-serif`;
+            ctx.font = `bold ${t.fontSize}px sans-serif`;
             ctx.fillStyle = t.color;
             ctx.fillText(t.text, t.x, t.y);
         });
     }
 
+    // Legacy alias — kept so any remaining callers work
+    function _wbRenderTexts() { _wbRedraw(); }
+
     window.wbClear = function() {
         const canvas = _getWBCanvas();
         if (!canvas) return;
         canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-        _wbTexts = []; // clear draggable text objects too
+        _wbTexts = [];
+        _wbBaseSnap = null; // reset base snapshot too
         _wbPushToFirestore(true);
         showToast('Whiteboard cleared.');
     };
@@ -20337,38 +20370,38 @@
             return { x: (src.clientX - r.left) * scaleX, y: (src.clientY - r.top) * scaleY };
         }
 
-        // Drag state for moving placed text objects
+        // Drag state for moving placed text objects on canvas
         let _wbDragTextIdx = -1, _wbDragOffX = 0, _wbDragOffY = 0;
+        // Guard against creating a second input while one is already open
+        let _wbInputOpen = false;
 
         _wbPointerDown = function(e) {
             e.preventDefault();
-            let p = _pos(e);
+            const p = _pos(e);
 
-            // Text tool — check if clicking near an existing text object first (to drag it)
+            // ── TEXT TOOL ──────────────────────────────────────────
             if (_wbTool === 'text') {
                 const ctx = canvas.getContext('2d');
-                const HIT = 20; // px hit radius on canvas coords
+                const HIT = 24; // hit radius in canvas coords
+
+                // Check if click hits an existing text object (to start dragging it)
                 for (let i = _wbTexts.length - 1; i >= 0; i--) {
                     const t = _wbTexts[i];
-                    ctx.font = `${t.fontSize}px sans-serif`;
-                    const w = ctx.measureText(t.text).width;
-                    if (p.x >= t.x - HIT && p.x <= t.x + w + HIT &&
+                    ctx.font = `bold ${t.fontSize}px sans-serif`;
+                    const tw = ctx.measureText(t.text).width;
+                    if (p.x >= t.x - HIT && p.x <= t.x + tw + HIT &&
                         p.y >= t.y - t.fontSize - HIT && p.y <= t.y + HIT) {
-                        // Hit — start dragging this text object
                         _wbDragTextIdx = i;
                         _wbDragOffX = p.x - t.x;
                         _wbDragOffY = p.y - t.y;
-                        // Snapshot canvas WITHOUT the dragged text so move is ghost-free
-                        { const _dctx = canvas.getContext('2d');
-                          const _saved = _wbTexts.splice(i, 1)[0];
-                          _wbRenderTexts();
-                          _wbTexts.splice(i, 0, _saved);
-                          _wbSnapshot = _dctx.getImageData(0, 0, canvas.width, canvas.height); }
-                        return;
+                        return; // _wbPointerMove handles the drag
                     }
                 }
 
-                // No existing text hit — open input to create new text
+                // No hit and no input open — open a new text input
+                if (_wbInputOpen) return;
+                _wbInputOpen = true;
+
                 const r = canvas.getBoundingClientRect();
                 const scaleX = r.width  / canvas.width;
                 const scaleY = r.height / canvas.height;
@@ -20376,84 +20409,101 @@
 
                 const wrapper = document.createElement('div');
                 let wLeft = r.left + p.x * scaleX;
-                let wTop  = r.top  + p.y * scaleY - fontSize;
+                let wTop  = r.top  + p.y * scaleY - fontSize * scaleY;
                 wrapper.style.cssText = `position:fixed;left:${wLeft}px;top:${wTop}px;z-index:9999;`
                     + `cursor:move;display:flex;align-items:center;gap:4px;`;
 
                 const handle = document.createElement('span');
                 handle.textContent = '✥';
                 handle.title = 'Drag to move';
-                handle.style.cssText = `color:${_wbColor};opacity:0.7;font-size:1rem;user-select:none;padding:2px;`;
+                handle.style.cssText = `color:${_wbColor};opacity:0.7;font-size:1rem;user-select:none;padding:2px;cursor:grab;`;
 
                 const inp = document.createElement('input');
                 inp.type = 'text';
                 inp.placeholder = 'Type… Enter to place';
-                inp.style.cssText = `background:rgba(10,10,20,0.85);color:${_wbColor};border:1px solid ${_wbColor};`
-                    + `border-radius:4px;padding:2px 6px;font-size:${fontSize}px;outline:none;min-width:120px;`;
+                inp.style.cssText = `background:rgba(10,10,20,0.88);color:${_wbColor};`
+                    + `border:1.5px solid ${_wbColor};border-radius:4px;padding:3px 8px;`
+                    + `font-size:${Math.round(fontSize * scaleY)}px;outline:none;min-width:130px;font-weight:bold;`;
 
                 wrapper.appendChild(handle);
                 wrapper.appendChild(inp);
                 document.body.appendChild(wrapper);
-                inp.focus();
+                requestAnimationFrame(() => inp.focus());
 
+                // Draggable handle
                 let _drag = false, _dx = 0, _dy = 0;
-                handle.addEventListener('mousedown', ev => {
+                const _onHdDown = ev => {
                     _drag = true; _dx = ev.clientX - wLeft; _dy = ev.clientY - wTop;
-                    ev.preventDefault();
-                });
-                document.addEventListener('mousemove', ev => {
+                    ev.preventDefault(); ev.stopPropagation();
+                };
+                const _onDocMove = ev => {
                     if (!_drag) return;
                     wLeft = ev.clientX - _dx; wTop = ev.clientY - _dy;
                     wrapper.style.left = wLeft + 'px'; wrapper.style.top = wTop + 'px';
-                });
-                document.addEventListener('mouseup', () => { _drag = false; }, { once: false });
+                };
+                const _onDocUp = () => { _drag = false; };
+                handle.addEventListener('mousedown', _onHdDown);
+                document.addEventListener('mousemove', _onDocMove);
+                document.addEventListener('mouseup',   _onDocUp);
 
-                let _wbCommitted = false;
+                // ONE commit path — guarded by flag so it only fires once no matter what
+                let _committed = false;
                 const commit = () => {
-                    if (_wbCommitted) return;
-                    _wbCommitted = true;
+                    if (_committed) return;
+                    _committed = true;
+                    _wbInputOpen = false;
+                    // Clean up drag listeners
+                    document.removeEventListener('mousemove', _onDocMove);
+                    document.removeEventListener('mouseup',   _onDocUp);
                     const txt = inp.value.trim();
+                    wrapper.remove();
                     if (txt) {
-                        const rNow = canvas.getBoundingClientRect();
+                        const rNow  = canvas.getBoundingClientRect();
                         const sxNow = rNow.width  / canvas.width;
                         const syNow = rNow.height / canvas.height;
+                        // wLeft is left edge of wrapper; handle takes some px; input text starts after handle
                         const cx = (wLeft + handle.offsetWidth + 4 - rNow.left) / sxNow;
-                        const cy = (wTop + fontSize - rNow.top) / syNow;
-                        // Store text object — _wbRenderTexts() draws it (no direct draw to avoid doubles)
-                        _wbTexts.push({ text: txt, x: cx, y: cy, fontSize: fontSize, color: _wbColor });
-                        _wbRenderTexts();
+                        const cy = (wTop  + fontSize * scaleY - rNow.top) / syNow;
+                        _wbTexts.push({ text: txt, x: cx, y: cy, fontSize, color: _wbColor });
+                        _wbRedraw();
                         _wbPushToFirestore(true);
                     }
-                    wrapper.remove();
                 };
-                inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); commit(); } if (ev.key === 'Escape') { _wbCommitted = true; wrapper.remove(); } });
-                inp.addEventListener('blur', () => { setTimeout(() => { if (!_drag) commit(); }, 150); });
+
+                inp.addEventListener('keydown', ev => {
+                    if (ev.key === 'Enter')  { ev.preventDefault(); commit(); }
+                    if (ev.key === 'Escape') { _committed = true; _wbInputOpen = false;
+                        document.removeEventListener('mousemove', _onDocMove);
+                        document.removeEventListener('mouseup',   _onDocUp);
+                        wrapper.remove(); }
+                });
+                // blur only commits if we're not dragging the wrapper around
+                inp.addEventListener('blur', () => { setTimeout(() => { if (!_drag) commit(); }, 200); });
                 return;
             }
+
+            // ── DRAWING TOOLS (pen, eraser, line, rect, circle) ───
             _wbDrawing = true;
-            p = _pos(e);
             _wbStartX = p.x; _wbStartY = p.y;
             const ctx = canvas.getContext('2d');
-            _wbRenderTexts(); // ensure texts are burned in before snapshot
-            _wbSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            // Snapshot ONLY the base strokes (texts are always redrawn on top, never baked in here)
+            _wbSnapshot = _wbBaseSnap
+                ? new ImageData(new Uint8ClampedArray(_wbBaseSnap.data), _wbBaseSnap.width, _wbBaseSnap.height)
+                : ctx.getImageData(0, 0, canvas.width, canvas.height);
             if (_wbTool === 'pen' || _wbTool === 'eraser') {
                 ctx.beginPath(); ctx.moveTo(p.x, p.y);
             }
         };
 
         _wbPointerMove = function(e) {
-            // Text drag in progress
+            // ── Text object drag ──
             if (_wbTool === 'text' && _wbDragTextIdx >= 0) {
                 e.preventDefault();
                 const p = _pos(e);
                 const t = _wbTexts[_wbDragTextIdx];
                 t.x = p.x - _wbDragOffX;
                 t.y = p.y - _wbDragOffY;
-                // Restore strokes-only snapshot, then draw all texts fresh (no ghost)
-                const ctx = canvas.getContext('2d');
-                if (_wbSnapshot) ctx.putImageData(_wbSnapshot, 0, 0);
-                else ctx.clearRect(0, 0, canvas.width, canvas.height);
-                _wbRenderTexts();
+                _wbRedraw(); // base + all texts (no ghosting since text is never baked)
                 return;
             }
             if (!_wbDrawing) return;
@@ -20466,14 +20516,14 @@
             } else if (_wbTool === 'eraser') {
                 ctx.globalCompositeOperation = 'destination-out';
                 ctx.lineWidth = _wbSize * 8;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round'; ctx.lineJoin = 'round';
                 ctx.lineTo(p.x, p.y); ctx.stroke();
                 ctx.globalCompositeOperation = 'source-over';
             } else {
+                // Shape preview: restore base + texts, then draw shape on top
                 ctx.putImageData(_wbSnapshot, 0, 0);
+                _wbRedraw();
                 _setupWBCtx(ctx);
-                _wbRenderTexts();
                 const w = p.x - _wbStartX, h = p.y - _wbStartY;
                 if (_wbTool === 'line') {
                     ctx.beginPath(); ctx.moveTo(_wbStartX, _wbStartY); ctx.lineTo(p.x, p.y); ctx.stroke();
@@ -20487,14 +20537,10 @@
         };
 
         _wbPointerUp = function() {
-            // Finish text drag
+            // ── Finish text drag ──
             if (_wbTool === 'text' && _wbDragTextIdx >= 0) {
                 _wbDragTextIdx = -1;
-                // Restore clean base then burn final positions permanently
-                const ctx = canvas.getContext('2d');
-                if (_wbSnapshot) ctx.putImageData(_wbSnapshot, 0, 0);
-                _wbRenderTexts();
-                _wbSnapshot = null;
+                _wbRedraw();
                 _wbPushToFirestore(true);
                 return;
             }
@@ -20502,7 +20548,10 @@
             _wbDrawing = false;
             const ctx = canvas.getContext('2d');
             ctx.closePath();
-            _wbRenderTexts(); // ensure texts stay on top after strokes
+            // After a stroke finishes, save the strokes-only state as the new base
+            _wbBaseSnap = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            // Now redraw texts on top (they are NOT in _wbBaseSnap)
+            _wbRedraw();
             _wbSnapshot = null;
             _wbPushToFirestore(true);
         };
