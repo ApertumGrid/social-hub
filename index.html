@@ -15258,6 +15258,13 @@
         const hubParam = params.get('hub');
         if (!hubParam) return;   // no deep-link — normal load, nothing to do
 
+        // If a ?post= param is also present, the post takes full priority.
+        // Don't hijack navigation to the Communities tab — let resolvePostDeepLink handle it.
+        if (params.get('post')) {
+            console.log('[deepLink] ?post= present — skipping hub deep-link, post takes priority');
+            return;
+        }
+
         // If we already resolved a deep-link this session, skip.
         // This prevents the resolver from hijacking navigation when the user
         // simply has ?hub= in their URL from a previous hub visit.
@@ -16200,11 +16207,14 @@
 
     function _buildPostShareUrl(postId) {
         try {
-            var url = new URL(window.location.href);
+            // Build from origin + pathname only — never carry ?hub= or other params
+            // into a post share link, or the recipient lands on the Communities tab
+            // instead of the Global Feed where the post actually lives.
+            var url = new URL(window.location.origin + window.location.pathname);
             url.searchParams.set('post', postId);
             return url.toString();
         } catch (_) {
-            return window.location.href + '?post=' + encodeURIComponent(postId);
+            return window.location.origin + window.location.pathname + '?post=' + encodeURIComponent(postId);
         }
     }
 
@@ -16310,23 +16320,42 @@
     (function resolvePostDeepLink() {
         var postId = new URLSearchParams(window.location.search).get('post');
         if (!postId) return;
-        var elapsed = 0;
-        var poll = setInterval(function() {
-            elapsed += 200;
-            var card = document.querySelector('[data-id="' + postId + '"]');
-            if (card) {
-                clearInterval(poll);
-                setTimeout(function() {
-                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    card.classList.remove('deep-link-highlight');
-                    void card.offsetWidth;
-                    card.classList.add('deep-link-highlight');
-                    showToast('📌 Jumped to shared post');
-                }, 150);
-            } else if (elapsed >= 8000) {
-                clearInterval(poll);
+
+        // Wait for _activateTab to be defined, then force-navigate to the
+        // Global Feed so the post card is actually rendered in the DOM.
+        var initWait = 0;
+        var initPoll = setInterval(function() {
+            initWait += 100;
+            if (typeof _activateTab === 'function') {
+                clearInterval(initPoll);
+                try { _activateTab('home', document.getElementById('nav-home')); } catch(_) {}
+                _pollForCard();
+            } else if (initWait >= 5000) {
+                clearInterval(initPoll);
+                _pollForCard(); // try anyway
             }
-        }, 200);
+        }, 100);
+
+        function _pollForCard() {
+            var elapsed = 0;
+            var poll = setInterval(function() {
+                elapsed += 200;
+                var card = document.querySelector('[data-id="' + postId + '"]');
+                if (card) {
+                    clearInterval(poll);
+                    setTimeout(function() {
+                        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        card.classList.remove('deep-link-highlight');
+                        void card.offsetWidth;
+                        card.classList.add('deep-link-highlight');
+                        showToast('📌 Jumped to shared post');
+                    }, 150);
+                } else if (elapsed >= 10000) {
+                    clearInterval(poll);
+                    showToast('⚠️ Could not find the shared post — it may have been deleted.');
+                }
+            }, 200);
+        }
     })();
 
     window.toggleShareDropdown = toggleShareDropdown;
