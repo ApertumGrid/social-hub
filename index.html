@@ -956,6 +956,45 @@
         #live-broadcaster-video-container .live-stream-overlay-top {
             z-index:30 !important;
         }
+
+        /* ── VIEWER layout classes — mirrors broadcaster layout classes above ──
+           These use !important to beat the cinema-mode rule that forces
+           position:absolute on inline-styled children. */
+        #live-remote-video-container.layout-split2 {
+            display:flex !important; flex-direction:row !important; gap:2px !important;
+        }
+        #live-remote-video-container.layout-split2 #live-remote-video,
+        #live-remote-video-container.layout-split2 #cohost-pip-viewer {
+            position:relative !important; inset:auto !important;
+            width:50% !important; height:100% !important;
+            border-radius:0 !important; border:none !important; flex-shrink:0 !important;
+        }
+        #live-remote-video-container.layout-pip-bottom #live-remote-video {
+            position:absolute !important; top:0 !important; left:0 !important;
+            width:100% !important; height:50% !important;
+        }
+        #live-remote-video-container.layout-pip-bottom #cohost-pip-viewer {
+            position:absolute !important; bottom:0 !important; left:0 !important;
+            right:auto !important; width:100% !important; height:50% !important;
+            border-radius:0 !important; border:none !important;
+            border-top:2px solid var(--purple) !important;
+        }
+        #live-remote-video-container.layout-grid4 {
+            display:grid !important;
+            grid-template-columns:1fr 1fr !important;
+            grid-template-rows:1fr 1fr !important;
+            gap:2px !important;
+        }
+        #live-remote-video-container.layout-grid4 #live-remote-video,
+        #live-remote-video-container.layout-grid4 #cohost-pip-viewer {
+            position:relative !important; inset:auto !important;
+            width:100% !important; height:100% !important;
+            border-radius:0 !important; border:none !important;
+        }
+        #live-remote-video-container .live-stream-overlay-top,
+        #live-remote-video-container .live-stream-meta,
+        #live-remote-video-container #paid-gate-overlay,
+        #live-remote-video-container #cohost-self-pip { z-index:30 !important; }
         .cinema-fs-btn {
             position:absolute; bottom:10px; left:10px; z-index:20;
             background:rgba(0,0,0,0.6); border:none; color:#fff;
@@ -5699,8 +5738,8 @@
                             <button onclick="leaveCoHost()" style="position:absolute;top:8px;right:10px;background:rgba(224,62,62,0.85);border:none;color:#fff;border-radius:50px;padding:3px 10px;font-size:0.65rem;font-weight:700;cursor:pointer;">Leave Stage</button>
                             <!-- Viewer mic/cam controls while on stage -->
                             <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:10;">
-                                <button id="cohost-btn-mic" onclick="toggleCoHostMic()" style="background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;padding:3px 10px;font-size:0.65rem;font-weight:600;cursor:pointer;">🔇 Mute</button>
-                                <button id="cohost-btn-cam" onclick="toggleCoHostCam()" style="background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;padding:3px 10px;font-size:0.65rem;font-weight:600;cursor:pointer;">📷 Cam Off</button>
+                                <button onclick="toggleCoHostMic()" style="background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;padding:3px 10px;font-size:0.65rem;font-weight:600;cursor:pointer;">🔇 Mute</button>
+                                <button onclick="toggleCoHostCam()" style="background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;padding:3px 10px;font-size:0.65rem;font-weight:600;cursor:pointer;">📷 Cam Off</button>
                             </div>
                         </div>
                         <div class="live-stream-box" id="live-remote-video-container">
@@ -17748,28 +17787,25 @@
                         spotBanner.textContent = '⛶ ON STAGE';
                         cohostPip.appendChild(spotBanner);
 
-                        // Spotlight toggle button
-                        var spotBtn = document.createElement('button');
-                        spotBtn.textContent = '⛶';
-                        spotBtn.title = 'Spotlight co-host';
-                        spotBtn.style.cssText = 'position:absolute;bottom:4px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:2px 6px;font-size:0.65rem;cursor:pointer;z-index:4;';
+                        // Spotlight is HOST-controlled via Firestore — viewers never click to toggle it
                         var _vSpotActive = false;
                         window._applyViewerSpotlight = function(on) {
                             _vSpotActive = on;
                             if (on) {
-                                spotBtn.textContent = '⊠ Restore';
                                 cohostPip.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border-radius:0;border:none;z-index:18;background:#000;overflow:hidden;';
-                                spotBtn.style.cssText = 'position:absolute;bottom:8px;right:8px;background:rgba(124,92,191,0.9);border:none;color:#fff;border-radius:4px;padding:3px 10px;font-size:0.75rem;cursor:pointer;z-index:22;';
                                 spotBanner.style.display = 'block';
                             } else {
-                                spotBtn.textContent = '⛶';
-                                cohostPip.style.cssText = 'position:absolute;bottom:60px;right:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
-                                spotBtn.style.cssText = 'position:absolute;bottom:4px;right:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:2px 6px;font-size:0.65rem;cursor:pointer;z-index:4;';
                                 spotBanner.style.display = 'none';
+                                // Restore the current layout instead of hardcoding solo pip
+                                var rc2 = document.getElementById('live-remote-video-container');
+                                var curMode = rc2 && (
+                                    rc2.classList.contains('layout-split2')    ? 'split2'    :
+                                    rc2.classList.contains('layout-pip-bottom')? 'pip-bottom' :
+                                    rc2.classList.contains('layout-grid4')     ? 'grid4'     : 'solo'
+                                );
+                                _applyViewerLayout(curMode || 'solo');
                             }
                         };
-                        spotBtn.onclick = function() { window._applyViewerSpotlight(!_vSpotActive); };
-                        cohostPip.appendChild(spotBtn);
 
                         // Append to the currently active video container (works in cinema mode too)
                         var rc = document.getElementById('live-remote-video-container');
@@ -18541,33 +18577,35 @@
         var hostVid   = document.getElementById('live-remote-video');
         var cohostPip = document.getElementById('cohost-pip-viewer');
 
-        // Always reset container overrides first
+        // Strip all layout classes and inline overrides first
         container.classList.remove('layout-split2', 'layout-pip-bottom', 'layout-grid4');
         container.style.display = '';
         container.style.gridTemplateColumns = '';
 
         if (mode === 'solo') {
             _pendingViewerLayout = null;
-            if (hostVid)   hostVid.style.cssText   = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-            if (cohostPip) cohostPip.style.cssText  = 'position:absolute;bottom:60px;right:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+            // Restore default fills — no layout class needed
+            if (hostVid)   hostVid.style.cssText  = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+            if (cohostPip) cohostPip.style.cssText = 'position:absolute;bottom:60px;right:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
         } else if (mode === 'split2') {
-            if (!cohostPip) { _pendingViewerLayout = mode; return; } // wait for pip
+            if (!cohostPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
-            container.style.display = 'flex';
-            if (hostVid)  hostVid.style.cssText  = 'position:relative;width:50%;height:100%;flex-shrink:0;';
-            cohostPip.style.cssText = 'position:relative;width:50%;height:100%;border-radius:0;border:none;border-left:2px solid var(--purple);z-index:1;background:#000;flex-shrink:0;';
+            // Clear inline styles — CSS class rules with !important take over
+            if (hostVid)  hostVid.style.cssText  = '';
+            cohostPip.style.cssText = 'background:#000;overflow:hidden;';
+            container.classList.add('layout-split2');
         } else if (mode === 'pip-bottom') {
             if (!cohostPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
-            if (hostVid)  hostVid.style.cssText  = 'position:absolute;top:0;left:0;width:100%;height:50%;';
-            cohostPip.style.cssText = 'position:absolute;bottom:0;left:0;width:100%;height:50%;border-radius:0;border:none;border-top:2px solid var(--purple);z-index:20;background:#000;overflow:hidden;';
+            if (hostVid)  hostVid.style.cssText  = '';
+            cohostPip.style.cssText = 'background:#000;overflow:hidden;';
+            container.classList.add('layout-pip-bottom');
         } else if (mode === 'grid4') {
             if (!cohostPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
-            container.style.display = 'grid';
-            container.style.gridTemplateColumns = '1fr 1fr';
-            if (hostVid)  hostVid.style.cssText  = 'position:relative;width:100%;height:100%;';
-            cohostPip.style.cssText = 'position:relative;width:100%;height:100%;border-radius:0;border:none;background:#000;';
+            if (hostVid)  hostVid.style.cssText  = '';
+            cohostPip.style.cssText = 'background:#000;overflow:hidden;';
+            container.classList.add('layout-grid4');
         }
     }
 
@@ -19084,6 +19122,26 @@
                 selfVideoDiv.id = 'cohost-self-video';
                 selfVideoDiv.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;';
                 selfPip.appendChild(selfVideoDiv);
+
+                // ── Mic / Cam buttons live INSIDE the pip so they work in cinema mode ──
+                var selfControls = document.createElement('div');
+                selfControls.style.cssText = 'position:absolute;bottom:4px;left:50%;transform:translateX(-50%);display:flex;gap:4px;z-index:10;';
+
+                var pipMicBtn = document.createElement('button');
+                pipMicBtn.id = 'cohost-btn-mic';
+                pipMicBtn.textContent = '🔇 Mute';
+                pipMicBtn.onclick = function() { window.toggleCoHostMic && window.toggleCoHostMic(); };
+                pipMicBtn.style.cssText = 'background:rgba(0,0,0,0.75);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;padding:2px 7px;font-size:0.58rem;font-weight:600;cursor:pointer;white-space:nowrap;';
+
+                var pipCamBtn = document.createElement('button');
+                pipCamBtn.id = 'cohost-btn-cam';
+                pipCamBtn.textContent = '📷 Cam Off';
+                pipCamBtn.onclick = function() { window.toggleCoHostCam && window.toggleCoHostCam(); };
+                pipCamBtn.style.cssText = 'background:rgba(0,0,0,0.75);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;padding:2px 7px;font-size:0.58rem;font-weight:600;cursor:pointer;white-space:nowrap;';
+
+                selfControls.appendChild(pipMicBtn);
+                selfControls.appendChild(pipCamBtn);
+                selfPip.appendChild(selfControls);
             }
 
             // Append to whichever video container is currently visible
