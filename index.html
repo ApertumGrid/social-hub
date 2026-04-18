@@ -993,8 +993,35 @@
         }
         #live-remote-video-container .live-stream-overlay-top,
         #live-remote-video-container .live-stream-meta,
-        #live-remote-video-container #paid-gate-overlay,
+        #live-remote-video-container #paid-gate-overlay { z-index:30 !important; }
+
+        /* ── Co-host self-pip: float over the top in solo mode ── */
         #live-remote-video-container #cohost-self-pip { z-index:30 !important; }
+
+        /* ── Co-host self-pip participates in layout classes ──
+           In split2 / pip-bottom / grid4 the self-pip becomes a proper grid/flex
+           cell rather than a floating overlay, so the co-host sees the same
+           layout the broadcaster is showing to everyone else. */
+        #live-remote-video-container.layout-split2 #cohost-self-pip {
+            position:relative !important; inset:auto !important;
+            width:50% !important; height:100% !important;
+            border-radius:0 !important; border:none !important;
+            border-left:2px solid #e03e3e !important;
+            flex-shrink:0 !important; z-index:1 !important;
+        }
+        #live-remote-video-container.layout-pip-bottom #cohost-self-pip {
+            position:absolute !important; bottom:0 !important; left:0 !important;
+            right:auto !important; width:100% !important; height:50% !important;
+            border-radius:0 !important;
+            border:none !important; border-top:2px solid #e03e3e !important;
+            z-index:1 !important;
+        }
+        #live-remote-video-container.layout-grid4 #cohost-self-pip {
+            position:relative !important; inset:auto !important;
+            width:100% !important; height:100% !important;
+            border-radius:0 !important; border:none !important;
+            z-index:1 !important;
+        }
         .cinema-fs-btn {
             position:absolute; bottom:10px; left:10px; z-index:20;
             background:rgba(0,0,0,0.6); border:none; color:#fff;
@@ -17545,8 +17572,15 @@
                     showToast('🎤 Co-host joined the stage!');
                 } catch(e) { console.warn('[CoHost] host subscribe error:', e); }
             });
-            agoraClient.on('user-unpublished', (remoteUser) => {
-                // Remove co-host PiP if they leave + clear spotlight for all viewers
+            agoraClient.on('user-unpublished', (remoteUser, mediaType) => {
+                // A mic/cam toggle fires user-unpublished for that mediaType only.
+                // Only remove the pip and reset layout when the VIDEO track is gone
+                // AND the user has no active video track remaining (i.e. they truly left).
+                if (mediaType === 'audio') return; // audio toggle — ignore completely
+                // Video unpublished: check if the user still has a video track alive.
+                // Agora sets videoTrack to null on the remoteUser object when fully gone.
+                if (remoteUser.videoTrack) return; // still has video — just a renegotiation
+                // Co-host truly left — remove PiP and reset layout
                 const pip = document.getElementById('cohost-pip-host');
                 if (pip) pip.remove();
                 if (currentStreamId && window.db && window.fs) {
@@ -17873,7 +17907,12 @@
                 } else if (!hostUid) {
                     // hostUid not yet loaded — ignore; subscribeStreamDoc handles real stream-end
                 } else {
-                    // Co-host left — remove their PiP and restore normal view
+                    // Another user (co-host) unpublished something.
+                    // IMPORTANT: mic/cam toggle fires user-unpublished for that mediaType only.
+                    // Only remove the PiP when their VIDEO is truly gone (not just muted/toggled).
+                    if (mediaType === 'audio') return; // audio toggle — ignore, pip stays
+                    if (remoteUser.videoTrack) return; // video renegotiation — pip stays
+                    // Co-host truly left — remove their PiP and restore normal view
                     const pip = document.getElementById('cohost-pip-viewer');
                     if (pip) pip.remove();
                     window._applyViewerSpotlight = null;
@@ -18583,6 +18622,8 @@
         if (!container) return;
         var hostVid   = document.getElementById('live-remote-video');
         var cohostPip = document.getElementById('cohost-pip-viewer');
+        // selfPip is the co-host's own camera preview (only present when isCoHost===true)
+        var selfPip   = document.getElementById('cohost-self-pip');
 
         // Strip all layout classes and inline overrides first
         container.classList.remove('layout-split2', 'layout-pip-bottom', 'layout-grid4');
@@ -18594,24 +18635,31 @@
             // Restore default fills — no layout class needed
             if (hostVid)   hostVid.style.cssText  = 'position:absolute;top:0;left:0;width:100%;height:100%;';
             if (cohostPip) cohostPip.style.cssText = 'position:absolute;bottom:60px;right:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+            // Restore self-pip to floating corner (bottom-left)
+            if (selfPip) selfPip.style.cssText = 'position:absolute;bottom:60px;left:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid #e03e3e;z-index:22;background:#000;';
         } else if (mode === 'split2') {
-            if (!cohostPip) { _pendingViewerLayout = mode; return; }
+            // For co-host: self-pip becomes a full flex cell even without cohostPip (the co-host IS the stage)
+            if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
             // Clear inline styles — CSS class rules with !important take over
-            if (hostVid)  hostVid.style.cssText  = '';
-            cohostPip.style.cssText = 'background:#000;overflow:hidden;';
+            if (hostVid)   hostVid.style.cssText  = '';
+            if (cohostPip) cohostPip.style.cssText = 'background:#000;overflow:hidden;';
+            // Let CSS handle self-pip positioning in this layout
+            if (selfPip)   selfPip.style.cssText   = 'background:#000;overflow:hidden;';
             container.classList.add('layout-split2');
         } else if (mode === 'pip-bottom') {
-            if (!cohostPip) { _pendingViewerLayout = mode; return; }
+            if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
-            if (hostVid)  hostVid.style.cssText  = '';
-            cohostPip.style.cssText = 'background:#000;overflow:hidden;';
+            if (hostVid)   hostVid.style.cssText  = '';
+            if (cohostPip) cohostPip.style.cssText = 'background:#000;overflow:hidden;';
+            if (selfPip)   selfPip.style.cssText   = 'background:#000;overflow:hidden;';
             container.classList.add('layout-pip-bottom');
         } else if (mode === 'grid4') {
-            if (!cohostPip) { _pendingViewerLayout = mode; return; }
+            if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
-            if (hostVid)  hostVid.style.cssText  = '';
-            cohostPip.style.cssText = 'background:#000;overflow:hidden;';
+            if (hostVid)   hostVid.style.cssText  = '';
+            if (cohostPip) cohostPip.style.cssText = 'background:#000;overflow:hidden;';
+            if (selfPip)   selfPip.style.cssText   = 'background:#000;overflow:hidden;';
             container.classList.add('layout-grid4');
         }
     }
@@ -19158,6 +19206,19 @@
             if (targetContainer) {
                 targetContainer.appendChild(selfPip);
             }
+
+            // Re-apply the current viewer layout so the self-pip slots into the correct
+            // position immediately (instead of staying as a floating corner box while
+            // the host has already set a split/grid layout).
+            setTimeout(function() {
+                var rc = document.getElementById('live-remote-video-container');
+                if (rc) {
+                    var curMode = rc.classList.contains('layout-split2')    ? 'split2'    :
+                                  rc.classList.contains('layout-pip-bottom') ? 'pip-bottom' :
+                                  rc.classList.contains('layout-grid4')      ? 'grid4'      : 'solo';
+                    if (typeof _applyViewerLayout === 'function') _applyViewerLayout(curMode);
+                }
+            }, 300);
 
             // Play local cam into the self-view pip with retry until container has dimensions
             var _selfRetry = 0;
