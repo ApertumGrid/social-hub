@@ -18987,10 +18987,14 @@
     window.approveCoHost = async function(docId, uid) {
         if (!currentStreamId || !window.db || !window.fs) return;
         try {
-            const { doc, updateDoc } = window.fs;
-            await updateDoc(doc(window.db, 'live_streams', currentStreamId, 'cohost_requests', docId), {
-                status: 'approved'
-            });
+            const { doc, setDoc } = window.fs;
+            // Use setDoc with merge:true instead of updateDoc — updateDoc throws
+            // "No document to update" if the request doc was deleted or never fully committed.
+            // setDoc(merge) will create-or-update safely either way.
+            await setDoc(doc(window.db, 'live_streams', currentStreamId, 'cohost_requests', docId), {
+                status: 'approved',
+                uid: uid || docId
+            }, { merge: true });
             showToast('✓ Co-host approved — they can now join the stage.');
         } catch(e) { showToast('Approve error: ' + e.message); }
     };
@@ -18998,10 +19002,10 @@
     window.rejectCoHost = async function(docId) {
         if (!currentStreamId || !window.db || !window.fs) return;
         try {
-            const { doc, updateDoc } = window.fs;
-            await updateDoc(doc(window.db, 'live_streams', currentStreamId, 'cohost_requests', docId), {
+            const { doc, setDoc } = window.fs;
+            await setDoc(doc(window.db, 'live_streams', currentStreamId, 'cohost_requests', docId), {
                 status: 'rejected'
-            });
+            }, { merge: true });
         } catch(e) {}
     };
 
@@ -19027,16 +19031,16 @@
             if (btn) { btn.textContent = '⏳ Waiting…'; btn.style.opacity = '0.6'; btn.style.pointerEvents = 'none'; }
             showToast('✋ Stage request sent — waiting for host approval.');
 
-            // Watch for approval
+            // Watch for approval — also handle the case where snap doesn't exist yet
             const unsub = onSnapshot(reqRef, async snap => {
-                if (!snap.exists()) return;
+                if (!snap.exists()) return; // still pending creation, wait
                 const data = snap.data();
                 if (data.status === 'approved') {
                     unsub();
                     await _promoteToCoHost();
                 } else if (data.status === 'rejected') {
                     unsub();
-                    if (btn) { btn.textContent = '🎤 Join Stage'; btn.style.opacity = ''; btn.style.pointerEvents = ''; }
+                    if (btn) { btn.textContent = '🎤 Join Stage'; btn.style.opacity = ''; btn.style.pointerEvents = ''; btn.classList.remove('active'); }
                     showToast('Host declined your stage request.');
                 }
             });
