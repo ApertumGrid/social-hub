@@ -17421,6 +17421,10 @@
             const willRecord  = ($('setup-record-toggle') || {}).checked || false;
             streamEntryFee = paidChecked && entryFeeVal > 0 ? entryFeeVal : 0;
 
+            // Generate HOST_UID before creating the doc so it's included from the start.
+            // This avoids the race where a viewer joins before the follow-up updateDoc fires.
+            const HOST_UID = 1 + Math.floor(Math.random() * 99998); // unique per session
+
             const docRef = await addDoc(collection(window.db, LIVE_COL), {
                 hostAddr:   userAddress,
                 hostName:   userHandle || 'Creator',
@@ -17434,7 +17438,8 @@
                 startedAt:  serverTimestamp(),
                 entryFee:   streamEntryFee,
                 isPaid:     streamEntryFee > 0,
-                hasReplay:  false
+                hasReplay:  false,
+                hostUid:    HOST_UID
             });
             currentStreamId = docRef.id;
             window._currentStreamId = currentStreamId; // expose for spotlight closure
@@ -17443,18 +17448,10 @@
             liveHypeCount   = 0;
 
             // 2. Init Agora client as host
-            // IMPORTANT: Token is signed for channel "socialhub_live_test" — must use exact name.
-            // We isolate streams by storing the host's Agora UID in Firestore so viewers
-            // can subscribe to only that UID even though all streams share one channel.
-            const HOST_UID = 1 + Math.floor(Math.random() * 99998); // unique per session
             agoraClient = window.AgoraRTC.createClient({ mode: 'live', codec: 'h264' });
             await agoraClient.setClientRole('host');
             await fetchAgoraToken(LIVE_CHANNEL);
             await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, HOST_UID);
-
-            // Store host UID so viewers know which publisher to subscribe to
-            const { doc: _doc, updateDoc: _upd } = window.fs;
-            await _upd(_doc(window.db, LIVE_COL, docRef.id), { hostUid: HOST_UID }).catch(() => {});
 
             // 3. Publish tracks (create if not already previewed)
             if (!localVideoTrack || !localAudioTrack) {
@@ -17735,11 +17732,21 @@
             await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, Math.floor(Math.random() * 99998) + 100000);
 
             // hostUid tells us which publisher in the shared channel belongs to THIS stream
-            const hostUid = streamData.hostUid || null;
+            // hostUid is now always in the doc from creation, but keep a mutable
+            // ref so the fallback below can update it if it somehow arrives null.
+            let hostUid = streamData.hostUid != null ? Number(streamData.hostUid) : null;
 
             // Listen for remote video — only render the matching host UID
             agoraClient.on('user-published', async (remoteUser, mediaType) => {
                 await agoraClient.subscribe(remoteUser, mediaType);
+
+                // Fallback: if hostUid still isn't set (race on very fast join),
+                // treat the very first publisher in the low UID range as the host.
+                if (hostUid == null && remoteUser.uid < 100000) {
+                    hostUid = remoteUser.uid;
+                    console.warn('[Viewer] hostUid was null — using first publisher:', hostUid);
+                }
+
                 if (remoteUser.uid === hostUid) {
                     // Main host video/audio
                     if (mediaType === 'video') {
