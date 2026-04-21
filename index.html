@@ -794,6 +794,28 @@
         #cinema-video-col .live-stream-box > div[style*="position: absolute"] {
             position:absolute !important;
         }
+        /* ── In split/grid layouts, cohost-self-pip must NOT be forced absolute ──
+           The layout CSS classes set position:relative via !important rules, but the
+           cinema override above would win because it also uses !important on a more
+           specific selector. We re-override here for each layout so the pip becomes
+           a proper flex/grid cell instead of a floating overlay. */
+        #cinema-video-col .live-stream-box.layout-split2 #cohost-self-pip,
+        #cinema-video-col .live-stream-box.layout-pip-bottom #cohost-self-pip,
+        #cinema-video-col .live-stream-box.layout-grid4 #cohost-self-pip {
+            position:relative !important;
+            inset:auto !important;
+        }
+        #cinema-video-col .live-stream-box.layout-split2 #live-remote-video,
+        #cinema-video-col .live-stream-box.layout-split2 #cohost-pip-viewer {
+            position:relative !important;
+            inset:auto !important;
+        }
+        #cinema-video-col .live-stream-box.layout-pip-bottom #live-remote-video,
+        #cinema-video-col .live-stream-box.layout-grid4 #live-remote-video,
+        #cinema-video-col .live-stream-box.layout-grid4 #cohost-pip-viewer {
+            position:relative !important;
+            inset:auto !important;
+        }
         /* Right col: split into chat (top, scrollable) + controls (bottom, fixed height) */
         #cinema-chat-col {
             width:340px; flex-shrink:0; display:flex; flex-direction:column;
@@ -17573,6 +17595,8 @@
                 } catch(e) { console.warn('[CoHost] host subscribe error:', e); }
             });
             agoraClient.on('user-unpublished', (remoteUser, mediaType) => {
+                // If the co-host is deliberately toggling mic/cam, ignore this event entirely.
+                if (_cohostToggling) return;
                 // A mic/cam toggle fires user-unpublished for that mediaType only.
                 // Only remove the pip and reset layout when the VIDEO track is gone
                 // AND the user has no active video track remaining (i.e. they truly left).
@@ -17883,6 +17907,8 @@
             });
 
             agoraClient.on('user-unpublished', (remoteUser, mediaType) => {
+                // If the co-host is deliberately toggling mic/cam, ignore this event entirely.
+                if (_cohostToggling) return;
                 if (hostUid && remoteUser.uid === hostUid) {
                     // Host unpublished something.
                     // Video unpublish fires when host stops screen share or toggles camera — NOT a stream end.
@@ -19303,16 +19329,23 @@
     let _cohostCamOff   = false;
 
     // ── Co-host mic toggle (viewer on stage) ─────────────────────
+    // Flag set to true for the duration of a deliberate mic/cam toggle.
+    // Both user-unpublished handlers check this and ignore the event while it is true.
+    var _cohostToggling = false;
+
     window.toggleCoHostMic = async function() {
         if (!cohostAudioTrack) { showToast('No mic track — rejoin the stage.'); return; }
         try {
             _cohostMicMuted = !_cohostMicMuted;
+            _cohostToggling = true;
             await cohostAudioTrack.setEnabled(!_cohostMicMuted);
+            setTimeout(function(){ _cohostToggling = false; }, 2000);
             const btn = $('cohost-btn-mic');
             if (btn) btn.textContent = _cohostMicMuted ? '🎙 Unmute' : '🔇 Mute';
             showToast(_cohostMicMuted ? '🔇 Mic muted' : '🎙 Mic live');
         } catch(e) {
             _cohostMicMuted = !_cohostMicMuted; // roll back
+            _cohostToggling = false;
             console.warn('[CoHost] toggleCoHostMic error:', e);
             showToast('Mic toggle failed: ' + (e.message || String(e)));
         }
@@ -19323,12 +19356,15 @@
         if (!cohostVideoTrack) { showToast('No camera track — rejoin the stage.'); return; }
         try {
             _cohostCamOff = !_cohostCamOff;
+            _cohostToggling = true;
             await cohostVideoTrack.setEnabled(!_cohostCamOff);
+            setTimeout(function(){ _cohostToggling = false; }, 2000);
             const btn = $('cohost-btn-cam');
             if (btn) btn.textContent = _cohostCamOff ? '📷 Cam On' : '📷 Cam Off';
             showToast(_cohostCamOff ? '📷 Camera off' : '📷 Camera live');
         } catch(e) {
             _cohostCamOff = !_cohostCamOff; // roll back
+            _cohostToggling = false;
             console.warn('[CoHost] toggleCoHostCam error:', e);
             showToast('Camera toggle failed: ' + (e.message || String(e)));
         }
