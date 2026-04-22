@@ -6157,6 +6157,9 @@
                             <button class="studio-btn" id="btn-whiteboard" onclick="toggleWhiteboard()">
                                 <span class="studio-btn-icon">🖊️</span> Whiteboard
                             </button>
+                            <button class="studio-btn" id="btn-toggle-chat" onclick="toggleLiveChat()" title="Allow or block viewer comments">
+                                <span class="studio-btn-icon">💬</span> Comments
+                            </button>
                         </div>
 
                         <!-- Lower Third editor (hidden by default) -->
@@ -17536,9 +17539,11 @@
                         closeBtn.onclick = function(){ cohostPip.style.display='none'; };
                         cohostPip.appendChild(closeBtn);
 
+                        const cohostUid = remoteUser.uid; // capture uid for this pip
+
                         // Spotlight button — fullscreen co-host for everyone via Firestore
                         const spotBtn = document.createElement('button');
-                        spotBtn.id = 'cohost-spotlight-btn';
+                        spotBtn.id = 'cohost-spotlight-btn-' + cohostUid;
                         spotBtn.textContent = '⛶ Spotlight';
                         spotBtn.title = 'Give co-host full screen for everyone (click again to restore)';
                         spotBtn.style.cssText = 'position:absolute;bottom:2px;left:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:2px 7px;font-size:0.55rem;cursor:pointer;z-index:2;white-space:nowrap;';
@@ -17566,13 +17571,20 @@
                             if (_sid && window.db && window.fs) {
                                 window.fs.updateDoc(
                                     window.fs.doc(window.db, LIVE_COL, _sid),
-                                    { cohostSpotlight: newState }
+                                    { cohostSpotlight: newState, cohostSpotlightUid: newState ? String(cohostUid) : '' }
                                 ).catch(function(e){ console.warn('[Spotlight] Firestore write failed:', e); });
                             } else {
                                 console.warn('[Spotlight] No streamId available:', currentStreamId, window._currentStreamId);
                             }
                         };
                         cohostPip.appendChild(spotBtn);
+
+                        // Gift button — host can gift the co-host directly
+                        const giftBtn = document.createElement('button');
+                        giftBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(240,180,41,0.85);border:none;color:#111;border-radius:4px;padding:2px 7px;font-size:0.55rem;cursor:pointer;z-index:2;white-space:nowrap;font-weight:700;';
+                        giftBtn.textContent = '🎁 Gift';
+                        giftBtn.onclick = function() { window.openGiftPicker && window.openGiftPicker(String(cohostUid), label.textContent || 'Co-host'); };
+                        cohostPip.appendChild(giftBtn);
 
                         const videoDiv = document.createElement('div');
                         videoDiv.id = 'cohost-pip-video';
@@ -17851,6 +17863,11 @@
                         spotBanner.style.cssText = 'display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(124,92,191,0.92);color:#fff;font-size:0.68rem;font-weight:700;letter-spacing:1px;padding:4px 14px;border-radius:20px;z-index:25;white-space:nowrap;pointer-events:none;';
                         spotBanner.textContent = '⛶ ON STAGE';
                         cohostPip.appendChild(spotBanner);
+
+                        // Gift button — viewers can gift the co-host directly
+                        setTimeout(function() {
+                            if (window._attachViewerGiftBtn) window._attachViewerGiftBtn(cohostPip, remoteUser.uid);
+                        }, 500);
 
                         // Spotlight is HOST-controlled via Firestore — viewers never click to toggle it
                         var _vSpotActive = false;
@@ -18191,12 +18208,177 @@
         }).catch(e => console.warn('[Broadcast chat]', e));
     };
 
+    // ── Comments on/off (streamer controls) ──────────────────────
+    var _chatEnabled = true;
+    window.toggleLiveChat = function() {
+        _chatEnabled = !_chatEnabled;
+        const btn = $('btn-toggle-chat');
+        if (btn) {
+            btn.innerHTML = _chatEnabled
+                ? '<span class="studio-btn-icon">💬</span> Comments'
+                : '<span class="studio-btn-icon">🚫</span> Comments Off';
+            btn.classList.toggle('active', !_chatEnabled);
+        }
+        // Write to Firestore so viewers see the lock immediately
+        if (currentStreamId && window.db && window.fs) {
+            window.fs.updateDoc(window.fs.doc(window.db, LIVE_COL, currentStreamId), {
+                chatEnabled: _chatEnabled
+            }).catch(() => {});
+        }
+        // Lock/unlock broadcaster's own chat input too
+        const bcInput = $('live-broadcast-chat-input');
+        const bcSend  = bcInput && bcInput.nextElementSibling;
+        if (bcInput) bcInput.disabled = false; // host can always send
+        showToast(_chatEnabled ? '💬 Comments enabled' : '🚫 Comments disabled for viewers');
+    };
+
+    // ── Viewer chat: check chatEnabled from stream doc before sending ──
+    var _origSendLiveChat = window.sendLiveChat;
+    window.sendLiveChat = async function() {
+        // Check stream doc for chatEnabled flag
+        if (_watchingStreamId && window.db && window.fs) {
+            try {
+                var snap = await window.fs.getDoc(window.fs.doc(window.db, LIVE_COL, _watchingStreamId));
+                if (snap.exists() && snap.data().chatEnabled === false) {
+                    showToast('💬 Comments are disabled for this stream.');
+                    return;
+                }
+            } catch(e) {}
+        }
+        return _origSendLiveChat.apply(this, arguments);
+    };
+
     // ── Gift System — 80/20 real-time split ───────────────────────
     const GIFT_TIERS = {
         spark:   { icon:'⚡', name:'Spark',   cost:1,  chatStyle:'' },
         fire:    { icon:'🔥', name:'Fire',    cost:5,  chatStyle:'fire' },
         diamond: { icon:'💎', name:'Diamond', cost:20, chatStyle:'diamond' },
         rocket:  { icon:'🚀', name:'Rocket',  cost:50, chatStyle:'rocket' }
+    };
+
+    // ── Gift picker — used for gifting co-hosts or host directly ──
+    // Creates a floating picker overlay above any pip. recipientUid = Agora UID string.
+    // recipientAddr must be looked up from the cohost_requests subcollection.
+    var _giftPickerTarget = null; // { uid, handle, addr }
+
+    window.openGiftPicker = function(cohostUid, cohostHandle) {
+        // Look up the co-host's wallet address from cohost_requests
+        if (!_watchingStreamId && !currentStreamId) { showToast('No active stream.'); return; }
+        const sid = currentStreamId || _watchingStreamId;
+        const { collection, getDocs } = window.fs;
+        getDocs(collection(window.db, 'live_streams', sid, 'cohost_requests')).then(function(snap) {
+            var addr = '';
+            snap.forEach(function(d) {
+                if (String(d.data().uid) === String(cohostUid) || d.id === cohostUid) {
+                    addr = d.id; // docId is the wallet address
+                }
+            });
+            if (!addr) { showToast('Could not find co-host wallet. Try again.'); return; }
+            _giftPickerTarget = { uid: cohostUid, handle: cohostHandle, addr: addr };
+            // Build or show the picker
+            var picker = document.getElementById('cohost-gift-picker');
+            if (!picker) {
+                picker = document.createElement('div');
+                picker.id = 'cohost-gift-picker';
+                picker.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;z-index:9999;min-width:260px;box-shadow:0 8px 32px rgba(0,0,0,0.3);';
+                document.body.appendChild(picker);
+            }
+            picker.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                    <div style="font-weight:700;font-size:0.9rem;">🎁 Gift <span style="color:var(--purple);">${cohostHandle}</span></div>
+                    <button onclick="document.getElementById('cohost-gift-picker').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--text-muted);">✕</button>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    ${Object.entries(GIFT_TIERS).map(([k,t]) => `
+                        <button onclick="sendGiftToAddr('${k}','${addr}','${cohostHandle}')" style="background:var(--bg-card2);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px;cursor:pointer;text-align:center;">
+                            <div style="font-size:1.4rem;">${t.icon}</div>
+                            <div style="font-size:0.75rem;font-weight:700;color:var(--text-primary);margin-top:4px;">${t.name}</div>
+                            <div style="font-size:0.65rem;color:var(--purple-lt);">${t.cost} ★</div>
+                        </button>
+                    `).join('')}
+                </div>
+                <div style="font-size:0.62rem;color:var(--text-muted);margin-top:10px;text-align:center;">80% goes directly to ${cohostHandle}</div>
+            `;
+            picker.style.display = 'block';
+        }).catch(function(e) { showToast('Gift error: ' + e.message); });
+    };
+
+    // Also add gift buttons on viewer-side co-host pip (tap to gift)
+    // This is called after cohost-pip-viewer is built
+    window._attachViewerGiftBtn = function(pipEl, cohostUid) {
+        var existingBtn = pipEl.querySelector('.pip-gift-btn');
+        if (existingBtn) return;
+        var giftBtn = document.createElement('button');
+        giftBtn.className = 'pip-gift-btn';
+        giftBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(240,180,41,0.85);border:none;color:#111;border-radius:4px;padding:2px 7px;font-size:0.55rem;cursor:pointer;z-index:5;white-space:nowrap;font-weight:700;';
+        giftBtn.textContent = '🎁 Gift';
+        giftBtn.onclick = function(e) { e.stopPropagation(); window.openGiftPicker(String(cohostUid), 'Co-host'); };
+        pipEl.appendChild(giftBtn);
+    };
+
+    // ── Send gift to a specific address (co-host or anyone on stage) ──
+    window.sendGiftToAddr = async function(tierKey, recipientAddr, recipientHandle) {
+        const picker = document.getElementById('cohost-gift-picker');
+        if (picker) picker.style.display = 'none';
+        if (!recipientAddr) { showToast('No recipient address.'); return; }
+        const sid = _watchingStreamId || currentStreamId;
+        if (!sid) { showToast('No active stream.'); return; }
+
+        const userAddress = window._liveUserAddress || '';
+        const userHandle  = window._liveUserHandle  || 'Viewer';
+        const userAvatar  = window._liveUserAvatar  || '';
+        const available   = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
+        if (!userAddress) { showToast('Connect your wallet to send gifts.'); return; }
+
+        const tier = GIFT_TIERS[tierKey];
+        if (!tier) return;
+        if (available < tier.cost) { showToast(`Not enough Stars — need ${tier.cost} ★`); return; }
+
+        try {
+            const { doc, updateDoc, increment, collection, addDoc, serverTimestamp } = window.fs;
+            // Deduct from sender
+            await updateDoc(doc(window.db, 'user_balances', userAddress.toLowerCase()), {
+                stars: increment(-tier.cost), spentStarsTotal: increment(tier.cost)
+            });
+            if (typeof window._liveTotalSpendable === 'number') {
+                window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - tier.cost);
+                window._liveAvailableStars = window._liveTotalSpendable;
+            }
+            const creatorCut  = parseFloat((tier.cost * 0.8).toFixed(4));
+            const platformCut = parseFloat((tier.cost * 0.2).toFixed(4));
+            // Credit 80% to recipient
+            await updateDoc(doc(window.db, 'user_balances', recipientAddr.toLowerCase()), {
+                creatorStars: increment(creatorCut)
+            }).catch(() => {});
+            // Platform cut
+            if (typeof window.logAdminRevenue === 'function') {
+                window.logAdminRevenue(userAddress.toLowerCase(), 'live_gift_cohost', platformCut);
+            } else {
+                updateDoc(doc(window.db, 'admin_revenue', 'global'), { total: increment(platformCut) }).catch(() => {});
+            }
+            // Ledger entries
+            addDoc(collection(window.db, 'user_transactions'), {
+                type:'spend', amount:tier.cost, fromAddress:userAddress.toLowerCase(),
+                toAddress:recipientAddr.toLowerCase(), address:userAddress.toLowerCase(),
+                description:`${tier.icon} ${tier.name} Gift to ${recipientHandle} (${tier.cost}★)`,
+                timestamp:Date.now(), schema_version:2
+            }).catch(() => {});
+            addDoc(collection(window.db, 'user_transactions'), {
+                type:'earn', amount:creatorCut, fromAddress:userAddress.toLowerCase(),
+                toAddress:recipientAddr.toLowerCase(), address:recipientAddr.toLowerCase(),
+                description:`${tier.icon} ${tier.name} Gift from ${userHandle} (+${creatorCut.toFixed(1)}★)`,
+                timestamp:Date.now(), schema_version:2
+            }).catch(() => {});
+            // Chat message
+            addDoc(collection(window.db, LIVE_CHAT_COL, sid, 'messages'), {
+                author:userHandle, avatar:userAvatar,
+                text:`${tier.icon} ${userHandle} gifted ${tier.name} to ${recipientHandle}! (${tier.cost} ★)`,
+                ts:serverTimestamp(), isGift:true, giftTier:tierKey, giftIcon:tier.icon, giftStyle:tier.chatStyle
+            }).catch(() => {});
+            // Update stream stars counter
+            updateDoc(doc(window.db, LIVE_COL, sid), { starsEarned: increment(tier.cost), hypeCount: increment(1) }).catch(() => {});
+            showToast(`${tier.icon} ${tier.name} sent to ${recipientHandle}!`);
+        } catch(e) { showToast('Gift failed: ' + (e.message || String(e))); }
     };
 
     window.sendGift = async function(tierKey) {
@@ -18635,6 +18817,20 @@
             // Host writes streamLayout → all viewers apply matching layout to their view
             if (!isHosting && d.streamLayout) {
                 _applyViewerLayout(d.streamLayout);
+            }
+
+            // ── CHAT ENABLED/DISABLED ─────────────────────────────────
+            // Host can toggle comments off — lock the viewer chat input
+            if (!isHosting) {
+                var chatInput  = document.getElementById('live-chat-input');
+                var chatSendBtn = chatInput && chatInput.parentElement && chatInput.parentElement.querySelector('button');
+                var chatEnabled = d.chatEnabled !== false; // default true if not set
+                if (chatInput) {
+                    chatInput.disabled = !chatEnabled;
+                    chatInput.placeholder = chatEnabled ? 'Say something…' : '🚫 Comments disabled';
+                    chatInput.style.opacity = chatEnabled ? '' : '0.5';
+                }
+                if (chatSendBtn) chatSendBtn.disabled = !chatEnabled;
             }
         });
     }
@@ -19110,14 +19306,20 @@
         if (!currentStreamId || !window.db || !window.fs) return;
         try {
             const { doc, setDoc } = window.fs;
-            // Use setDoc with merge:true instead of updateDoc — updateDoc throws
-            // "No document to update" if the request doc was deleted or never fully committed.
-            // setDoc(merge) will create-or-update safely either way.
+            // Immediately grey out the button so host knows click registered
+            var rows = document.querySelectorAll('.cohost-request-row');
+            rows.forEach(function(row) {
+                if (row.innerHTML.indexOf(docId) !== -1) {
+                    row.style.opacity = '0.5';
+                    row.style.pointerEvents = 'none';
+                    row.querySelector('button') && (row.querySelector('button').textContent = '⏳ Approving…');
+                }
+            });
             await setDoc(doc(window.db, 'live_streams', currentStreamId, 'cohost_requests', docId), {
                 status: 'approved',
                 uid: uid || docId
             }, { merge: true });
-            showToast('✓ Co-host approved — they can now join the stage.');
+            showToast('✓ Approved — waiting for them to join the stage…');
         } catch(e) { showToast('Approve error: ' + e.message); }
     };
 
