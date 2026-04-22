@@ -18664,29 +18664,32 @@
             // Restore self-pip to floating corner (bottom-left)
             if (selfPip) selfPip.style.cssText = 'position:absolute;bottom:60px;left:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid #e03e3e;z-index:22;background:#000;';
         } else if (mode === 'split2') {
-            // For co-host: self-pip becomes a full flex cell even without cohostPip (the co-host IS the stage)
             if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
-            // Clear inline styles — CSS class rules with !important take over
-            if (hostVid)   hostVid.style.cssText  = '';
-            if (cohostPip) cohostPip.style.cssText = 'background:#000;overflow:hidden;';
-            // Let CSS handle self-pip positioning in this layout
-            if (selfPip)   selfPip.style.cssText   = 'background:#000;overflow:hidden;';
             container.classList.add('layout-split2');
+            container.style.display = 'flex';
+            container.style.flexDirection = 'row';
+            // Explicit relative + 50% so the flex cell has real dimensions
+            if (hostVid)   hostVid.style.cssText   = 'position:relative;width:50%;height:100%;flex-shrink:0;';
+            if (cohostPip) cohostPip.style.cssText  = 'position:relative;width:50%;height:100%;flex-shrink:0;background:#000;overflow:hidden;border:none;border-radius:0;';
+            if (selfPip)   selfPip.style.cssText    = 'position:relative;width:50%;height:100%;flex-shrink:0;background:#000;overflow:hidden;border:none;border-radius:0;';
         } else if (mode === 'pip-bottom') {
             if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
-            if (hostVid)   hostVid.style.cssText  = '';
-            if (cohostPip) cohostPip.style.cssText = 'background:#000;overflow:hidden;';
-            if (selfPip)   selfPip.style.cssText   = 'background:#000;overflow:hidden;';
             container.classList.add('layout-pip-bottom');
+            if (hostVid)   hostVid.style.cssText   = 'position:absolute;top:0;left:0;width:100%;height:50%;';
+            if (cohostPip) cohostPip.style.cssText  = 'position:absolute;bottom:0;left:0;width:100%;height:50%;background:#000;overflow:hidden;border:none;border-top:2px solid var(--purple);border-radius:0;';
+            if (selfPip)   selfPip.style.cssText    = 'position:absolute;bottom:0;left:0;width:100%;height:50%;background:#000;overflow:hidden;border:none;border-top:2px solid #e03e3e;border-radius:0;';
         } else if (mode === 'grid4') {
             if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
-            if (hostVid)   hostVid.style.cssText  = '';
-            if (cohostPip) cohostPip.style.cssText = 'background:#000;overflow:hidden;';
-            if (selfPip)   selfPip.style.cssText   = 'background:#000;overflow:hidden;';
             container.classList.add('layout-grid4');
+            container.style.display = 'grid';
+            container.style.gridTemplateColumns = '1fr 1fr';
+            container.style.gridTemplateRows = '1fr 1fr';
+            if (hostVid)   hostVid.style.cssText   = 'position:relative;width:100%;height:100%;';
+            if (cohostPip) cohostPip.style.cssText  = 'position:relative;width:100%;height:100%;background:#000;overflow:hidden;border:none;border-radius:0;';
+            if (selfPip)   selfPip.style.cssText    = 'position:relative;width:100%;height:100%;background:#000;overflow:hidden;border:none;border-radius:0;';
         }
     }
 
@@ -19361,6 +19364,25 @@
             setTimeout(function(){ _cohostToggling = false; }, 2000);
             const btn = $('cohost-btn-cam');
             if (btn) btn.textContent = _cohostCamOff ? '📷 Cam On' : '📷 Cam Off';
+            // Show/hide a cam-off overlay inside selfPip so the pip stays visible
+            // even when camera is disabled — it just shows black with a label
+            var selfPip = document.getElementById('cohost-self-pip');
+            if (selfPip) {
+                var camOffOverlay = document.getElementById('cohost-cam-off-overlay');
+                if (_cohostCamOff) {
+                    if (!camOffOverlay) {
+                        camOffOverlay = document.createElement('div');
+                        camOffOverlay.id = 'cohost-cam-off-overlay';
+                        camOffOverlay.style.cssText = 'position:absolute;inset:0;background:#111;display:flex;align-items:center;justify-content:center;z-index:5;font-size:0.7rem;color:rgba(255,255,255,0.6);font-weight:600;';
+                        camOffOverlay.textContent = '📷 Cam Off';
+                        selfPip.appendChild(camOffOverlay);
+                    } else {
+                        camOffOverlay.style.display = 'flex';
+                    }
+                } else {
+                    if (camOffOverlay) camOffOverlay.style.display = 'none';
+                }
+            }
             showToast(_cohostCamOff ? '📷 Camera off' : '📷 Camera live');
         } catch(e) {
             _cohostCamOff = !_cohostCamOff; // roll back
