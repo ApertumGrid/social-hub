@@ -17541,6 +17541,22 @@
 
                         const cohostUid = remoteUser.uid; // capture uid for this pip
 
+                        // Look up wallet address from cohost_requests NOW while we have context
+                        // Store it on the pip element so gift button can use it without a lookup
+                        var _cohostWalletAddr = '';
+                        if (currentStreamId && window.db && window.fs) {
+                            window.fs.getDocs(window.fs.collection(window.db, 'live_streams', currentStreamId, 'cohost_requests')).then(function(snap) {
+                                snap.forEach(function(d) {
+                                    if (d.data().status === 'approved') {
+                                        _cohostWalletAddr = d.id; // docId IS the wallet address
+                                        cohostPip.dataset.walletAddr = d.id;
+                                        cohostPip.dataset.handle = d.data().handle || 'Co-host';
+                                        label.textContent = '🎤 ' + (d.data().handle || 'Co-host');
+                                    }
+                                });
+                            }).catch(function(){});
+                        }
+
                         // Spotlight button — fullscreen co-host for everyone via Firestore
                         const spotBtn = document.createElement('button');
                         spotBtn.id = 'cohost-spotlight-btn-' + cohostUid;
@@ -17583,7 +17599,12 @@
                         const giftBtn = document.createElement('button');
                         giftBtn.style.cssText = 'position:absolute;bottom:2px;right:4px;background:rgba(240,180,41,0.85);border:none;color:#111;border-radius:4px;padding:2px 7px;font-size:0.55rem;cursor:pointer;z-index:2;white-space:nowrap;font-weight:700;';
                         giftBtn.textContent = '🎁 Gift';
-                        giftBtn.onclick = function() { window.openGiftPicker && window.openGiftPicker(String(cohostUid), label.textContent || 'Co-host'); };
+                        giftBtn.onclick = function() {
+                            var addr = cohostPip.dataset.walletAddr || '';
+                            var handle = cohostPip.dataset.handle || 'Co-host';
+                            if (!addr) { showToast('Co-host wallet not found yet — try again in a moment.'); return; }
+                            window.openGiftPickerDirect && window.openGiftPickerDirect(addr, handle);
+                        };
                         cohostPip.appendChild(giftBtn);
 
                         const videoDiv = document.createElement('div');
@@ -18261,45 +18282,53 @@
     // recipientAddr must be looked up from the cohost_requests subcollection.
     var _giftPickerTarget = null; // { uid, handle, addr }
 
+    // ── Gift picker — direct version (address already known) ─────
+    window.openGiftPickerDirect = function(walletAddr, handle) {
+        if (!walletAddr) { showToast('No wallet address.'); return; }
+        var picker = document.getElementById('cohost-gift-picker');
+        if (!picker) {
+            picker = document.createElement('div');
+            picker.id = 'cohost-gift-picker';
+            picker.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;z-index:9999;min-width:260px;box-shadow:0 8px 32px rgba(0,0,0,0.3);';
+            document.body.appendChild(picker);
+        }
+        picker.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <div style="font-weight:700;font-size:0.9rem;">🎁 Gift <span style="color:var(--purple);">${handle}</span></div>
+                <button onclick="document.getElementById('cohost-gift-picker').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--text-muted);">✕</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                ${Object.entries(GIFT_TIERS).map(([k,t]) => `
+                    <button onclick="sendGiftToAddr('${k}','${walletAddr}','${handle}')" style="background:var(--bg-card2);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px;cursor:pointer;text-align:center;">
+                        <div style="font-size:1.4rem;">${t.icon}</div>
+                        <div style="font-size:0.75rem;font-weight:700;color:var(--text-primary);margin-top:4px;">${t.name}</div>
+                        <div style="font-size:0.65rem;color:var(--purple-lt);">${t.cost} ★</div>
+                    </button>
+                `).join('')}
+            </div>
+            <div style="font-size:0.62rem;color:var(--text-muted);margin-top:10px;text-align:center;">80% goes directly to ${handle}</div>
+        `;
+        picker.style.display = 'block';
+    };
+
     window.openGiftPicker = function(cohostUid, cohostHandle) {
         // Look up the co-host's wallet address from cohost_requests
+        // The docId IS the wallet address — find the approved request
         if (!_watchingStreamId && !currentStreamId) { showToast('No active stream.'); return; }
         const sid = currentStreamId || _watchingStreamId;
         const { collection, getDocs } = window.fs;
         getDocs(collection(window.db, 'live_streams', sid, 'cohost_requests')).then(function(snap) {
             var addr = '';
+            var handle = cohostHandle || 'Co-host';
             snap.forEach(function(d) {
-                if (String(d.data().uid) === String(cohostUid) || d.id === cohostUid) {
-                    addr = d.id; // docId is the wallet address
+                // Match on approved status — take the first approved co-host
+                if (d.data().status === 'approved') {
+                    addr = d.id; // docId IS the wallet address
+                    handle = d.data().handle || handle;
                 }
             });
-            if (!addr) { showToast('Could not find co-host wallet. Try again.'); return; }
-            _giftPickerTarget = { uid: cohostUid, handle: cohostHandle, addr: addr };
-            // Build or show the picker
-            var picker = document.getElementById('cohost-gift-picker');
-            if (!picker) {
-                picker = document.createElement('div');
-                picker.id = 'cohost-gift-picker';
-                picker.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;z-index:9999;min-width:260px;box-shadow:0 8px 32px rgba(0,0,0,0.3);';
-                document.body.appendChild(picker);
-            }
-            picker.innerHTML = `
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-                    <div style="font-weight:700;font-size:0.9rem;">🎁 Gift <span style="color:var(--purple);">${cohostHandle}</span></div>
-                    <button onclick="document.getElementById('cohost-gift-picker').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--text-muted);">✕</button>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                    ${Object.entries(GIFT_TIERS).map(([k,t]) => `
-                        <button onclick="sendGiftToAddr('${k}','${addr}','${cohostHandle}')" style="background:var(--bg-card2);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px;cursor:pointer;text-align:center;">
-                            <div style="font-size:1.4rem;">${t.icon}</div>
-                            <div style="font-size:0.75rem;font-weight:700;color:var(--text-primary);margin-top:4px;">${t.name}</div>
-                            <div style="font-size:0.65rem;color:var(--purple-lt);">${t.cost} ★</div>
-                        </button>
-                    `).join('')}
-                </div>
-                <div style="font-size:0.62rem;color:var(--text-muted);margin-top:10px;text-align:center;">80% goes directly to ${cohostHandle}</div>
-            `;
-            picker.style.display = 'block';
+            if (!addr) { showToast('Could not find co-host wallet. Try again in a moment.'); return; }
+            window.openGiftPickerDirect(addr, handle);
         }).catch(function(e) { showToast('Gift error: ' + e.message); });
     };
 
@@ -18841,11 +18870,11 @@
 
     function _applyViewerLayout(mode) {
         var container = document.getElementById('live-remote-video-container');
-        if (!container) return;
+        if (!container) { console.warn('[Layout] container not found'); return; }
         var hostVid   = document.getElementById('live-remote-video');
         var cohostPip = document.getElementById('cohost-pip-viewer');
-        // selfPip is the co-host's own camera preview (only present when isCoHost===true)
         var selfPip   = document.getElementById('cohost-self-pip');
+        console.log('[Layout] _applyViewerLayout called:', mode, '| hostVid:', !!hostVid, '| cohostPip:', !!cohostPip, '| selfPip:', !!selfPip);
 
         // Strip all layout classes and inline overrides first
         container.classList.remove('layout-split2', 'layout-pip-bottom', 'layout-grid4');
@@ -19439,13 +19468,15 @@
             // So we read the layout directly from Firestore instead.
             setTimeout(function() {
                 var sid = _watchingStreamId || window._watchingStreamId;
+                console.log('[Layout] selfPip created, fetching layout from Firestore. sid:', sid);
                 if (sid && window.db && window.fs) {
                     window.fs.getDoc(window.fs.doc(window.db, LIVE_COL, sid)).then(function(snap) {
-                        if (!snap.exists()) return;
+                        if (!snap.exists()) { console.warn('[Layout] stream doc not found'); return; }
                         var layout = snap.data().streamLayout || 'solo';
+                        console.log('[Layout] Firestore says layout:', layout, '| applying now');
                         if (typeof _applyViewerLayout === 'function') _applyViewerLayout(layout);
-                    }).catch(function() {
-                        // Fallback: try container classes then pending
+                    }).catch(function(e) {
+                        console.warn('[Layout] Firestore fetch failed:', e);
                         var rc = document.getElementById('live-remote-video-container');
                         var mode = (typeof _pendingViewerLayout === 'string' && _pendingViewerLayout)
                             ? _pendingViewerLayout
@@ -19454,10 +19485,11 @@
                                 rc.classList.contains('layout-pip-bottom') ? 'pip-bottom' :
                                 rc.classList.contains('layout-grid4')      ? 'grid4'      : 'solo'
                               ));
+                        console.log('[Layout] fallback mode:', mode);
                         if (typeof _applyViewerLayout === 'function') _applyViewerLayout(mode || 'solo');
                     });
                 } else {
-                    // No Firestore available — use pending or container classes
+                    console.warn('[Layout] no sid or db available, using fallback');
                     var rc = document.getElementById('live-remote-video-container');
                     var mode = (typeof _pendingViewerLayout === 'string' && _pendingViewerLayout)
                         ? _pendingViewerLayout
