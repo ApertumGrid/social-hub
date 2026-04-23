@@ -299,6 +299,30 @@
             flex-shrink: 0;
             box-shadow: 0 0 0 2px rgba(34,197,94,0.25);
         }
+        /* ── Wallet dropdown options ── */
+        .wdd-option {
+            display: flex; align-items: center; gap: 12px;
+            width: 100%; padding: 9px 12px;
+            background: none; border: none; border-radius: 10px;
+            cursor: pointer; font-family: var(--font-body);
+            text-align: left; transition: background 0.15s;
+        }
+        .wdd-option:hover { background: var(--bg-hover); }
+        .wdd-option.wdd-danger:hover { background: rgba(224,62,62,0.08); }
+        .wdd-option.wdd-danger .wdd-name { color: var(--red); }
+        .wdd-logo {
+            width: 32px; height: 32px; border-radius: 8px;
+            object-fit: contain; flex-shrink: 0;
+        }
+        .wdd-xova-logo {
+            display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #2dd4bf, #7c5cbf);
+            color: #fff; font-size: 1.1rem; font-weight: 700;
+            border-radius: 8px; width: 32px; height: 32px; flex-shrink: 0;
+        }
+        .wdd-option-text { display: flex; flex-direction: column; gap: 1px; }
+        .wdd-name { font-size: 0.82rem; font-weight: 700; color: var(--text-primary); }
+        .wdd-sub  { font-size: 0.62rem; color: var(--text-muted); }
 
         /* ── BODY LAYOUT — 3-column, feed stretches ── */
         #body-layout {
@@ -4873,10 +4897,48 @@
                 </div>
             </div>
             <button id="theme-toggle" onclick="toggleTheme()" title="Toggle dark / light mode">🌙</button>
-            <button id="wallet-btn" class="not-connected" onclick="connectWallet()">
-                <span class="wallet-dot" id="wallet-indicator-dot"></span>
-                <span id="wallet-status">Connect</span>
-            </button>
+            <div id="wallet-dropdown-wrap" style="position:relative;">
+                <button id="wallet-btn" class="not-connected" onclick="toggleWalletDropdown()">
+                    <span class="wallet-dot" id="wallet-indicator-dot"></span>
+                    <span id="wallet-status">Connect</span>
+                    <span id="wallet-btn-caret" style="font-size:0.6rem;opacity:0.6;margin-left:2px;">▾</span>
+                </button>
+                <div id="wallet-dropdown" style="display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:220px;background:var(--bg-panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:6000;overflow:hidden;padding:6px;">
+                    <!-- Shown when NOT connected -->
+                    <div id="wdd-connect-section">
+                        <div style="padding:8px 12px 6px;font-size:0.65rem;font-weight:700;color:var(--text-muted);letter-spacing:0.5px;text-transform:uppercase;">Choose Wallet</div>
+                        <button class="wdd-option" onclick="_connectWithProvider('metamask');toggleWalletDropdown()">
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" class="wdd-logo" onerror="this.style.display='none'">
+                            <div class="wdd-option-text">
+                                <span class="wdd-name">MetaMask</span>
+                                <span class="wdd-sub" id="wdd-mm-status">Browser extension</span>
+                            </div>
+                        </button>
+                        <button class="wdd-option" onclick="_connectWithProvider('xova');toggleWalletDropdown()">
+                            <div class="wdd-logo wdd-xova-logo">⬡</div>
+                            <div class="wdd-option-text">
+                                <span class="wdd-name">XOVA Wallet</span>
+                                <span class="wdd-sub" id="wdd-xova-status">Mobile &amp; Extension</span>
+                            </div>
+                        </button>
+                    </div>
+                    <!-- Shown when connected -->
+                    <div id="wdd-connected-section" style="display:none;">
+                        <div style="padding:10px 12px 6px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);margin-bottom:6px;">
+                            <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0;box-shadow:0 0 0 2px rgba(34,197,94,0.25);"></div>
+                            <span id="wdd-address" style="font-size:0.72rem;font-weight:700;color:var(--text-primary);font-family:var(--font-mono);">0x…</span>
+                        </div>
+                        <button class="wdd-option" onclick="openWalletDrawer();toggleWalletDropdown()">
+                            <span style="font-size:1.1rem;">💼</span>
+                            <div class="wdd-option-text"><span class="wdd-name">My Wallet</span><span class="wdd-sub">Balance &amp; Stars</span></div>
+                        </button>
+                        <button class="wdd-option wdd-danger" onclick="disconnectWallet();toggleWalletDropdown()">
+                            <span style="font-size:1.1rem;">🔌</span>
+                            <div class="wdd-option-text"><span class="wdd-name">Disconnect</span><span class="wdd-sub">Sign out of wallet</span></div>
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -7254,69 +7316,112 @@
         catch (e) { console.warn('[SafeCall] RPC error (non-fatal):', e.message || e); return null; }
     }
 
-    // ── Wallet picker modal ───────────────────────────────────────
-    function _showWalletPicker() {
-        var existing = document.getElementById('wallet-picker-modal');
-        if (existing) existing.remove();
+    // ── Wallet dropdown ───────────────────────────────────────────
+    function toggleWalletDropdown() {
+        var dd = document.getElementById('wallet-dropdown');
+        if (!dd) return;
+        var isOpen = dd.style.display !== 'none';
+        if (isOpen) { dd.style.display = 'none'; return; }
 
+        // Update detected status labels before opening
+        var mmStatus   = document.getElementById('wdd-mm-status');
+        var xovaStatus = document.getElementById('wdd-xova-status');
         var hasMetaMask = window.ethereum && window.ethereum.isMetaMask;
         var hasXova     = window.xova || (window.ethereum && window.ethereum.isXova);
-        // If only one wallet available, skip the picker and connect directly
-        var wallets = [];
-        if (hasMetaMask) wallets.push('metamask');
-        if (hasXova)     wallets.push('xova');
-        // If neither detected, show picker anyway so user knows what to install
-        if (wallets.length === 1) { _connectWithProvider(wallets[0]); return; }
+        if (mmStatus)   mmStatus.textContent   = hasMetaMask ? '✓ Detected' : 'Not installed';
+        if (xovaStatus) xovaStatus.textContent = hasXova     ? '✓ Detected' : 'Not installed';
 
-        var modal = document.createElement('div');
-        modal.id = 'wallet-picker-modal';
-        modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);';
-        modal.innerHTML = `
-            <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:20px;padding:28px 24px;width:320px;max-width:90vw;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-                <div style="font-size:1.1rem;font-weight:800;color:var(--text-primary);margin-bottom:6px;">Connect Wallet</div>
-                <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:22px;">Choose your wallet to continue</div>
-                <div style="display:flex;flex-direction:column;gap:10px;">
-                    <button onclick="window._connectWithProvider('metamask')" style="display:flex;align-items:center;gap:14px;padding:14px 18px;border:1px solid var(--border);border-radius:12px;background:var(--bg-card2);cursor:pointer;font-family:var(--font-body);transition:border-color 0.2s;" onmouseover="this.style.borderColor='var(--purple)'" onmouseout="this.style.borderColor='var(--border)'">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" style="width:32px;height:32px;flex-shrink:0;" onerror="this.style.display='none'">
-                        <div style="text-align:left;">
-                            <div style="font-weight:700;font-size:0.88rem;color:var(--text-primary);">MetaMask</div>
-                            <div style="font-size:0.68rem;color:var(--text-muted);">${hasMetaMask ? '✓ Detected' : 'Not installed'}</div>
-                        </div>
-                    </button>
-                    <button onclick="window._connectWithProvider('xova')" style="display:flex;align-items:center;gap:14px;padding:14px 18px;border:1px solid var(--border);border-radius:12px;background:var(--bg-card2);cursor:pointer;font-family:var(--font-body);transition:border-color 0.2s;" onmouseover="this.style.borderColor='var(--teal)'" onmouseout="this.style.borderColor='var(--border)'">
-                        <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#2dd4bf,#7c5cbf);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;">⬡</div>
-                        <div style="text-align:left;">
-                            <div style="font-weight:700;font-size:0.88rem;color:var(--text-primary);">XOVA Wallet</div>
-                            <div style="font-size:0.68rem;color:var(--text-muted);">${hasXova ? '✓ Detected' : 'Not installed'}</div>
-                        </div>
-                    </button>
-                </div>
-                <button onclick="document.getElementById('wallet-picker-modal').remove()" style="margin-top:16px;background:none;border:none;color:var(--text-muted);font-size:0.75rem;cursor:pointer;font-family:var(--font-body);">Cancel</button>
-            </div>`;
-        document.body.appendChild(modal);
-        modal.addEventListener('click', function(e){ if (e.target === modal) modal.remove(); });
+        // Show correct section
+        var connectSection   = document.getElementById('wdd-connect-section');
+        var connectedSection = document.getElementById('wdd-connected-section');
+        var addrEl           = document.getElementById('wdd-address');
+        if (userAddress) {
+            if (connectSection)   connectSection.style.display   = 'none';
+            if (connectedSection) connectedSection.style.display = 'block';
+            if (addrEl) addrEl.textContent = userAddress.slice(0,6) + '…' + userAddress.slice(-4);
+        } else {
+            if (connectSection)   connectSection.style.display   = 'block';
+            if (connectedSection) connectedSection.style.display = 'none';
+        }
+
+        dd.style.display = 'block';
+        // Close on outside click
+        setTimeout(function() {
+            document.addEventListener('click', function _closeDD(e) {
+                var wrap = document.getElementById('wallet-dropdown-wrap');
+                if (wrap && !wrap.contains(e.target)) {
+                    dd.style.display = 'none';
+                    document.removeEventListener('click', _closeDD);
+                }
+            });
+        }, 10);
+    }
+    window.toggleWalletDropdown = toggleWalletDropdown;
+
+    function _setWalletConnectedUI(address) {
+        var statusEl  = document.getElementById('wallet-status');
+        var walletBtn = document.getElementById('wallet-btn');
+        var walletDot = document.getElementById('wallet-indicator-dot');
+        var addrEl    = document.getElementById('wdd-address');
+        if (statusEl)  statusEl.textContent = address.slice(0,6) + '…' + address.slice(-4);
+        if (walletBtn) walletBtn.classList.remove('not-connected');
+        if (walletDot) walletDot.className = 'wallet-online-dot';
+        if (addrEl)    addrEl.textContent  = address.slice(0,6) + '…' + address.slice(-4);
     }
 
+    function _setWalletDisconnectedUI() {
+        var statusEl  = document.getElementById('wallet-status');
+        var walletBtn = document.getElementById('wallet-btn');
+        var walletDot = document.getElementById('wallet-indicator-dot');
+        if (statusEl)  statusEl.textContent = 'Connect';
+        if (walletBtn) walletBtn.classList.add('not-connected');
+        if (walletDot) walletDot.className = 'wallet-dot';
+    }
+
+    function disconnectWallet() {
+        // Clear all in-memory wallet state
+        userAddress     = '';
+        window.userAddress = '';
+        provider        = null;
+        signer          = null;
+        hubContract     = null;
+        window.provider    = null;
+        window.signer      = null;
+        window.hubContract = null;
+        purchasedStars  = 0;
+        creatorEarnings = 0;
+        window._liveUserAddress = '';
+        window._liveUserHandle  = '';
+
+        // Stop live subscriptions
+        if (typeof _stopChainRefresh === 'function')   _stopChainRefresh();
+        if (typeof _earnUnsub === 'function')          { try { _earnUnsub(); } catch(_) {} }
+        if (typeof _ledgerUnsub === 'function')        { try { _ledgerUnsub(); } catch(_) {} }
+        if (typeof _adminRevenueUnsub === 'function')  { try { _adminRevenueUnsub(); } catch(_) {} }
+
+        _setWalletDisconnectedUI();
+        if (typeof updateUI === 'function') updateUI();
+        showToast('Wallet disconnected.');
+    }
+    window.disconnectWallet = disconnectWallet;
+
     async function _connectWithProvider(walletType) {
-        // Close picker if open
-        var modal = document.getElementById('wallet-picker-modal');
-        if (modal) modal.remove();
+        var dd = document.getElementById('wallet-dropdown');
+        if (dd) dd.style.display = 'none';
 
         try {
             let eth;
             if (walletType === 'xova') {
-                // XOVA injects window.xova.ethereum or window.ethereum with isXova flag
                 if (window.xova && window.xova.ethereum) {
                     eth = window.xova.ethereum;
                 } else if (window.ethereum && window.ethereum.isXova) {
                     eth = window.ethereum;
                 } else {
-                    showToast('XOVA Wallet not detected. Please install it and refresh.');
+                    showToast('XOVA Wallet not detected. Install it and refresh.');
                     window.open('https://xova.app', '_blank');
                     return;
                 }
             } else {
-                // MetaMask / default injected provider
                 eth = await _waitForEthereum(4000);
                 if (!eth) { showToast('No wallet detected. Please install MetaMask.'); return; }
             }
@@ -7333,15 +7438,8 @@
 
             purchasedStars  = 0;
             creatorEarnings = 0;
-            updateUI();
 
-            const statusEl = document.getElementById('wallet-status');
-            if (statusEl) statusEl.textContent = userAddress.slice(0, 6) + '…' + userAddress.slice(-4);
-
-            const walletBtn = document.getElementById('wallet-btn');
-            const walletDot = document.getElementById('wallet-indicator-dot');
-            if (walletBtn) walletBtn.classList.remove('not-connected');
-            if (walletDot) walletDot.className = 'wallet-online-dot';
+            _setWalletConnectedUI(userAddress);
 
             await syncData();
             const freshPrice = await getLiveAptmPrice();
@@ -7365,18 +7463,9 @@
     window._connectWithProvider = _connectWithProvider;
 
     async function connectWallet() {
-        // Detect available wallets and show picker or connect directly
-        var hasMetaMask = window.ethereum && window.ethereum.isMetaMask;
-        var hasXova     = window.xova || (window.ethereum && window.ethereum.isXova);
-        if (hasMetaMask && hasXova) {
-            _showWalletPicker();
-        } else if (hasXova) {
-            _connectWithProvider('xova');
-        } else {
-            // MetaMask or any other injected provider
-            _connectWithProvider('metamask');
-        }
+        toggleWalletDropdown();
     }
+
 
     async function syncData() {
         // Re-resolve module vars from window in case mobile scope lost references
