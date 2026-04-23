@@ -982,6 +982,18 @@
         /* ── VIEWER layout classes — mirrors broadcaster layout classes above ──
            These use !important to beat the cinema-mode rule that forces
            position:absolute on inline-styled children. */
+        /* live-remote-video fills container by default (solo); layout classes override */
+        #live-remote-video {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+        }
+        /* Layout classes reset it to participate in flex/grid */
+        #live-remote-video-container.layout-split2 #live-remote-video,
+        #live-remote-video-container.layout-grid4 #live-remote-video {
+            position: relative !important; inset: auto !important;
+        }
+
         #live-remote-video-container.layout-split2 {
             display:flex !important; flex-direction:row !important; gap:2px !important;
         }
@@ -1016,6 +1028,43 @@
         #live-remote-video-container .live-stream-overlay-top,
         #live-remote-video-container .live-stream-meta,
         #live-remote-video-container #paid-gate-overlay { z-index:30 !important; }
+
+        /* Default solo-mode pip: small floating corner box */
+        .cohost-pip-viewer-solo,
+        #cohost-pip-viewer {
+            position: absolute !important;
+            bottom: 60px !important; right: 10px !important;
+            width: 160px !important; height: 100px !important;
+            border-radius: 8px !important; overflow: hidden !important;
+            border: 2px solid var(--purple) !important;
+            z-index: 20 !important; background: #000 !important;
+        }
+        /* Spotlight: pip fills entire container */
+        #cohost-pip-viewer.cohost-pip-spotlight {
+            position: absolute !important;
+            inset: 0 !important;
+            width: 100% !important; height: 100% !important;
+            border-radius: 0 !important; border: none !important;
+            z-index: 18 !important; background: #000 !important;
+        }
+        /* Spotlight banner inside pip */
+        .cohost-spotlight-banner {
+            display: none;
+            position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+            background: rgba(124,92,191,0.92); color: #fff;
+            font-size: 0.68rem; font-weight: 700; letter-spacing: 1px;
+            padding: 4px 14px; border-radius: 20px;
+            z-index: 25; white-space: nowrap; pointer-events: none;
+        }
+        /* Layout classes OVERRIDE the default pip position — no inline styles needed */
+        #live-remote-video-container.layout-split2 #cohost-pip-viewer,
+        #live-remote-video-container.layout-pip-bottom #cohost-pip-viewer,
+        #live-remote-video-container.layout-grid4 #cohost-pip-viewer {
+            /* Reset solo defaults so layout CSS takes full control */
+            bottom: auto !important; right: auto !important;
+            width: auto !important; height: auto !important;
+            border-radius: 0 !important; border: none !important;
+        }
 
         /* ── Co-host self-pip: float over the top in solo mode ── */
         #live-remote-video-container #cohost-self-pip { z-index:30 !important; }
@@ -7205,16 +7254,79 @@
         catch (e) { console.warn('[SafeCall] RPC error (non-fatal):', e.message || e); return null; }
     }
 
-    async function connectWallet() {
+    // ── Wallet picker modal ───────────────────────────────────────
+    function _showWalletPicker() {
+        var existing = document.getElementById('wallet-picker-modal');
+        if (existing) existing.remove();
+
+        var hasMetaMask = window.ethereum && window.ethereum.isMetaMask;
+        var hasXova     = window.xova || (window.ethereum && window.ethereum.isXova);
+        // If only one wallet available, skip the picker and connect directly
+        var wallets = [];
+        if (hasMetaMask) wallets.push('metamask');
+        if (hasXova)     wallets.push('xova');
+        // If neither detected, show picker anyway so user knows what to install
+        if (wallets.length === 1) { _connectWithProvider(wallets[0]); return; }
+
+        var modal = document.createElement('div');
+        modal.id = 'wallet-picker-modal';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);';
+        modal.innerHTML = `
+            <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:20px;padding:28px 24px;width:320px;max-width:90vw;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                <div style="font-size:1.1rem;font-weight:800;color:var(--text-primary);margin-bottom:6px;">Connect Wallet</div>
+                <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:22px;">Choose your wallet to continue</div>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <button onclick="window._connectWithProvider('metamask')" style="display:flex;align-items:center;gap:14px;padding:14px 18px;border:1px solid var(--border);border-radius:12px;background:var(--bg-card2);cursor:pointer;font-family:var(--font-body);transition:border-color 0.2s;" onmouseover="this.style.borderColor='var(--purple)'" onmouseout="this.style.borderColor='var(--border)'">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" style="width:32px;height:32px;flex-shrink:0;" onerror="this.style.display='none'">
+                        <div style="text-align:left;">
+                            <div style="font-weight:700;font-size:0.88rem;color:var(--text-primary);">MetaMask</div>
+                            <div style="font-size:0.68rem;color:var(--text-muted);">${hasMetaMask ? '✓ Detected' : 'Not installed'}</div>
+                        </div>
+                    </button>
+                    <button onclick="window._connectWithProvider('xova')" style="display:flex;align-items:center;gap:14px;padding:14px 18px;border:1px solid var(--border);border-radius:12px;background:var(--bg-card2);cursor:pointer;font-family:var(--font-body);transition:border-color 0.2s;" onmouseover="this.style.borderColor='var(--teal)'" onmouseout="this.style.borderColor='var(--border)'">
+                        <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#2dd4bf,#7c5cbf);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;">⬡</div>
+                        <div style="text-align:left;">
+                            <div style="font-weight:700;font-size:0.88rem;color:var(--text-primary);">XOVA Wallet</div>
+                            <div style="font-size:0.68rem;color:var(--text-muted);">${hasXova ? '✓ Detected' : 'Not installed'}</div>
+                        </div>
+                    </button>
+                </div>
+                <button onclick="document.getElementById('wallet-picker-modal').remove()" style="margin-top:16px;background:none;border:none;color:var(--text-muted);font-size:0.75rem;cursor:pointer;font-family:var(--font-body);">Cancel</button>
+            </div>`;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', function(e){ if (e.target === modal) modal.remove(); });
+    }
+
+    async function _connectWithProvider(walletType) {
+        // Close picker if open
+        var modal = document.getElementById('wallet-picker-modal');
+        if (modal) modal.remove();
+
         try {
-            const eth = await _waitForEthereum(4000);
+            let eth;
+            if (walletType === 'xova') {
+                // XOVA injects window.xova.ethereum or window.ethereum with isXova flag
+                if (window.xova && window.xova.ethereum) {
+                    eth = window.xova.ethereum;
+                } else if (window.ethereum && window.ethereum.isXova) {
+                    eth = window.ethereum;
+                } else {
+                    showToast('XOVA Wallet not detected. Please install it and refresh.');
+                    window.open('https://xova.app', '_blank');
+                    return;
+                }
+            } else {
+                // MetaMask / default injected provider
+                eth = await _waitForEthereum(4000);
+                if (!eth) { showToast('No wallet detected. Please install MetaMask.'); return; }
+            }
+
             provider    = new ethers.providers.Web3Provider(eth);
             const accts = await provider.send("eth_requestAccounts", []);
             userAddress = accts[0];
             window.userAddress = userAddress;
             signer      = provider.getSigner();
             hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
-            // Expose contracts globally so mobile scope can always reach them
             window.hubContract = hubContract;
             window.provider    = provider;
             window.signer      = signer;
@@ -7228,31 +7340,41 @@
 
             const walletBtn = document.getElementById('wallet-btn');
             const walletDot = document.getElementById('wallet-indicator-dot');
-            if (walletBtn) { walletBtn.classList.remove('not-connected'); }
-            if (walletDot) { walletDot.className = 'wallet-online-dot'; }
+            if (walletBtn) walletBtn.classList.remove('not-connected');
+            if (walletDot) walletDot.className = 'wallet-online-dot';
 
             await syncData();
             const freshPrice = await getLiveAptmPrice();
-            if (freshPrice !== null) {
-                currentAptmPriceUsd = freshPrice;
-                window.aptmPriceUSD = freshPrice;
-            }
+            if (freshPrice !== null) { currentAptmPriceUsd = freshPrice; window.aptmPriceUSD = freshPrice; }
             updateUI();
             subscribeToEarnings(userAddress);
             subscribeLedger(userAddress);
             if (typeof _subscribeInboxDot === 'function') _subscribeInboxDot(userAddress);
             subscribeAdminRevenue(userAddress);
             startChainRefresh();
-
             await loadProfileFromFirebase(userAddress);
+            if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
+            if (typeof loadFollowingSet === 'function') loadFollowingSet();
 
-            if (typeof loadGlobalFeed === "function") loadGlobalFeed();
-            if (typeof loadFollowingSet === "function") loadFollowingSet();
-            // loadMyNetwork is called lazily when the drawer is opened
-            showToast("Connected & Synced ✓");
-        } catch (err) {
+            showToast('Connected via ' + (walletType === 'xova' ? 'XOVA Wallet' : 'MetaMask') + ' ✓');
+        } catch(err) {
             console.error(err);
-            showToast("Connection Failed — " + (err.message || ''));
+            showToast('Connection Failed — ' + (err.message || String(err)));
+        }
+    }
+    window._connectWithProvider = _connectWithProvider;
+
+    async function connectWallet() {
+        // Detect available wallets and show picker or connect directly
+        var hasMetaMask = window.ethereum && window.ethereum.isMetaMask;
+        var hasXova     = window.xova || (window.ethereum && window.ethereum.isXova);
+        if (hasMetaMask && hasXova) {
+            _showWalletPicker();
+        } else if (hasXova) {
+            _connectWithProvider('xova');
+        } else {
+            // MetaMask or any other injected provider
+            _connectWithProvider('metamask');
         }
     }
 
@@ -17843,7 +17965,8 @@
                     if (mediaType === 'video') {
                         const remoteEl = $('live-remote-video');
                         if (remoteEl) {
-                            remoteEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+                            // Do NOT set inline cssText — CSS classes on the container control positioning
+                            remoteEl.style.cssText = '';
                             const playRemoteWhenReady = () => {
                                 if (remoteEl.offsetWidth > 0 || remoteEl.offsetHeight > 0) {
                                     remoteUser.videoTrack.play(remoteEl);
@@ -17862,10 +17985,15 @@
                         var stalePip = document.getElementById('cohost-pip-viewer');
                         if (stalePip && stalePip.parentNode) stalePip.parentNode.removeChild(stalePip);
 
-                        // Build the PiP container
+                        // Build the PiP container — NO inline style.cssText on the pip itself.
+                        // Inline styles override CSS classes even with !important, which is why
+                        // layout classes were never working. The CSS at #live-remote-video-container
+                        // .layout-* rules now own all sizing/positioning. We only set background
+                        // and overflow here since those aren't touched by the layout CSS.
                         var cohostPip = document.createElement('div');
                         cohostPip.id = 'cohost-pip-viewer';
-                        cohostPip.style.cssText = 'position:absolute;bottom:60px;right:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+                        // Default solo-mode pip appearance via class — overridden by layout classes
+                        cohostPip.className = 'cohost-pip-viewer-solo';
 
                         // Label
                         var pipLabel = document.createElement('div');
@@ -17881,7 +18009,7 @@
 
                         // Spotlight banner
                         var spotBanner = document.createElement('div');
-                        spotBanner.style.cssText = 'display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(124,92,191,0.92);color:#fff;font-size:0.68rem;font-weight:700;letter-spacing:1px;padding:4px 14px;border-radius:20px;z-index:25;white-space:nowrap;pointer-events:none;';
+                        spotBanner.className = 'cohost-spotlight-banner';
                         spotBanner.textContent = '⛶ ON STAGE';
                         cohostPip.appendChild(spotBanner);
 
@@ -17890,27 +18018,29 @@
                             if (window._attachViewerGiftBtn) window._attachViewerGiftBtn(cohostPip, remoteUser.uid);
                         }, 500);
 
-                        // Spotlight is HOST-controlled via Firestore — viewers never click to toggle it
+                        // Spotlight is HOST-controlled via Firestore — applies a takeover class
                         var _vSpotActive = false;
                         window._applyViewerSpotlight = function(on) {
                             _vSpotActive = on;
                             if (on) {
-                                cohostPip.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border-radius:0;border:none;z-index:18;background:#000;overflow:hidden;';
+                                // Spotlight: pip fills entire container, no inline style needed
+                                cohostPip.classList.add('cohost-pip-spotlight');
                                 spotBanner.style.display = 'block';
                             } else {
+                                cohostPip.classList.remove('cohost-pip-spotlight');
                                 spotBanner.style.display = 'none';
-                                // Restore the current layout instead of hardcoding solo pip
+                                // Re-apply the current layout class so pip returns to correct position
                                 var rc2 = document.getElementById('live-remote-video-container');
                                 var curMode = rc2 && (
-                                    rc2.classList.contains('layout-split2')    ? 'split2'    :
-                                    rc2.classList.contains('layout-pip-bottom')? 'pip-bottom' :
-                                    rc2.classList.contains('layout-grid4')     ? 'grid4'     : 'solo'
+                                    rc2.classList.contains('layout-split2')     ? 'split2'    :
+                                    rc2.classList.contains('layout-pip-bottom') ? 'pip-bottom' :
+                                    rc2.classList.contains('layout-grid4')      ? 'grid4'      : 'solo'
                                 );
                                 _applyViewerLayout(curMode || 'solo');
                             }
                         };
 
-                        // Append to the currently active video container (works in cinema mode too)
+                        // Append to the viewer's video container
                         var rc = document.getElementById('live-remote-video-container');
                         if (rc) rc.appendChild(cohostPip);
 
@@ -17922,6 +18052,17 @@
                         // Apply pending layout (host may have set layout before pip existed)
                         if (typeof _pendingViewerLayout === 'string' && _pendingViewerLayout) {
                             setTimeout(function() { _applyViewerLayout(_pendingViewerLayout); }, 250);
+                        } else {
+                            // No pending layout — read current layout from container and apply
+                            var rcNow = document.getElementById('live-remote-video-container');
+                            var nowMode = rcNow && (
+                                rcNow.classList.contains('layout-split2')     ? 'split2'    :
+                                rcNow.classList.contains('layout-pip-bottom') ? 'pip-bottom' :
+                                rcNow.classList.contains('layout-grid4')      ? 'grid4'      : 'solo'
+                            );
+                            if (nowMode && nowMode !== 'solo') {
+                                setTimeout(function() { _applyViewerLayout(nowMode); }, 250);
+                            }
                         }
 
                         // Play video into render target with retry until it has dimensions
@@ -18874,42 +19015,33 @@
         var hostVid   = document.getElementById('live-remote-video');
         var cohostPip = document.getElementById('cohost-pip-viewer');
         var selfPip   = document.getElementById('cohost-self-pip');
-        console.log('[Layout] _applyViewerLayout called:', mode, '| hostVid:', !!hostVid, '| cohostPip:', !!cohostPip, '| selfPip:', !!selfPip);
+        console.log('[Layout] _applyViewerLayout:', mode, '| hostVid:', !!hostVid, '| cohostPip:', !!cohostPip);
 
-        // Strip all layout classes and inline overrides first
+        // 1. Remove ALL layout classes from container
         container.classList.remove('layout-split2', 'layout-pip-bottom', 'layout-grid4');
-        container.style.display = '';
-        container.style.gridTemplateColumns = '';
+        // 2. Clear any inline overrides that might fight the CSS classes
+        container.style.cssText = '';
+        // 3. Clear inline styles on the children so CSS classes win
+        if (hostVid)   hostVid.style.cssText   = '';
+        if (cohostPip) cohostPip.style.cssText  = '';
+        if (selfPip)   selfPip.style.cssText    = '';
 
         if (mode === 'solo') {
             _pendingViewerLayout = null;
-            if (hostVid)   hostVid.style.cssText  = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-            if (cohostPip) cohostPip.style.cssText = 'position:absolute;bottom:60px;right:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
-            if (selfPip)   selfPip.style.cssText   = 'position:absolute;bottom:60px;left:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid #e03e3e;z-index:22;background:#000;';
+            // Solo: restore the container's base styles (live-stream-box CSS handles the rest)
+            // pip falls back to its .cohost-pip-viewer-solo CSS class (small floating pip)
         } else if (mode === 'split2') {
             if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
             container.classList.add('layout-split2');
-            container.style.cssText = 'display:flex !important;flex-direction:row !important;height:100%;width:100%;position:relative;overflow:hidden;';
-            if (hostVid)   hostVid.style.cssText   = 'position:relative !important;width:50% !important;height:100% !important;flex-shrink:0;overflow:hidden;inset:auto !important;';
-            if (cohostPip) cohostPip.style.cssText  = 'position:relative !important;width:50% !important;height:100% !important;flex-shrink:0;background:#000;overflow:hidden;border:none;border-radius:0;inset:auto !important;';
-            if (selfPip)   selfPip.style.cssText    = 'position:relative !important;width:50% !important;height:100% !important;flex-shrink:0;background:#000;overflow:hidden;border:none;border-radius:0;inset:auto !important;z-index:1;';
         } else if (mode === 'pip-bottom') {
             if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
             container.classList.add('layout-pip-bottom');
-            container.style.cssText = 'position:relative;height:100%;width:100%;overflow:hidden;';
-            if (hostVid)   hostVid.style.cssText   = 'position:absolute !important;top:0 !important;left:0 !important;width:100% !important;height:50% !important;overflow:hidden;';
-            if (cohostPip) cohostPip.style.cssText  = 'position:absolute !important;bottom:0 !important;left:0 !important;right:auto !important;width:100% !important;height:50% !important;background:#000;overflow:hidden;border:none;border-top:2px solid var(--purple);border-radius:0;';
-            if (selfPip)   selfPip.style.cssText    = 'position:absolute !important;bottom:0 !important;left:0 !important;right:auto !important;width:100% !important;height:50% !important;background:#000;overflow:hidden;border:none;border-top:2px solid #e03e3e;border-radius:0;z-index:1;';
         } else if (mode === 'grid4') {
             if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
             container.classList.add('layout-grid4');
-            container.style.cssText = 'display:grid !important;grid-template-columns:1fr 1fr !important;grid-template-rows:1fr 1fr !important;height:100%;width:100%;position:relative;overflow:hidden;';
-            if (hostVid)   hostVid.style.cssText   = 'position:relative !important;width:100% !important;height:100% !important;overflow:hidden;inset:auto !important;';
-            if (cohostPip) cohostPip.style.cssText  = 'position:relative !important;width:100% !important;height:100% !important;background:#000;overflow:hidden;border:none;border-radius:0;inset:auto !important;';
-            if (selfPip)   selfPip.style.cssText    = 'position:relative !important;width:100% !important;height:100% !important;background:#000;overflow:hidden;border:none;border-radius:0;inset:auto !important;z-index:1;';
         }
     }
 
