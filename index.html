@@ -3818,13 +3818,6 @@
             /* Fix 4: wallet pushed to far right */
             .topnav-right { flex: 1; min-width: 0; justify-content: flex-end; gap: 6px; overflow: visible; }
             #theme-toggle { flex-shrink: 0; min-width: 32px; }
-            /* On mobile, dropdown must escape topnav stacking context via fixed positioning */
-            #wallet-dropdown {
-                position: fixed !important;
-                top: 58px !important;
-                right: 8px !important;
-                left: auto !important;
-            }
             .user-pill { display: none; }
             #wallet-btn {
                 font-size: 0.62rem;
@@ -4911,7 +4904,7 @@
                     <span id="wallet-status">Connect</span>
                     <span id="wallet-btn-caret" style="font-size:0.6rem;opacity:0.6;margin-left:2px;">▾</span>
                 </button>
-                <div id="wallet-dropdown" style="display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:220px;background:var(--bg-panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:6000;overflow:hidden;padding:6px;">
+                <div id="wallet-dropdown" style="display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:220px;background:var(--bg-panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:99000;overflow:hidden;padding:6px;">
                     <!-- Shown when NOT connected -->
                     <div id="wdd-connect-section">
                         <div style="padding:8px 12px 6px;font-size:0.65rem;font-weight:700;color:var(--text-muted);letter-spacing:0.5px;text-transform:uppercase;">Choose Wallet</div>
@@ -7350,6 +7343,35 @@
         } else {
             if (connectSection)   connectSection.style.display   = 'block';
             if (connectedSection) connectedSection.style.display = 'none';
+        }
+
+        // On mobile: use fixed positioning anchored to the button's screen rect
+        // so the dropdown escapes overflow:hidden ancestors and always floats
+        // cleanly over everything (z-index 99000 beats mobile-dashboard at 9999).
+        var isMobile = window.innerWidth <= 600;
+        if (isMobile) {
+            var btn  = document.getElementById('wallet-btn');
+            var rect = btn ? btn.getBoundingClientRect() : null;
+            if (rect) {
+                var vw        = window.innerWidth;
+                var ddWidth   = Math.min(220, vw - 16); // never wider than screen minus 8px margins
+                var rightEdge = vw - rect.right;        // gap between button right and screen right
+                // Clamp so dropdown never goes off left edge
+                var clampedRight = Math.max(8, Math.min(rightEdge, vw - ddWidth - 8));
+                dd.style.position = 'fixed';
+                dd.style.top      = (rect.bottom + 6) + 'px';
+                dd.style.right    = clampedRight + 'px';
+                dd.style.left     = 'auto';
+                dd.style.width    = ddWidth + 'px';
+                dd.style.minWidth = 'unset';
+            }
+        } else {
+            dd.style.position = 'absolute';
+            dd.style.top      = 'calc(100% + 8px)';
+            dd.style.right    = '0';
+            dd.style.left     = 'auto';
+            dd.style.width    = 'auto';
+            dd.style.minWidth = '220px';
         }
 
         dd.style.display = 'block';
