@@ -18854,38 +18854,33 @@
 
         if (mode === 'solo') {
             _pendingViewerLayout = null;
-            // Restore default fills — no layout class needed
             if (hostVid)   hostVid.style.cssText  = 'position:absolute;top:0;left:0;width:100%;height:100%;';
             if (cohostPip) cohostPip.style.cssText = 'position:absolute;bottom:60px;right:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
-            // Restore self-pip to floating corner (bottom-left)
-            if (selfPip) selfPip.style.cssText = 'position:absolute;bottom:60px;left:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid #e03e3e;z-index:22;background:#000;';
+            if (selfPip)   selfPip.style.cssText   = 'position:absolute;bottom:60px;left:10px;width:160px;height:100px;border-radius:8px;overflow:hidden;border:2px solid #e03e3e;z-index:22;background:#000;';
         } else if (mode === 'split2') {
             if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
             container.classList.add('layout-split2');
-            container.style.display = 'flex';
-            container.style.flexDirection = 'row';
-            // Explicit relative + 50% so the flex cell has real dimensions
-            if (hostVid)   hostVid.style.cssText   = 'position:relative;width:50%;height:100%;flex-shrink:0;';
-            if (cohostPip) cohostPip.style.cssText  = 'position:relative;width:50%;height:100%;flex-shrink:0;background:#000;overflow:hidden;border:none;border-radius:0;';
-            if (selfPip)   selfPip.style.cssText    = 'position:relative;width:50%;height:100%;flex-shrink:0;background:#000;overflow:hidden;border:none;border-radius:0;';
+            container.style.cssText = 'display:flex !important;flex-direction:row !important;height:100%;width:100%;position:relative;overflow:hidden;';
+            if (hostVid)   hostVid.style.cssText   = 'position:relative !important;width:50% !important;height:100% !important;flex-shrink:0;overflow:hidden;inset:auto !important;';
+            if (cohostPip) cohostPip.style.cssText  = 'position:relative !important;width:50% !important;height:100% !important;flex-shrink:0;background:#000;overflow:hidden;border:none;border-radius:0;inset:auto !important;';
+            if (selfPip)   selfPip.style.cssText    = 'position:relative !important;width:50% !important;height:100% !important;flex-shrink:0;background:#000;overflow:hidden;border:none;border-radius:0;inset:auto !important;z-index:1;';
         } else if (mode === 'pip-bottom') {
             if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
             container.classList.add('layout-pip-bottom');
-            if (hostVid)   hostVid.style.cssText   = 'position:absolute;top:0;left:0;width:100%;height:50%;';
-            if (cohostPip) cohostPip.style.cssText  = 'position:absolute;bottom:0;left:0;width:100%;height:50%;background:#000;overflow:hidden;border:none;border-top:2px solid var(--purple);border-radius:0;';
-            if (selfPip)   selfPip.style.cssText    = 'position:absolute;bottom:0;left:0;width:100%;height:50%;background:#000;overflow:hidden;border:none;border-top:2px solid #e03e3e;border-radius:0;';
+            container.style.cssText = 'position:relative;height:100%;width:100%;overflow:hidden;';
+            if (hostVid)   hostVid.style.cssText   = 'position:absolute !important;top:0 !important;left:0 !important;width:100% !important;height:50% !important;overflow:hidden;';
+            if (cohostPip) cohostPip.style.cssText  = 'position:absolute !important;bottom:0 !important;left:0 !important;right:auto !important;width:100% !important;height:50% !important;background:#000;overflow:hidden;border:none;border-top:2px solid var(--purple);border-radius:0;';
+            if (selfPip)   selfPip.style.cssText    = 'position:absolute !important;bottom:0 !important;left:0 !important;right:auto !important;width:100% !important;height:50% !important;background:#000;overflow:hidden;border:none;border-top:2px solid #e03e3e;border-radius:0;z-index:1;';
         } else if (mode === 'grid4') {
             if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
             container.classList.add('layout-grid4');
-            container.style.display = 'grid';
-            container.style.gridTemplateColumns = '1fr 1fr';
-            container.style.gridTemplateRows = '1fr 1fr';
-            if (hostVid)   hostVid.style.cssText   = 'position:relative;width:100%;height:100%;';
-            if (cohostPip) cohostPip.style.cssText  = 'position:relative;width:100%;height:100%;background:#000;overflow:hidden;border:none;border-radius:0;';
-            if (selfPip)   selfPip.style.cssText    = 'position:relative;width:100%;height:100%;background:#000;overflow:hidden;border:none;border-radius:0;';
+            container.style.cssText = 'display:grid !important;grid-template-columns:1fr 1fr !important;grid-template-rows:1fr 1fr !important;height:100%;width:100%;position:relative;overflow:hidden;';
+            if (hostVid)   hostVid.style.cssText   = 'position:relative !important;width:100% !important;height:100% !important;overflow:hidden;inset:auto !important;';
+            if (cohostPip) cohostPip.style.cssText  = 'position:relative !important;width:100% !important;height:100% !important;background:#000;overflow:hidden;border:none;border-radius:0;inset:auto !important;';
+            if (selfPip)   selfPip.style.cssText    = 'position:relative !important;width:100% !important;height:100% !important;background:#000;overflow:hidden;border:none;border-radius:0;inset:auto !important;z-index:1;';
         }
     }
 
@@ -19438,18 +19433,42 @@
                 targetContainer.appendChild(selfPip);
             }
 
-            // Re-apply the current viewer layout so the self-pip slots into the correct
-            // position immediately (instead of staying as a floating corner box while
-            // the host has already set a split/grid layout).
+            // Re-apply the current layout now that selfPip exists in the DOM.
+            // IMPORTANT: We cannot trust container CSS classes here because _applyViewerLayout
+            // returns early (storing _pendingViewerLayout) when selfPip doesn't exist yet.
+            // So we read the layout directly from Firestore instead.
             setTimeout(function() {
-                var rc = document.getElementById('live-remote-video-container');
-                if (rc) {
-                    var curMode = rc.classList.contains('layout-split2')    ? 'split2'    :
-                                  rc.classList.contains('layout-pip-bottom') ? 'pip-bottom' :
-                                  rc.classList.contains('layout-grid4')      ? 'grid4'      : 'solo';
-                    if (typeof _applyViewerLayout === 'function') _applyViewerLayout(curMode);
+                var sid = _watchingStreamId || window._watchingStreamId;
+                if (sid && window.db && window.fs) {
+                    window.fs.getDoc(window.fs.doc(window.db, LIVE_COL, sid)).then(function(snap) {
+                        if (!snap.exists()) return;
+                        var layout = snap.data().streamLayout || 'solo';
+                        if (typeof _applyViewerLayout === 'function') _applyViewerLayout(layout);
+                    }).catch(function() {
+                        // Fallback: try container classes then pending
+                        var rc = document.getElementById('live-remote-video-container');
+                        var mode = (typeof _pendingViewerLayout === 'string' && _pendingViewerLayout)
+                            ? _pendingViewerLayout
+                            : (rc && (
+                                rc.classList.contains('layout-split2')    ? 'split2'    :
+                                rc.classList.contains('layout-pip-bottom') ? 'pip-bottom' :
+                                rc.classList.contains('layout-grid4')      ? 'grid4'      : 'solo'
+                              ));
+                        if (typeof _applyViewerLayout === 'function') _applyViewerLayout(mode || 'solo');
+                    });
+                } else {
+                    // No Firestore available — use pending or container classes
+                    var rc = document.getElementById('live-remote-video-container');
+                    var mode = (typeof _pendingViewerLayout === 'string' && _pendingViewerLayout)
+                        ? _pendingViewerLayout
+                        : (rc && (
+                            rc.classList.contains('layout-split2')    ? 'split2'    :
+                            rc.classList.contains('layout-pip-bottom') ? 'pip-bottom' :
+                            rc.classList.contains('layout-grid4')      ? 'grid4'      : 'solo'
+                          ));
+                    if (typeof _applyViewerLayout === 'function') _applyViewerLayout(mode || 'solo');
                 }
-            }, 300);
+            }, 400);
 
             // Play local cam into the self-view pip with retry until container has dimensions
             var _selfRetry = 0;
