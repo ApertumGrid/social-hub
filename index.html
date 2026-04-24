@@ -3497,7 +3497,7 @@
                 display: flex !important;
                 position: sticky !important;
                 top: 50px !important;
-                z-index: 9999 !important;
+                z-index: 900 !important;
                 background: #ffffff !important;
                 border-bottom: 2px solid #6a11cb !important;
                 padding: 10px 5px !important;
@@ -4916,7 +4916,11 @@
                             </div>
                         </button>
                         <button class="wdd-option" onclick="_connectWithProvider('xova');toggleWalletDropdown()">
-                            <div class="wdd-logo wdd-xova-logo">⬡</div>
+                            <img src="https://xova.app/favicon.ico"
+                                 class="wdd-logo"
+                                 alt="XOVA"
+                                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                            <div class="wdd-logo wdd-xova-logo" style="display:none;">X</div>
                             <div class="wdd-option-text">
                                 <span class="wdd-name">XOVA Wallet</span>
                                 <span class="wdd-sub" id="wdd-xova-status">Mobile &amp; Extension</span>
@@ -7347,31 +7351,38 @@
 
         // On mobile: use fixed positioning anchored to the button's screen rect
         // so the dropdown escapes overflow:hidden ancestors and always floats
-        // cleanly over everything (z-index 99000 beats mobile-dashboard at 9999).
+        // cleanly over everything (z-index 99000 beats mobile-dashboard at 900).
         var isMobile = window.innerWidth <= 600;
         if (isMobile) {
             var btn  = document.getElementById('wallet-btn');
             var rect = btn ? btn.getBoundingClientRect() : null;
             if (rect) {
                 var vw        = window.innerWidth;
-                var ddWidth   = Math.min(220, vw - 16); // never wider than screen minus 8px margins
-                var rightEdge = vw - rect.right;        // gap between button right and screen right
-                // Clamp so dropdown never goes off left edge
+                var vh        = window.innerHeight;
+                var ddWidth   = Math.min(240, vw - 16);
+                var rightEdge = vw - rect.right;
                 var clampedRight = Math.max(8, Math.min(rightEdge, vw - ddWidth - 8));
-                dd.style.position = 'fixed';
-                dd.style.top      = (rect.bottom + 6) + 'px';
-                dd.style.right    = clampedRight + 'px';
-                dd.style.left     = 'auto';
-                dd.style.width    = ddWidth + 'px';
-                dd.style.minWidth = 'unset';
+                var topPos    = rect.bottom + 6;
+                // Max height so it never runs off the bottom of the screen
+                var maxH      = vh - topPos - 12;
+                dd.style.position  = 'fixed';
+                dd.style.top       = topPos + 'px';
+                dd.style.right     = clampedRight + 'px';
+                dd.style.left      = 'auto';
+                dd.style.width     = ddWidth + 'px';
+                dd.style.minWidth  = 'unset';
+                dd.style.maxHeight = Math.max(maxH, 120) + 'px';
+                dd.style.overflowY = 'auto';
             }
         } else {
-            dd.style.position = 'absolute';
-            dd.style.top      = 'calc(100% + 8px)';
-            dd.style.right    = '0';
-            dd.style.left     = 'auto';
-            dd.style.width    = 'auto';
-            dd.style.minWidth = '220px';
+            dd.style.position  = 'absolute';
+            dd.style.top       = 'calc(100% + 8px)';
+            dd.style.right     = '0';
+            dd.style.left      = 'auto';
+            dd.style.width     = 'auto';
+            dd.style.minWidth  = '220px';
+            dd.style.maxHeight = 'none';
+            dd.style.overflowY = 'visible';
         }
 
         dd.style.display = 'block';
@@ -7446,9 +7457,11 @@
                     eth = window.xova.ethereum;
                 } else if (window.ethereum && window.ethereum.isXova) {
                     eth = window.ethereum;
+                } else if (window.ethereum) {
+                    // Mobile browsers: Xova may inject as generic window.ethereum
+                    eth = window.ethereum;
                 } else {
-                    showToast('XOVA Wallet not detected. Install it and refresh.');
-                    window.open('https://xova.app', '_blank');
+                    showToast('XOVA Wallet not found. Install the XOVA app and open this page inside it.');
                     return;
                 }
             } else {
@@ -7470,6 +7483,93 @@
             creatorEarnings = 0;
 
             _setWalletConnectedUI(userAddress);
+
+            // Store wallet type and eth ref so we can auto-reconnect after sleep/wake
+            window._shLastWalletType = walletType;
+            window._shLastEth        = eth;
+
+            // Listen for MetaMask/Xova account changes.
+            // IMPORTANT: debounce with 1.5s before acting — sleep/wake triggers a
+            // spurious accountsChanged([]) that resolves itself once the wallet wakes.
+            if (eth._shAccountsListener) {
+                try { eth.removeListener('accountsChanged', eth._shAccountsListener); } catch(_) {}
+            }
+            var _acctDebounce = null;
+            eth._shAccountsListener = function(accounts) {
+                clearTimeout(_acctDebounce);
+                _acctDebounce = setTimeout(function() {
+                    if (!accounts || accounts.length === 0) {
+                        // Try silent reconnect before giving up — handles sleep/wake
+                        var _ethRef = window._shLastEth;
+                        if (_ethRef && _ethRef.request) {
+                            _ethRef.request({ method: 'eth_accounts' }).then(function(accs) {
+                                if (accs && accs.length > 0) {
+                                    // Wallet is actually still connected — just refresh provider
+                                    provider = new ethers.providers.Web3Provider(_ethRef);
+                                    userAddress = accs[0];
+                                    window.userAddress = accs[0];
+                                    signer = provider.getSigner();
+                                    hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
+                                    window.hubContract = hubContract;
+                                    window.provider = provider;
+                                    window.signer = signer;
+                                    _setWalletConnectedUI(accs[0]);
+                                    syncData();
+                                } else {
+                                    disconnectWallet();
+                                }
+                            }).catch(function() { disconnectWallet(); });
+                        } else {
+                            disconnectWallet();
+                        }
+                    } else if (accounts[0].toLowerCase() !== (userAddress || '').toLowerCase()) {
+                        // Genuine account switch
+                        userAddress = accounts[0];
+                        window.userAddress = userAddress;
+                        provider = new ethers.providers.Web3Provider(eth);
+                        signer = provider.getSigner();
+                        hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
+                        window.hubContract = hubContract;
+                        window.provider = provider;
+                        window.signer = signer;
+                        _setWalletConnectedUI(userAddress);
+                        syncData();
+                        updateUI();
+                        showToast('Switched to ' + accounts[0].slice(0,6) + '…' + accounts[0].slice(-4));
+                    }
+                }, 1500); // wait 1.5s — sleep/wake spurious events resolve within this window
+            };
+            try { eth.on('accountsChanged', eth._shAccountsListener); } catch(_) {}
+
+            // visibilitychange: when tab becomes visible after sleep, silently re-check
+            // connection and refresh the provider without forcing a disconnect
+            if (!window._shVisibilityBound) {
+                window._shVisibilityBound = true;
+                document.addEventListener('visibilitychange', function() {
+                    if (document.hidden) return;
+                    var _eth = window._shLastEth;
+                    if (!_eth || !userAddress) return;
+                    // Silently verify the wallet is still connected
+                    setTimeout(function() {
+                        if (!_eth.request) return;
+                        _eth.request({ method: 'eth_accounts' }).then(function(accs) {
+                            if (accs && accs.length > 0) {
+                                // Still connected — refresh provider in case it went stale
+                                try {
+                                    var freshProvider = new ethers.providers.Web3Provider(_eth);
+                                    provider = freshProvider;
+                                    signer = freshProvider.getSigner();
+                                    hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
+                                    window.provider = provider;
+                                    window.signer = signer;
+                                    window.hubContract = hubContract;
+                                } catch(_) {}
+                            }
+                            // If accs is empty, let the accountsChanged debounce handle it
+                        }).catch(function() {});
+                    }, 800);
+                });
+            }
 
             await syncData();
             const freshPrice = await getLiveAptmPrice();
@@ -21991,11 +22091,22 @@
     }
     var _patchedJoin = async function() {
         await _origJoin.apply(this, arguments);
-        setTimeout(function(){
+        // Wait for the remote video container to have actual video content before
+        // entering cinema mode — avoids showing local camera preview by mistake.
+        var attempts = 0;
+        var maxAttempts = 40; // 4 seconds max
+        function waitForRemoteVideo() {
             var vc = document.getElementById('live-remote-video-container');
-            if (vc) vc.style.height = '';
-            enterCinema('live-remote-video-container', 'live-chat-feed');
-        }, 800);
+            var hasVideo = vc && vc.querySelector('video');
+            attempts++;
+            if (hasVideo || attempts >= maxAttempts) {
+                if (vc) vc.style.height = '';
+                enterCinema('live-remote-video-container', 'live-chat-feed');
+            } else {
+                setTimeout(waitForRemoteVideo, 100);
+            }
+        }
+        setTimeout(waitForRemoteVideo, 300);
     };
 
     // Patch leaveLiveStream
