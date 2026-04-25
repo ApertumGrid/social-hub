@@ -18161,8 +18161,8 @@
             // audienceLatencyLevel:1 = low-latency mode required for setClientRole('host') promotion (Join Stage)
             await agoraClient.setClientRole('audience', { level: 1 });
             await fetchAgoraToken(LIVE_CHANNEL);
-            const _MY_UID = Math.floor(Math.random() * 99998) + 100000;
-            await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, _MY_UID);
+            const _MY_VIEWER_UID = Math.floor(Math.random() * 99998) + 100000;
+            await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, _MY_VIEWER_UID);
 
             // hostUid tells us which publisher in the shared channel belongs to THIS stream
             // hostUid is now always in the doc from creation, but keep a mutable
@@ -18171,11 +18171,13 @@
 
             // Listen for remote video — only render the matching host UID
             agoraClient.on('user-published', async (remoteUser, mediaType) => {
-                // Never render our own published tracks — when this viewer is promoted
-                // to co-host they publish video and Agora fires user-published for their
-                // own UID. Without this guard their camera fills the fullscreen and the
-                // host gets treated as the small pip — exactly backwards.
-                if (remoteUser.uid === _MY_UID) return;
+                // When this viewer is promoted to co-host they publish their camera.
+                // Agora fires user-published for their OWN uid back to them.
+                // Without this guard their own camera video would fill the remote
+                // video container — making them appear fullscreen while the host
+                // gets no video at all. Skip self entirely; local preview is already
+                // handled by cohost-self-pip inside _promoteToCoHost.
+                if (remoteUser.uid === _MY_VIEWER_UID) return;
 
                 await agoraClient.subscribe(remoteUser, mediaType);
 
