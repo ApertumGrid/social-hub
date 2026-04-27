@@ -18413,6 +18413,7 @@ html.dark .rp-card { background:var(--sh-surface2) !important; border-color:var(
             // hostUid is now always in the doc from creation, but keep a mutable
             // ref so the fallback below can update it if it somehow arrives null.
             let hostUid = streamData.hostUid != null ? Number(streamData.hostUid) : null;
+            _liveHostUid = hostUid; // expose to module scope for _promoteToCoHost re-subscribe
 
             // Listen for remote video — only render the matching host UID
             agoraClient.on('user-published', async (remoteUser, mediaType) => {
@@ -18430,6 +18431,7 @@ html.dark .rp-card { background:var(--sh-surface2) !important; border-color:var(
                 // treat the very first publisher in the low UID range as the host.
                 if (hostUid == null && remoteUser.uid < 100000) {
                     hostUid = remoteUser.uid;
+                    _liveHostUid = hostUid; // keep module ref in sync
                     console.warn('[Viewer] hostUid was null — using first publisher:', hostUid);
                 }
 
@@ -19709,6 +19711,7 @@ html.dark .rp-card { background:var(--sh-surface2) !important; border-color:var(
     let cohostRequests     = {};     // uid → {handle, ts}
     let _cohostUnsub       = null;   // Firestore listener
     let isCoHost           = false;  // viewer promoted to co-host
+    let _liveHostUid       = null;   // hostUid resolved when joining as viewer — used by _promoteToCoHost to re-subscribe
     let cohostVideoTrack   = null;   // co-host local cam track
     let cohostAudioTrack   = null;   // co-host local mic track
 
@@ -20007,6 +20010,37 @@ html.dark .rp-card { background:var(--sh-surface2) !important; border-color:var(
             await agoraClient.setClientRole('host');
             [cohostAudioTrack, cohostVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
             await agoraClient.publish([cohostAudioTrack, cohostVideoTrack]);
+
+            // ── CRITICAL: Re-subscribe to the host's video after role promotion ──
+            // Agora drops all audience subscriptions when you switch to 'host' role.
+            // Without this, live-remote-video goes black and the co-host only sees
+            // their own self-pip, making it look like they "dominate the screen".
+            setTimeout(async function() {
+                try {
+                    var remoteUsers = agoraClient.remoteUsers;
+                    for (var i = 0; i < remoteUsers.length; i++) {
+                        var ru = remoteUsers[i];
+                        if (_liveHostUid != null && ru.uid !== _liveHostUid) continue;
+                        // Re-subscribe video
+                        try { await agoraClient.subscribe(ru, 'video'); } catch(_) {}
+                        try { await agoraClient.subscribe(ru, 'audio'); } catch(_) {}
+                        // Re-play host video into live-remote-video
+                        if (ru.videoTrack) {
+                            var remoteEl = document.getElementById('live-remote-video');
+                            if (remoteEl) {
+                                remoteEl.style.cssText = '';
+                                try { ru.videoTrack.play(remoteEl); } catch(_) {}
+                                console.log('[CoHost] Re-subscribed to host video after role promotion');
+                            }
+                        }
+                        if (ru.audioTrack) {
+                            try { ru.audioTrack.play(); } catch(_) {}
+                        }
+                    }
+                } catch(e) {
+                    console.warn('[CoHost] Re-subscribe after promotion failed:', e);
+                }
+            }, 600);
 
             // ── Self-view: inject a "YOU" PiP directly inside the stream video container
             // This works in both normal and cinema mode because the container is always visible.
