@@ -470,18 +470,39 @@
 
         .composer-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 
-        /* ── FIX 2: Collapsed composer state — shown after successful broadcast ── */
+        /* ── Collapsed composer state — compact Facebook-style trigger ── */
         #composer-card.composer-collapsed .composer-body { display: none; }
         #composer-card.composer-collapsed .composer-row  { margin-bottom: 0; cursor: pointer; }
         #composer-card.composer-collapsed {
             cursor: pointer;
-            border-color: var(--border) !important;
-            background: var(--bg-card2);
+            padding: 10px 14px;
         }
         #composer-card.composer-collapsed .composer-sub::after {
             content: '  ✦ tap to broadcast again';
             color: var(--purple-lt);
         }
+        /* Trigger pill — the "What's your signal?" clickable area */
+        .composer-trigger-pill {
+            flex: 1;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 9px 16px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+            user-select: none;
+        }
+        .composer-trigger-pill:hover {
+            border-color: var(--purple);
+            background: var(--purple-dim);
+            color: var(--text-secondary);
+        }
+        /* Hide pill once expanded */
+        #composer-card:not(.composer-collapsed) .composer-trigger-pill { display: none; }
+        /* Show name/sub only when expanded */
+        #composer-card:not(.composer-collapsed) .composer-row > div:last-child { display: block !important; }
         /* ── FIX 1: Signals bar only visible on home tab ── */
         #signals-bar.signals-hidden,
         #category-bar.signals-hidden { display: none !important; }
@@ -5243,10 +5264,13 @@ html.dark .rp-card { background:var(--sh-surface2) !important; border-color:var(
                 <div class="feed-heading">Signal Feed</div>
 
                 <!-- Compose -->
-                <div class="card" id="composer-card" style="border-color: rgba(124,92,191,0.25);">
-                    <div class="composer-row">
+                <div class="card composer-collapsed" id="composer-card" style="border-color: rgba(124,92,191,0.25);">
+                    <div class="composer-row" onclick="expandComposer()" title="Click to compose a signal">
                         <img id="pb-avatar" class="av" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub">
-                        <div>
+                        <div class="composer-trigger-pill" id="composer-trigger-pill">
+                            <span id="composer-trigger-text">What's your signal?</span>
+                        </div>
+                        <div style="display:none;">
                             <div class="composer-name" id="pb-handle">Anonymous_Creator</div>
                             <div class="composer-sub">Broadcasting to the network</div>
                         </div>
@@ -7292,12 +7316,22 @@ html.dark .rp-card { background:var(--sh-surface2) !important; border-color:var(
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
+    function expandComposer() {
+        const c = document.getElementById('composer-card');
+        if (!c) return;
+        c.classList.remove('composer-collapsed');
+        setTimeout(() => {
+            const ta = document.getElementById('post-text');
+            if (ta) ta.focus();
+        }, 50);
+    }
+
     function scrollToCompose() {
         switchPage('home', null);
         setBnav('home');
         setTimeout(() => {
             const c = document.getElementById('composer-card');
-            if (c) c.scrollIntoView({ behavior: 'smooth' });
+            if (c) { c.scrollIntoView({ behavior: 'smooth' }); expandComposer(); }
         }, 50);
     }
 
