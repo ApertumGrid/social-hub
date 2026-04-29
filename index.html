@@ -18433,11 +18433,26 @@ html.dark .rp-card { background:var(--sh-surface2) !important; border-color:var(
                     if (mediaType === 'video') {
                         const remoteEl = $('live-remote-video');
                         if (remoteEl) {
-                            // Do NOT set inline cssText — CSS classes on the container control positioning
                             remoteEl.style.cssText = '';
                             const playRemoteWhenReady = () => {
                                 if (remoteEl.offsetWidth > 0 || remoteEl.offsetHeight > 0) {
                                     remoteUser.videoTrack.play(remoteEl);
+                                    // If we just promoted to co-host, re-apply the current
+                                    // stream layout now that host video is playing again
+                                    if (_justPromotedToCoHost) {
+                                        _justPromotedToCoHost = false;
+                                        var sid = _watchingStreamId;
+                                        if (sid && window.db && window.fs) {
+                                            window.fs.getDoc(window.fs.doc(window.db, 'live_streams', sid))
+                                                .then(function(snap) {
+                                                    var layout = snap.exists() ? (snap.data().streamLayout || 'solo') : 'solo';
+                                                    console.log('[CoHost] Host video restored — applying layout:', layout);
+                                                    if (typeof _applyViewerLayout === 'function') _applyViewerLayout(layout);
+                                                }).catch(function() {
+                                                    if (typeof _applyViewerLayout === 'function') _applyViewerLayout('solo');
+                                                });
+                                        }
+                                    }
                                 } else {
                                     setTimeout(playRemoteWhenReady, 100);
                                 }
@@ -19705,6 +19720,7 @@ html.dark .rp-card { background:var(--sh-surface2) !important; border-color:var(
     let _cohostUnsub       = null;   // Firestore listener
     let isCoHost           = false;  // viewer promoted to co-host
     let _liveHostUid       = null;   // hostUid resolved when joining as viewer — used by _promoteToCoHost to re-subscribe
+    let _justPromotedToCoHost = false; // flag: we just became co-host — re-apply layout once host video re-arrives
     let cohostVideoTrack   = null;   // co-host local cam track
     let cohostAudioTrack   = null;   // co-host local mic track
 
@@ -20004,36 +20020,12 @@ html.dark .rp-card { background:var(--sh-surface2) !important; border-color:var(
             [cohostAudioTrack, cohostVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
             await agoraClient.publish([cohostAudioTrack, cohostVideoTrack]);
 
-            // ── CRITICAL: Re-subscribe to the host's video after role promotion ──
-            // Agora drops all audience subscriptions when you switch to 'host' role.
-            // Without this, live-remote-video goes black and the co-host only sees
-            // their own self-pip, making it look like they "dominate the screen".
-            setTimeout(async function() {
-                try {
-                    var remoteUsers = agoraClient.remoteUsers;
-                    for (var i = 0; i < remoteUsers.length; i++) {
-                        var ru = remoteUsers[i];
-                        if (_liveHostUid != null && ru.uid !== _liveHostUid) continue;
-                        // Re-subscribe video
-                        try { await agoraClient.subscribe(ru, 'video'); } catch(_) {}
-                        try { await agoraClient.subscribe(ru, 'audio'); } catch(_) {}
-                        // Re-play host video into live-remote-video
-                        if (ru.videoTrack) {
-                            var remoteEl = document.getElementById('live-remote-video');
-                            if (remoteEl) {
-                                remoteEl.style.cssText = '';
-                                try { ru.videoTrack.play(remoteEl); } catch(_) {}
-                                console.log('[CoHost] Re-subscribed to host video after role promotion');
-                            }
-                        }
-                        if (ru.audioTrack) {
-                            try { ru.audioTrack.play(); } catch(_) {}
-                        }
-                    }
-                } catch(e) {
-                    console.warn('[CoHost] Re-subscribe after promotion failed:', e);
-                }
-            }, 600);
+            // ── After role promotion, Agora automatically re-fires user-published
+            // for all remote users (including the host). The existing user-published
+            // handler above already handles playing the host video into live-remote-video.
+            // We just need to set a flag so it re-applies the layout once host video arrives.
+            _justPromotedToCoHost = true;
+            console.log('[CoHost] Role promoted — waiting for Agora to re-announce host via user-published');
 
             // ── Self-view: inject a "YOU" PiP directly inside the stream video container
             // This works in both normal and cinema mode because the container is always visible.
