@@ -19076,6 +19076,7 @@ html:not(.dark) .brand-name {
             await agoraClient.setClientRole('audience', { level: 1 });
             await fetchAgoraToken(LIVE_CHANNEL);
             const _MY_VIEWER_UID = Math.floor(Math.random() * 99998) + 100000;
+            _myViewerUid = _MY_VIEWER_UID; // store at module scope so _promoteToCoHost can use it
             await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, _MY_VIEWER_UID);
 
             // hostUid tells us which publisher in the shared channel belongs to THIS stream
@@ -20396,6 +20397,7 @@ html:not(.dark) .brand-name {
     let _cohostUnsub       = null;   // Firestore listener
     let isCoHost           = false;  // viewer promoted to co-host
     let _liveHostUid       = null;   // hostUid resolved when joining as viewer — used by _promoteToCoHost to re-subscribe
+    let _myViewerUid       = null;   // viewer's own Agora UID — stored at module scope so _promoteToCoHost can reference it
     let _justPromotedToCoHost = false; // flag: we just became co-host — re-apply layout once host video re-arrives
     let cohostVideoTrack   = null;   // co-host local cam track
     let cohostAudioTrack   = null;   // co-host local mic track
@@ -20707,7 +20709,7 @@ html:not(.dark) .brand-name {
                 console.log('[CoHost] Remote users in channel:', remoteUsers.map(u => u.uid));
                 for (const remoteUser of remoteUsers) {
                     // Skip ourselves
-                    if (remoteUser.uid === _MY_VIEWER_UID) continue;
+                    if (remoteUser.uid === _myViewerUid) continue; // use module-scope uid — _MY_VIEWER_UID is out of scope here
                     // Re-subscribe to video
                     if (remoteUser.hasVideo) {
                         try {
