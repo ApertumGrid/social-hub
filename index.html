@@ -20679,12 +20679,58 @@ html:not(.dark) .brand-name {
             [cohostAudioTrack, cohostVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
             await agoraClient.publish([cohostAudioTrack, cohostVideoTrack]);
 
-            // ── After role promotion, Agora automatically re-fires user-published
-            // for all remote users (including the host). The existing user-published
-            // handler above already handles playing the host video into live-remote-video.
-            // We just need to set a flag so it re-applies the layout once host video arrives.
-            _justPromotedToCoHost = true;
-            console.log('[CoHost] Role promoted — waiting for Agora to re-announce host via user-published');
+            // ── After role promotion, Agora does NOT reliably re-fire user-published
+            // for already-publishing remote users (host). We must manually re-subscribe
+            // to the host's existing tracks and render them ourselves. This is the fix
+            // for the co-host seeing only themselves and not the streamer.
+            _justPromotedToCoHost = false; // not needed — we handle it manually below
+            console.log('[CoHost] Role promoted — manually re-subscribing to host tracks');
+            try {
+                const remoteUsers = agoraClient.remoteUsers;
+                console.log('[CoHost] Remote users in channel:', remoteUsers.map(u => u.uid));
+                for (const remoteUser of remoteUsers) {
+                    // Skip ourselves
+                    if (remoteUser.uid === _MY_VIEWER_UID) continue;
+                    // Re-subscribe to video
+                    if (remoteUser.hasVideo) {
+                        try {
+                            await agoraClient.subscribe(remoteUser, 'video');
+                            console.log('[CoHost] Re-subscribed to video of uid:', remoteUser.uid);
+                            if (remoteUser.uid === _liveHostUid) {
+                                // Render host video into the main remote video container
+                                var remoteEl = document.getElementById('live-remote-video');
+                                if (remoteEl) {
+                                    var _retry = 0;
+                                    (function _tryPlay() {
+                                        if (remoteEl.offsetWidth > 0 || remoteEl.offsetHeight > 0 || _retry > 15) {
+                                            try { remoteUser.videoTrack.play(remoteEl); console.log('[CoHost] Host video playing'); } catch(e) { console.warn('[CoHost] Host video play err:', e); }
+                                            // Re-apply layout now that host video is rendering
+                                            var sid = _watchingStreamId || window._watchingStreamId;
+                                            if (sid && window.db && window.fs) {
+                                                window.fs.getDoc(window.fs.doc(window.db, 'live_streams', sid))
+                                                    .then(function(snap) {
+                                                        var layout = snap.exists() ? (snap.data().streamLayout || 'solo') : 'solo';
+                                                        if (typeof _applyViewerLayout === 'function') _applyViewerLayout(layout);
+                                                    }).catch(function() {
+                                                        if (typeof _applyViewerLayout === 'function') _applyViewerLayout('solo');
+                                                    });
+                                            }
+                                        } else { _retry++; setTimeout(_tryPlay, 150); }
+                                    })();
+                                }
+                            }
+                        } catch(e) { console.warn('[CoHost] Re-subscribe video failed for uid', remoteUser.uid, e); }
+                    }
+                    // Re-subscribe to audio
+                    if (remoteUser.hasAudio) {
+                        try {
+                            await agoraClient.subscribe(remoteUser, 'audio');
+                            remoteUser.audioTrack && remoteUser.audioTrack.play();
+                            console.log('[CoHost] Re-subscribed to audio of uid:', remoteUser.uid);
+                        } catch(e) { console.warn('[CoHost] Re-subscribe audio failed for uid', remoteUser.uid, e); }
+                    }
+                }
+            } catch(e) { console.warn('[CoHost] Manual re-subscribe error:', e); }
 
             // ── Self-view: inject a "YOU" PiP directly inside the stream video container
             // This works in both normal and cinema mode because the container is always visible.
