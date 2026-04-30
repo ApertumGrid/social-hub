@@ -21597,6 +21597,24 @@ html:not(.dark) .brand-name {
             // Demote back to audience
             if (agoraClient) { try { await agoraClient.setClientRole('audience', { level: 1 }); } catch(_) {} }
 
+            // After demotion Agora internally unsubscribes all remote tracks and does NOT
+            // re-fire user-published. Manually re-subscribe to every remote user so the
+            // host video reappears on screen for the former co-host.
+            window._cohostPublishedUid = null; // clear so host uid is no longer filtered
+            try {
+                await new Promise(function(r) { setTimeout(r, 400); });
+                var _remotes = agoraClient.remoteUsers;
+                for (var _ri = 0; _ri < _remotes.length; _ri++) {
+                    var _ru = _remotes[_ri];
+                    try { await agoraClient.subscribe(_ru, 'video'); } catch(_) {}
+                    try { await agoraClient.subscribe(_ru, 'audio'); if (_ru.audioTrack) _ru.audioTrack.play(); } catch(_) {}
+                    if (_ru.videoTrack && _liveHostUid && _ru.uid === _liveHostUid) {
+                        var _re = document.getElementById('live-remote-video');
+                        if (_re) { try { _ru.videoTrack.play(_re); } catch(_) {} }
+                    }
+                }
+            } catch(_leaveReSub) { console.warn('[CoHost] leave re-subscribe error:', _leaveReSub); }
+
             // Remove self-view pip
             var selfPip = document.getElementById('cohost-self-pip');
             if (selfPip && selfPip.parentNode) selfPip.parentNode.removeChild(selfPip);
@@ -22167,6 +22185,11 @@ html:not(.dark) .brand-name {
     };
 
     // ── CAMERA ON/OFF ─────────────────────────────────────────────
+    // IMPORTANT: We use setEnabled(true/false) only — never unpublish/publish.
+    // Unpublishing fires user-unpublished on co-host clients who are in 'host' role;
+    // Agora does NOT re-fire user-published after role promotion, so co-hosts would
+    // lose the host video permanently until they rejoin. setEnabled keeps the track
+    // published (sending a black frame when off) and avoids all renegotiation events.
     window.toggleCamera = async function() {
         const btn = $('btn-cam-off');
         if (!localVideoTrack) { showToast('No camera track — preview camera first.'); return; }
@@ -22174,10 +22197,8 @@ html:not(.dark) .brand-name {
             isCamOff = !isCamOff;
             if (isCamOff) {
                 await localVideoTrack.setEnabled(false);
-                try { await agoraClient.unpublish(localVideoTrack); } catch(_) {}
             } else {
                 await localVideoTrack.setEnabled(true);
-                try { await agoraClient.publish(localVideoTrack); } catch(_) {}
                 const container = $('live-broadcaster-video');
                 if (container) localVideoTrack.play(container);
             }
