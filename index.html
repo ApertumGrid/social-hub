@@ -10308,6 +10308,9 @@ html:not(.dark) .brand-name {
         }
         try {
             const aptmAmount = parseFloat(amt);
+            if (!Number.isFinite(aptmAmount) || aptmAmount <= 0) {
+                return alert("Enter a valid deposit amount greater than 0.");
+            }
             console.log(`[Deposit] Starting deposit of ${aptmAmount} APTM`);
             showToast(`Depositing ${aptmAmount} $APTM…`);
             const tx = await hubContract.depositAPTM({ value: ethers.utils.parseEther(String(aptmAmount)), gasLimit: 150000 });
@@ -10432,6 +10435,9 @@ html:not(.dark) .brand-name {
     }
 
     async function settleToWallet() {
+        // Legacy entrypoint kept for compatibility.
+        // Canonical settlement path is settleStarsToWallet() to avoid logic drift.
+        return settleStarsToWallet();
         if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
         var settleAllBtns = document.querySelectorAll('button[onclick*="settleStarsToWallet"]');
         settleAllBtns.forEach(function(b) { b.disabled = true; b.textContent = 'Loading…'; });
@@ -12328,6 +12334,7 @@ html:not(.dark) .brand-name {
                             currentAptmBalance: 0,
                             spentStarsTotal:    0,
                             initial_deposit:    0,
+                            depositedAptm:      0,
                             lastWithdraw:       Date.now(),
                             lastUpdated:        Date.now()
                         },
@@ -18627,7 +18634,7 @@ html:not(.dark) .brand-name {
         const data = await res.json();
         AGORA_TOKEN = data.token;
     }
-    const LIVE_CHANNEL  = 'socialhub_live_test';
+    const LIVE_CHANNEL_PREFIX = 'socialhub_live_';
     const LIVE_COL      = 'live_streams';
     const LIVE_CHAT_COL = 'live_chat';
     const HYPE_STAR_COST = 1;                  // 1 ★ per hype
@@ -18646,7 +18653,9 @@ html:not(.dark) .brand-name {
     let liveViewerCount  = 0;
     let _liveStreamUnsub = null;   // Firestore listener teardown
     let _liveChatUnsub   = null;
+    let _streamDocUnsub  = null;
     let _watchingStreamId = null;
+    let _activeLiveChannel = null;
 
     // ── Helpers ───────────────────────────────────────────────────
     function $(id) { return document.getElementById(id); }
@@ -18659,6 +18668,11 @@ html:not(.dark) .brand-name {
             if (window.db && window.fs) { clearInterval(t); cb(); }
         }, 300);
         setTimeout(() => clearInterval(t), 12000);
+    }
+
+    function _toPositiveNumber(val, fallback) {
+        var n = parseFloat(val);
+        return (Number.isFinite(n) && n > 0) ? n : (fallback || 0);
     }
 
     // ── Tab switching ─────────────────────────────────────────────
@@ -18904,15 +18918,25 @@ html:not(.dark) .brand-name {
             });
             currentStreamId = docRef.id;
             window._currentStreamId = currentStreamId; // expose for spotlight closure
+            _activeLiveChannel = LIVE_CHANNEL_PREFIX + currentStreamId;
             isHosting       = true;
             liveStarsEarned = 0;
             liveHypeCount   = 0;
 
+            // Persist per-stream Agora channel so host/viewers/co-hosts stay in sync.
+            try {
+                await window.fs.updateDoc(window.fs.doc(window.db, LIVE_COL, currentStreamId), {
+                    channel: _activeLiveChannel
+                });
+            } catch (e) {
+                console.warn('[Live] Could not persist stream channel, using deterministic fallback:', e);
+            }
+
             // 2. Init Agora client as host
             agoraClient = window.AgoraRTC.createClient({ mode: 'live', codec: 'h264' });
             await agoraClient.setClientRole('host');
-            await fetchAgoraToken(LIVE_CHANNEL);
-            await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, HOST_UID);
+            await fetchAgoraToken(_activeLiveChannel);
+            await agoraClient.join(AGORA_APP_ID, _activeLiveChannel, AGORA_TOKEN, HOST_UID);
 
             // 3. Publish tracks (create if not already previewed)
             if (!localVideoTrack || !localAudioTrack) {
@@ -18956,11 +18980,13 @@ html:not(.dark) .brand-name {
                         if (currentStreamId && window.db && window.fs) {
                             window.fs.getDocs(window.fs.collection(window.db, 'live_streams', currentStreamId, 'cohost_requests')).then(function(snap) {
                                 snap.forEach(function(d) {
-                                    if (d.data().status === 'approved') {
+                                    var r = d.data() || {};
+                                    var reqUid = (r.uid == null ? '' : String(r.uid));
+                                    if (r.status === 'approved' && reqUid === String(cohostUid)) {
                                         _cohostWalletAddr = d.id; // docId IS the wallet address
                                         cohostPip.dataset.walletAddr = d.id;
-                                        cohostPip.dataset.handle = d.data().handle || 'Co-host';
-                                        label.textContent = '🎤 ' + (d.data().handle || 'Co-host');
+                                        cohostPip.dataset.handle = r.handle || 'Co-host';
+                                        label.textContent = '🎤 ' + (r.handle || 'Co-host');
                                     }
                                 });
                             }).catch(function(){});
@@ -19241,14 +19267,16 @@ html:not(.dark) .brand-name {
                 }).catch(() => {});
             }
 
-            // Init Agora as audience — join shared channel, subscribe only to this stream's host UID
+            // Init Agora as audience — join this stream's channel only
             agoraClient = window.AgoraRTC.createClient({ mode: 'live', codec: 'h264' });
             // audienceLatencyLevel:1 = low-latency mode required for setClientRole('host') promotion (Join Stage)
             await agoraClient.setClientRole('audience', { level: 1 });
-            await fetchAgoraToken(LIVE_CHANNEL);
+            const streamChannel = streamData.channel || (LIVE_CHANNEL_PREFIX + streamId);
+            _activeLiveChannel = streamChannel;
+            await fetchAgoraToken(streamChannel);
             const _MY_VIEWER_UID = Math.floor(Math.random() * 99998) + 100000;
             _myViewerUid = _MY_VIEWER_UID; // store at module scope so _promoteToCoHost can use it
-            await agoraClient.join(AGORA_APP_ID, LIVE_CHANNEL, AGORA_TOKEN, _MY_VIEWER_UID);
+            await agoraClient.join(AGORA_APP_ID, streamChannel, AGORA_TOKEN, _MY_VIEWER_UID);
 
             // hostUid tells us which publisher in the shared channel belongs to THIS stream
             // hostUid is now always in the doc from creation, but keep a mutable
@@ -19466,7 +19494,7 @@ html:not(.dark) .brand-name {
             setText('live-creator-stars-watch', (streamData.starsEarned || 0).toFixed(1));
 
             // ── Paid admission gate check ─────────────────────────────
-            const fee = streamData.entryFee || 0;
+            const fee = _toPositiveNumber(streamData.entryFee, 0);
             streamEntryFee = fee;
             hasPassedGate  = false;
 
@@ -19542,7 +19570,9 @@ html:not(.dark) .brand-name {
         hide('live-player-wrap');
         show('live-stream-browser');
         if (_liveChatUnsub) { try { _liveChatUnsub(); } catch(_) {} _liveChatUnsub = null; }
+        if (_streamDocUnsub) { try { _streamDocUnsub(); } catch(_) {} _streamDocUnsub = null; }
         _watchingStreamId = null;
+        _activeLiveChannel = null;
         window._applyViewerSpotlight = null; // clear stale closure from previous session
         loadStreamBrowser();
     };
@@ -19566,10 +19596,9 @@ html:not(.dark) .brand-name {
             if (!streamSnap.exists()) return;
             const hostAddr = streamSnap.data().hostAddr;
 
-            // 1. Deduct from viewer's purchased stars in Firestore
+            // 1. Deduct from viewer via canonical spend waterfall (purchased first, then earned).
             if (userAddress) {
-                const viewerRef = doc(window.db, 'user_balances', userAddress.toLowerCase());
-                await updateDoc(viewerRef, { stars: increment(-HYPE_STAR_COST), spentStarsTotal: increment(HYPE_STAR_COST) }).catch(() => {});
+                await deductSpendableStars(userAddress.toLowerCase(), HYPE_STAR_COST);
                 // Update bridge balance
                 if (typeof window._liveTotalSpendable === 'number') {
                     window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - HYPE_STAR_COST);
@@ -19793,10 +19822,13 @@ html:not(.dark) .brand-name {
             var addr = '';
             var handle = cohostHandle || 'Co-host';
             snap.forEach(function(d) {
-                // Match on approved status — take the first approved co-host
-                if (d.data().status === 'approved') {
+                // Match exact approved co-host UID when available, fallback to first approved.
+                var r = d.data() || {};
+                var reqUid = (r.uid == null ? '' : String(r.uid));
+                var uidMatch = String(cohostUid || '') !== '' && reqUid === String(cohostUid);
+                if (r.status === 'approved' && (uidMatch || !addr)) {
                     addr = d.id; // docId IS the wallet address
-                    handle = d.data().handle || handle;
+                    handle = r.handle || handle;
                 }
             });
             if (!addr) { showToast('Could not find co-host wallet. Try again in a moment.'); return; }
@@ -19837,10 +19869,8 @@ html:not(.dark) .brand-name {
 
         try {
             const { doc, updateDoc, increment, collection, addDoc, serverTimestamp } = window.fs;
-            // Deduct from sender
-            await updateDoc(doc(window.db, 'user_balances', userAddress.toLowerCase()), {
-                stars: increment(-tier.cost), spentStarsTotal: increment(tier.cost)
-            });
+            // Deduct from sender using the same canonical spend waterfall.
+            await deductSpendableStars(userAddress.toLowerCase(), tier.cost);
             if (typeof window._liveTotalSpendable === 'number') {
                 window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - tier.cost);
                 window._liveAvailableStars = window._liveTotalSpendable;
@@ -19909,9 +19939,8 @@ html:not(.dark) .brand-name {
             if (!streamSnap.exists() || !streamSnap.data().active) { showToast('Stream has ended.'); return; }
             const hostAddr = streamSnap.data().hostAddr;
 
-            // 1. Deduct from viewer's purchased stars in Firestore
-            const viewerRef = doc(window.db, 'user_balances', userAddress.toLowerCase());
-            await updateDoc(viewerRef, { stars: increment(-tier.cost), spentStarsTotal: increment(tier.cost) });
+            // 1. Deduct from viewer via canonical spend waterfall.
+            await deductSpendableStars(userAddress.toLowerCase(), tier.cost);
             // Update bridge so subsequent gifts in same session see correct balance
             if (typeof window._liveTotalSpendable === 'number') {
                 window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - tier.cost);
@@ -19922,7 +19951,7 @@ html:not(.dark) .brand-name {
             const creatorCut  = parseFloat((tier.cost * 0.8).toFixed(4));
             const platformCut = parseFloat((tier.cost * 0.2).toFixed(4));
             if (hostAddr) {
-                await updateDoc(doc(window.db, 'user_balances', hostAddr), {
+                await updateDoc(doc(window.db, 'user_balances', hostAddr.toLowerCase()), {
                     creatorStars: increment(creatorCut)
                 }).catch(() => {});
             }
@@ -20271,10 +20300,22 @@ html:not(.dark) .brand-name {
     function subscribeStreamDoc(streamId) {
         if (!window.db || !window.fs) { waitForFb(() => subscribeStreamDoc(streamId)); return; }
         const { doc, onSnapshot } = window.fs;
+        if (_streamDocUnsub) { try { _streamDocUnsub(); } catch(_) {} _streamDocUnsub = null; }
 
-        onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
+        _streamDocUnsub = onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
             if (!snap.exists()) return;
             const d = snap.data();
+
+            // Channel mismatch guard: if host changed/republished channel, rejoin the correct one.
+            if (!isHosting && d.channel && _activeLiveChannel && d.channel !== _activeLiveChannel) {
+                console.warn('[Live] Channel mismatch detected. Rejoining expected stream channel.');
+                var sid = streamId;
+                setTimeout(async function() {
+                    try { await leaveLiveStream(); } catch(_) {}
+                    try { await joinLiveStream(sid); } catch(_) {}
+                }, 50);
+                return;
+            }
 
             // Viewer side
             setText('live-watch-viewers',       '👁 ' + (d.viewers || 0) + ((d.viewers === 1) ? ' person watching' : ' watching'));
@@ -20868,7 +20909,7 @@ html:not(.dark) .brand-name {
             const { doc, setDoc, onSnapshot, serverTimestamp } = window.fs;
             const reqRef = doc(window.db, 'live_streams', _watchingStreamId, 'cohost_requests', userAddress);
             await setDoc(reqRef, {
-                uid:    userAddress,
+                uid:    String(_myViewerUid || userAddress),
                 handle: userHandle,
                 status: 'pending',
                 ts:     serverTimestamp()
@@ -21232,12 +21273,8 @@ html:not(.dark) .brand-name {
             const creatorCut  = parseFloat((streamEntryFee * 0.8).toFixed(4));
             const platformCut = parseFloat((streamEntryFee * 0.2).toFixed(4));
 
-            // 1. Deduct full fee from viewer's star balance (same as gift deduction)
-            const viewerRef = doc(window.db, 'user_balances', userAddress.toLowerCase());
-            await updateDoc(viewerRef, {
-                stars:           increment(-streamEntryFee),
-                spentStarsTotal: increment(streamEntryFee)
-            });
+            // 1. Deduct full fee from viewer via canonical spend waterfall.
+            await deductSpendableStars(userAddress.toLowerCase(), streamEntryFee);
             // Keep in-memory bridge in sync so UI reflects deduction immediately
             if (typeof window._liveTotalSpendable === 'number') {
                 window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - streamEntryFee);
