@@ -3869,6 +3869,8 @@
             /* Fix 1: Hide tagline on mobile so SOCIALHUB + wallet fit on one line */
             .brand-tagline { display: none !important; }
             .brand-icon { width: 24px; height: 24px; flex-shrink: 0; }
+            /* Hide Live Stream button from header on mobile — accessible via nav bar instead */
+            #topnav-live-btn { display: none !important; }
             /* Fix 4: wallet pushed to far right */
             .topnav-right { flex: 1; min-width: 0; justify-content: flex-end; gap: 6px; overflow: visible; }
             #theme-toggle { flex-shrink: 0; min-width: 32px; }
@@ -20175,33 +20177,64 @@ html:not(.dark) .brand-name {
         var hostVid   = document.getElementById('live-remote-video');
         var cohostPip = document.getElementById('cohost-pip-viewer');
         var selfPip   = document.getElementById('cohost-self-pip');
-        console.log('[Layout] _applyViewerLayout:', mode, '| hostVid:', !!hostVid, '| cohostPip:', !!cohostPip);
+
+        // When the viewer IS the co-host, selfPip is their own camera.
+        // The layout CSS uses cohost-pip-viewer as the second panel — but for
+        // the co-host themselves, selfPip fills that role. We treat selfPip as
+        // the second panel by giving it the cohost-pip-viewer id temporarily
+        // so the CSS grid/flex rules apply correctly.
+        // More reliably: we use selfPip as a proxy — if selfPip exists but
+        // cohostPip doesn't, we know we ARE the co-host and need to use selfPip
+        // as the second video panel.
+        var secondPanel = cohostPip || selfPip;
+
+        console.log('[Layout] _applyViewerLayout:', mode, '| hostVid:', !!hostVid, '| cohostPip:', !!cohostPip, '| selfPip:', !!selfPip);
 
         // 1. Remove ALL layout classes from container
         container.classList.remove('layout-split2', 'layout-pip-bottom', 'layout-grid4');
         // 2. Clear any inline overrides that might fight the CSS classes
         container.style.cssText = '';
         // 3. Clear inline styles on the children so CSS classes win
-        if (hostVid)   hostVid.style.cssText   = '';
-        if (cohostPip) cohostPip.style.cssText  = '';
-        if (selfPip)   selfPip.style.cssText    = '';
+        if (hostVid)    hostVid.style.cssText    = '';
+        if (cohostPip)  cohostPip.style.cssText   = '';
+        if (selfPip)    selfPip.style.cssText     = '';
 
         if (mode === 'solo') {
             _pendingViewerLayout = null;
-            // Solo: restore the container's base styles (live-stream-box CSS handles the rest)
-            // pip falls back to its .cohost-pip-viewer-solo CSS class (small floating pip)
+            // Solo mode — everything full screen, pips float via their CSS class
+            // Make sure host video is visible and filling the container
+            if (hostVid) {
+                hostVid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+            }
         } else if (mode === 'split2') {
-            if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
+            if (!secondPanel) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
             container.classList.add('layout-split2');
+            // If we are the co-host (selfPip is the second panel, no cohostPip),
+            // force flex layout manually since CSS targets cohost-pip-viewer
+            if (!cohostPip && selfPip) {
+                container.style.cssText = 'display:flex;flex-direction:row;gap:2px;';
+                if (hostVid) hostVid.style.cssText = 'flex:1;height:100%;position:relative;min-width:0;';
+                selfPip.style.cssText = 'flex:1;height:100%;position:relative;min-width:0;border-radius:0;border:none;';
+            }
         } else if (mode === 'pip-bottom') {
-            if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
+            if (!secondPanel) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
             container.classList.add('layout-pip-bottom');
+            if (!cohostPip && selfPip) {
+                container.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
+                if (hostVid) hostVid.style.cssText = 'flex:1;width:100%;position:relative;min-height:0;';
+                selfPip.style.cssText = 'width:100%;height:160px;position:relative;border-radius:0;border:none;flex-shrink:0;';
+            }
         } else if (mode === 'grid4') {
-            if (!cohostPip && !selfPip) { _pendingViewerLayout = mode; return; }
+            if (!secondPanel) { _pendingViewerLayout = mode; return; }
             _pendingViewerLayout = null;
             container.classList.add('layout-grid4');
+            if (!cohostPip && selfPip) {
+                container.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;';
+                if (hostVid) hostVid.style.cssText = 'grid-column:1/2;grid-row:1/3;position:relative;min-height:0;';
+                selfPip.style.cssText = 'grid-column:2/3;grid-row:1/2;position:relative;border-radius:0;border:none;min-height:0;';
+            }
         }
     }
 
