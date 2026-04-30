@@ -764,15 +764,56 @@
             animation:live-pulse-badge 2s ease-in-out infinite;
         }
         @keyframes live-pulse-badge {
-            0%,100% { box-shadow:0 0 0 0 rgba(224,62,62,0.4); }
-            50%      { box-shadow:0 0 0 6px rgba(224,62,62,0); }
+            0%,100% { box-shadow:0 0 0 0 rgba(224,62,62,0.5), 0 0 0 0 rgba(224,62,62,0.2); }
+            50%      { box-shadow:0 0 0 5px rgba(224,62,62,0), 0 0 18px 4px rgba(224,62,62,0.25); }
+        }
+        .live-badge-pill {
+            background: linear-gradient(135deg, #e03e3e 0%, #c22020 100%) !important;
+            box-shadow: 0 0 0 1.5px rgba(255,255,255,0.15) inset, 0 2px 8px rgba(200,30,30,0.4) !important;
+            letter-spacing: 1.5px !important;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.4) !important;
+        }
+        .live-badge-pill::before {
+            content: '';
+            display: inline-block;
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: #fff;
+            margin-right: 5px;
+            vertical-align: middle;
+            margin-bottom: 1px;
+            opacity: 0.9;
+            animation: live-dot-blink 1.4s ease-in-out infinite;
+        }
+        @keyframes live-dot-blink {
+            0%,100% { opacity: 0.9; } 50% { opacity: 0.25; }
         }
         .live-viewer-chip {
-            background:rgba(0,0,0,0.55);
-            color:rgba(255,255,255,0.85);
+            background:rgba(0,0,0,0.62);
+            color:rgba(255,255,255,0.92);
             font-size:0.65rem; font-weight:700;
             padding:3px 10px; border-radius:20px;
-            backdrop-filter:blur(4px);
+            backdrop-filter:blur(8px);
+            border: 1px solid rgba(255,255,255,0.08);
+            transition: background 0.3s;
+        }
+        /* Viewer count number bump animation */
+        @keyframes viewer-bump {
+            0%   { transform: translateY(0) scale(1); }
+            40%  { transform: translateY(-3px) scale(1.18); }
+            70%  { transform: translateY(1px) scale(0.96); }
+            100% { transform: translateY(0) scale(1); }
+        }
+        .viewer-count-bump {
+            display: inline-block;
+            animation: viewer-bump 0.45s cubic-bezier(0.34,1.56,0.64,1) both;
+        }
+            0%,100% { transform: scale(1); opacity: 0.5; }
+            50%      { transform: scale(1.12); opacity: 1; }
+        }
+        @keyframes wr-dot {
+            0%,100% { transform: translateY(0); opacity: 0.4; }
+            50%      { transform: translateY(-4px); opacity: 1; }
         }
         .live-stream-meta {
             position:absolute; bottom:12px; left:14px; right:14px;
@@ -816,9 +857,9 @@
         .stream-floating-chat {
             position: absolute;
             bottom: 90px;
-            right: 10px;
-            width: clamp(200px, 38%, 280px);
-            max-height: 55%;
+            right: 14px;
+            width: clamp(190px, 33%, 260px);
+            max-height: 52%;
             display: flex;
             flex-direction: column;
             z-index: 22;
@@ -889,13 +930,13 @@
             margin-top: 1px;
         }
         .sfc-msg-bubble {
-            background: rgba(10,8,24,0.72);
-            backdrop-filter: blur(10px);
+            background: rgba(10,8,24,0.60);
+            backdrop-filter: blur(12px);
             border-radius: 12px 12px 12px 3px;
             padding: 5px 9px;
             max-width: calc(100% - 30px);
             word-break: break-word;
-            border: 1px solid rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.06);
         }
         .sfc-msg-user {
             font-size: 0.60rem;
@@ -931,13 +972,13 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            background: rgba(8,6,20,0.80);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(124,92,191,0.28);
+            background: rgba(8,6,20,0.65);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(124,92,191,0.22);
             border-radius: 30px;
             padding: 5px 6px 5px 12px;
             pointer-events: all;
-            box-shadow: 0 2px 14px rgba(0,0,0,0.5);
+            box-shadow: 0 2px 14px rgba(0,0,0,0.4);
         }
         .sfc-input {
             flex: 1;
@@ -7229,6 +7270,23 @@ html:not(.dark) .brand-name {
                                 <span class="live-viewer-chip" id="live-watch-viewers">👁 0 watching</span>
                             </div>
                             <div id="live-remote-video" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
+                            <!-- Waiting room placeholder — hidden once stream connects -->
+                            <div id="live-waiting-room" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:linear-gradient(160deg,#0d0a1a 0%,#0a0d18 60%,#0d1117 100%);z-index:5;">
+                                <div style="position:relative;width:72px;height:72px;">
+                                    <div style="position:absolute;inset:0;border-radius:50%;border:2px solid rgba(124,92,191,0.25);animation:wr-ring 2.2s ease-in-out infinite;"></div>
+                                    <div style="position:absolute;inset:6px;border-radius:50%;border:2px solid rgba(124,92,191,0.15);animation:wr-ring 2.2s ease-in-out infinite 0.4s;"></div>
+                                    <div style="position:absolute;inset:12px;border-radius:50%;background:rgba(124,92,191,0.12);display:flex;align-items:center;justify-content:center;font-size:1.6rem;">📡</div>
+                                </div>
+                                <div style="text-align:center;">
+                                    <div style="font-size:0.88rem;font-weight:700;color:rgba(255,255,255,0.85);margin-bottom:5px;">Waiting for the stream to start…</div>
+                                    <div style="font-size:0.68rem;color:rgba(255,255,255,0.38);letter-spacing:0.5px;">The host will go live shortly</div>
+                                </div>
+                                <div style="display:flex;gap:5px;align-items:center;">
+                                    <div style="width:5px;height:5px;border-radius:50%;background:rgba(124,92,191,0.7);animation:wr-dot 1.4s ease-in-out infinite 0s;"></div>
+                                    <div style="width:5px;height:5px;border-radius:50%;background:rgba(124,92,191,0.7);animation:wr-dot 1.4s ease-in-out infinite 0.2s;"></div>
+                                    <div style="width:5px;height:5px;border-radius:50%;background:rgba(124,92,191,0.7);animation:wr-dot 1.4s ease-in-out infinite 0.4s;"></div>
+                                </div>
+                            </div>
                             <!-- Paid stream gate overlay -->
                             <div id="paid-gate-overlay">
                                 <div style="font-size:2rem;">⭐</div>
@@ -7367,11 +7425,16 @@ html:not(.dark) .brand-name {
 
                     <!-- Stream browser — shows available streams -->
                     <div id="live-stream-browser">
-                        <div id="live-no-streams" class="card" style="text-align:center; padding:32px 16px;">
-                            <div style="font-size:2rem; margin-bottom:10px; opacity:0.5;">📡</div>
-                            <div style="font-weight:700; color:var(--text-primary); margin-bottom:6px;">No live streams right now</div>
-                            <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:16px;">Be the first to go live and earn Stars from your audience.</div>
-                            <button class="btn btn-purple btn-sm" onclick="setLiveTab('broadcast')">🎙 Start Streaming</button>
+                        <div id="live-no-streams" class="card" style="text-align:center; padding:40px 20px; border-color:rgba(224,62,62,0.15); background:linear-gradient(160deg, var(--bg-card) 0%, rgba(224,62,62,0.03) 100%);">
+                            <div style="position:relative;display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;margin-bottom:16px;">
+                                <div style="position:absolute;inset:0;border-radius:50%;background:rgba(224,62,62,0.08);animation:live-pulse-badge 2.8s ease-in-out infinite;"></div>
+                                <div style="font-size:2rem;">📡</div>
+                            </div>
+                            <div style="font-weight:800; font-size:1rem; color:var(--text-primary); margin-bottom:6px; letter-spacing:-0.2px;">No live streams right now</div>
+                            <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:6px; line-height:1.6;">The stage is empty — but not for long.</div>
+                            <div style="font-size:0.72rem; color:var(--text-muted); margin-bottom:22px; line-height:1.5; opacity:0.75;">Go live and earn Stars from your audience in real time.</div>
+                            <button class="btn btn-purple btn-sm" onclick="setLiveTab('broadcast')" style="gap:7px;">🎙 Start Streaming</button>
+                            <div style="margin-top:14px; font-size:0.62rem; color:var(--text-muted); opacity:0.6; letter-spacing:0.3px;">80% of Stars go to you · Powered by Agora</div>
                         </div>
                         <div id="live-stream-list" style="display:none;"></div>
                     </div>
@@ -24088,6 +24151,86 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
     }
     checkLiveBtn();
     window.addEventListener('resize', checkLiveBtn);
+})();
+
+// ── VIEWER COUNT BUMP ANIMATION ──────────────────────────────────
+(function() {
+    function animateBump(el) {
+        if (!el) return;
+        el.classList.remove('viewer-count-bump');
+        void el.offsetWidth; // reflow
+        el.classList.add('viewer-count-bump');
+        el.addEventListener('animationend', function() {
+            el.classList.remove('viewer-count-bump');
+        }, { once: true });
+    }
+    // Patch textContent updates on viewer chips via MutationObserver
+    function watchViewerChip(id) {
+        var chip = document.getElementById(id);
+        if (!chip) return;
+        var obs = new MutationObserver(function() { animateBump(chip); });
+        obs.observe(chip, { childList: true, characterData: true, subtree: true });
+    }
+    setTimeout(function() {
+        watchViewerChip('live-watch-viewers');
+        watchViewerChip('live-broadcast-viewers');
+    }, 1500);
+})();
+
+// ── HIDE WAITING ROOM WHEN REMOTE VIDEO CONNECTS ─────────────────
+(function() {
+    var _origJoinPatch = window.joinLiveStream;
+    function hideWaitingRoom() {
+        var wr = document.getElementById('live-waiting-room');
+        if (wr) {
+            wr.style.transition = 'opacity 0.6s ease';
+            wr.style.opacity = '0';
+            setTimeout(function() { wr.style.display = 'none'; }, 650);
+        }
+    }
+    // Poll for video element appearing in live-remote-video
+    var _wrTimer = setInterval(function() {
+        var rv = document.getElementById('live-remote-video');
+        if (rv && rv.querySelector('video')) {
+            hideWaitingRoom();
+            clearInterval(_wrTimer);
+        }
+    }, 400);
+})();
+
+// ── CINEMA SHORTCUT BUTTON ON VIEWER STREAM BOX ──────────────────
+(function() {
+    function addCinemaShortcut() {
+        var box = document.getElementById('live-remote-video-container');
+        if (!box || document.getElementById('cinema-shortcut-btn')) return;
+        var btn = document.createElement('button');
+        btn.id = 'cinema-shortcut-btn';
+        btn.title = 'Cinema Mode';
+        btn.innerHTML = '⛶ Cinema';
+        btn.style.cssText = [
+            'position:absolute', 'top:10px', 'right:10px', 'z-index:25',
+            'background:rgba(0,0,0,0.55)', 'backdrop-filter:blur(8px)',
+            'border:1px solid rgba(255,255,255,0.18)', 'color:rgba(255,255,255,0.85)',
+            'border-radius:20px', 'padding:4px 12px', 'font-size:0.62rem',
+            'font-weight:700', 'letter-spacing:0.5px', 'cursor:pointer',
+            'transition:background 0.15s, opacity 0.15s', 'font-family:var(--font-body)',
+            'opacity:0', 'pointer-events:none'
+        ].join(';');
+        btn.onclick = function() {
+            if (typeof enterCinema === 'function') {
+                enterCinema('live-remote-video-container', 'live-chat-feed');
+            }
+        };
+        box.appendChild(btn);
+        // Show on hover of the box
+        box.addEventListener('mouseenter', function() {
+            btn.style.opacity = '1'; btn.style.pointerEvents = 'all';
+        });
+        box.addEventListener('mouseleave', function() {
+            btn.style.opacity = '0'; btn.style.pointerEvents = 'none';
+        });
+    }
+    setTimeout(addCinemaShortcut, 1200);
 })();
 </script>
 </body>
