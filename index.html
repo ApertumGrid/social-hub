@@ -19559,7 +19559,10 @@ html:not(.dark) .brand-name {
                 // video container — making them appear fullscreen while the host
                 // gets no video at all. Skip self entirely; local preview is already
                 // handled by cohost-self-pip inside _promoteToCoHost.
+                // Guard checks BOTH the stored viewer UID AND the co-host published UID
+                // in case Agora reassigns the UID during role promotion.
                 if (remoteUser.uid === _MY_VIEWER_UID) return;
+                if (window._cohostPublishedUid && remoteUser.uid === window._cohostPublishedUid) return;
 
                 await agoraClient.subscribe(remoteUser, mediaType);
 
@@ -21393,6 +21396,9 @@ html:not(.dark) .brand-name {
             await agoraClient.setClientRole('host');
             [cohostAudioTrack, cohostVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
             await agoraClient.publish([cohostAudioTrack, cohostVideoTrack]);
+            // Store our own UID so the user-published handler can filter out
+            // our own video track being echoed back by Agora after role promotion
+            window._cohostPublishedUid = agoraClient.uid;
 
             // ── After setClientRole('host'), Agora internally unsubscribes all remote
             // tracks and does NOT re-fire user-published. We must manually re-subscribe
@@ -21542,6 +21548,26 @@ html:not(.dark) .brand-name {
                     });
                 }
             }, 600);
+
+            // Safety net: 1.2s after promotion, re-render host video into the main
+            // container in case a race condition caused our own track to fill it first.
+            setTimeout(function() {
+                try {
+                    var remoteEl = document.getElementById('live-remote-video');
+                    if (!remoteEl) return;
+                    var users = agoraClient.remoteUsers;
+                    for (var ri = 0; ri < users.length; ri++) {
+                        var ru2 = users[ri];
+                        if (ru2.uid === _myViewerUid) continue;
+                        if (window._cohostPublishedUid && ru2.uid === window._cohostPublishedUid) continue;
+                        if (ru2.videoTrack) {
+                            ru2.videoTrack.play(remoteEl);
+                            console.log('[CoHost] Safety net: re-rendered host video uid:', ru2.uid);
+                            break;
+                        }
+                    }
+                } catch(e) { console.warn('[CoHost] safety net error:', e); }
+            }, 1200);
 
             var stageWrap = $('cohost-stage-wrap');
             if (stageWrap) stageWrap.style.display = 'block';
