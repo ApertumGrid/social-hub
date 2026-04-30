@@ -966,8 +966,20 @@
         .sfc-send-btn:hover { transform: scale(1.1); box-shadow: 0 3px 12px rgba(124,92,191,0.6); }
         .sfc-send-btn:active { transform: scale(0.95); }
 
-        /* Hide old panel-based chat cards when stream is active */
-        .stream-active-hide { display: none !important; }
+        /* Panel chat feeds hidden — messages shown in floating overlay on stream */
+        #live-chat-feed,
+        #live-broadcast-chat-feed {
+            display: none !important;
+        }
+        .live-chat-card .live-chat-head {
+            display: none !important;
+        }
+        .live-chat-card {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+        }
 
         .live-chat-card { padding:0 !important; overflow:hidden; }
         .live-chat-head {
@@ -7248,15 +7260,9 @@ html:not(.dark) .brand-name {
                                 </div>
                             </div>
 
-                            <!-- ★ TikTok-style FLOATING CHAT OVERLAY (viewer) -->
+                            <!-- ★ TikTok-style FLOATING CHAT OVERLAY (viewer) — messages only, input stays in panel -->
                             <div class="stream-floating-chat" id="viewer-floating-chat" style="display:none;">
                                 <div class="sfc-feed" id="viewer-sfc-feed"></div>
-                                <div class="sfc-input-row">
-                                    <input type="text" class="sfc-input" id="viewer-sfc-input"
-                                        placeholder="Say something…"
-                                        onkeydown="if(event.key==='Enter')sendLiveChatFromOverlay('viewer')">
-                                    <button class="sfc-send-btn" onclick="sendLiveChatFromOverlay('viewer')" title="Send">➤</button>
-                                </div>
                             </div>
                         </div>
 
@@ -7344,8 +7350,8 @@ html:not(.dark) .brand-name {
                             </div>
                         </div>
 
-                        <!-- Live Chat (panel hidden — moved to floating overlay) -->
-                        <div class="card live-chat-card" id="viewer-panel-chat-card" style="display:none;">
+                        <!-- Live Chat (input in panel, messages mirrored to floating overlay) -->
+                        <div class="card live-chat-card" id="viewer-panel-chat-card">
                             <div class="live-chat-head">💬 Live Chat</div>
                             <div id="live-chat-feed" class="live-chat-feed"></div>
                             <div class="live-chat-input-row">
@@ -7501,18 +7507,12 @@ html:not(.dark) .brand-name {
                                 </div>
                             </div>
 
-                            <!-- ★ TikTok-style FLOATING CHAT OVERLAY (broadcaster) -->
+                            <!-- ★ TikTok-style FLOATING CHAT OVERLAY (broadcaster) — messages only, input stays in panel -->
                             <div class="stream-floating-chat" id="bc-floating-chat" style="display:none;">
                                 <button class="sfc-toggle-btn" id="bc-chat-toggle-btn" onclick="toggleFloatingChatVisibility()" title="Toggle chat visibility for viewers">
                                     💬 Chat On
                                 </button>
                                 <div class="sfc-feed" id="bc-sfc-feed"></div>
-                                <div class="sfc-input-row">
-                                    <input type="text" class="sfc-input" id="bc-sfc-input"
-                                        placeholder="Chat with your viewers…"
-                                        onkeydown="if(event.key==='Enter')sendLiveChatFromOverlay('bc')">
-                                    <button class="sfc-send-btn" onclick="sendLiveChatFromOverlay('bc')" title="Send">➤</button>
-                                </div>
                             </div>
 
                             <!-- Whiteboard overlay (inside video container so it overlays the feed) -->
@@ -7753,8 +7753,8 @@ html:not(.dark) .brand-name {
                             <div id="gift-lb-list"></div>
                         </div>
 
-                        <!-- Live chat (broadcaster view — panel hidden, moved to floating overlay) -->
-                        <div class="card live-chat-card" id="bc-panel-chat-card" style="display:none;">
+                        <!-- Live chat (broadcaster view — input in panel, messages mirrored to floating overlay) -->
+                        <div class="card live-chat-card" id="bc-panel-chat-card">
                             <div class="live-chat-head">💬 Live Chat</div>
                             <div id="live-broadcast-chat-feed" class="live-chat-feed"></div>
                             <div class="live-chat-input-row">
@@ -19098,8 +19098,8 @@ html:not(.dark) .brand-name {
             if (localAudioTrack) { try { localAudioTrack.close(); } catch(_) {} localAudioTrack = null; }
 
             [localAudioTrack, localVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
-
-            // Re-apply noise suppression if it was enabled before tracks were recreated
+            window._localVideoTrack_ref = localVideoTrack;
+            window._localAudioTrack_ref = localAudioTrack;
             if (noiseSuppressOn) {
                 try { await localAudioTrack.setAINSMode('AGGRESSIVE'); } catch(_) {}
             }
@@ -19201,6 +19201,8 @@ html:not(.dark) .brand-name {
             // 3. Publish tracks (create if not already previewed)
             if (!localVideoTrack || !localAudioTrack) {
                 [localAudioTrack, localVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
+                window._localVideoTrack_ref = localVideoTrack;
+                window._localAudioTrack_ref = localAudioTrack;
             }
             await agoraClient.publish([localVideoTrack, localAudioTrack]);
 
@@ -19994,36 +19996,93 @@ html:not(.dark) .brand-name {
     var _chatEnabled = true;
 
     // ── FLOATING CHAT OVERLAY SYSTEM ─────────────────────────────
-    // Mirror messages from hidden feeds into floating overlay feeds
-    var _sfcObservers = {};
-    function _startSfcMirror(hiddenFeedId, sfcFeedId) {
+    // We hook into renderChatFeed (which rebuilds innerHTML on every message)
+    // and track seen message IDs so we only push genuinely new messages to the overlay.
+    var _sfcObservers = {};   // kept for cleanup compat
+    var _sfcSeenIds   = { 'bc-sfc-feed': new Set(), 'viewer-sfc-feed': new Set() };
+    var _sfcFeedMap   = {};   // hiddenFeedId → sfcFeedId
+
+    // Patch renderChatFeed to mirror new messages to overlay
+    function _patchRenderChatFeed() {
+        var origRender = window.renderChatFeed || null;
+        // renderChatFeed is defined inside a closure, so we patch it after DOMContentLoaded
+        // via a periodic check until it exists on window (it may not be window-scoped)
+        // Instead, we intercept at the subscribeLiveChat level using a Firestore snapshot hook
+    }
+
+    // The cleanest approach: wrap subscribeLiveChat to also push to overlay
+    var _origSubscribeLiveChat = null;
+    function _hookSubscribeLiveChat() {
+        if (!window.subscribeLiveChat) { setTimeout(_hookSubscribeLiveChat, 300); return; }
+        if (window._sfcHooked) return;
+        window._sfcHooked = true;
+        var orig = window.subscribeLiveChat;
+        window.subscribeLiveChat = function(streamId, feedElId) {
+            // Call original
+            var unsub = orig.apply(this, arguments);
+            // Determine which overlay feed this hidden feed maps to
+            var sfcFeedId = feedElId === 'live-broadcast-chat-feed' ? 'bc-sfc-feed'
+                          : feedElId === 'live-chat-feed'           ? 'viewer-sfc-feed'
+                          : null;
+            if (sfcFeedId) {
+                _sfcFeedMap[feedElId] = sfcFeedId;
+                _sfcSeenIds[sfcFeedId] = new Set();
+                _watchHiddenFeed(feedElId, sfcFeedId);
+            }
+            return unsub;
+        };
+    }
+
+    // Watch the hidden feed using a smarter MutationObserver that uses message keys
+    function _watchHiddenFeed(hiddenFeedId, sfcFeedId) {
         if (_sfcObservers[sfcFeedId]) { _sfcObservers[sfcFeedId].disconnect(); }
+        var sfcFeed = $(sfcFeedId);
+        if (!sfcFeed) { setTimeout(function(){ _watchHiddenFeed(hiddenFeedId, sfcFeedId); }, 400); return; }
+
+        // Snapshot existing messages on connect
         var hiddenFeed = $(hiddenFeedId);
-        var sfcFeed    = $(sfcFeedId);
-        if (!hiddenFeed || !sfcFeed) return;
-        // Copy existing messages
-        sfcFeed.innerHTML = '';
-        Array.from(hiddenFeed.childNodes).forEach(function(node) {
-            sfcFeed.appendChild(_sfcAdaptMsg(node.cloneNode(true)));
-        });
-        sfcFeed.scrollTop = sfcFeed.scrollHeight;
-        // Watch for new messages
+        if (hiddenFeed) {
+            Array.from(hiddenFeed.children).forEach(function(node) {
+                _sfcPushNode(node, sfcFeed, sfcFeedId);
+            });
+        }
+
+        // Watch for ANY mutation (renderChatFeed replaces innerHTML so we see all children re-added)
+        // We de-duplicate using a text+author key derived from the node content
         var obs = new MutationObserver(function(muts) {
             muts.forEach(function(m) {
                 m.addedNodes.forEach(function(node) {
                     if (node.nodeType !== 1) return;
-                    var adapted = _sfcAdaptMsg(node.cloneNode(true));
-                    sfcFeed.appendChild(adapted);
-                    sfcFeed.scrollTop = sfcFeed.scrollHeight;
-                    // Keep max 60 in overlay
-                    while (sfcFeed.children.length > 60) {
-                        sfcFeed.removeChild(sfcFeed.firstChild);
-                    }
+                    _sfcPushNode(node, sfcFeed, sfcFeedId);
                 });
             });
         });
-        obs.observe(hiddenFeed, { childList: true });
+        var hf = $(hiddenFeedId);
+        if (hf) obs.observe(hf, { childList: true });
         _sfcObservers[sfcFeedId] = obs;
+    }
+
+    function _sfcMsgKey(node) {
+        // Build a stable key from user + text content, trimmed to 80 chars
+        var text = (node.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+        return text;
+    }
+
+    function _sfcPushNode(node, sfcFeed, sfcFeedId) {
+        var key = _sfcMsgKey(node);
+        if (!key) return;
+        if (_sfcSeenIds[sfcFeedId].has(key)) return;
+        _sfcSeenIds[sfcFeedId].add(key);
+
+        var adapted = _sfcAdaptMsg(node.cloneNode(true));
+        sfcFeed.appendChild(adapted);
+        sfcFeed.scrollTop = sfcFeed.scrollHeight;
+        // Keep max 60 messages in overlay
+        while (sfcFeed.children.length > 60) {
+            var firstKey = _sfcMsgKey(sfcFeed.firstChild);
+            _sfcSeenIds[sfcFeedId].delete(firstKey);
+            sfcFeed.removeChild(sfcFeed.firstChild);
+        }
     }
     function _sfcAdaptMsg(node) {
         // Re-skin the cloned node for the floating overlay style
@@ -20069,22 +20128,15 @@ html:not(.dark) .brand-name {
     }
 
     // Show floating chat when viewer joins a stream
-    var _origShowFloatingChat_viewer = null;
     function _showViewerFloatingChat() {
         var fc = $('viewer-floating-chat');
         if (fc) { fc.style.display = ''; }
-        // Start mirroring hidden feed → overlay feed
-        setTimeout(function() {
-            _startSfcMirror('live-chat-feed', 'viewer-sfc-feed');
-        }, 400);
+        // Hook is already active via _hookSubscribeLiveChat — nothing extra needed
     }
     // Show floating chat when broadcaster goes live
     function _showBcFloatingChat() {
         var fc = $('bc-floating-chat');
         if (fc) { fc.style.display = ''; }
-        setTimeout(function() {
-            _startSfcMirror('live-broadcast-chat-feed', 'bc-sfc-feed');
-        }, 400);
     }
     // Patch into leaveLiveStream to hide overlay
     var _origLeaveLiveStream = window.leaveLiveStream;
@@ -20093,48 +20145,6 @@ html:not(.dark) .brand-name {
         if (fc) { fc.style.display = 'none'; }
         if (_sfcObservers['viewer-sfc-feed']) { _sfcObservers['viewer-sfc-feed'].disconnect(); }
         if (_origLeaveLiveStream) return _origLeaveLiveStream.apply(this, arguments);
-    };
-
-    // sendLiveChatFromOverlay — called by the floating input
-    window.sendLiveChatFromOverlay = async function(who) {
-        if (who === 'bc') {
-            var input = $('bc-sfc-input');
-            var text = input ? input.value.trim() : '';
-            if (!text || !currentStreamId) return;
-            input.value = '';
-            if (!window.db || !window.fs) return;
-            var { collection, addDoc, serverTimestamp } = window.fs;
-            await addDoc(collection(window.db, LIVE_CHAT_COL, currentStreamId, 'messages'), {
-                author: window._liveUserHandle || 'Creator',
-                avatar: window._liveUserAvatar || '',
-                text:   text,
-                ts:     serverTimestamp(),
-                isHost: true
-            }).catch(function(e) { console.warn('[BC float chat]', e); });
-        } else {
-            // viewer
-            if (_watchingStreamId && window.db && window.fs) {
-                try {
-                    var snap = await window.fs.getDoc(window.fs.doc(window.db, LIVE_COL, _watchingStreamId));
-                    if (snap.exists() && snap.data().chatEnabled === false) {
-                        showToast('💬 Comments are disabled for this stream.'); return;
-                    }
-                } catch(e) {}
-            }
-            var input2 = $('viewer-sfc-input');
-            var text2 = input2 ? input2.value.trim() : '';
-            if (!text2 || !_watchingStreamId) return;
-            input2.value = '';
-            if (!window.db || !window.fs) return;
-            var { collection: col2, addDoc: add2, serverTimestamp: sts2 } = window.fs;
-            await add2(col2(window.db, LIVE_CHAT_COL, _watchingStreamId, 'messages'), {
-                author:   window._liveUserHandle || 'Viewer',
-                avatar:   window._liveUserAvatar || '',
-                text:     text2,
-                ts:       sts2(),
-                isSystem: false
-            }).catch(function(e) { console.warn('[Viewer float chat]', e); });
-        }
     };
 
     // Floating chat visibility toggle (broadcaster can mute chat for viewers)
@@ -20148,7 +20158,6 @@ html:not(.dark) .brand-name {
             btn.textContent = _floatingChatVisible ? '💬 Chat On' : '🚫 Chat Hidden';
             btn.classList.toggle('chat-off', !_floatingChatVisible);
         }
-        // This piggybacks on the existing toggleLiveChat Firestore write
         _chatEnabled = _floatingChatVisible;
         if (currentStreamId && window.db && window.fs) {
             window.fs.updateDoc(window.fs.doc(window.db, LIVE_COL, currentStreamId), {
@@ -20157,6 +20166,9 @@ html:not(.dark) .brand-name {
         }
         showToast(_chatEnabled ? '💬 Comments enabled' : '🚫 Comments hidden from viewers');
     };
+
+    // Start the subscribeLiveChat hook as early as possible
+    _hookSubscribeLiveChat();
 
     // We use a polling approach to detect when feeds become active
     var _sfcCheckInterval = null;
@@ -20187,9 +20199,23 @@ html:not(.dark) .brand-name {
     // End-stream cleanup
     var _origEndLiveStream = window.endLiveStream;
     window.endLiveStream = function() {
+        // Hide floating chat overlay
         var fc = $('bc-floating-chat');
         if (fc) { fc.style.display = 'none'; }
-        if (_sfcObservers['bc-sfc-feed']) { _sfcObservers['bc-sfc-feed'].disconnect(); }
+        if (_sfcObservers['bc-sfc-feed']) { _sfcObservers['bc-sfc-feed'].disconnect(); delete _sfcObservers['bc-sfc-feed']; }
+        // Safety net: explicitly kill camera/mic tracks in case _cleanupAgora doesn't reach them
+        try {
+            if (window._localVideoTrack_ref) { window._localVideoTrack_ref.stop(); window._localVideoTrack_ref.close(); window._localVideoTrack_ref = null; }
+            if (window._localAudioTrack_ref) { window._localAudioTrack_ref.stop(); window._localAudioTrack_ref.close(); window._localAudioTrack_ref = null; }
+        } catch(e) {}
+        // Also stop any raw getUserMedia streams on the preview video element
+        try {
+            var previewVid = document.getElementById('live-local-video');
+            if (previewVid && previewVid.srcObject) {
+                previewVid.srcObject.getTracks().forEach(function(t) { t.stop(); });
+                previewVid.srcObject = null;
+            }
+        } catch(e) {}
         if (_origEndLiveStream) return _origEndLiveStream.apply(this, arguments);
     };
 
@@ -21406,62 +21432,78 @@ html:not(.dark) .brand-name {
             [cohostAudioTrack, cohostVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
             await agoraClient.publish([cohostAudioTrack, cohostVideoTrack]);
 
-            // ── After role promotion, Agora does NOT reliably re-fire user-published
-            // for already-publishing remote users (host). We must manually re-subscribe
-            // to the host's existing tracks and render them ourselves. This is the fix
-            // for the co-host seeing only themselves and not the streamer.
-            _justPromotedToCoHost = false; // not needed — we handle it manually below
-            console.log('[CoHost] Role promoted — manually re-subscribing to host tracks');
-            try {
-                const remoteUsers = agoraClient.remoteUsers;
-                console.log('[CoHost] Remote users in channel:', remoteUsers.map(u => u.uid));
-                for (const remoteUser of remoteUsers) {
-                    // Skip ourselves
-                    if (remoteUser.uid === _myViewerUid) continue; // use module-scope uid — _MY_VIEWER_UID is out of scope here
-                    // Re-subscribe to video
-                    if (remoteUser.hasVideo) {
-                        try {
-                            await agoraClient.subscribe(remoteUser, 'video');
-                            console.log('[CoHost] Re-subscribed to video of uid:', remoteUser.uid);
-                            if (remoteUser.uid === _liveHostUid) {
-                                // Render host video into the main remote video container
-                                var remoteEl = document.getElementById('live-remote-video');
-                                if (remoteEl) {
-                                    var _retry = 0;
-                                    (function _tryPlay() {
-                                        if (remoteEl.offsetWidth > 0 || remoteEl.offsetHeight > 0 || _retry > 15) {
-                                            try { remoteUser.videoTrack.play(remoteEl); console.log('[CoHost] Host video playing'); } catch(e) { console.warn('[CoHost] Host video play err:', e); }
-                                            // Re-apply layout now that host video is rendering
-                                            var sid = _watchingStreamId || window._watchingStreamId;
-                                            if (sid && window.db && window.fs) {
-                                                window.fs.getDoc(window.fs.doc(window.db, 'live_streams', sid))
-                                                    .then(function(snap) {
-                                                        var layout = snap.exists() ? (snap.data().streamLayout || 'solo') : 'solo';
-                                                        if (typeof _applyViewerLayout === 'function') _applyViewerLayout(layout);
-                                                    }).catch(function() {
-                                                        if (typeof _applyViewerLayout === 'function') _applyViewerLayout('solo');
-                                                    });
-                                            }
-                                        } else { _retry++; setTimeout(_tryPlay, 150); }
-                                    })();
+            // ── After setClientRole('host'), Agora internally unsubscribes all remote
+            // tracks and does NOT re-fire user-published. We must manually re-subscribe
+            // to every remote user and render the host's video into live-remote-video.
+            // We do NOT rely on _liveHostUid matching — we play the FIRST non-self video
+            // we successfully subscribe to into the main remote container, then fall back
+            // to playing any remaining remote users as pip tiles.
+            console.log('[CoHost] Manually re-subscribing after role promotion...');
+
+            // Give Agora 500ms to settle after role switch before re-subscribing
+            await new Promise(function(r) { setTimeout(r, 500); });
+
+            var remoteUsers = agoraClient.remoteUsers;
+            console.log('[CoHost] Remote users after promotion:', remoteUsers.map(function(u){ return u.uid; }));
+
+            var hostRendered = false;
+
+            for (var i = 0; i < remoteUsers.length; i++) {
+                var ru = remoteUsers[i];
+                if (ru.uid === _myViewerUid) continue; // never subscribe to self
+
+                // Re-subscribe video
+                try {
+                    await agoraClient.subscribe(ru, 'video');
+                    console.log('[CoHost] Subscribed video uid:', ru.uid, '| hasVideo:', ru.hasVideo, '| videoTrack:', !!ru.videoTrack);
+                } catch(subErr) {
+                    console.warn('[CoHost] Video subscribe failed uid:', ru.uid, subErr);
+                }
+
+                // Re-subscribe audio
+                try {
+                    await agoraClient.subscribe(ru, 'audio');
+                    if (ru.audioTrack) ru.audioTrack.play();
+                    console.log('[CoHost] Subscribed audio uid:', ru.uid);
+                } catch(subErr) {
+                    console.warn('[CoHost] Audio subscribe failed uid:', ru.uid, subErr);
+                }
+
+                // Render this user's video.
+                // Strategy: the first remote user we get a video track for goes into
+                // live-remote-video (the main full-screen host view). Any subsequent
+                // remote users go into a pip tile.
+                if (ru.videoTrack && !hostRendered) {
+                    hostRendered = true;
+                    var remoteEl = document.getElementById('live-remote-video');
+                    if (remoteEl) {
+                        var _trackRef = ru.videoTrack; // capture in closure
+                        var _retry = 0;
+                        (function _tryPlay() {
+                            if (_trackRef && (remoteEl.offsetWidth > 0 || remoteEl.offsetHeight > 0 || _retry > 15)) {
+                                try {
+                                    _trackRef.play(remoteEl);
+                                    console.log('[CoHost] Host video playing in live-remote-video, uid:', ru.uid);
+                                } catch(e) {
+                                    console.warn('[CoHost] Host video play error:', e);
                                 }
+                            } else if (_retry < 20) {
+                                _retry++;
+                                setTimeout(_tryPlay, 150);
                             }
-                        } catch(e) { console.warn('[CoHost] Re-subscribe video failed for uid', remoteUser.uid, e); }
-                    }
-                    // Re-subscribe to audio
-                    if (remoteUser.hasAudio) {
-                        try {
-                            await agoraClient.subscribe(remoteUser, 'audio');
-                            remoteUser.audioTrack && remoteUser.audioTrack.play();
-                            console.log('[CoHost] Re-subscribed to audio of uid:', remoteUser.uid);
-                        } catch(e) { console.warn('[CoHost] Re-subscribe audio failed for uid', remoteUser.uid, e); }
+                        })();
                     }
                 }
-            } catch(e) { console.warn('[CoHost] Manual re-subscribe error:', e); }
+            }
 
-            // ── Self-view: inject a "YOU" PiP directly inside the stream video container
-            // This works in both normal and cinema mode because the container is always visible.
-            // We do NOT use cohost-stage-wrap (which lives outside cinema) for the video feed.
+            // If we still haven't rendered anyone (e.g. remoteUsers was empty at time of check),
+            // set a flag so the existing user-published handler will render when the track arrives.
+            if (!hostRendered) {
+                _justPromotedToCoHost = true;
+                console.warn('[CoHost] No remote video found after promotion — will render via user-published event');
+            }
+
+            // ── Self-view PiP (YOU label, bottom-left of the stream container) ──────
             var selfPip = document.getElementById('cohost-self-pip');
             if (!selfPip) {
                 selfPip = document.createElement('div');
@@ -21489,7 +21531,6 @@ html:not(.dark) .brand-name {
                 selfVideoDiv.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;';
                 selfPip.appendChild(selfVideoDiv);
 
-                // ── Mic / Cam buttons live INSIDE the pip so they work in cinema mode ──
                 var selfControls = document.createElement('div');
                 selfControls.style.cssText = 'position:absolute;bottom:4px;left:50%;transform:translateX(-50%);display:flex;gap:4px;z-index:10;';
 
@@ -21510,67 +21551,36 @@ html:not(.dark) .brand-name {
                 selfPip.appendChild(selfControls);
             }
 
-            // Append to whichever video container is currently visible
-            // Prefer the remote container (viewer watching the host), fall back to broadcaster container
             var targetContainer = document.getElementById('live-remote-video-container') ||
                                   document.getElementById('live-broadcaster-video-container');
-            if (targetContainer) {
-                targetContainer.appendChild(selfPip);
-            }
+            if (targetContainer) targetContainer.appendChild(selfPip);
 
-            // Re-apply the current layout now that selfPip exists in the DOM.
-            // IMPORTANT: We cannot trust container CSS classes here because _applyViewerLayout
-            // returns early (storing _pendingViewerLayout) when selfPip doesn't exist yet.
-            // So we read the layout directly from Firestore instead.
-            setTimeout(function() {
-                var sid = _watchingStreamId || window._watchingStreamId;
-                console.log('[Layout] selfPip created, fetching layout from Firestore. sid:', sid);
-                if (sid && window.db && window.fs) {
-                    window.fs.getDoc(window.fs.doc(window.db, LIVE_COL, sid)).then(function(snap) {
-                        if (!snap.exists()) { console.warn('[Layout] stream doc not found'); return; }
-                        var layout = snap.data().streamLayout || 'solo';
-                        console.log('[Layout] Firestore says layout:', layout, '| applying now');
-                        if (typeof _applyViewerLayout === 'function') _applyViewerLayout(layout);
-                    }).catch(function(e) {
-                        console.warn('[Layout] Firestore fetch failed:', e);
-                        var rc = document.getElementById('live-remote-video-container');
-                        var mode = (typeof _pendingViewerLayout === 'string' && _pendingViewerLayout)
-                            ? _pendingViewerLayout
-                            : (rc && (
-                                rc.classList.contains('layout-split2')    ? 'split2'    :
-                                rc.classList.contains('layout-pip-bottom') ? 'pip-bottom' :
-                                rc.classList.contains('layout-grid4')      ? 'grid4'      : 'solo'
-                              ));
-                        console.log('[Layout] fallback mode:', mode);
-                        if (typeof _applyViewerLayout === 'function') _applyViewerLayout(mode || 'solo');
-                    });
-                } else {
-                    console.warn('[Layout] no sid or db available, using fallback');
-                    var rc = document.getElementById('live-remote-video-container');
-                    var mode = (typeof _pendingViewerLayout === 'string' && _pendingViewerLayout)
-                        ? _pendingViewerLayout
-                        : (rc && (
-                            rc.classList.contains('layout-split2')    ? 'split2'    :
-                            rc.classList.contains('layout-pip-bottom') ? 'pip-bottom' :
-                            rc.classList.contains('layout-grid4')      ? 'grid4'      : 'solo'
-                          ));
-                    if (typeof _applyViewerLayout === 'function') _applyViewerLayout(mode || 'solo');
-                }
-            }, 400);
-
-            // Play local cam into the self-view pip with retry until container has dimensions
+            // Play local cam into self-pip with retry
             var _selfRetry = 0;
             (function _playSelf() {
                 var svDiv = document.getElementById('cohost-self-video');
                 if (svDiv && (svDiv.offsetWidth > 0 || svDiv.offsetHeight > 0 || _selfRetry > 10)) {
-                    cohostVideoTrack.play(svDiv);
+                    try { cohostVideoTrack.play(svDiv); } catch(e) { console.warn('[CoHost] self-view play err:', e); }
                 } else if (_selfRetry < 20) {
                     _selfRetry++;
                     setTimeout(_playSelf, 150);
                 }
             })();
 
-            // Also show the cohost-stage-wrap label/button (but don't rely on it for video)
+            // Re-apply stream layout from Firestore so split/pip view is correct
+            setTimeout(function() {
+                var sid = _watchingStreamId;
+                if (sid && window.db && window.fs) {
+                    window.fs.getDoc(window.fs.doc(window.db, LIVE_COL, sid)).then(function(snap) {
+                        var layout = snap.exists() ? (snap.data().streamLayout || 'solo') : 'solo';
+                        console.log('[CoHost] Applying layout after promotion:', layout);
+                        if (typeof _applyViewerLayout === 'function') _applyViewerLayout(layout);
+                    }).catch(function() {
+                        if (typeof _applyViewerLayout === 'function') _applyViewerLayout('solo');
+                    });
+                }
+            }, 600);
+
             var stageWrap = $('cohost-stage-wrap');
             if (stageWrap) stageWrap.style.display = 'block';
 
@@ -21583,7 +21593,6 @@ html:not(.dark) .brand-name {
             showToast('Could not join stage: ' + (e.message || String(e)));
         }
     }
-
     window.leaveCoHost = async function() {
         if (!isCoHost) return;
         try {
