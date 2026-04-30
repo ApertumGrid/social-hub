@@ -1076,7 +1076,11 @@
             border-radius:0 !important; border:none !important; background:transparent !important;
             overflow:hidden;
         }
-        #cinema-chat-col .live-chat-feed { flex:1; height:auto !important; overflow-y:auto; }
+        /* Always keep the panel feed hidden — messages go to the floating overlay */
+        #cinema-chat-col .live-chat-feed,
+        #cinema-chat-col #live-broadcast-chat-feed,
+        #cinema-chat-col #live-chat-feed { display:none !important; }
+        #cinema-chat-col .live-chat-head { display:none !important; }
         /* Controls section — bottom of right column, grows with content up to 55% height */
         #cinema-controls {
             flex-shrink:0;
@@ -19405,6 +19409,7 @@ html:not(.dark) .brand-name {
             durationTimer = setInterval(updateDuration, 1000);
 
             // 8. Subscribe to live chat for broadcaster
+            _sfcReset('bc-sfc-feed');
             subscribeLiveChat(currentStreamId, 'live-broadcast-chat-feed');
 
             // 9. Listen for hype events (viewer count updates)
@@ -19790,6 +19795,7 @@ html:not(.dark) .brand-name {
 
             // Subscribe to live updates + chat (always — chat is free)
             subscribeStreamDoc(streamId);
+            _sfcReset('viewer-sfc-feed');
             subscribeLiveChat(streamId, 'live-chat-feed');
 
             showToast('📺 Joined the stream!');
@@ -19995,143 +20001,79 @@ html:not(.dark) .brand-name {
     // ── Comments on/off (streamer controls) ──────────────────────
     var _chatEnabled = true;
 
-    // ── FLOATING CHAT OVERLAY SYSTEM ─────────────────────────────
-    // We hook into renderChatFeed (which rebuilds innerHTML on every message)
-    // and track seen message IDs so we only push genuinely new messages to the overlay.
-    var _sfcObservers = {};   // kept for cleanup compat
+    // ── FLOATING CHAT OVERLAY — clean ID-based mirror ─────────────
+    // We patch renderChatFeed directly (it's in the same closure scope below).
+    // Each message has a Firestore doc `id` field — we use that as the dedup key.
+    // This is called AFTER renderChatFeed is defined (both are in the same IIFE scope).
+    var _sfcObservers = {}; // kept for cleanup compat only
     var _sfcSeenIds   = { 'bc-sfc-feed': new Set(), 'viewer-sfc-feed': new Set() };
-    var _sfcFeedMap   = {};   // hiddenFeedId → sfcFeedId
+    var _sfcFeedMap   = {
+        'live-broadcast-chat-feed': 'bc-sfc-feed',
+        'live-chat-feed':           'viewer-sfc-feed'
+    };
 
-    // Patch renderChatFeed to mirror new messages to overlay
-    function _patchRenderChatFeed() {
-        var origRender = window.renderChatFeed || null;
-        // renderChatFeed is defined inside a closure, so we patch it after DOMContentLoaded
-        // via a periodic check until it exists on window (it may not be window-scoped)
-        // Instead, we intercept at the subscribeLiveChat level using a Firestore snapshot hook
-    }
+    // Called by the patched renderChatFeed every time msgs are updated.
+    // msgs is the full array (last 50). We only push entries whose id we haven't seen.
+    function _sfcSyncMsgs(feedElId, msgs) {
+        var sfcFeedId = _sfcFeedMap[feedElId];
+        if (!sfcFeedId) return;
+        var sfcFeed = document.getElementById(sfcFeedId);
+        if (!sfcFeed) return;
+        var seen = _sfcSeenIds[sfcFeedId];
 
-    // The cleanest approach: wrap subscribeLiveChat to also push to overlay
-    var _origSubscribeLiveChat = null;
-    function _hookSubscribeLiveChat() {
-        if (!window.subscribeLiveChat) { setTimeout(_hookSubscribeLiveChat, 300); return; }
-        if (window._sfcHooked) return;
-        window._sfcHooked = true;
-        var orig = window.subscribeLiveChat;
-        window.subscribeLiveChat = function(streamId, feedElId) {
-            // Call original
-            var unsub = orig.apply(this, arguments);
-            // Determine which overlay feed this hidden feed maps to
-            var sfcFeedId = feedElId === 'live-broadcast-chat-feed' ? 'bc-sfc-feed'
-                          : feedElId === 'live-chat-feed'           ? 'viewer-sfc-feed'
-                          : null;
-            if (sfcFeedId) {
-                _sfcFeedMap[feedElId] = sfcFeedId;
-                _sfcSeenIds[sfcFeedId] = new Set();
-                _watchHiddenFeed(feedElId, sfcFeedId);
+        msgs.forEach(function(m) {
+            if (!m.id) return;
+            if (seen.has(m.id)) return;
+            seen.add(m.id);
+
+            // Build the overlay bubble
+            var wrapper = document.createElement('div');
+            wrapper.className = 'sfc-msg' + (m.isGift ? ' sfc-gift' : m.isHost ? ' sfc-host' : '');
+
+            // Avatar
+            if (m.avatar) {
+                var av = document.createElement('img');
+                av.className = 'sfc-msg-av';
+                av.src = m.avatar;
+                av.onerror = function() { this.style.display='none'; };
+                wrapper.appendChild(av);
             }
-            return unsub;
-        };
-    }
 
-    // Watch the hidden feed using a smarter MutationObserver that uses message keys
-    function _watchHiddenFeed(hiddenFeedId, sfcFeedId) {
-        if (_sfcObservers[sfcFeedId]) { _sfcObservers[sfcFeedId].disconnect(); }
-        var sfcFeed = $(sfcFeedId);
-        if (!sfcFeed) { setTimeout(function(){ _watchHiddenFeed(hiddenFeedId, sfcFeedId); }, 400); return; }
+            // Bubble
+            var bubble = document.createElement('div');
+            bubble.className = 'sfc-msg-bubble';
 
-        // Snapshot existing messages on connect
-        var hiddenFeed = $(hiddenFeedId);
-        if (hiddenFeed) {
-            Array.from(hiddenFeed.children).forEach(function(node) {
-                _sfcPushNode(node, sfcFeed, sfcFeedId);
-            });
-        }
-
-        // Watch for ANY mutation (renderChatFeed replaces innerHTML so we see all children re-added)
-        // We de-duplicate using a text+author key derived from the node content
-        var obs = new MutationObserver(function(muts) {
-            muts.forEach(function(m) {
-                m.addedNodes.forEach(function(node) {
-                    if (node.nodeType !== 1) return;
-                    _sfcPushNode(node, sfcFeed, sfcFeedId);
-                });
-            });
-        });
-        var hf = $(hiddenFeedId);
-        if (hf) obs.observe(hf, { childList: true });
-        _sfcObservers[sfcFeedId] = obs;
-    }
-
-    function _sfcMsgKey(node) {
-        // Build a stable key from user + text content, trimmed to 80 chars
-        var text = (node.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80);
-        return text;
-    }
-
-    function _sfcPushNode(node, sfcFeed, sfcFeedId) {
-        var key = _sfcMsgKey(node);
-        if (!key) return;
-        if (_sfcSeenIds[sfcFeedId].has(key)) return;
-        _sfcSeenIds[sfcFeedId].add(key);
-
-        var adapted = _sfcAdaptMsg(node.cloneNode(true));
-        sfcFeed.appendChild(adapted);
-        sfcFeed.scrollTop = sfcFeed.scrollHeight;
-        // Keep max 60 messages in overlay
-        while (sfcFeed.children.length > 60) {
-            var firstKey = _sfcMsgKey(sfcFeed.firstChild);
-            _sfcSeenIds[sfcFeedId].delete(firstKey);
-            sfcFeed.removeChild(sfcFeed.firstChild);
-        }
-    }
-    function _sfcAdaptMsg(node) {
-        // Re-skin the cloned node for the floating overlay style
-        var wrapper = document.createElement('div');
-        wrapper.className = 'sfc-msg';
-        // Detect message type from original classes/styles
-        var origStyle = (node.getAttribute && node.getAttribute('style')) || '';
-        var origClass = (node.getAttribute && node.getAttribute('class')) || '';
-        if (origStyle.includes('240,180,41') || origClass.includes('hype')) wrapper.classList.add('sfc-hype');
-        else if (origStyle.includes('45,212,191') && origStyle.includes('gift')) wrapper.classList.add('sfc-gift');
-        else if (origStyle.includes('124,92,191') || origClass.includes('host')) wrapper.classList.add('sfc-host');
-
-        // Extract avatar
-        var av = node.querySelector && node.querySelector('img.live-chat-av');
-        if (av) {
-            var avEl = document.createElement('img');
-            avEl.className = 'sfc-msg-av';
-            avEl.src = av.src || 'https://api.dicebear.com/7.x/identicon/svg?seed=user';
-            avEl.onerror = function() { this.src = 'https://api.dicebear.com/7.x/identicon/svg?seed=user'; };
-            wrapper.appendChild(avEl);
-        }
-        // Bubble
-        var bubble = document.createElement('div');
-        bubble.className = 'sfc-msg-bubble';
-        // User name
-        var userEl = node.querySelector && node.querySelector('.live-chat-user');
-        if (userEl) {
             var uDiv = document.createElement('div');
-            uDiv.className = 'sfc-msg-user' + (origStyle.includes('124,92,191') ? ' host-user' : '');
-            uDiv.textContent = userEl.textContent;
+            uDiv.className = 'sfc-msg-user' + (m.isHost ? ' host-user' : '');
+            uDiv.textContent = m.author || 'Viewer';
             bubble.appendChild(uDiv);
-        }
-        // Body text
-        var bodyEl = node.querySelector && node.querySelector('.live-chat-body, .live-superchat-bar div div:last-child');
-        if (!bodyEl) { bodyEl = node; } // fallback for simple hype/join msgs
-        var txt = document.createElement('div');
-        txt.className = 'sfc-msg-text';
-        // Safe text extraction
-        txt.textContent = bodyEl.textContent || node.textContent || '';
-        bubble.appendChild(txt);
-        wrapper.appendChild(bubble);
-        return wrapper;
+
+            var tDiv = document.createElement('div');
+            tDiv.className = 'sfc-msg-text';
+            tDiv.textContent = m.text || '';
+            bubble.appendChild(tDiv);
+
+            wrapper.appendChild(bubble);
+            sfcFeed.appendChild(wrapper);
+            sfcFeed.scrollTop = sfcFeed.scrollHeight;
+
+            // Cap overlay at 60 messages
+            while (sfcFeed.children.length > 60) {
+                sfcFeed.removeChild(sfcFeed.firstChild);
+            }
+        });
     }
 
+    // Reset seen-IDs when a new stream session starts
+    function _sfcReset(sfcFeedId) {
+        _sfcSeenIds[sfcFeedId] = new Set();
+        var feed = document.getElementById(sfcFeedId);
+        if (feed) feed.innerHTML = '';
+    }
     // Show floating chat when viewer joins a stream
     function _showViewerFloatingChat() {
         var fc = $('viewer-floating-chat');
         if (fc) { fc.style.display = ''; }
-        // Hook is already active via _hookSubscribeLiveChat — nothing extra needed
     }
     // Show floating chat when broadcaster goes live
     function _showBcFloatingChat() {
@@ -20143,7 +20085,6 @@ html:not(.dark) .brand-name {
     window.leaveLiveStream = function() {
         var fc = $('viewer-floating-chat');
         if (fc) { fc.style.display = 'none'; }
-        if (_sfcObservers['viewer-sfc-feed']) { _sfcObservers['viewer-sfc-feed'].disconnect(); }
         if (_origLeaveLiveStream) return _origLeaveLiveStream.apply(this, arguments);
     };
 
@@ -20167,10 +20108,7 @@ html:not(.dark) .brand-name {
         showToast(_chatEnabled ? '💬 Comments enabled' : '🚫 Comments hidden from viewers');
     };
 
-    // Start the subscribeLiveChat hook as early as possible
-    _hookSubscribeLiveChat();
-
-    // We use a polling approach to detect when feeds become active
+    // We use a polling approach to detect when stream is active and show the overlay
     var _sfcCheckInterval = null;
     function _startSfcAutoDetect() {
         if (_sfcCheckInterval) clearInterval(_sfcCheckInterval);
@@ -20716,6 +20654,9 @@ html:not(.dark) .brand-name {
             });
 
             renderChatFeed(feedElId, recent);
+
+            // ── Mirror new messages to floating overlay (ID-based, no duplicates) ──
+            _sfcSyncMsgs(feedElId, recent);
         });
     }
 
@@ -20973,9 +20914,30 @@ html:not(.dark) .brand-name {
             // Unsubscribe co-host listener
             if (_cohostUnsub) { try { _cohostUnsub(); } catch(_) {} _cohostUnsub = null; }
 
-            if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack.close(); localVideoTrack = null; }
-            if (localAudioTrack) { localAudioTrack.stop(); localAudioTrack.close(); localAudioTrack = null; }
-            if (agoraClient)     { await agoraClient.leave(); agoraClient = null; }
+            if (localVideoTrack) { try { localVideoTrack.stop(); localVideoTrack.close(); } catch(_) {} localVideoTrack = null; }
+            if (localAudioTrack) { try { localAudioTrack.stop(); localAudioTrack.close(); } catch(_) {} localAudioTrack = null; }
+            if (agoraClient)     { try { await agoraClient.leave(); } catch(_) {} agoraClient = null; }
+
+            // ── Hard kill: stop every active media track on the page ──────────────
+            // Agora's .stop()/.close() stops rendering but may not release the OS
+            // camera indicator. Enumerating all video elements and stopping their
+            // srcObject tracks guarantees the camera light goes off.
+            try {
+                document.querySelectorAll('video').forEach(function(v) {
+                    if (v.srcObject) {
+                        v.srcObject.getTracks().forEach(function(t) { try { t.stop(); } catch(_) {} });
+                        v.srcObject = null;
+                    }
+                });
+            } catch(_) {}
+
+            // Also stop any tracks Agora injected without a srcObject reference
+            // by using the window refs we stored at track-creation time
+            try {
+                if (window._localVideoTrack_ref) { window._localVideoTrack_ref.stop(); window._localVideoTrack_ref.close(); window._localVideoTrack_ref = null; }
+                if (window._localAudioTrack_ref) { window._localAudioTrack_ref.stop(); window._localAudioTrack_ref.close(); window._localAudioTrack_ref = null; }
+            } catch(_) {}
+
         } catch(e) { console.warn('[Live] Agora cleanup:', e); }
     }
 
