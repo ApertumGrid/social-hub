@@ -1235,6 +1235,48 @@
         .layout-preview-pip-bottom { display:flex; flex-direction:column; gap:2px; padding:3px; }
         .layout-preview-grid4 { display:grid; grid-template-columns:1fr 1fr; gap:2px; padding:3px; }
 
+        /* ── Broadcaster video container — fills parent in all modes ────────
+           The inline height:clamp() was removed from HTML because it fights
+           cinema flex:1. Non-cinema fallback height is set here via CSS only. */
+        #live-broadcaster-video-container {
+            height: clamp(300px, 40vh, 520px); /* non-cinema default */
+            position: relative;
+            overflow: hidden;
+        }
+        /* In cinema mode the flex:1 on .live-stream-box takes over — override
+           the default height so it doesn't cap the flex child */
+        body.cinema-mode #live-broadcaster-video-container {
+            height: auto !important;
+            flex: 1 !important;
+            min-height: 0 !important;
+        }
+        /* Agora injects a wrapper div — make it fill the container absolutely */
+        #live-broadcaster-video-container > [id^="agora-video-player"] {
+            position: absolute !important;
+            top: 0 !important; left: 0 !important;
+            width: 100% !important; height: 100% !important;
+        }
+        /* The <video> inside that wrapper also needs to fill it */
+        #live-broadcaster-video-container > [id^="agora-video-player"] video {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+        }
+        /* Same fix for the inner #live-broadcaster-video div Agora plays into */
+        #live-broadcaster-video {
+            position: absolute !important;
+            top: 0 !important; left: 0 !important;
+            width: 100% !important; height: 100% !important;
+        }
+        #live-broadcaster-video > [id^="agora-video-player"] {
+            position: absolute !important;
+            top: 0 !important; left: 0 !important;
+            width: 100% !important; height: 100% !important;
+        }
+        #live-broadcaster-video > [id^="agora-video-player"] video {
+            width: 100% !important; height: 100% !important; object-fit: cover !important;
+        }
+
         /* ── Split-screen video area layouts ─── applied to #live-broadcaster-video-container */
         #live-broadcaster-video-container.layout-split2 #live-broadcaster-video,
         #live-broadcaster-video-container.layout-split2 #cohost-pip-host {
@@ -7545,7 +7587,7 @@ html:not(.dark) .brand-name {
                     <div id="live-active-panel" style="display:none;">
 
                         <!-- Video box with overlays -->
-                        <div class="live-stream-box" id="live-broadcaster-video-container" style="height:clamp(300px, 40vh, 520px);">
+                        <div class="live-stream-box" id="live-broadcaster-video-container">
                             <!-- Top bar: LIVE badge + health + viewers -->
                             <div class="live-stream-overlay-top">
                                 <span class="live-badge-pill">🔴 YOU ARE LIVE</span>
