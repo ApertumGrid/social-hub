@@ -736,7 +736,7 @@
             height:260px !important;
         }
         @media (max-width:768px) {
-            .live-stream-box { height:56vw; min-height:220px; }
+            .live-stream-box { height:72vw; min-height:260px; }
         }
         /* Force Agora-injected <video> and its wrapper div to fill the container */
         #live-broadcaster-video video,
@@ -1024,41 +1024,82 @@
             border: none !important;
             box-shadow: none !important;
             padding: 0 !important;
+            display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden;
         }
 
-        .live-chat-card { padding:0 !important; overflow:hidden; }
         .live-chat-head {
-            padding:10px 14px 8px;
-            border-bottom:1px solid var(--border);
-            font-size:0.72rem; font-weight:700;
-            color:var(--text-secondary);
-            text-transform:uppercase; letter-spacing:0.8px;
+            padding:8px 14px 6px;
+            font-size:0.65rem; font-weight:700;
+            color:var(--text-muted);
+            text-transform:uppercase; letter-spacing:1px;
+            display:flex; align-items:center; gap:6px;
+        }
+        .live-chat-head::before {
+            content:''; display:inline-block;
+            width:6px; height:6px; border-radius:50%;
+            background:#e03e3e;
+            box-shadow:0 0 6px #e03e3e;
+            animation:pulse-dot 1.4s ease-in-out infinite;
+        }
+        @keyframes pulse-dot {
+            0%,100% { opacity:1; } 50% { opacity:0.3; }
         }
         .live-chat-feed {
-            height:200px;
+            flex:1; min-height:0;
             overflow-y:auto;
-            padding:10px 14px;
-            display:flex; flex-direction:column; gap:8px;
+            padding:8px 12px;
+            display:flex; flex-direction:column; gap:6px;
             scroll-behavior:smooth;
         }
+        /* Thin custom scrollbar */
+        .live-chat-feed::-webkit-scrollbar { width:3px; }
+        .live-chat-feed::-webkit-scrollbar-track { background:transparent; }
+        .live-chat-feed::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.12); border-radius:3px; }
+
         .live-chat-msg {
-            display:flex; gap:8px; align-items:flex-start;
-            animation:fadeUp 0.2s ease both;
+            display:flex; gap:7px; align-items:flex-start;
+            animation:slideInMsg 0.18s ease both;
+        }
+        @keyframes slideInMsg {
+            from { opacity:0; transform:translateX(-6px); }
+            to   { opacity:1; transform:translateX(0); }
         }
         .live-chat-av {
-            width:24px; height:24px; border-radius:50%;
-            object-fit:cover; flex-shrink:0;
+            width:22px; height:22px; border-radius:50%;
+            object-fit:cover; flex-shrink:0; margin-top:1px;
         }
-        .live-chat-body { font-size:0.78rem; color:var(--text-primary); line-height:1.4; }
-        .live-chat-user { font-size:0.65rem; font-weight:700; color:var(--purple-lt); }
+        .live-chat-body { font-size:0.8rem; color:var(--text-primary); line-height:1.45; }
+        .live-chat-user { font-size:0.68rem; font-weight:700; color:#a78bfa; }
         .live-chat-hype-msg { color:var(--gold); font-weight:700; }
 
         .live-chat-input-row {
-            display:flex; gap:8px; padding:10px 14px;
-            border-top:1px solid var(--border);
+            display:flex; gap:8px;
+            padding:8px 10px 10px;
+            border-top:1px solid rgba(255,255,255,0.06);
+            background:rgba(0,0,0,0.2);
+            flex-shrink:0;
         }
-        .live-chat-input-row .field { margin-top:0 !important; flex:1; width:0 !important; min-width:0; }
-        .live-chat-input-row .btn   { width:auto !important; margin-top:0 !important; flex-shrink:0; }
+        .live-chat-input-row .field {
+            margin-top:0 !important; flex:1; width:0 !important; min-width:0;
+            background:rgba(255,255,255,0.06) !important;
+            border:1px solid rgba(255,255,255,0.1) !important;
+            border-radius:20px !important;
+            padding:7px 14px !important;
+            font-size:0.82rem !important;
+            color:var(--text-primary) !important;
+        }
+        .live-chat-input-row .field:focus {
+            border-color:rgba(124,92,191,0.6) !important;
+            outline:none !important;
+            box-shadow:0 0 0 2px rgba(124,92,191,0.15) !important;
+        }
+        .live-chat-input-row .btn {
+            width:auto !important; margin-top:0 !important; flex-shrink:0;
+            border-radius:20px !important;
+            padding:7px 18px !important;
+            font-size:0.82rem !important;
+            font-weight:700 !important;
+        }
 
         /* ── Cinema Mode ── only triggered by JS adding class to body ── */
         body.cinema-mode #sidebar,
@@ -1239,7 +1280,7 @@
            The inline height:clamp() was removed from HTML because it fights
            cinema flex:1. Non-cinema fallback height is set here via CSS only. */
         #live-broadcaster-video-container {
-            height: clamp(300px, 40vh, 520px); /* non-cinema default */
+            height: clamp(300px, 72vw, 520px); /* non-cinema default — taller on mobile */
             position: relative;
             overflow: hidden;
         }
@@ -1648,39 +1689,83 @@
 
         .live-stats-row {
             display:grid; grid-template-columns:repeat(4,1fr);
-            gap:8px; margin-bottom:12px;
+            gap:6px; margin-bottom:10px;
         }
         .live-stat-chip {
-            background:var(--bg-card2);
-            border:1px solid var(--border);
-            border-radius:var(--radius-sm);
-            padding:10px 8px;
+            background:rgba(255,255,255,0.03);
+            border:1px solid rgba(255,255,255,0.07);
+            border-radius:10px;
+            padding:8px 4px 6px;
             text-align:center;
+            transition:background 0.12s;
         }
-        .live-stat-val { font-family:var(--font-mono); font-size:0.95rem; font-weight:700; color:var(--text-primary); }
-        .live-stat-label { font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-top:2px; }
+        .live-stat-chip:first-child { border-color:rgba(240,180,41,0.25); background:rgba(240,180,41,0.05); }
+        .live-stat-val {
+            font-family:var(--font-mono);
+            font-size:1rem; font-weight:800;
+            color:var(--text-primary);
+            line-height:1;
+        }
+        .live-stat-chip:first-child .live-stat-val { color:var(--gold); }
+        .live-stat-label {
+            font-size:0.5rem; color:var(--text-muted);
+            text-transform:uppercase; letter-spacing:0.6px;
+            margin-top:3px; line-height:1.2;
+        }
 
-        /* ── BROADCASTER STUDIO TOOLBAR ─────────────────────────── */
+        /* ── BROADCASTER STUDIO TOOLBAR — redesigned ───────────────
+           Two-column icon grid. Each button: icon top, label below.
+           Clean, product-grade — like Zoom/Meet controls.          */
         .studio-toolbar {
-            display:flex; flex-wrap:wrap; gap:8px;
-            padding:10px 0; margin-bottom:10px;
+            display:grid;
+            grid-template-columns:repeat(3,1fr);
+            gap:6px;
+            padding:10px 0 8px;
+            margin-bottom:4px;
         }
         .studio-btn {
-            display:flex; align-items:center; gap:6px;
-            padding:8px 14px; border-radius:50px;
-            border:1.5px solid var(--border);
-            background:var(--bg-card2);
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            gap:3px;
+            padding:10px 6px 8px;
+            border-radius:12px;
+            border:1px solid rgba(255,255,255,0.07);
+            background:rgba(255,255,255,0.04);
             color:var(--text-secondary);
             font-family:var(--font-body);
-            font-size:0.75rem; font-weight:600;
-            cursor:pointer; transition:all 0.15s;
+            font-size:0.62rem; font-weight:500;
+            cursor:pointer;
+            transition:background 0.12s, border-color 0.12s, color 0.12s, transform 0.08s;
             white-space:nowrap;
+            letter-spacing:0.2px;
+            line-height:1.2;
         }
-        .studio-btn:hover { border-color:var(--purple-lt); color:var(--purple-lt); background:var(--purple-dim); }
-        .studio-btn.active { border-color:#e03e3e; color:#e03e3e; background:rgba(224,62,62,0.1); }
-        .studio-btn.active-teal { border-color:var(--teal); color:var(--teal); background:var(--teal-dim); }
-        .studio-btn.active-gold { border-color:var(--gold); color:var(--gold); background:rgba(240,180,41,0.1); }
-        .studio-btn-icon { font-size:0.95rem; }
+        .studio-btn:hover {
+            background:rgba(124,92,191,0.18);
+            border-color:rgba(124,92,191,0.45);
+            color:#c4b0ef;
+            transform:translateY(-1px);
+        }
+        .studio-btn:active { transform:translateY(0); }
+        .studio-btn.active {
+            background:rgba(224,62,62,0.14);
+            border-color:rgba(224,62,62,0.5);
+            color:#ff7070;
+        }
+        .studio-btn.active-teal {
+            background:rgba(32,201,151,0.13);
+            border-color:rgba(32,201,151,0.45);
+            color:#20c997;
+        }
+        .studio-btn.active-gold {
+            background:rgba(240,180,41,0.13);
+            border-color:rgba(240,180,41,0.45);
+            color:var(--gold);
+        }
+        .studio-btn-icon {
+            font-size:1.25rem;
+            line-height:1;
+            display:block;
+        }
 
         /* ── PiP CAMERA overlay ──────────────────────────────────── */
         #pip-camera-overlay {
@@ -7520,7 +7605,7 @@ html:not(.dark) .brand-name {
                 </div>
 
                 <!-- ── BROADCAST TAB ── -->
-                <div id="live-broadcast-panel" style="display:none;">
+                <div id="live-broadcast-panel" style="display:none; flex-direction:column; flex:1; min-height:0; height:100%;">
 
                     <!-- Pre-stream setup -->
                     <div id="live-setup-panel" class="card" style="border-color:rgba(224,62,62,0.3);">
@@ -7586,9 +7671,136 @@ html:not(.dark) .brand-name {
                     </div>
 
                     <!-- Active broadcast dashboard (hidden until live) -->
-                    <div id="live-active-panel" style="display:none;">
+                    <div id="live-active-panel" style="display:none; flex-direction:column; height:100%; min-height:0;">
 
-                        <!-- Video box with overlays -->
+                        <!-- ① LIVE CHAT — fills all remaining space, always visible -->
+                        <div class="card live-chat-card" id="bc-panel-chat-card" style="flex:1;min-height:0;display:flex;flex-direction:column;border-radius:0;margin-bottom:0;">
+                            <div class="live-chat-head">Live Chat</div>
+                            <div id="live-broadcast-chat-feed" class="live-chat-feed"></div>
+                            <div class="live-chat-input-row">
+                                <input type="text" id="live-broadcast-chat-input" class="field" placeholder="Chat with your viewers…" onkeydown="if(event.key==='Enter')sendLiveChatBroadcaster()">
+                                <button class="btn btn-purple btn-sm" onclick="sendLiveChatBroadcaster()">Send</button>
+                            </div>
+                        </div>
+
+                        <!-- ② STATS STRIP -->
+                        <div class="live-stats-row" style="margin:8px 10px 0;grid-template-columns:repeat(4,1fr);">
+                            <div class="live-stat-chip">
+                                <div class="live-stat-val" id="live-stat-stars" style="color:var(--gold);">0★</div>
+                                <div class="live-stat-label">Stars</div>
+                            </div>
+                            <div class="live-stat-chip">
+                                <div class="live-stat-val" id="live-stat-hypes">0</div>
+                                <div class="live-stat-label">Hypes</div>
+                            </div>
+                            <div class="live-stat-chip">
+                                <div class="live-stat-val" id="live-stat-duration">0:00</div>
+                                <div class="live-stat-label">Time</div>
+                            </div>
+                            <div class="live-stat-chip">
+                                <div class="live-stat-val" id="live-stat-viewers">0</div>
+                                <div class="live-stat-label">Viewers</div>
+                            </div>
+                        </div>
+
+                        <!-- ③ STUDIO CONTROLS GRID -->
+                        <div style="padding:0 10px;">
+                            <div class="studio-toolbar" id="studio-toolbar-btns">
+                                <button class="studio-btn" id="btn-share"   onclick="toggleScreenShare()"><span class="studio-btn-icon">🖥</span>Screen</button>
+                                <button class="studio-btn" id="btn-noise"   onclick="toggleNoiseCancellation()"><span class="studio-btn-icon">🎙</span>Noise</button>
+                                <button class="studio-btn" id="btn-vbg"     onclick="toggleVBG()"><span class="studio-btn-icon">🌅</span>BG</button>
+                                <button class="studio-btn" id="btn-cohost"  onclick="toggleCohostPanel()"><span class="studio-btn-icon">🎤</span>Stage</button>
+                                <button class="studio-btn" id="btn-record"  onclick="toggleRecording()"><span class="studio-btn-icon">⏺</span>Record</button>
+                                <button class="studio-btn" id="btn-lower"   onclick="toggleLowerThird()"><span class="studio-btn-icon">📺</span>Label</button>
+                                <button class="studio-btn" id="btn-mute"    onclick="toggleMic()"><span class="studio-btn-icon">🔇</span>Mute</button>
+                                <button class="studio-btn" id="btn-cam"     onclick="toggleCam()"><span class="studio-btn-icon">📷</span>Cam</button>
+                                <button class="studio-btn" id="btn-poll"    onclick="togglePollCreator()"><span class="studio-btn-icon">📊</span>Poll</button>
+                                <button class="studio-btn" id="btn-goal"    onclick="toggleGoalSetter()"><span class="studio-btn-icon">🎯</span>Goal</button>
+                                <button class="studio-btn" id="btn-layout"  onclick="toggleLayoutPicker()"><span class="studio-btn-icon">⊞</span>Layout</button>
+                                <button class="studio-btn" id="btn-wb"      onclick="toggleWhiteboard()"><span class="studio-btn-icon">🖊️</span>Board</button>
+                            </div>
+
+                            <!-- Expandable panels (unchanged IDs, just reordered under grid) -->
+                            <div id="cohost-panel" style="display:none;">
+                                <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎤 Stage Requests</div>
+                                <div id="cohost-requests-list"><div style="font-size:0.75rem;color:var(--text-muted);">No requests yet.</div></div>
+                            </div>
+                            <div id="poll-creator" style="display:none; padding:10px 0;">
+                                <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Create Poll</div>
+                                <input type="text" id="poll-question-input" class="field" placeholder="Ask your audience…" style="margin-bottom:6px;margin-top:0;">
+                                <input type="text" id="poll-opt1-input" class="field" placeholder="Option A" style="margin-bottom:6px;margin-top:0;">
+                                <input type="text" id="poll-opt2-input" class="field" placeholder="Option B" style="margin-bottom:6px;margin-top:0;">
+                                <input type="text" id="poll-opt3-input" class="field" placeholder="Option C (optional)" style="margin-bottom:8px;margin-top:0;">
+                                <div style="display:flex;gap:8px;">
+                                    <button class="btn btn-purple btn-sm" onclick="launchPoll()">📊 Launch</button>
+                                    <button class="btn btn-sm btn-outline" onclick="closePoll()">End</button>
+                                </div>
+                            </div>
+                            <div id="host-poll-card" class="live-poll-card" style="display:none!important;visibility:hidden;position:absolute;pointer-events:none;width:0;height:0;overflow:hidden;">
+                                <div class="live-poll-head"><span>📊 Poll Results</span><span id="host-poll-votes" style="font-size:0.62rem;color:var(--text-muted);font-weight:400;">0 votes</span></div>
+                                <div class="live-poll-body">
+                                    <div id="host-poll-question" style="font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:10px;"></div>
+                                    <div id="host-poll-options"></div>
+                                    <button class="btn btn-sm btn-outline" onclick="closePoll()" style="margin-top:8px;width:100%;font-size:0.7rem;">⛔ End Poll</button>
+                                </div>
+                            </div>
+                            <div id="goal-setter" style="display:none; padding:10px 0;">
+                                <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Star Goal</div>
+                                <input type="number" id="goal-amount-input" class="field" placeholder="Goal e.g. 500" min="1" style="margin-bottom:8px;margin-top:0;">
+                                <button class="btn btn-sm" style="background:var(--gold);color:#111;border:none;font-weight:700;" onclick="setStarGoal()">🎯 Set Goal</button>
+                            </div>
+                            <div id="hand-queue-card" style="display:none; padding:10px 0;">
+                                <div style="font-size:0.65rem;font-weight:700;color:var(--purple-lt);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">✋ Raised Hands</div>
+                                <div id="hand-queue-list"></div>
+                            </div>
+                            <div id="star-goal-display" style="display:none!important;visibility:hidden;position:absolute;pointer-events:none;width:0;height:0;overflow:hidden;" class="star-goal-card">
+                                <div class="star-goal-label"><span>🎯 Star Goal</span><span id="goal-label-pct">0%</span></div>
+                                <div class="star-goal-track"><div class="star-goal-fill" id="goal-fill" style="width:0%"></div></div>
+                                <div class="star-goal-nums"><span id="goal-current">0 ★</span><span id="goal-target">— ★</span></div>
+                            </div>
+                            <div id="layout-picker" style="display:none; padding:10px 0;">
+                                <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Stream Layout</div>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                    <button class="layout-opt-btn" id="layout-btn-solo"      onclick="setStreamLayout('solo')"      title="Solo — just you"><div class="layout-preview layout-preview-solo"><div style="width:100%;height:100%;background:rgba(124,92,191,0.3);border-radius:2px;"></div></div><span>Solo</span></button>
+                                    <button class="layout-opt-btn" id="layout-btn-split2"    onclick="setStreamLayout('split2')"    title="Side by side"><div class="layout-preview layout-preview-split2"><div style="flex:1;background:rgba(124,92,191,0.3);border-radius:2px 0 0 2px;"></div><div style="flex:1;background:rgba(32,201,151,0.3);border-radius:0 2px 2px 0;"></div></div><span>Split</span></button>
+                                    <button class="layout-opt-btn" id="layout-btn-pip-bottom" onclick="setStreamLayout('pip-bottom')" title="Top/bottom stack"><div class="layout-preview" style="display:flex;flex-direction:column;gap:1px;padding:2px;"><div style="flex:2;background:rgba(124,92,191,0.3);border-radius:2px;"></div><div style="flex:1;background:rgba(32,201,151,0.3);border-radius:2px;"></div></div><span>Stack</span></button>
+                                    <button class="layout-opt-btn" id="layout-btn-grid4"     onclick="setStreamLayout('grid4')"     title="2×2 Grid"><div class="layout-preview" style="display:grid;grid-template-columns:1fr 1fr;gap:1px;padding:2px;"><div style="background:rgba(124,92,191,0.3);border-radius:2px;"></div><div style="background:rgba(32,201,151,0.3);border-radius:2px;"></div><div style="background:rgba(32,201,151,0.3);border-radius:2px;"></div><div style="background:rgba(32,201,151,0.3);border-radius:2px;"></div></div><span>Grid</span></button>
+                                </div>
+                            </div>
+                            <div id="lower-third-editor" style="display:none;padding:10px 0;">
+                                <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Stream Label</div>
+                                <input type="text" id="lower-name-input"  class="field" placeholder="Name / Title"    style="margin-bottom:6px;margin-top:0;">
+                                <input type="text" id="lower-title-input" class="field" placeholder="Subtitle / Role" style="margin-bottom:8px;margin-top:0;">
+                                <div style="display:flex;gap:8px;">
+                                    <button class="btn btn-purple btn-sm" onclick="applyLowerThird()">Apply</button>
+                                    <button class="btn btn-sm btn-outline" onclick="clearLowerThird()">Clear</button>
+                                </div>
+                            </div>
+                            <div id="vbg-picker" style="display:none;padding:10px 0;">
+                                <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Virtual Background</div>
+                                <div id="vbg-options" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+                            </div>
+                            <div id="recording-status" style="margin-bottom:8px;display:none;">
+                                <span class="rec-dot"></span> Recording
+                            </div>
+                        </div>
+
+                        <!-- ④ END STREAM — always anchored at bottom -->
+                        <div style="padding:10px 10px 12px;flex-shrink:0;">
+                            <button onclick="endLiveStream()" style="width:100%;padding:11px;border-radius:10px;background:rgba(224,62,62,0.1);border:1px solid rgba(224,62,62,0.35);color:#ff6b6b;font-weight:700;font-size:0.85rem;cursor:pointer;transition:background 0.15s,border-color 0.15s;letter-spacing:0.3px;"
+                                onmouseover="this.style.background='rgba(224,62,62,0.2)'"
+                                onmouseout="this.style.background='rgba(224,62,62,0.1)'">
+                                ■ End Stream
+                            </button>
+                        </div>
+
+                        <!-- Gift Leaderboard (hidden by default) -->
+                        <div class="live-leaderboard" id="gift-leaderboard" style="display:none;margin:0 10px 8px;">
+                            <div class="live-lb-head">🏆 Top Gifters</div>
+                            <div id="gift-lb-list"></div>
+                        </div>
+
+                        <!-- Video box with overlays — inside the panel so layout is correct -->
                         <div class="live-stream-box" id="live-broadcaster-video-container">
                             <!-- Top bar: LIVE badge + health + viewers -->
                             <div class="live-stream-overlay-top">
@@ -7700,219 +7912,19 @@ html:not(.dark) .brand-name {
                                         <option value="52" style="background:#1a1a2e;color:#fff;">T-XL</option>
                                     </select>
                                     <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;flex-shrink:0;"></div>
-                                    <button onclick="wbClear()"          style="background:rgba(224,62,62,0.18);border:1px solid rgba(224,62,62,0.4);border-radius:8px;color:#e03e3e;padding:3px 8px;font-size:0.62rem;cursor:pointer;flex-shrink:0;">Clear</button>
-                                    <button onclick="toggleWhiteboard()" style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:rgba(255,255,255,0.65);padding:3px 8px;font-size:0.62rem;cursor:pointer;flex-shrink:0;">✕ Close</button>
-                                </div>
-                            </div>
-                        </div>
+                                </div><!-- /whiteboard-toolbar -->
+                            </div><!-- /whiteboard-overlay -->
+                        </div><!-- /live-broadcaster-video-container -->
 
-                        <!-- Studio Toolbar -->
-                        <div class="studio-toolbar">
-                            <button class="studio-btn" id="btn-screen-share" onclick="toggleScreenShare()">
-                                <span class="studio-btn-icon">🖥</span> Share Screen
-                            </button>
-                            <button class="studio-btn" id="btn-noise-suppress" onclick="toggleNoiseSuppression()">
-                                <span class="studio-btn-icon">🎙</span> Noise Cancel
-                            </button>
-                            <button class="studio-btn" id="btn-vbg" onclick="toggleVBGPicker()">
-                                <span class="studio-btn-icon">🌅</span> Background
-                            </button>
-                            <button class="studio-btn" id="btn-cohost" onclick="toggleCohostPanel()" title="Manage viewer requests to join your stage">
-                                <span class="studio-btn-icon">🎤</span> Stage Requests
-                            </button>
-                            <button class="studio-btn" id="btn-recording" onclick="toggleRecording()">
-                                <span class="studio-btn-icon">⏺</span> Record
-                            </button>
-                            <button class="studio-btn" id="btn-lower-third" onclick="toggleLowerThird()" title="Show a custom title/label at the bottom of your stream">
-                                <span class="studio-btn-icon">📺</span> Stream Label
-                            </button>
-                            <button class="studio-btn" id="btn-mute-mic" onclick="toggleMic()">
-                                <span class="studio-btn-icon">🔇</span> Mute
-                            </button>
-                            <button class="studio-btn" id="btn-cam-off" onclick="toggleCamera()">
-                                <span class="studio-btn-icon">📷</span> Cam Off
-                            </button>
-                            <button class="studio-btn" id="btn-start-poll" onclick="togglePollCreator()">
-                                <span class="studio-btn-icon">📊</span> Poll
-                            </button>
-                            <button class="studio-btn" id="btn-set-goal" onclick="toggleGoalSetter()">
-                                <span class="studio-btn-icon">🎯</span> Star Goal
-                            </button>
-                            <button class="studio-btn" id="btn-layout" onclick="toggleLayoutPicker()" title="Change stream layout">
-                                <span class="studio-btn-icon">⊞</span> Layout
-                            </button>
-                            <button class="studio-btn" id="btn-whiteboard" onclick="toggleWhiteboard()">
-                                <span class="studio-btn-icon">🖊️</span> Whiteboard
-                            </button>
-                            <button class="studio-btn" id="btn-toggle-chat" onclick="toggleLiveChat()" title="Allow or block viewer comments">
-                                <span class="studio-btn-icon">💬</span> Comments
-                            </button>
-                        </div>
-
-                        <!-- Lower Third editor (hidden by default) -->
-                        <div id="lower-third-editor" style="display:none; padding:10px 14px; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px;">
-                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">📺 Stream Label</div><div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:8px;">Shows at the bottom of your stream — e.g. your topic or role</div>
-                            <input type="text" id="lt-name-input" class="field" placeholder="Your Name / Title" style="margin-bottom:6px;margin-top:0;">
-                            <input type="text" id="lt-title-input" class="field" placeholder="Subtitle (e.g. Crypto Analyst · Live)" style="margin-bottom:8px;margin-top:0;">
-                            <div style="display:flex;gap:8px;">
-                                <button class="btn btn-purple btn-sm" onclick="applyLowerThird()">✓ Apply</button>
-                                <button class="btn btn-sm btn-outline" onclick="hideLowerThird()">Remove</button>
-                            </div>
-                        </div>
-
-                        <!-- Virtual Background Picker -->
-                        <div id="vbg-picker" style="display:none;">
-                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">🌅 Virtual Background</div><div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:6px;">Requires Chrome/Edge + HTTPS</div>
-                            <div class="vbg-options">
-                                <div class="vbg-swatch" id="vbg-none" onclick="setVBG('none')" title="Off" style="background:var(--bg-card2); border-color:var(--border); font-size:0.6rem; color:var(--text-muted);">Off</div>
-                                <div class="vbg-swatch" id="vbg-blur" onclick="setVBG('blur')" title="Blur" style="background:linear-gradient(135deg,#667eea,#764ba2);">💫</div>
-                                <div class="vbg-swatch" id="vbg-color-1" onclick="setVBG('color','#0a0a14')" title="Dark studio" style="background:#0a0a14;"></div>
-                                <div class="vbg-swatch" id="vbg-color-2" onclick="setVBG('color','#1a3a2a')" title="Green studio" style="background:#1a3a2a;"></div>
-                                <div class="vbg-swatch" id="vbg-color-3" onclick="setVBG('color','#1a1a3e')" title="Deep blue" style="background:#1a1a3e;"></div>
-                                <div class="vbg-swatch" id="vbg-color-4" onclick="setVBG('color','#2d1b4e')" title="Purple" style="background:#2d1b4e;"></div>
-                            </div>
-                        </div>
-
-                        <!-- Co-Host Management Panel (host side) -->
-                        <!-- Layout Picker -->
-                        <div id="layout-picker" style="display:none; padding:10px 14px; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px;">
-                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">⊞ Stream Layout</div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                                <button class="layout-opt-btn" id="layout-btn-solo" onclick="setStreamLayout('solo')" title="Solo — just you">
-                                    <div class="layout-preview layout-preview-solo">
-                                        <div style="background:rgba(124,92,191,0.7);border-radius:3px;width:100%;height:100%;"></div>
-                                    </div>
-                                    <span>Solo</span>
-                                </button>
-                                <button class="layout-opt-btn" id="layout-btn-split2" onclick="setStreamLayout('split2')" title="Side by side — you + 1 co-host">
-                                    <div class="layout-preview layout-preview-split2">
-                                        <div style="background:rgba(124,92,191,0.7);border-radius:3px;flex:1;height:100%;"></div>
-                                        <div style="background:rgba(45,212,191,0.6);border-radius:3px;flex:1;height:100%;"></div>
-                                    </div>
-                                    <span>Side by Side</span>
-                                </button>
-                                <button class="layout-opt-btn" id="layout-btn-pip-bottom" onclick="setStreamLayout('pip-bottom')" title="Equal top/bottom split — you + 1 co-host stacked">
-                                    <div class="layout-preview layout-preview-pip-bottom">
-                                        <div style="background:rgba(124,92,191,0.7);border-radius:3px;flex:1;width:100%;"></div>
-                                        <div style="background:rgba(45,212,191,0.6);border-radius:3px;flex:1;width:100%;"></div>
-                                    </div>
-                                    <span>Top / Bottom</span>
-                                </button>
-                                <button class="layout-opt-btn" id="layout-btn-grid4" onclick="setStreamLayout('grid4')" title="2×2 grid — up to 4 people">
-                                    <div class="layout-preview layout-preview-grid4">
-                                        <div style="background:rgba(124,92,191,0.7);border-radius:2px;"></div>
-                                        <div style="background:rgba(45,212,191,0.6);border-radius:2px;"></div>
-                                        <div style="background:rgba(240,180,41,0.6);border-radius:2px;"></div>
-                                        <div style="background:rgba(224,62,62,0.5);border-radius:2px;"></div>
-                                    </div>
-                                    <span>2×2 Grid</span>
-                                </button>
-                            </div>
-                            <div style="font-size:0.6rem;color:var(--text-muted);margin-top:8px;">Co-host slots fill automatically when viewers join the stage.</div>
-                        </div>
-
-                        <div id="cohost-panel">
-                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎤 Co-Host Requests</div>
-                            <div id="cohost-requests-list"><div style="font-size:0.75rem;color:var(--text-muted);">No co-host requests yet.</div></div>
-                        </div>
-
-                        <!-- Recording status indicator (shown when recording) -->
-                        <div id="recording-status" style="margin-bottom:8px;">
-                            <span class="rec-dot"></span> Recording
-                        </div>
-
-                        <!-- Poll Creator (hidden by default) -->
-                        <div id="poll-creator" style="display:none; padding:10px 14px; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px;">
-                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Create Poll</div>
-                            <input type="text" id="poll-question-input" class="field" placeholder="Ask your audience something…" style="margin-bottom:6px;margin-top:0;">
-                            <input type="text" id="poll-opt1-input" class="field" placeholder="Option A" style="margin-bottom:6px;margin-top:0;">
-                            <input type="text" id="poll-opt2-input" class="field" placeholder="Option B" style="margin-bottom:6px;margin-top:0;">
-                            <input type="text" id="poll-opt3-input" class="field" placeholder="Option C (optional)" style="margin-bottom:8px;margin-top:0;">
-                            <div style="display:flex;gap:8px;">
-                                <button class="btn btn-purple btn-sm" onclick="launchPoll()">📊 Launch Poll</button>
-                                <button class="btn btn-sm btn-outline" onclick="closePoll()">End Poll</button>
-                            </div>
-                        </div>
-
-                        <!-- Poll Results — now shown as in-video overlay; this card is kept in DOM for JS references but hidden -->
-                        <div id="host-poll-card" class="live-poll-card" style="display:none!important; visibility:hidden; position:absolute; pointer-events:none; width:0; height:0; overflow:hidden;">
-                            <div class="live-poll-head">
-                                <span>📊 Live Poll Results</span>
-                                <span id="host-poll-votes" style="font-size:0.62rem;color:var(--text-muted);font-weight:400;text-transform:none;">0 votes</span>
-                            </div>
-                            <div class="live-poll-body">
-                                <div id="host-poll-question" style="font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:10px;"></div>
-                                <div id="host-poll-options"></div>
-                                <button class="btn btn-sm btn-outline" onclick="closePoll()" style="margin-top:8px;width:100%;font-size:0.7rem;">⛔ End Poll</button>
-                            </div>
-                        </div>
-
-                        <!-- Goal Setter (hidden by default) -->
-                        <div id="goal-setter" style="display:none; padding:10px 14px; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px;">
-                            <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Star Goal</div>
-                            <input type="number" id="goal-amount-input" class="field" placeholder="Goal e.g. 500" min="1" style="margin-bottom:8px;margin-top:0;">
-                            <button class="btn btn-sm" style="background:var(--gold);color:#111;border:none;font-weight:700;" onclick="setStarGoal()">🎯 Set Goal</button>
-                        </div>
-
-                        <!-- Raise hand queue (host view) -->
-                        <div id="hand-queue-card" style="display:none; padding:10px 14px; background:var(--bg-card2); border:1px solid rgba(124,92,191,0.3); border-radius:var(--radius-md); margin-bottom:10px;">
-                            <div style="font-size:0.65rem;font-weight:700;color:var(--purple-lt);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">✋ Raised Hands</div>
-                            <div id="hand-queue-list"></div>
-                        </div>
-
-                        <!-- Star Goal bar — now shown as in-video overlay; kept in DOM for JS references but hidden -->
-                        <div id="star-goal-display" style="display:none!important; visibility:hidden; position:absolute; pointer-events:none; width:0; height:0; overflow:hidden;" class="star-goal-card">
-                            <div class="star-goal-label">
-                                <span>🎯 Star Goal</span>
-                                <span id="goal-label-pct">0%</span>
-                            </div>
-                            <div class="star-goal-track"><div class="star-goal-fill" id="goal-fill" style="width:0%"></div></div>
-                            <div class="star-goal-nums">
-                                <span id="goal-current">0 ★</span>
-                                <span id="goal-target">— ★</span>
-                            </div>
-                        </div>
-
-                        <!-- Live stats row -->
-                        <div class="live-stats-row">
-                            <div class="live-stat-chip">
-                                <div class="live-stat-val" id="live-stat-stars" style="color:var(--gold);">0 ★</div>
-                                <div class="live-stat-label">Stars Earned</div>
-                            </div>
-                            <div class="live-stat-chip">
-                                <div class="live-stat-val" id="live-stat-hypes">0</div>
-                                <div class="live-stat-label">Hypes</div>
-                            </div>
-                            <div class="live-stat-chip">
-                                <div class="live-stat-val" id="live-stat-duration">0:00</div>
-                                <div class="live-stat-label">Duration</div>
-                            </div>
-                            <div class="live-stat-chip">
-                                <div class="live-stat-val" id="live-stat-viewers">0</div>
-                                <div class="live-stat-label">Peak Viewers</div>
-                            </div>
-                        </div>
-
-                        <!-- Gift Leaderboard -->
-                        <div class="live-leaderboard" id="gift-leaderboard" style="display:none;">
+                        <!-- Gift Leaderboard (hidden, kept for JS ref) -->
+                        <div class="live-leaderboard" id="gift-leaderboard-old" style="display:none;">
                             <div class="live-lb-head">🏆 Top Gifters This Stream</div>
-                            <div id="gift-lb-list"></div>
+                            <div id="gift-lb-list-old"></div>
                         </div>
 
-                        <!-- Live chat (broadcaster view — input in panel, messages mirrored to floating overlay) -->
-                        <div class="card live-chat-card" id="bc-panel-chat-card">
-                            <div class="live-chat-head">💬 Live Chat</div>
-                            <div id="live-broadcast-chat-feed" class="live-chat-feed"></div>
-                            <div class="live-chat-input-row">
-                                <input type="text" id="live-broadcast-chat-input" class="field" placeholder="Chat with your viewers…" style="margin-top:0;" onkeydown="if(event.key==='Enter')sendLiveChatBroadcaster()">
-                                <button class="btn btn-purple btn-sm" onclick="sendLiveChatBroadcaster()">Send</button>
-                            </div>
-                        </div>
-
-                        <button class="btn btn-sm" onclick="endLiveStream()" style="width:100%;margin-top:10px;background:rgba(224,62,62,0.12);border:1px solid rgba(224,62,62,0.4);color:#e03e3e;font-weight:700;">■ End Stream</button>
-                    </div>
-                </div>
-            </div>
+                    </div><!-- /live-active-panel -->
+                </div><!-- /live-broadcast-panel -->
+            </div><!-- /live tab content -->
 
         </div><!-- /feed-col -->
 
@@ -19066,7 +19078,7 @@ html:not(.dark) .brand-name {
     // ── Helpers ───────────────────────────────────────────────────
     function $(id) { return document.getElementById(id); }
     function setText(id, val) { const el = $(id); if (el) el.textContent = val; }
-    function show(id)  { const el = $(id); if (el) el.style.display = 'block'; }
+    function show(id)  { const el = $(id); if (!el) return; el.style.display = (id === 'live-active-panel' || id === 'live-broadcast-panel') ? 'flex' : 'block'; }
     function hide(id)  { const el = $(id); if (el) el.style.display = 'none'; }
 
     function waitForFb(cb) {
@@ -21050,6 +21062,22 @@ html:not(.dark) .brand-name {
                 var svd = document.getElementById('cohost-self-video');
                 if (svd) svd.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;';
             }
+            if (cohostPip) {
+                // Restore cohostPip to floating corner pip
+                cohostPip.style.cssText = [
+                    'position:absolute',
+                    'bottom:60px',
+                    'right:10px',
+                    'width:160px',
+                    'height:100px',
+                    'border-radius:8px',
+                    'overflow:hidden',
+                    'border:2px solid var(--purple)',
+                    'z-index:22',
+                    'background:#000'
+                ].join(';');
+                if (cohostPip.parentElement !== container) container.appendChild(cohostPip);
+            }
         } else if (mode === 'split2') {
             if (!secondPanel) {
                 _pendingViewerLayout = mode;
@@ -21069,6 +21097,12 @@ html:not(.dark) .brand-name {
                 // selfVideoDiv must fill the pip cell
                 var svd = document.getElementById('cohost-self-video');
                 if (svd) svd.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+            } else if (cohostPip) {
+                // Regular viewer with co-host pip — also ensure pip is in flow
+                container.style.cssText = 'display:flex;flex-direction:row;gap:2px;overflow:hidden;';
+                if (hostVid) hostVid.style.cssText  = 'flex:1;height:100%;position:relative;min-width:0;overflow:hidden;';
+                cohostPip.style.cssText             = 'flex:1;height:100%;position:relative;min-width:0;overflow:hidden;border-radius:0;border:none;';
+                if (cohostPip.parentElement !== container) container.appendChild(cohostPip);
             }
         } else if (mode === 'pip-bottom') {
             if (!secondPanel) {
@@ -21081,10 +21115,15 @@ html:not(.dark) .brand-name {
             if (!cohostPip && selfPip) {
                 container.style.cssText = 'display:flex;flex-direction:column;gap:2px;overflow:hidden;';
                 if (hostVid) hostVid.style.cssText = 'flex:1;width:100%;position:relative;min-height:0;overflow:hidden;';
-                selfPip.style.cssText = 'width:100%;height:160px;position:relative;border-radius:0;border:none;flex-shrink:0;overflow:hidden;';
+                selfPip.style.cssText = 'width:100%;height:50%;position:relative;border-radius:0;border:none;flex-shrink:0;overflow:hidden;';
                 if (selfPip.parentElement !== container) container.appendChild(selfPip);
                 var svd = document.getElementById('cohost-self-video');
                 if (svd) svd.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+            } else if (cohostPip) {
+                container.style.cssText = 'display:flex;flex-direction:column;gap:2px;overflow:hidden;';
+                if (hostVid) hostVid.style.cssText = 'flex:1;width:100%;position:relative;min-height:0;overflow:hidden;';
+                cohostPip.style.cssText = 'width:100%;height:50%;position:relative;border-radius:0;border:none;flex-shrink:0;overflow:hidden;';
+                if (cohostPip.parentElement !== container) container.appendChild(cohostPip);
             }
         } else if (mode === 'grid4') {
             if (!secondPanel) {
@@ -21101,6 +21140,11 @@ html:not(.dark) .brand-name {
                 if (selfPip.parentElement !== container) container.appendChild(selfPip);
                 var svd = document.getElementById('cohost-self-video');
                 if (svd) svd.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+            } else if (cohostPip) {
+                container.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;overflow:hidden;';
+                if (hostVid) hostVid.style.cssText = 'grid-column:1/2;grid-row:1/3;position:relative;min-height:0;overflow:hidden;';
+                cohostPip.style.cssText = 'grid-column:2/3;grid-row:1/2;position:relative;border-radius:0;border:none;min-height:0;overflow:hidden;';
+                if (cohostPip.parentElement !== container) container.appendChild(cohostPip);
             }
         }
     }
