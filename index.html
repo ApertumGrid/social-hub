@@ -867,6 +867,10 @@
             gap: 0;
         }
         .stream-floating-chat.chat-hidden { display: none !important; }
+        /* On mobile in cinema mode, hide the video overlay chat — use panel chat instead */
+        @media(max-width:700px){
+            body.cinema-mode .stream-floating-chat { display:none !important; }
+        }
 
         /* Toggle button (streamer only) */
         .sfc-toggle-btn {
@@ -1117,11 +1121,22 @@
             border-radius:0 !important; border:none !important; background:transparent !important;
             overflow:hidden;
         }
-        /* Always keep the panel feed hidden — messages go to the floating overlay */
+        /* Desktop: panel feed hidden — messages go to floating overlay */
         #cinema-chat-col .live-chat-feed,
         #cinema-chat-col #live-broadcast-chat-feed,
         #cinema-chat-col #live-chat-feed { display:none !important; }
         #cinema-chat-col .live-chat-head { display:none !important; }
+        /* Mobile: show a compact chat feed inside cinema-chat-col instead of floating overlay */
+        @media(max-width:700px){
+            #cinema-chat-col .live-chat-feed,
+            #cinema-chat-col #live-broadcast-chat-feed,
+            #cinema-chat-col #live-chat-feed {
+                display:flex !important; flex-direction:column;
+                max-height:90px; overflow-y:auto; flex:1; min-height:0;
+                padding:4px 8px;
+            }
+            #cinema-chat-col .live-chat-head { display:block !important; font-size:0.65rem; padding:4px 8px; }
+        }
         /* Controls section — bottom of right column, grows with content up to 55% height */
         #cinema-controls {
             flex-shrink:0;
@@ -1413,9 +1428,29 @@
         body.cinema-fullscreen #page-live { height:100vh !important; }
         @media(max-width:700px){
             body.cinema-mode #cinema-shell { flex-direction:column; top:0; height:100vh; }
-            #cinema-video-col { flex:none; height:52vw; }
-            #cinema-chat-col { width:100%; flex:1; border-left:none; border-top:1px solid var(--border); max-height:48vh; }
-            #cinema-controls { max-height:40%; }
+            #cinema-video-col { flex:none; height:46vw; min-height:180px; }
+            #cinema-chat-col {
+                width:100%; flex:1; border-left:none;
+                border-top:1px solid var(--border);
+                max-height:calc(100vh - 46vw);
+                overflow:hidden; display:flex; flex-direction:column;
+            }
+            #cinema-chat-col .live-chat-input-row { padding:6px 8px; }
+            #cinema-chat-col .live-chat-input-row input { font-size:0.8rem; }
+            #cinema-controls { max-height:none; flex:1; overflow-y:auto; min-height:0; }
+            #cinema-controls-panels #viewer-gift-panel {
+                display:block !important;
+                border-radius:0 !important;
+                border-left:none !important; border-right:none !important;
+                margin:0 !important; padding:8px !important;
+            }
+            #cinema-controls-panels #viewer-gift-panel .live-gift-grid {
+                grid-template-columns: repeat(4,1fr) !important;
+                gap:6px !important;
+            }
+            #cinema-controls-btns .live-action-row { gap:5px !important; flex-wrap:wrap !important; }
+            #cinema-controls-btns .live-action-row .btn,
+            #cinema-controls-btns .live-action-row button { font-size:0.65rem !important; padding:5px 8px !important; }
         }
 
         /* ── Gift System CSS ─────────────────────────────────────── */
@@ -19091,6 +19126,18 @@ html:not(.dark) .brand-name {
             // Sort client-side by startedAt desc
             streams.sort((a, b) => (b.startedAt?.seconds || 0) - (a.startedAt?.seconds || 0));
             renderStreamBrowser(streams);
+
+            // ── AUTO-JOIN: if exactly one stream is live and the player isn't
+            // already open, jump straight into it so the user never sees "no streams".
+            // Only fire on the very first snapshot (not on live updates mid-watch).
+            if (streams.length === 1 && !_watchingStreamId) {
+                const playerWrap = $('live-player-wrap');
+                const isPlayerOpen = playerWrap && playerWrap.style.display !== 'none';
+                if (!isPlayerOpen && typeof joinLiveStream === 'function') {
+                    // Small delay so the UI is painted first
+                    setTimeout(() => joinLiveStream(streams[0].id), 300);
+                }
+            }
         }, err => {
             console.warn('[Live] Stream browser listener error:', err);
         });
