@@ -19247,14 +19247,21 @@ html:not(.dark) .brand-name {
     };
 
     // ── Go Live ───────────────────────────────────────────────────
+    var _isStartingLive = false; // mutex — prevents re-entrant / double-join
     window.startLiveStream = async function() {
+        // Guard 1: already hosting — do not allow a second join on the same client
+        if (isHosting) { console.warn('[Live] startLiveStream called while already hosting — ignoring.'); return; }
+        // Guard 2: a call is already in flight (e.g. countdown fired twice, or patch chain re-entered)
+        if (_isStartingLive) { console.warn('[Live] startLiveStream already in progress — ignoring duplicate call.'); return; }
+        _isStartingLive = true;
+
         // Read shared state from main IIFE bridge
         const userAddress = window._liveUserAddress || '';
         const userHandle  = window._liveUserHandle  || 'Creator';
         const userAvatar  = window._liveUserAvatar  || '';
 
-        if (!userAddress) { showToast('Connect your wallet first to go live.'); return; }
-        if (!window.AgoraRTC) { showToast('Agora SDK loading — try again in a moment.'); return; }
+        if (!userAddress) { _isStartingLive = false; showToast('Connect your wallet first to go live.'); return; }
+        if (!window.AgoraRTC) { _isStartingLive = false; showToast('Agora SDK loading — try again in a moment.'); return; }
 
         const title    = ($('live-stream-title-input') || {}).value || 'Untitled Stream';
         const category = ($('live-stream-category') || {}).value   || 'General';
@@ -19536,6 +19543,8 @@ html:not(.dark) .brand-name {
             console.error('[Live] Go live error:', e);
             showToast('Stream error: ' + (e.message || String(e)));
             isHosting = false;
+        } finally {
+            _isStartingLive = false; // always release mutex, success or failure
         }
     };
 
@@ -23999,11 +24008,18 @@ html:not(.dark) .brand-name {
         await _origEnd.apply(this, arguments);
     };
 
-    // Wait for all functions to be defined then patch
+    // Wait for all functions to be defined then patch — runs ONCE per successful patch.
+    // _tryPatchDone prevents re-entrant polling after the countdown IIFE has already
+    // changed window.startLiveStream (which would cause _origStart to capture a
+    // patched wrapper instead of the base, creating a circular or double-call chain).
+    var _tryPatchDone = false;
     function tryPatch() {
+        if (_tryPatchDone) return;
         patchStart(); patchJoin(); patchLeave(); patchEnd();
         if (!_origStart || !_origJoin || !_origLeave || !_origEnd) {
             setTimeout(tryPatch, 200);
+        } else {
+            _tryPatchDone = true; // all four patched — stop polling
         }
     }
     document.addEventListener('DOMContentLoaded', function(){ setTimeout(tryPatch, 500); });
