@@ -1470,11 +1470,13 @@
         body.cinema-fullscreen #page-live { height:100vh !important; }
         @media(max-width:700px){
             body.cinema-mode #cinema-shell { flex-direction:column; top:0; height:100vh; }
-            #cinema-video-col { flex:none; height:46vw; min-height:180px; }
+            /* 58vw gives ~317px on a 546px-wide phone — enough for a proper 16:9 preview.
+               chat-col takes the remaining space via flex:1 so no calc needed. */
+            #cinema-video-col { flex:none; height:58vw; min-height:220px; max-height:62vw; }
             #cinema-chat-col {
                 width:100%; flex:1; border-left:none;
                 border-top:1px solid var(--border);
-                max-height:calc(100vh - 46vw);
+                max-height:calc(100vh - 58vw);
                 overflow:hidden; display:flex; flex-direction:column;
             }
             #cinema-chat-col .live-chat-input-row { padding:6px 8px; }
@@ -21649,19 +21651,21 @@ html:not(.dark) .brand-name {
                     hostRendered = true;
                     var remoteEl = document.getElementById('live-remote-video');
                     if (remoteEl) {
-                        var _trackRef = ru.videoTrack; // capture in closure
+                        var _trackRef = ru.videoTrack;
                         var _retry = 0;
                         (function _tryPlay() {
-                            if (_trackRef && (remoteEl.offsetWidth > 0 || remoteEl.offsetHeight > 0 || _retry > 15)) {
-                                try {
-                                    _trackRef.play(remoteEl);
-                                    console.log('[CoHost] Host video playing in live-remote-video, uid:', ru.uid);
-                                } catch(e) {
-                                    console.warn('[CoHost] Host video play error:', e);
+                            // In cinema mode live-remote-video is position:absolute so
+                            // offsetWidth is 0 — don't gate on size, just play immediately
+                            try {
+                                _trackRef.play(remoteEl);
+                                console.log('[CoHost] Host video playing in live-remote-video, uid:', ru.uid);
+                            } catch(e) {
+                                if (_retry < 20) {
+                                    _retry++;
+                                    setTimeout(_tryPlay, 150);
+                                } else {
+                                    console.warn('[CoHost] Host video play failed after retries:', e);
                                 }
-                            } else if (_retry < 20) {
-                                _retry++;
-                                setTimeout(_tryPlay, 150);
                             }
                         })();
                     }
@@ -21723,17 +21727,24 @@ html:not(.dark) .brand-name {
                 selfPip.appendChild(selfControls);
             }
 
+            // Append self-pip to the video container — search cinema-video-col too
+            // because enterCinema moves live-remote-video-container into cinema-video-col
             var targetContainer = document.getElementById('live-remote-video-container') ||
+                                  document.getElementById('cinema-video-col') ||
                                   document.getElementById('live-broadcaster-video-container');
             if (targetContainer) targetContainer.appendChild(selfPip);
 
-            // Play local cam into self-pip with retry
+            // Play local cam into self-pip with retry.
+            // cohost-self-video is position:absolute so offsetWidth is always 0 —
+            // we cannot use size as the ready signal. Instead just retry until the
+            // div exists in DOM (which it always will after appendChild above).
             var _selfRetry = 0;
             (function _playSelf() {
                 var svDiv = document.getElementById('cohost-self-video');
-                if (svDiv && (svDiv.offsetWidth > 0 || svDiv.offsetHeight > 0 || _selfRetry > 10)) {
-                    try { cohostVideoTrack.play(svDiv); } catch(e) { console.warn('[CoHost] self-view play err:', e); }
-                } else if (_selfRetry < 20) {
+                if (svDiv) {
+                    try { cohostVideoTrack.play(svDiv); console.log('[CoHost] self-view playing'); }
+                    catch(e) { console.warn('[CoHost] self-view play err:', e); }
+                } else if (_selfRetry < 25) {
                     _selfRetry++;
                     setTimeout(_playSelf, 150);
                 }
