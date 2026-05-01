@@ -11300,7 +11300,7 @@ html:not(.dark) .brand-name {
             const pg      = pageId ? document.getElementById('page-' + pageId) : null;
             if (pg) { pg.style.display = 'block'; pg.classList.add('active'); }
             if (tabName === 'communities' && typeof loadCommunities === 'function') loadCommunities();
-            if (tabName === 'live' && typeof loadStreamBrowser === 'function') loadStreamBrowser();
+            if (tabName === 'live' && typeof window.loadStreamBrowser === 'function') window.loadStreamBrowser();
         if (tabName === 'home' && typeof renderTrendingHubs === 'function') renderTrendingHubs(_allCommunities);
         if (typeof _trendingHubsSetVisible === 'function') _trendingHubsSetVisible(tabName === 'home');
 
@@ -19048,7 +19048,7 @@ html:not(.dark) .brand-name {
         if (watchEl) watchEl.style.display = tab === 'watch' ? '' : 'none';
         if (bcEl)    bcEl.style.display    = tab === 'broadcast' ? '' : 'none';
         if (tab === 'watch') {
-            loadStreamBrowser();
+            window.loadStreamBrowser();
             // Stop preview camera when leaving broadcast tab (unless actively streaming)
             if (!isHosting) {
                 if (localVideoTrack) { try { localVideoTrack.stop(); localVideoTrack.close(); } catch(_) {} localVideoTrack = null; }
@@ -19094,8 +19094,8 @@ html:not(.dark) .brand-name {
     };
 
     // ── Load stream browser ───────────────────────────────────────
-    function loadStreamBrowser() {
-        if (!window.db || !window.fs) { waitForFb(loadStreamBrowser); return; }
+    window.loadStreamBrowser = function loadStreamBrowser() {
+        if (!window.db || !window.fs) { waitForFb(window.loadStreamBrowser); return; }
         const { collection, query, where, onSnapshot } = window.fs;
 
         // Tear down previous listener
@@ -19616,7 +19616,7 @@ html:not(.dark) .brand-name {
             const snap = await getDoc(doc(window.db, LIVE_COL, streamId));
             if (!snap.exists() || !snap.data().active) {
                 showToast('This stream has ended.');
-                loadStreamBrowser();
+                window.loadStreamBrowser();
                 return;
             }
             const streamData = snap.data();
@@ -19955,7 +19955,7 @@ html:not(.dark) .brand-name {
         _watchingStreamId = null;
         _activeLiveChannel = null;
         window._applyViewerSpotlight = null; // clear stale closure from previous session
-        loadStreamBrowser();
+        window.loadStreamBrowser();
     };
 
     // ── Hype button ───────────────────────────────────────────────
