@@ -21028,14 +21028,11 @@ html:not(.dark) .brand-name {
 
         if (mode === 'solo') {
             _pendingViewerLayout = null;
-            // Solo mode — host video fills container, selfPip floats as a small corner box.
-            // IMPORTANT: the wipe above (selfPip.style.cssText = '') removed all inline sizing.
-            // Without restoring, selfPip has no width/height and Agora video expands to fill
-            // the entire live-remote-video-container — making the co-host see only themselves.
             if (hostVid) {
                 hostVid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
             }
             if (selfPip) {
+                // Restore selfPip to floating corner pip — undo any flex/grid parenting
                 selfPip.style.cssText = [
                     'position:absolute',
                     'bottom:60px',
@@ -21048,35 +21045,62 @@ html:not(.dark) .brand-name {
                     'z-index:22',
                     'background:#000'
                 ].join(';');
+                // Re-parent back into container if it was moved during split/grid
+                if (selfPip.parentElement !== container) container.appendChild(selfPip);
+                var svd = document.getElementById('cohost-self-video');
+                if (svd) svd.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;';
             }
         } else if (mode === 'split2') {
-            if (!secondPanel) { _pendingViewerLayout = mode; return; }
+            if (!secondPanel) {
+                _pendingViewerLayout = mode;
+                setTimeout(function(){ if (_pendingViewerLayout === 'split2') _applyViewerLayout('split2'); }, 300);
+                return;
+            }
             _pendingViewerLayout = null;
             container.classList.add('layout-split2');
-            // If we are the co-host (selfPip is the second panel, no cohostPip),
-            // force flex layout manually since CSS targets cohost-pip-viewer
             if (!cohostPip && selfPip) {
-                container.style.cssText = 'display:flex;flex-direction:row;gap:2px;';
-                if (hostVid) hostVid.style.cssText = 'flex:1;height:100%;position:relative;min-width:0;';
-                selfPip.style.cssText = 'flex:1;height:100%;position:relative;min-width:0;border-radius:0;border:none;';
+                // selfPip was built as position:absolute (corner pip).
+                // For split2 it must be a flex child — force it into flow.
+                container.style.cssText = 'display:flex;flex-direction:row;gap:2px;overflow:hidden;';
+                if (hostVid) hostVid.style.cssText    = 'flex:1;height:100%;position:relative;min-width:0;overflow:hidden;';
+                selfPip.style.cssText                 = 'flex:1;height:100%;position:relative;min-width:0;overflow:hidden;border-radius:0;border:none;';
+                // Ensure selfPip is a direct flex child of container, not floating inside hostVid
+                if (selfPip.parentElement !== container) container.appendChild(selfPip);
+                // selfVideoDiv must fill the pip cell
+                var svd = document.getElementById('cohost-self-video');
+                if (svd) svd.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
             }
         } else if (mode === 'pip-bottom') {
-            if (!secondPanel) { _pendingViewerLayout = mode; return; }
+            if (!secondPanel) {
+                _pendingViewerLayout = mode;
+                setTimeout(function(){ if (_pendingViewerLayout === 'pip-bottom') _applyViewerLayout('pip-bottom'); }, 300);
+                return;
+            }
             _pendingViewerLayout = null;
             container.classList.add('layout-pip-bottom');
             if (!cohostPip && selfPip) {
-                container.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
-                if (hostVid) hostVid.style.cssText = 'flex:1;width:100%;position:relative;min-height:0;';
-                selfPip.style.cssText = 'width:100%;height:160px;position:relative;border-radius:0;border:none;flex-shrink:0;';
+                container.style.cssText = 'display:flex;flex-direction:column;gap:2px;overflow:hidden;';
+                if (hostVid) hostVid.style.cssText = 'flex:1;width:100%;position:relative;min-height:0;overflow:hidden;';
+                selfPip.style.cssText = 'width:100%;height:160px;position:relative;border-radius:0;border:none;flex-shrink:0;overflow:hidden;';
+                if (selfPip.parentElement !== container) container.appendChild(selfPip);
+                var svd = document.getElementById('cohost-self-video');
+                if (svd) svd.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
             }
         } else if (mode === 'grid4') {
-            if (!secondPanel) { _pendingViewerLayout = mode; return; }
+            if (!secondPanel) {
+                _pendingViewerLayout = mode;
+                setTimeout(function(){ if (_pendingViewerLayout === 'grid4') _applyViewerLayout('grid4'); }, 300);
+                return;
+            }
             _pendingViewerLayout = null;
             container.classList.add('layout-grid4');
             if (!cohostPip && selfPip) {
-                container.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;';
-                if (hostVid) hostVid.style.cssText = 'grid-column:1/2;grid-row:1/3;position:relative;min-height:0;';
-                selfPip.style.cssText = 'grid-column:2/3;grid-row:1/2;position:relative;border-radius:0;border:none;min-height:0;';
+                container.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;overflow:hidden;';
+                if (hostVid) hostVid.style.cssText = 'grid-column:1/2;grid-row:1/3;position:relative;min-height:0;overflow:hidden;';
+                selfPip.style.cssText = 'grid-column:2/3;grid-row:1/2;position:relative;border-radius:0;border:none;min-height:0;overflow:hidden;';
+                if (selfPip.parentElement !== container) container.appendChild(selfPip);
+                var svd = document.getElementById('cohost-self-video');
+                if (svd) svd.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
             }
         }
     }
