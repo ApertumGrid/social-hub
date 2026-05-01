@@ -21500,10 +21500,92 @@ html:not(.dark) .brand-name {
                 // Badge the Co-Host button so it's impossible to miss
                 var cohostBtn = document.getElementById('btn-cohost');
                 if (cohostBtn) { cohostBtn.classList.add('active-teal'); cohostBtn.innerHTML = '<span class="studio-btn-icon">🎤</span> Stage Requests 🔴'; }
+
+                // ── MOBILE-SAFE: floating approval banner injected directly onto the video ──
+                // On mobile in cinema mode the controls panel is below the fold and the
+                // host can't see the badged button. This banner sits on top of the video
+                // and is impossible to miss.
+                var existingBanner = document.getElementById('cohost-request-banner');
+                if (!existingBanner) {
+                    var banner = document.createElement('div');
+                    banner.id = 'cohost-request-banner';
+                    banner.style.cssText = [
+                        'position:fixed',
+                        'top:12px',
+                        'left:50%',
+                        'transform:translateX(-50%)',
+                        'z-index:9999',
+                        'background:linear-gradient(135deg,#7c5cbf,#5a3fa0)',
+                        'color:#fff',
+                        'border-radius:12px',
+                        'padding:10px 16px',
+                        'font-size:0.82rem',
+                        'font-weight:700',
+                        'box-shadow:0 4px 20px rgba(0,0,0,0.5)',
+                        'display:flex',
+                        'align-items:center',
+                        'gap:10px',
+                        'max-width:90vw',
+                        'cursor:pointer',
+                        'animation:fadeInDown 0.3s ease'
+                    ].join(';');
+
+                    var bannerText = document.createElement('span');
+                    bannerText.id = 'cohost-banner-text';
+                    bannerText.textContent = '🎤 ' + (newest.handle || 'Someone') + ' wants to join your stage';
+                    banner.appendChild(bannerText);
+
+                    var approveAllBtn = document.createElement('button');
+                    approveAllBtn.textContent = '✓ Approve';
+                    approveAllBtn.style.cssText = 'background:#fff;color:#7c5cbf;border:none;border-radius:8px;padding:5px 12px;font-size:0.78rem;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0;';
+                    approveAllBtn.onclick = function(e) {
+                        e.stopPropagation();
+                        // Approve the most recent pending request
+                        var latestPending = pending[pending.length - 1];
+                        if (latestPending && window.approveCoHost) {
+                            window.approveCoHost(latestPending.id, latestPending.uid || latestPending.id);
+                        }
+                        var b = document.getElementById('cohost-request-banner');
+                        if (b) b.remove();
+                    };
+                    banner.appendChild(approveAllBtn);
+
+                    var dismissBtn = document.createElement('button');
+                    dismissBtn.textContent = '✕';
+                    dismissBtn.style.cssText = 'background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:50%;width:22px;height:22px;font-size:0.7rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;';
+                    dismissBtn.onclick = function(e) {
+                        e.stopPropagation();
+                        var b = document.getElementById('cohost-request-banner');
+                        if (b) b.remove();
+                    };
+                    banner.appendChild(dismissBtn);
+
+                    // Clicking banner opens the cohost panel
+                    banner.onclick = function() {
+                        if (window.toggleCohostPanel) window.toggleCohostPanel();
+                        var b = document.getElementById('cohost-request-banner');
+                        if (b) b.remove();
+                    };
+
+                    document.body.appendChild(banner);
+
+                    // Auto-dismiss after 30 seconds if host ignores it
+                    setTimeout(function() {
+                        var b = document.getElementById('cohost-request-banner');
+                        if (b) b.remove();
+                    }, 30000);
+                } else {
+                    // Banner already showing — just update the text for the newest requester
+                    var t = document.getElementById('cohost-banner-text');
+                    if (t) t.textContent = '🎤 ' + pending.length + ' stage request' + (pending.length > 1 ? 's' : '') + ' waiting';
+                }
             }
             _prevPendingCount = pending.length;
             if (!pending.length) {
                 listEl.innerHTML = '<div style="font-size:0.75rem;color:var(--text-muted);">No co-host requests yet.</div>';
+                // Remove floating banner since there's nothing left to approve
+                var b = document.getElementById('cohost-request-banner');
+                if (b) b.remove();
                 return;
             }
             listEl.innerHTML = pending.map(d => `
