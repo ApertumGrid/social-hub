@@ -21457,11 +21457,19 @@ html:not(.dark) .brand-name {
         try {
             // Promote viewer to host role so they can publish
             await agoraClient.setClientRole('host');
+
+            // ── CRITICAL: store our UID BEFORE publishing. ──────────────────────────
+            // agoraClient.uid is assigned by Agora immediately after setClientRole('host').
+            // If we set _cohostPublishedUid AFTER publish(), Agora fires user-published
+            // for our own camera before the guard is in place — causing our own video to
+            // fill live-remote-video fullscreen for 2-3 seconds. Setting it first ensures
+            // the user-published handler always skips our own track.
+            window._cohostPublishedUid = agoraClient.uid;
+            // Also keep _myViewerUid in sync with the new host UID so both guards match.
+            _myViewerUid = agoraClient.uid;
+
             [cohostAudioTrack, cohostVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
             await agoraClient.publish([cohostAudioTrack, cohostVideoTrack]);
-            // Store our own UID so the user-published handler can filter out
-            // our own video track being echoed back by Agora after role promotion
-            window._cohostPublishedUid = agoraClient.uid;
 
             // ── After setClientRole('host'), Agora internally unsubscribes all remote
             // tracks and does NOT re-fire user-published. We must manually re-subscribe
@@ -21612,12 +21620,19 @@ html:not(.dark) .brand-name {
                 }
             }, 600);
 
-            // Safety net: 1.2s after promotion, re-render host video into the main
-            // container in case a race condition caused our own track to fill it first.
+            // Safety net: 400ms after promotion, verify host video is in the main
+            // container. This is a fallback only — the _cohostPublishedUid guard above
+            // should prevent the race entirely. If remoteEl already has a playing <video>
+            // we skip to avoid interrupting correct playback.
             setTimeout(function() {
                 try {
                     var remoteEl = document.getElementById('live-remote-video');
                     if (!remoteEl) return;
+                    // Skip if host video is already playing correctly
+                    if (remoteEl.querySelector('video')) {
+                        console.log('[CoHost] Safety net: host video already present, skipping re-render.');
+                        return;
+                    }
                     var users = agoraClient.remoteUsers;
                     for (var ri = 0; ri < users.length; ri++) {
                         var ru2 = users[ri];
@@ -21630,7 +21645,7 @@ html:not(.dark) .brand-name {
                         }
                     }
                 } catch(e) { console.warn('[CoHost] safety net error:', e); }
-            }, 1200);
+            }, 400);
 
             var stageWrap = $('cohost-stage-wrap');
             if (stageWrap) stageWrap.style.display = 'block';
