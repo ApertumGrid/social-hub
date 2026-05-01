@@ -19098,8 +19098,9 @@ html:not(.dark) .brand-name {
         if (!window.db || !window.fs) { waitForFb(window.loadStreamBrowser); return; }
         const { collection, query, where, onSnapshot } = window.fs;
 
-        // Tear down previous listener
+        // Tear down previous listener and reset auto-join flag for fresh browse session
         if (_liveStreamUnsub) { try { _liveStreamUnsub(); } catch(_) {} }
+        var _autoJoinFired = false;
 
         // Simple query — no composite index needed
         const q = query(
@@ -19129,8 +19130,9 @@ html:not(.dark) .brand-name {
 
             // ── AUTO-JOIN: if exactly one stream is live and the player isn't
             // already open, jump straight into it so the user never sees "no streams".
-            // Only fire on the very first snapshot (not on live updates mid-watch).
-            if (streams.length === 1 && !_watchingStreamId) {
+            // _autoJoinFired prevents this from re-triggering on every Firestore update.
+            if (streams.length === 1 && !_watchingStreamId && !isHosting && !_autoJoinFired) {
+                _autoJoinFired = true;
                 const playerWrap = $('live-player-wrap');
                 const isPlayerOpen = playerWrap && playerWrap.style.display !== 'none';
                 if (!isPlayerOpen && typeof joinLiveStream === 'function') {
@@ -19251,7 +19253,7 @@ html:not(.dark) .brand-name {
     window.startLiveStream = async function() {
         // Guard 1: already hosting — do not allow a second join on the same client
         if (isHosting) { console.warn('[Live] startLiveStream called while already hosting — ignoring.'); return; }
-        // Guard 2: a call is already in flight (e.g. countdown fired twice, or patch chain re-entered)
+        // Guard 2: a call is already in flight (countdown fired twice, or patch chain re-entered)
         if (_isStartingLive) { console.warn('[Live] startLiveStream already in progress — ignoring duplicate call.'); return; }
         _isStartingLive = true;
 
@@ -19544,7 +19546,7 @@ html:not(.dark) .brand-name {
             showToast('Stream error: ' + (e.message || String(e)));
             isHosting = false;
         } finally {
-            _isStartingLive = false; // always release mutex, success or failure
+            _isStartingLive = false; // always release mutex — success or failure
         }
     };
 
@@ -19614,10 +19616,19 @@ html:not(.dark) .brand-name {
     };
 
     // ── Join stream as viewer ─────────────────────────────────────
+    var _isJoiningLive = false; // mutex — prevents double-join (auto-join + card click race)
     window.joinLiveStream = async function(streamId) {
         if (!window.AgoraRTC || !window.db) return;
-
-        _watchingStreamId = streamId;
+        // Guard 1: already watching this exact stream — ignore duplicate calls
+        if (_watchingStreamId === streamId && _isJoiningLive === false) {
+            console.warn('[Live] joinLiveStream called for already-watching stream — ignoring.'); return;
+        }
+        // Guard 2: join already in flight
+        if (_isJoiningLive) { console.warn('[Live] joinLiveStream already in progress — ignoring.'); return; }
+        // Guard 3: currently hosting — cannot join as viewer at the same time
+        if (isHosting) { showToast('You are currently hosting a stream. End it first.'); return; }
+        _isJoiningLive = true;
+        _watchingStreamId = streamId; // set early so Guard 1 works on re-entry
 
         try {
             // Fetch stream doc
@@ -19625,6 +19636,7 @@ html:not(.dark) .brand-name {
             const snap = await getDoc(doc(window.db, LIVE_COL, streamId));
             if (!snap.exists() || !snap.data().active) {
                 showToast('This stream has ended.');
+                _watchingStreamId = null;
                 window.loadStreamBrowser();
                 return;
             }
@@ -19925,6 +19937,9 @@ html:not(.dark) .brand-name {
         } catch(e) {
             console.error('[Live] Join error:', e);
             showToast('Could not join stream: ' + (e.message || String(e)));
+            _watchingStreamId = null; // reset so a retry is allowed
+        } finally {
+            _isJoiningLive = false; // always release mutex
         }
     };
 
@@ -24008,10 +24023,10 @@ html:not(.dark) .brand-name {
         await _origEnd.apply(this, arguments);
     };
 
-    // Wait for all functions to be defined then patch — runs ONCE per successful patch.
-    // _tryPatchDone prevents re-entrant polling after the countdown IIFE has already
-    // changed window.startLiveStream (which would cause _origStart to capture a
-    // patched wrapper instead of the base, creating a circular or double-call chain).
+    // Wait for all functions to be defined then patch — runs ONCE.
+    // _tryPatchDone prevents re-polling after the countdown IIFE has already
+    // changed window.startLiveStream, which would cause _origStart to capture
+    // a wrapped function and create a circular or double-call chain.
     var _tryPatchDone = false;
     function tryPatch() {
         if (_tryPatchDone) return;
