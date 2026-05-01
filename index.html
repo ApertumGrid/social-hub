@@ -19187,7 +19187,12 @@ html:not(.dark) .brand-name {
             // ── AUTO-JOIN: if exactly one stream is live and the player isn't
             // already open, jump straight into it so the user never sees "no streams".
             // _autoJoinFired prevents this from re-triggering on every Firestore update.
-            if (streams.length === 1 && !_watchingStreamId && !isHosting && !_autoJoinFired) {
+            // Never auto-join a stream owned by this user — they are the host, not a viewer.
+            const _myAddr = (window._liveUserAddress || '').toLowerCase();
+            const _autoJoinCandidate = streams.length === 1 ? streams[0] : null;
+            const _isOwnStream = _autoJoinCandidate && _myAddr &&
+                (_autoJoinCandidate.hostAddr || '').toLowerCase() === _myAddr;
+            if (streams.length === 1 && !_watchingStreamId && !isHosting && !_autoJoinFired && !_isOwnStream) {
                 _autoJoinFired = true;
                 const playerWrap = $('live-player-wrap');
                 const isPlayerOpen = playerWrap && playerWrap.style.display !== 'none';
@@ -19320,6 +19325,32 @@ html:not(.dark) .brand-name {
 
         if (!userAddress) { _isStartingLive = false; showToast('Connect your wallet first to go live.'); return; }
         if (!window.AgoraRTC) { _isStartingLive = false; showToast('Agora SDK loading — try again in a moment.'); return; }
+
+        // Guard 3: kill any zombie streams this user still owns in Firestore
+        // (handles the case where a previous stream wasn't properly ended)
+        try {
+            const { collection, query, where, getDocs, doc, updateDoc } = window.fs;
+            const zombieQ = query(
+                collection(window.db, LIVE_COL),
+                where('active', '==', true),
+                where('hostAddr', '==', userAddress)
+            );
+            const zombieSnap = await getDocs(zombieQ);
+            const kills = [];
+            zombieSnap.forEach(function(d) {
+                kills.push(updateDoc(doc(window.db, LIVE_COL, d.id), {
+                    active: false, endedAt: Date.now(), cohostSpotlight: false, streamLayout: 'solo'
+                }).catch(function(){}));
+            });
+            if (kills.length > 0) {
+                await Promise.all(kills);
+                console.log('[Live] Killed', kills.length, 'zombie stream(s) before starting new one.');
+                // Small pause to let Firestore propagate so stream browser doesn't see them
+                await new Promise(function(r){ setTimeout(r, 500); });
+            }
+        } catch(e) {
+            console.warn('[Live] Zombie stream cleanup failed (non-fatal):', e);
+        }
 
         const title    = ($('live-stream-title-input') || {}).value || 'Untitled Stream';
         const category = ($('live-stream-category') || {}).value   || 'General';
@@ -19612,18 +19643,51 @@ html:not(.dark) .brand-name {
         const confirmed = confirm(`End your stream?\n\nTotal Stars received this session: ${liveStarsEarned.toFixed(1)} ★\n(Gift stars are credited to your Creator balance in real-time.)`);
         if (!confirmed) return;
 
-        try {
-            const { doc, updateDoc } = window.fs;
-            await updateDoc(doc(window.db, LIVE_COL, currentStreamId), {
-                active:  false,
-                endedAt: Date.now()
-            });
-            // Stars already credited per-gift via sendGift() — nothing extra to settle
-        } catch(e) {
-            console.error('[Live] End stream error:', e);
+        // Capture and immediately null the stream id so no re-entrant calls can fire
+        const _endingId = currentStreamId;
+        currentStreamId = null;
+        isHosting       = false;
+        _isStartingLive = false; // reset mutex so a new stream can start after
+        _isJoiningLive  = false;
+
+        // Mark stream inactive in Firestore — retry once on failure
+        for (let _attempt = 0; _attempt < 2; _attempt++) {
+            try {
+                const { doc, updateDoc } = window.fs;
+                await updateDoc(doc(window.db, LIVE_COL, _endingId), {
+                    active:  false,
+                    endedAt: Date.now(),
+                    cohostSpotlight: false,
+                    streamLayout: 'solo'
+                });
+                break; // success
+            } catch(e) {
+                console.error('[Live] End stream error (attempt ' + (_attempt+1) + '):', e);
+                if (_attempt === 0) await new Promise(r => setTimeout(r, 600));
+            }
         }
 
         await _cleanupAgora();
+
+        // Reset ALL session state so the next stream starts clean
+        _liveHostUid          = null;
+        _myViewerUid          = null;
+        window._cohostPublishedUid = null;
+        _justPromotedToCoHost = false;
+        _pendingViewerLayout  = null;
+        _activeLiveChannel    = null;
+        _watchingStreamId     = null;
+        cohostRequests        = {};
+        peakViewers           = 0;
+        starGoalTarget        = 0;
+        liveStarsEarned       = 0;
+        liveHypeCount         = 0;
+        liveViewerCount       = 0;
+
+        // Unsubscribe any lingering Firestore listeners
+        if (_streamDocUnsub) { try { _streamDocUnsub(); } catch(_) {} _streamDocUnsub = null; }
+        if (_liveChatUnsub)  { try { _liveChatUnsub();  } catch(_) {} _liveChatUnsub  = null; }
+        if (_cohostUnsub)    { try { _cohostUnsub();    } catch(_) {} _cohostUnsub    = null; }
 
         show('live-setup-panel');
         hide('live-active-panel');
@@ -19631,13 +19695,8 @@ html:not(.dark) .brand-name {
         const badge = $('live-viewer-badge');
         if (badge) badge.style.display = 'none';
 
-        showToast(`✓ Stream ended — ${liveStarsEarned.toFixed(1)} ★ received this session.`);
+        showToast(`✓ Stream ended.`);
         if (typeof updateUI === 'function') updateUI();
-
-        currentStreamId = null;
-        isHosting       = false;
-        liveStarsEarned = 0;
-        liveHypeCount   = 0;
 
         // Reset setup UI for next stream
         streamEntryFee = 0;
@@ -19693,10 +19752,24 @@ html:not(.dark) .brand-name {
             if (!snap.exists() || !snap.data().active) {
                 showToast('This stream has ended.');
                 _watchingStreamId = null;
+                _isJoiningLive = false;
                 window.loadStreamBrowser();
                 return;
             }
             const streamData = snap.data();
+
+            // Guard 4: do not let a user join their own stream as a viewer
+            const _myOwnAddr = (window._liveUserAddress || '').toLowerCase();
+            if (_myOwnAddr && (streamData.hostAddr || '').toLowerCase() === _myOwnAddr) {
+                console.warn('[Live] Blocked joining own stream as viewer — stream still active in Firestore (zombie).');
+                // Kill the zombie
+                try { await updateDoc(doc(window.db, LIVE_COL, streamId), { active: false, endedAt: Date.now() }); } catch(_) {}
+                _watchingStreamId = null;
+                _isJoiningLive    = false;
+                window.loadStreamBrowser();
+                showToast('Your previous stream was still active — it has been ended. You can start a new one now.');
+                return;
+            }
 
             // Update viewer count — only increment once per browser session per stream
             // This prevents F5 refresh from inflating the counter
@@ -20008,17 +20081,42 @@ html:not(.dark) .brand-name {
             try {
                 const { doc, updateDoc, increment } = window.fs;
                 await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), { viewers: increment(-1) });
-                // Clear session tracking so re-joining works correctly
                 try { sessionStorage.removeItem('sh_viewing_' + _watchingStreamId); } catch(_) {}
             } catch(_) {}
         }
         await _cleanupAgora();
 
-        // Reset paid gate state
-        streamEntryFee = 0;
-        hasPassedGate  = false;
+        // Reset ALL viewer/co-host session state
+        _watchingStreamId     = null;
+        _activeLiveChannel    = null;
+        _liveHostUid          = null;
+        _myViewerUid          = null;
+        window._cohostPublishedUid = null;
+        _justPromotedToCoHost = false;
+        _pendingViewerLayout  = null;
+        isCoHost              = false;
+        _isJoiningLive        = false;
+        streamEntryFee        = 0;
+        hasPassedGate         = false;
+
+        // Clear stale closures
+        window._applyViewerSpotlight = null;
+        window._pendingViewerSpotlight = false;
+
+        // Unsubscribe listeners
+        if (_liveChatUnsub)  { try { _liveChatUnsub();  } catch(_) {} _liveChatUnsub  = null; }
+        if (_streamDocUnsub) { try { _streamDocUnsub(); } catch(_) {} _streamDocUnsub = null; }
+        if (_cohostUnsub)    { try { _cohostUnsub();    } catch(_) {} _cohostUnsub    = null; }
+
+        // Reset paid gate overlay
         const overlay = $('paid-gate-overlay');
         if (overlay) overlay.classList.remove('visible');
+
+        // Remove any leftover cohost-self-pip or cohost-pip-viewer from DOM
+        ['cohost-self-pip','cohost-pip-viewer'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+        });
 
         // Hide co-host stage
         const stageWrap = $('cohost-stage-wrap');
@@ -20028,13 +20126,15 @@ html:not(.dark) .brand-name {
         const cohostBtn = $('viewer-cohost-btn');
         if (cohostBtn) { cohostBtn.textContent = '🎤 Join Stage'; cohostBtn.style.opacity = ''; cohostBtn.style.pointerEvents = ''; cohostBtn.classList.remove('active'); }
 
+        // Reset video container layout classes
+        var rvContainer = document.getElementById('live-remote-video-container');
+        if (rvContainer) {
+            rvContainer.classList.remove('layout-split2','layout-pip-bottom','layout-grid4');
+            rvContainer.style.cssText = '';
+        }
+
         hide('live-player-wrap');
         show('live-stream-browser');
-        if (_liveChatUnsub) { try { _liveChatUnsub(); } catch(_) {} _liveChatUnsub = null; }
-        if (_streamDocUnsub) { try { _streamDocUnsub(); } catch(_) {} _streamDocUnsub = null; }
-        _watchingStreamId = null;
-        _activeLiveChannel = null;
-        window._applyViewerSpotlight = null; // clear stale closure from previous session
         window.loadStreamBrowser();
     };
 
