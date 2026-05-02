@@ -7673,37 +7673,102 @@ html:not(.dark) .brand-name {
                     <!-- Active broadcast dashboard (hidden until live) -->
                     <div id="live-active-panel" style="display:none; flex-direction:column; height:100%; min-height:0;">
 
-                        <!-- ① LIVE CHAT — fills all remaining space, always visible -->
-                        <div class="card live-chat-card" id="bc-panel-chat-card" style="flex:1;min-height:0;display:flex;flex-direction:column;border-radius:0;margin-bottom:0;">
-                            <div class="live-chat-head">Live Chat</div>
-                            <div id="live-broadcast-chat-feed" class="live-chat-feed"></div>
-                            <div class="live-chat-input-row">
-                                <input type="text" id="live-broadcast-chat-input" class="field" placeholder="Chat with your viewers…" onkeydown="if(event.key==='Enter')sendLiveChatBroadcaster()">
-                                <button class="btn btn-purple btn-sm" onclick="sendLiveChatBroadcaster()">Send</button>
+                        <!-- ① VIDEO BOX — first so enterCinema forward-walk finds controls/chat after it -->
+                        <div class="live-stream-box" id="live-broadcaster-video-container">
+                            <!-- Top bar: LIVE badge + health + viewers -->
+                            <div class="live-stream-overlay-top">
+                                <span class="live-badge-pill">🔴 YOU ARE LIVE</span>
+                                <div id="stream-health">
+                                    <div class="health-dot good" id="health-dot"></div>
+                                    <span id="health-label">Good</span>
+                                </div>
+                                <div id="viewer-count-badge" class="viewer-pill"><span>👁</span><span id="viewer-count-num">0</span> watching</div>
                             </div>
-                        </div>
+                            <!-- Stream title (bottom-left) -->
+                            <div id="bc-meta-nowrap" style="position:absolute;bottom:44px;left:10px;z-index:12;pointer-events:none;">
+                                <div id="stream-title-overlay" style="font-size:0.78rem;font-weight:700;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.7);">Untitled Stream</div>
+                            </div>
+                            <!-- Fullscreen button -->
+                            <div style="position:absolute;bottom:10px;left:10px;z-index:12;">
+                                <button onclick="toggleFullscreen()" style="background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:8px;padding:4px 10px;font-size:0.68rem;cursor:pointer;backdrop-filter:blur(4px);">⛶ Fullscreen</button>
+                            </div>
+                            <!-- Lower-third bar -->
+                            <div id="lower-third-bar" style="display:none;position:absolute;bottom:0;left:0;right:0;z-index:13;padding:8px 14px;background:linear-gradient(0deg,rgba(0,0,0,0.75),transparent);">
+                                <div id="lower-third-name"  style="font-size:0.85rem;font-weight:700;color:#fff;"></div>
+                                <div id="lower-third-title" style="font-size:0.68rem;color:rgba(255,255,255,0.7);"></div>
+                            </div>
+                            <!-- Screen-share label -->
+                            <div id="screen-share-label" style="display:none;position:absolute;top:44px;left:10px;z-index:12;background:rgba(0,0,0,0.6);color:#fff;font-size:0.65rem;padding:3px 8px;border-radius:6px;">🖥 Screen Sharing</div>
+                            <!-- Poll overlay -->
+                            <div id="bc-vid-poll" style="display:none;position:absolute;bottom:60px;right:10px;z-index:15;width:220px;"></div>
+                            <!-- Goal overlay -->
+                            <div id="bc-vid-goal" style="display:none;position:absolute;top:50px;right:10px;z-index:15;width:220px;">
+                                <div class="vog-title">
+                                    <span>🎯 Star Goal</span>
+                                    <span id="bc-vid-goal-pct" style="font-size:0.65rem;color:var(--gold);">0%</span>
+                                </div>
+                                <div class="vog-track"><div class="vog-fill" id="bc-vid-goal-fill" style="width:0%"></div></div>
+                                <div class="vog-nums">
+                                    <span id="bc-vid-goal-current">0 ★</span>
+                                    <span id="bc-vid-goal-target">— ★</span>
+                                </div>
+                            </div>
+                            <!-- Countdown overlay -->
+                            <div id="stream-countdown-overlay" style="display:none;position:absolute;inset:0;z-index:30;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;flex-direction:column;">
+                                <div id="stream-countdown-num" style="font-size:5rem;font-weight:900;color:#fff;line-height:1;"></div>
+                                <div style="font-size:1rem;color:rgba(255,255,255,0.7);margin-top:8px;">Going Live…</div>
+                            </div>
+                            <!-- Broadcaster video element -->
+                            <div id="live-broadcaster-video" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
+                            <!-- Reaction container -->
+                            <div id="reaction-container" style="position:absolute;bottom:60px;left:0;right:0;z-index:20;pointer-events:none;overflow:hidden;height:200px;"></div>
+                            <!-- Whiteboard overlay -->
+                            <div id="whiteboard-overlay" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;z-index:25;flex-direction:column;">
+                                <div id="wb-bg-fill" style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000;display:none;"></div>
+                                <canvas id="whiteboard-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair;touch-action:none;"></canvas>
+                                <div id="wb-mode-pill" style="position:absolute;top:10px;left:12px;z-index:32;display:flex;gap:0;border-radius:20px;overflow:hidden;border:1px solid rgba(124,92,191,0.5);box-shadow:0 2px 10px rgba(0,0,0,0.4);">
+                                    <button id="wb-mode-overlay" onclick="wbSetMode('overlay')" style="padding:4px 10px;font-size:0.62rem;font-weight:700;background:rgba(124,92,191,0.85);color:#fff;border:none;cursor:pointer;letter-spacing:0.3px;">📹 Draw Over Stream</button>
+                                    <button id="wb-mode-blank"   onclick="wbSetMode('blank')"   style="padding:4px 10px;font-size:0.62rem;font-weight:700;background:rgba(10,10,20,0.75);color:rgba(255,255,255,0.55);border:none;cursor:pointer;letter-spacing:0.3px;">⬛ Blank Board</button>
+                                </div>
+                                <div id="whiteboard-toolbar" style="position:absolute;top:48px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;justify-content:center;gap:5px;align-items:center;background:rgba(10,10,20,0.88);border:1px solid rgba(124,92,191,0.5);border-radius:16px;padding:6px 12px;z-index:31;box-shadow:0 4px 20px rgba(0,0,0,0.5);max-width:calc(100vw - 24px);">
+                                    <button onclick="wbSetTool('pen')"    id="wb-btn-pen"    style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">✏️</button>
+                                    <button onclick="wbSetTool('text')"   id="wb-btn-text"   style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">T</button>
+                                    <button onclick="wbSetTool('line')"   id="wb-btn-line"   style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">╱</button>
+                                    <button onclick="wbSetTool('rect')"   id="wb-btn-rect"   style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">▭</button>
+                                    <button onclick="wbSetTool('circle')" id="wb-btn-circle" style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">○</button>
+                                    <button onclick="wbSetTool('eraser')" id="wb-btn-eraser" style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">🧹</button>
+                                    <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;"></div>
+                                    <div onclick="wbSetColor('#000000')" style="width:16px;height:16px;border-radius:50%;background:#000000;border:2px solid rgba(255,255,255,0.5);cursor:pointer;"></div>
+                                    <div onclick="wbSetColor('#ffffff')" style="width:16px;height:16px;border-radius:50%;background:#ffffff;border:2px solid rgba(255,255,255,0.7);cursor:pointer;"></div>
+                                    <div onclick="wbSetColor('#f0b429')" style="width:16px;height:16px;border-radius:50%;background:#f0b429;cursor:pointer;"></div>
+                                    <div onclick="wbSetColor('#2dd4bf')" style="width:16px;height:16px;border-radius:50%;background:#2dd4bf;cursor:pointer;"></div>
+                                    <div onclick="wbSetColor('#e03e3e')" style="width:16px;height:16px;border-radius:50%;background:#e03e3e;cursor:pointer;"></div>
+                                    <div onclick="wbSetColor('#9b7de0')" style="width:16px;height:16px;border-radius:50%;background:#9b7de0;cursor:pointer;"></div>
+                                    <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;"></div>
+                                    <select id="wb-size" onchange="wbSetSize(this.value)" style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:6px;padding:2px 4px;font-size:0.62rem;cursor:pointer;">
+                                        <option value="2">Thin</option><option value="4" selected>Med</option><option value="8">Thick</option><option value="16">Fat</option>
+                                    </select>
+                                    <select id="wb-text-size" onchange="wbSetTextSize(this.value)" style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:6px;padding:2px 4px;font-size:0.62rem;cursor:pointer;">
+                                        <option value="14">T-Sm</option><option value="24" selected>T-Med</option><option value="36">T-Lg</option><option value="52">T-XL</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <!-- Floating chat overlay (TikTok-style — broadcaster side) -->
+                            <div class="stream-floating-chat" id="bc-floating-chat" style="display:none;">
+                                <button class="sfc-toggle-btn" id="bc-chat-toggle-btn" onclick="toggleFloatingChatVisibility()" title="Toggle chat visibility">💬 Chat On</button>
+                                <div class="sfc-feed" id="bc-sfc-feed"></div>
+                            </div>
+                        </div><!-- /live-broadcaster-video-container -->
 
                         <!-- ② STATS STRIP -->
                         <div class="live-stats-row" style="margin:8px 10px 0;grid-template-columns:repeat(4,1fr);">
-                            <div class="live-stat-chip">
-                                <div class="live-stat-val" id="live-stat-stars" style="color:var(--gold);">0★</div>
-                                <div class="live-stat-label">Stars</div>
-                            </div>
-                            <div class="live-stat-chip">
-                                <div class="live-stat-val" id="live-stat-hypes">0</div>
-                                <div class="live-stat-label">Hypes</div>
-                            </div>
-                            <div class="live-stat-chip">
-                                <div class="live-stat-val" id="live-stat-duration">0:00</div>
-                                <div class="live-stat-label">Time</div>
-                            </div>
-                            <div class="live-stat-chip">
-                                <div class="live-stat-val" id="live-stat-viewers">0</div>
-                                <div class="live-stat-label">Viewers</div>
-                            </div>
+                            <div class="live-stat-chip"><div class="live-stat-val" id="live-stat-stars" style="color:var(--gold);">0★</div><div class="live-stat-label">Stars</div></div>
+                            <div class="live-stat-chip"><div class="live-stat-val" id="live-stat-hypes">0</div><div class="live-stat-label">Hypes</div></div>
+                            <div class="live-stat-chip"><div class="live-stat-val" id="live-stat-duration">0:00</div><div class="live-stat-label">Time</div></div>
+                            <div class="live-stat-chip"><div class="live-stat-val" id="live-stat-viewers">0</div><div class="live-stat-label">Viewers</div></div>
                         </div>
 
-                        <!-- ③ STUDIO CONTROLS GRID -->
+                        <!-- ③ STUDIO CONTROLS GRID + expandable panels -->
                         <div style="padding:0 10px;">
                             <div class="studio-toolbar" id="studio-toolbar-btns">
                                 <button class="studio-btn" id="btn-share"   onclick="toggleScreenShare()"><span class="studio-btn-icon">🖥</span>Screen</button>
@@ -7719,8 +7784,7 @@ html:not(.dark) .brand-name {
                                 <button class="studio-btn" id="btn-layout"  onclick="toggleLayoutPicker()"><span class="studio-btn-icon">⊞</span>Layout</button>
                                 <button class="studio-btn" id="btn-wb"      onclick="toggleWhiteboard()"><span class="studio-btn-icon">🖊️</span>Board</button>
                             </div>
-
-                            <!-- Expandable panels (unchanged IDs, just reordered under grid) -->
+                            <!-- Expandable panels -->
                             <div id="cohost-panel" style="display:none;">
                                 <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎤 Stage Requests</div>
                                 <div id="cohost-requests-list"><div style="font-size:0.75rem;color:var(--text-muted);">No requests yet.</div></div>
@@ -7736,14 +7800,7 @@ html:not(.dark) .brand-name {
                                     <button class="btn btn-sm btn-outline" onclick="closePoll()">End</button>
                                 </div>
                             </div>
-                            <div id="host-poll-card" class="live-poll-card" style="display:none!important;visibility:hidden;position:absolute;pointer-events:none;width:0;height:0;overflow:hidden;">
-                                <div class="live-poll-head"><span>📊 Poll Results</span><span id="host-poll-votes" style="font-size:0.62rem;color:var(--text-muted);font-weight:400;">0 votes</span></div>
-                                <div class="live-poll-body">
-                                    <div id="host-poll-question" style="font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:10px;"></div>
-                                    <div id="host-poll-options"></div>
-                                    <button class="btn btn-sm btn-outline" onclick="closePoll()" style="margin-top:8px;width:100%;font-size:0.7rem;">⛔ End Poll</button>
-                                </div>
-                            </div>
+                            <div id="host-poll-card" class="live-poll-card" style="display:none!important;visibility:hidden;position:absolute;pointer-events:none;width:0;height:0;overflow:hidden;"></div>
                             <div id="goal-setter" style="display:none; padding:10px 0;">
                                 <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Star Goal</div>
                                 <input type="number" id="goal-amount-input" class="field" placeholder="Goal e.g. 500" min="1" style="margin-bottom:8px;margin-top:0;">
@@ -7761,10 +7818,10 @@ html:not(.dark) .brand-name {
                             <div id="layout-picker" style="display:none; padding:10px 0;">
                                 <div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Stream Layout</div>
                                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                                    <button class="layout-opt-btn" id="layout-btn-solo"      onclick="setStreamLayout('solo')"      title="Solo — just you"><div class="layout-preview layout-preview-solo"><div style="width:100%;height:100%;background:rgba(124,92,191,0.3);border-radius:2px;"></div></div><span>Solo</span></button>
-                                    <button class="layout-opt-btn" id="layout-btn-split2"    onclick="setStreamLayout('split2')"    title="Side by side"><div class="layout-preview layout-preview-split2"><div style="flex:1;background:rgba(124,92,191,0.3);border-radius:2px 0 0 2px;"></div><div style="flex:1;background:rgba(32,201,151,0.3);border-radius:0 2px 2px 0;"></div></div><span>Split</span></button>
-                                    <button class="layout-opt-btn" id="layout-btn-pip-bottom" onclick="setStreamLayout('pip-bottom')" title="Top/bottom stack"><div class="layout-preview" style="display:flex;flex-direction:column;gap:1px;padding:2px;"><div style="flex:2;background:rgba(124,92,191,0.3);border-radius:2px;"></div><div style="flex:1;background:rgba(32,201,151,0.3);border-radius:2px;"></div></div><span>Stack</span></button>
-                                    <button class="layout-opt-btn" id="layout-btn-grid4"     onclick="setStreamLayout('grid4')"     title="2×2 Grid"><div class="layout-preview" style="display:grid;grid-template-columns:1fr 1fr;gap:1px;padding:2px;"><div style="background:rgba(124,92,191,0.3);border-radius:2px;"></div><div style="background:rgba(32,201,151,0.3);border-radius:2px;"></div><div style="background:rgba(32,201,151,0.3);border-radius:2px;"></div><div style="background:rgba(32,201,151,0.3);border-radius:2px;"></div></div><span>Grid</span></button>
+                                    <button class="layout-opt-btn" id="layout-btn-solo"       onclick="setStreamLayout('solo')"      title="Solo"><div class="layout-preview layout-preview-solo"><div style="width:100%;height:100%;background:rgba(124,92,191,0.3);border-radius:2px;"></div></div><span>Solo</span></button>
+                                    <button class="layout-opt-btn" id="layout-btn-split2"     onclick="setStreamLayout('split2')"    title="Side by side"><div class="layout-preview layout-preview-split2"><div style="flex:1;background:rgba(124,92,191,0.3);border-radius:2px 0 0 2px;"></div><div style="flex:1;background:rgba(32,201,151,0.3);border-radius:0 2px 2px 0;"></div></div><span>Split</span></button>
+                                    <button class="layout-opt-btn" id="layout-btn-pip-bottom" onclick="setStreamLayout('pip-bottom')" title="Top/bottom"><div class="layout-preview" style="display:flex;flex-direction:column;gap:1px;padding:2px;"><div style="flex:2;background:rgba(124,92,191,0.3);border-radius:2px;"></div><div style="flex:1;background:rgba(32,201,151,0.3);border-radius:2px;"></div></div><span>Stack</span></button>
+                                    <button class="layout-opt-btn" id="layout-btn-grid4"      onclick="setStreamLayout('grid4')"     title="2×2 Grid"><div class="layout-preview" style="display:grid;grid-template-columns:1fr 1fr;gap:1px;padding:2px;"><div style="background:rgba(124,92,191,0.3);border-radius:2px;"></div><div style="background:rgba(32,201,151,0.3);border-radius:2px;"></div><div style="background:rgba(32,201,151,0.3);border-radius:2px;"></div><div style="background:rgba(32,201,151,0.3);border-radius:2px;"></div></div><span>Grid</span></button>
                                 </div>
                             </div>
                             <div id="lower-third-editor" style="display:none;padding:10px 0;">
@@ -7785,7 +7842,17 @@ html:not(.dark) .brand-name {
                             </div>
                         </div>
 
-                        <!-- ④ END STREAM — always anchored at bottom -->
+                        <!-- ④ LIVE CHAT — after controls so enterCinema chat placeholder is at the end -->
+                        <div class="card live-chat-card" id="bc-panel-chat-card" style="flex:1;min-height:0;display:flex;flex-direction:column;border-radius:0;margin-bottom:0;">
+                            <div class="live-chat-head">Live Chat</div>
+                            <div id="live-broadcast-chat-feed" class="live-chat-feed"></div>
+                            <div class="live-chat-input-row">
+                                <input type="text" id="live-broadcast-chat-input" class="field" placeholder="Chat with your viewers…" onkeydown="if(event.key==='Enter')sendLiveChatBroadcaster()">
+                                <button class="btn btn-purple btn-sm" onclick="sendLiveChatBroadcaster()">Send</button>
+                            </div>
+                        </div>
+
+                        <!-- ⑤ END STREAM — anchored at bottom -->
                         <div style="padding:10px 10px 12px;flex-shrink:0;">
                             <button onclick="endLiveStream()" style="width:100%;padding:11px;border-radius:10px;background:rgba(224,62,62,0.1);border:1px solid rgba(224,62,62,0.35);color:#ff6b6b;font-weight:700;font-size:0.85rem;cursor:pointer;transition:background 0.15s,border-color 0.15s;letter-spacing:0.3px;"
                                 onmouseover="this.style.background='rgba(224,62,62,0.2)'"
@@ -7799,124 +7866,7 @@ html:not(.dark) .brand-name {
                             <div class="live-lb-head">🏆 Top Gifters</div>
                             <div id="gift-lb-list"></div>
                         </div>
-
-                        <!-- Video box with overlays — inside the panel so layout is correct -->
-                        <div class="live-stream-box" id="live-broadcaster-video-container">
-                            <!-- Top bar: LIVE badge + health + viewers -->
-                            <div class="live-stream-overlay-top">
-                                <span class="live-badge-pill">🔴 YOU ARE LIVE</span>
-                                <div id="stream-health">
-                                    <div class="health-dot good" id="health-dot"></div>
-                                    <span id="health-label">Good</span>
-                                </div>
-                                <span class="live-viewer-chip" id="live-broadcast-viewers">👁 0 watching</span>
-                            </div>
-
-                            <!-- Screen share label -->
-                            <div id="screen-share-label">🖥 Screen Share</div>
-
-                            <!-- Main video container -->
-                            <div id="live-broadcaster-video" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
-
-                            <!-- PiP camera (shown when screen sharing) -->
-                            <div id="pip-camera-overlay"></div>
-
-                            <!-- Floating reactions container -->
-                            <div id="reaction-container"></div>
-
-                            <!-- Countdown overlay moved to body level -->
-
-                            <!-- Lower thirds bar -->
-                            <div id="lower-third-bar">
-                                <div class="lower-third-name" id="lower-third-name-text"></div>
-                                <div class="lower-third-title" id="lower-third-title-text"></div>
-                            </div>
-
-                            <!-- Stream meta bottom left -->
-                            <div class="live-stream-meta" id="bc-meta-nowrap" style="bottom:50px;">
-                                <div class="live-stream-host" id="live-broadcast-title-display"></div>
-                            </div>
-
-                            <!-- ★ TikTok-style overlays: poll (bottom-left) + star goal (top-right) -->
-                            <div class="vid-overlay-poll" id="bc-vid-poll">
-                                <div class="vop-head">
-                                    <span>📊 Poll Results</span>
-                                    <span style="display:flex;align-items:center;gap:6px;">
-                                        <span id="bc-vid-poll-votes">0 votes</span>
-                                        <button onclick="closePoll()" title="End poll" style="background:rgba(224,62,62,0.25);border:1px solid rgba(224,62,62,0.4);color:#ff8080;border-radius:4px;font-size:0.52rem;padding:1px 5px;cursor:pointer;font-weight:700;">End</button>
-                                    </span>
-                                </div>
-                                <div class="vop-question" id="bc-vid-poll-question"></div>
-                                <div id="bc-vid-poll-options"></div>
-                            </div>
-
-                            <div class="vid-overlay-goal" id="bc-vid-goal">
-                                <div class="vog-head">
-                                    <span>🎯 Stream Goal</span>
-                                    <span style="display:flex;align-items:center;gap:6px;">
-                                        <span id="bc-vid-goal-pct">0%</span>
-                                        <button onclick="dismissStarGoal()" title="Hide goal" style="background:rgba(255,255,255,0.12);border:none;color:rgba(255,255,255,0.7);border-radius:50%;width:16px;height:16px;font-size:0.55rem;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;">✕</button>
-                                    </span>
-                                </div>
-                                <div class="vog-track"><div class="vog-fill" id="bc-vid-goal-fill" style="width:0%"></div></div>
-                                <div class="vog-nums">
-                                    <span id="bc-vid-goal-current">0 ★</span>
-                                    <span id="bc-vid-goal-target">— ★</span>
-                                </div>
-                            </div>
-
-                            <!-- ★ TikTok-style FLOATING CHAT OVERLAY (broadcaster) — messages only, input stays in panel -->
-                            <div class="stream-floating-chat" id="bc-floating-chat" style="display:none;">
-                                <button class="sfc-toggle-btn" id="bc-chat-toggle-btn" onclick="toggleFloatingChatVisibility()" title="Toggle chat visibility for viewers">
-                                    💬 Chat On
-                                </button>
-                                <div class="sfc-feed" id="bc-sfc-feed"></div>
-                            </div>
-
-                            <!-- Whiteboard overlay (inside video container so it overlays the feed) -->
-                            <div id="whiteboard-overlay" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;z-index:25;flex-direction:column;">
-                                <!-- Solid background fill — shown in Blank Board mode -->
-                                <div id="wb-bg-fill" style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000;display:none;"></div>
-                                <canvas id="whiteboard-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair;touch-action:none;"></canvas>
-                                <!-- Mode pill (top-left) -->
-                                <div id="wb-mode-pill" style="position:absolute;top:10px;left:12px;z-index:32;display:flex;gap:0;border-radius:20px;overflow:hidden;border:1px solid rgba(124,92,191,0.5);box-shadow:0 2px 10px rgba(0,0,0,0.4);">
-                                    <button id="wb-mode-overlay" onclick="wbSetMode('overlay')" style="padding:4px 10px;font-size:0.62rem;font-weight:700;background:rgba(124,92,191,0.85);color:#fff;border:none;cursor:pointer;letter-spacing:0.3px;">📹 Draw Over Stream</button>
-                                    <button id="wb-mode-blank"   onclick="wbSetMode('blank')"   style="padding:4px 10px;font-size:0.62rem;font-weight:700;background:rgba(10,10,20,0.75);color:rgba(255,255,255,0.55);border:none;cursor:pointer;letter-spacing:0.3px;">⬛ Blank Board</button>
-                                </div>
-                                <!-- Drawing toolbar (top-centre) -->
-                                <div id="whiteboard-toolbar" style="position:absolute;top:48px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;justify-content:center;gap:5px;align-items:center;background:rgba(10,10,20,0.88);border:1px solid rgba(124,92,191,0.5);border-radius:16px;padding:6px 12px;z-index:31;box-shadow:0 4px 20px rgba(0,0,0,0.5);max-width:calc(100vw - 24px);">
-                                    <button onclick="wbSetTool('pen')"    id="wb-btn-pen"    title="Pen"       style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">✏️</button>
-                                    <button onclick="wbSetTool('text')"   id="wb-btn-text"   title="Text"      style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">T</button>
-                                    <button onclick="wbSetTool('line')"   id="wb-btn-line"   title="Line"      style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">╱</button>
-                                    <button onclick="wbSetTool('rect')"   id="wb-btn-rect"   title="Rectangle" style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">▭</button>
-                                    <button onclick="wbSetTool('circle')" id="wb-btn-circle" title="Circle"    style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">○</button>
-                                    <button onclick="wbSetTool('eraser')" id="wb-btn-eraser" title="Eraser"    style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;padding:3px 7px;font-size:0.7rem;cursor:pointer;flex-shrink:0;">🧹</button>
-                                    <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;flex-shrink:0;"></div>
-                                    <div onclick="wbSetColor('#000000')" style="width:16px;height:16px;border-radius:50%;background:#000000;border:2px solid rgba(255,255,255,0.5);cursor:pointer;flex-shrink:0;" title="Black"></div>
-                                    <div onclick="wbSetColor('#ffffff')" style="width:16px;height:16px;border-radius:50%;background:#ffffff;border:2px solid rgba(255,255,255,0.7);cursor:pointer;flex-shrink:0;" title="White"></div>
-                                    <div onclick="wbSetColor('#f0b429')" style="width:16px;height:16px;border-radius:50%;background:#f0b429;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Gold"></div>
-                                    <div onclick="wbSetColor('#2dd4bf')" style="width:16px;height:16px;border-radius:50%;background:#2dd4bf;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Teal"></div>
-                                    <div onclick="wbSetColor('#e03e3e')" style="width:16px;height:16px;border-radius:50%;background:#e03e3e;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Red"></div>
-                                    <div onclick="wbSetColor('#9b7de0')" style="width:16px;height:16px;border-radius:50%;background:#9b7de0;border:2px solid transparent;cursor:pointer;flex-shrink:0;" title="Purple"></div>
-                                    <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;flex-shrink:0;"></div>
-                                    <select id="wb-size" onchange="wbSetSize(this.value)" style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:6px;padding:2px 4px;font-size:0.62rem;cursor:pointer;flex-shrink:0;" title="Brush size">
-                                        <option value="2" style="background:#1a1a2e;color:#fff;">Thin</option>
-                                        <option value="4" selected style="background:#1a1a2e;color:#fff;">Med</option>
-                                        <option value="8" style="background:#1a1a2e;color:#fff;">Thick</option>
-                                        <option value="16" style="background:#1a1a2e;color:#fff;">Fat</option>
-                                    </select>
-                                    <select id="wb-text-size" onchange="wbSetTextSize(this.value)" style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:6px;padding:2px 4px;font-size:0.62rem;cursor:pointer;flex-shrink:0;" title="Text size">
-                                        <option value="14" style="background:#1a1a2e;color:#fff;">T-Sm</option>
-                                        <option value="24" selected style="background:#1a1a2e;color:#fff;">T-Med</option>
-                                        <option value="36" style="background:#1a1a2e;color:#fff;">T-Lg</option>
-                                        <option value="52" style="background:#1a1a2e;color:#fff;">T-XL</option>
-                                    </select>
-                                    <div style="width:1px;height:18px;background:rgba(255,255,255,0.15);margin:0 2px;flex-shrink:0;"></div>
-                                </div><!-- /whiteboard-toolbar -->
-                            </div><!-- /whiteboard-overlay -->
-                        </div><!-- /live-broadcaster-video-container -->
-
-                        <!-- Gift Leaderboard (hidden, kept for JS ref) -->
+                        <!-- Legacy hidden leaderboard ref -->
                         <div class="live-leaderboard" id="gift-leaderboard-old" style="display:none;">
                             <div class="live-lb-head">🏆 Top Gifters This Stream</div>
                             <div id="gift-lb-list-old"></div>
@@ -24130,45 +24080,36 @@ html:not(.dark) .brand-name {
         ctrlPanels.id     = 'cinema-controls-panels';
         controlsBar.appendChild(ctrlPanels);
 
-        // Collect controls by their known IDs — the buttons and panels may sit either
-        // before OR after the video container in the DOM, so sibling-walking is unreliable.
+        // Scan siblings between placeholders: buttons/toolbars → ctrlBtns, panels → ctrlPanels
+        // Skip the original End Stream button (handled by the static wrap)
         var panelIds = ['poll-creator','lower-third-editor','vbg-picker','cohost-panel','layout-picker',
                         'goal-setter','hand-queue-card','host-poll-card','star-goal-display',
+                        // Viewer-side panels
                         'viewer-poll-card','viewer-star-goal','viewer-leaderboard','viewer-gift-panel'];
-        // Toolbar wrappers and stats strip to move as a unit
-        var toolbarWrapperIds = ['studio-toolbar-btns','live-stats-row'];
-        // Also grab the stats row (it's a sibling div without an ID — find by class)
-        var controlSourceIds = toolbarWrapperIds.concat(panelIds);
-
-        // Walk ALL siblings of the video placeholder's parent and collect anything
-        // that is a control element (not the video, not the chat card, not end-stream btn)
-        var parent = _videoPlaceholder.parentNode;
-        var allSiblings = Array.prototype.slice.call(parent.childNodes);
-        allSiblings.forEach(function(node) {
-            if (node.nodeType !== 1) return;
-            if (node === _videoPlaceholder) return;
-            if (node === _chatPlaceholder) return;
-            var nodeId = node.id || '';
-            var btnText = (node.textContent || '').trim();
-            var btnOnclick = node.getAttribute ? (node.getAttribute('onclick') || '') : '';
-            // Skip original End Stream button
-            if (node.tagName === 'BUTTON' && (
-                btnText.indexOf('End Stream') !== -1 ||
-                btnOnclick.indexOf('endLiveStream') !== -1
-            )) {
-                node.style.display = 'none';
-                return;
+        var node = _videoPlaceholder.nextSibling;
+        while (node && node !== _chatPlaceholder) {
+            var next = node.nextSibling;
+            if (node.nodeType === 1) {
+                var btnText    = (node.textContent || '').trim();
+                var btnOnclick = node.getAttribute('onclick') || '';
+                var nodeId     = node.id || '';
+                // Skip original End Stream button — we use the static one
+                if (node.tagName === 'BUTTON' && (
+                    btnText.indexOf('End Stream') !== -1 ||
+                    btnOnclick.indexOf('endLiveStream') !== -1
+                )) {
+                    // hide the original, keep in DOM so exitCinema can restore
+                    node.style.display = 'none';
+                } else if (panelIds.indexOf(nodeId) !== -1) {
+                    // Panel elements go into panels area
+                    ctrlPanels.appendChild(node);
+                } else {
+                    // Buttons, toolbars go into buttons row
+                    ctrlBtns.appendChild(node);
+                }
             }
-            // Skip the chat card itself (moved separately below)
-            if (node === chatEl) return;
-            // Panels go into panels area
-            if (panelIds.indexOf(nodeId) !== -1) {
-                ctrlPanels.appendChild(node);
-            } else {
-                // Everything else (stats strip, toolbar wrapper, any misc elements) → buttons row
-                ctrlBtns.appendChild(node);
-            }
-        });
+            node = next;
+        }
 
         // Move chat card into top of right column (before the controls)
         // cinemaChatCol already contains cinema-end-btn-wrap; insert before it
@@ -24197,37 +24138,38 @@ html:not(.dark) .brand-name {
         var fsBtn = document.getElementById('cinema-fs-btn');
         if (fsBtn) fsBtn.parentNode.removeChild(fsBtn);
 
-        // Restore chat to original position FIRST (it sits at top of the panel)
-        var chatEl = cinemaChatCol && cinemaChatCol.querySelector('.live-chat-card');
-        if (chatEl && _chatPlaceholder.parentNode) {
-            _chatPlaceholder.parentNode.insertBefore(chatEl, _chatPlaceholder);
+        // DOM order in live-active-panel: video → stats/controls → chat → end-stream
+        // So _videoPlaceholder is at top, _chatPlaceholder is after controls.
+        // Restore: video first, then controls (before chat placeholder), then chat.
+
+        // 1. Restore video to original position
+        if (videoEl && _videoPlaceholder.parentNode) {
+            _videoPlaceholder.parentNode.insertBefore(videoEl, _videoPlaceholder);
         }
 
-        // Restore all controls AFTER the chat card (before the video placeholder)
-        // btns and panels divs contain the original elements collected during enterCinema
+        // 2. Restore controls (stats strip, toolbar, panels) before the chat placeholder
         if (controlsBar) {
             var btnsDiv   = controlsBar.querySelector('#cinema-controls-btns');
             var panelsDiv = controlsBar.querySelector('#cinema-controls-panels');
-            // Restore toolbar/stats elements before the video placeholder
             if (btnsDiv) {
                 while (btnsDiv.firstChild) {
                     var el = btnsDiv.firstChild;
-                    el.style.display = ''; // un-hide any we hid
-                    _videoPlaceholder.parentNode.insertBefore(el, _videoPlaceholder);
+                    el.style.display = ''; // un-hide anything we hid (e.g. End Stream div)
+                    _chatPlaceholder.parentNode.insertBefore(el, _chatPlaceholder);
                 }
             }
-            // Restore panels before the video placeholder
             if (panelsDiv) {
                 while (panelsDiv.firstChild) {
-                    _videoPlaceholder.parentNode.insertBefore(panelsDiv.firstChild, _videoPlaceholder);
+                    _chatPlaceholder.parentNode.insertBefore(panelsDiv.firstChild, _chatPlaceholder);
                 }
             }
             controlsBar.parentNode.removeChild(controlsBar);
         }
 
-        // Restore video to original position (after controls, before anything else that was after it)
-        if (videoEl && _videoPlaceholder.parentNode) {
-            _videoPlaceholder.parentNode.insertBefore(videoEl, _videoPlaceholder);
+        // 3. Restore chat card to original position (after controls)
+        var chatEl = cinemaChatCol && cinemaChatCol.querySelector('.live-chat-card');
+        if (chatEl && _chatPlaceholder.parentNode) {
+            _chatPlaceholder.parentNode.insertBefore(chatEl, _chatPlaceholder);
         }
 
         // Hide end btn wrap
