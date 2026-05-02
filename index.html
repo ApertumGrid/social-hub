@@ -1674,12 +1674,13 @@
         #lower-third-bar {
             position:absolute; bottom:0; left:0; right:0; top:auto;
             background:linear-gradient(90deg, rgba(10,10,20,0.92) 0%, rgba(124,92,191,0.85) 100%);
-            padding:10px 16px 12px;
-            z-index:25; display:none;
+            padding:10px 16px 14px;
+            z-index:26; display:none;
             border-top:2px solid var(--purple);
-            max-height:64px; overflow:hidden;
+            min-height:56px; max-height:80px; overflow:hidden;
             pointer-events:none;
         }
+        /* Stream title hidden via JS when lower-third is active */
         .lower-third-name { font-size:1rem; font-weight:800; color:#fff; line-height:1.2; }
         .lower-third-title { font-size:0.68rem; color:rgba(255,255,255,0.75); margin-top:2px; letter-spacing:0.5px; }
 
@@ -1791,10 +1792,10 @@
             pointer-events: all;
             display: none; /* shown via JS */
         }
-        /* Poll — bottom-left of video — PREMIUM REDESIGN */
+        /* Poll — bottom-right of video (left is used by chat overlay) */
         .vid-overlay-poll {
             bottom: 90px;
-            left: 10px;
+            right: 10px;
             width: clamp(190px, 48%, 256px);
             background: linear-gradient(160deg, rgba(8,6,22,0.90) 0%, rgba(18,10,40,0.88) 100%);
             backdrop-filter: blur(20px) saturate(180%);
@@ -22669,8 +22670,11 @@ html:not(.dark) .brand-name {
         if (!name && !title) { showToast('Enter a name or title first.'); return; }
         if (nameEl)  nameEl.textContent  = name;
         if (titleEl) titleEl.textContent = title;
-        // Show the bar — it sits at z-index:20 above the video, bottom of the container
+        // Show the bar — it sits at z-index:26 above the video, bottom of the container
         if (bar) { bar.style.display = 'block'; bar.style.top = 'auto'; }
+        // Hide stream title so it doesn't overlap the lower-third bar
+        const meta = $('bc-meta-nowrap');
+        if (meta) meta.style.display = 'none';
         const btn = $('btn-lower-third');
         if (btn) btn.classList.add('active-teal');
         // Broadcast to Firestore so viewers see it
@@ -22686,6 +22690,9 @@ html:not(.dark) .brand-name {
     window.hideLowerThird = function() {
         const bar = $('lower-third-bar');
         if (bar) bar.style.display = 'none';
+        // Restore stream title
+        const meta = $('bc-meta-nowrap');
+        if (meta) meta.style.display = '';
         const btn = $('btn-lower-third');
         if (btn) btn.classList.remove('active-teal');
         if (currentStreamId && window.db) {
