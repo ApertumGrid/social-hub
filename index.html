@@ -856,10 +856,10 @@
         ══════════════════════════════════════════════════════════ */
         .stream-floating-chat {
             position: absolute;
-            bottom: 90px;
-            right: 14px;
-            width: clamp(190px, 33%, 260px);
-            max-height: 52%;
+            bottom: 70px;
+            left: 10px;
+            width: clamp(220px, 38%, 320px);
+            max-height: 55%;
             display: flex;
             flex-direction: column;
             z-index: 22;
@@ -907,8 +907,8 @@
             padding: 0 0 6px 0;
             scrollbar-width: none;
             pointer-events: none;
-            mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.4) 18%, black 40%);
-            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.4) 18%, black 40%);
+            mask-image: linear-gradient(to bottom, transparent 0%, black 25%);
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 25%);
         }
         .sfc-feed::-webkit-scrollbar { display: none; }
 
@@ -926,34 +926,37 @@
             to   { opacity: 1; transform: translateY(0) scale(1); }
         }
         .sfc-msg-av {
-            width: 22px; height: 22px;
+            width: 28px; height: 28px;
             border-radius: 50%;
             object-fit: cover;
             flex-shrink: 0;
-            border: 1.5px solid rgba(255,255,255,0.15);
-            margin-top: 1px;
+            border: 2px solid rgba(255,255,255,0.25);
+            margin-top: 2px;
         }
         .sfc-msg-bubble {
-            background: rgba(10,8,24,0.60);
+            background: rgba(0,0,0,0.82);
             backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border-radius: 12px 12px 12px 3px;
-            padding: 5px 9px;
+            padding: 6px 11px;
             max-width: calc(100% - 30px);
             word-break: break-word;
-            border: 1px solid rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
         }
         .sfc-msg-user {
-            font-size: 0.60rem;
+            font-size: 0.68rem;
             font-weight: 700;
-            color: var(--purple-lt);
-            margin-bottom: 1px;
+            color: #b89fff;
+            margin-bottom: 2px;
             line-height: 1.2;
         }
         .sfc-msg-user.host-user { color: #ffd23f; }
         .sfc-msg-text {
-            font-size: 0.72rem;
-            color: rgba(255,255,255,0.92);
-            line-height: 1.35;
+            font-size: 0.82rem;
+            color: #ffffff;
+            line-height: 1.4;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.8);
         }
         /* Special message types */
         .sfc-msg.sfc-hype .sfc-msg-bubble {
@@ -1063,6 +1066,19 @@
         /* ── Cinema Mode ── only triggered by JS adding class to body ── */
         body.cinema-mode #sidebar,
         body.cinema-mode #right-panel { display:none !important; }
+
+        /* Hide raw broadcaster/viewer panels instantly when cinema is active — prevents flash of buttons */
+        body.cinema-mode #live-active-panel {
+            visibility: hidden !important;
+            pointer-events: none !important;
+        }
+        body.cinema-mode #live-player-wrap > .card,
+        body.cinema-mode #live-player-wrap > .live-chat-card,
+        body.cinema-mode #live-player-wrap > .live-stats-row {
+            display: none !important;
+        }
+        /* Cinema shell and everything inside it stays fully visible */
+        body.cinema-mode #cinema-shell { visibility: visible !important; }
         body.cinema-mode #app-body { grid-template-columns:1fr !important; }
         body.cinema-mode .page-heading,
         body.cinema-mode #live-tabs { display:none !important; }
@@ -24209,11 +24225,13 @@ html:not(.dark) .brand-name {
     }
     var _patchedStart = async function() {
         await _origStart.apply(this, arguments);
+        // Apply cinema-mode class immediately so raw panel is hidden via CSS
+        document.body.classList.add('cinema-mode');
         setTimeout(function(){
             var vc = document.getElementById('live-broadcaster-video-container');
-            if (vc) vc.style.height = ''; // remove hardcoded height so flex can take over
+            if (vc) vc.style.height = '';
             enterCinema('live-broadcaster-video-container', 'live-broadcast-chat-feed');
-        }, 800);
+        }, 400);
     };
 
     // Patch joinLiveStream
