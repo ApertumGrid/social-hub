@@ -24130,36 +24130,45 @@ html:not(.dark) .brand-name {
         ctrlPanels.id     = 'cinema-controls-panels';
         controlsBar.appendChild(ctrlPanels);
 
-        // Scan siblings between placeholders: buttons/toolbars → ctrlBtns, panels → ctrlPanels
-        // Skip the original End Stream button (handled by the static wrap)
+        // Collect controls by their known IDs — the buttons and panels may sit either
+        // before OR after the video container in the DOM, so sibling-walking is unreliable.
         var panelIds = ['poll-creator','lower-third-editor','vbg-picker','cohost-panel','layout-picker',
                         'goal-setter','hand-queue-card','host-poll-card','star-goal-display',
-                        // Viewer-side panels
                         'viewer-poll-card','viewer-star-goal','viewer-leaderboard','viewer-gift-panel'];
-        var node = _videoPlaceholder.nextSibling;
-        while (node && node !== _chatPlaceholder) {
-            var next = node.nextSibling;
-            if (node.nodeType === 1) {
-                var btnText    = (node.textContent || '').trim();
-                var btnOnclick = node.getAttribute('onclick') || '';
-                var nodeId     = node.id || '';
-                // Skip original End Stream button — we use the static one
-                if (node.tagName === 'BUTTON' && (
-                    btnText.indexOf('End Stream') !== -1 ||
-                    btnOnclick.indexOf('endLiveStream') !== -1
-                )) {
-                    // hide the original, keep in DOM so exitCinema can restore
-                    node.style.display = 'none';
-                } else if (panelIds.indexOf(nodeId) !== -1) {
-                    // Panel elements go into panels area
-                    ctrlPanels.appendChild(node);
-                } else {
-                    // Buttons, toolbars go into buttons row
-                    ctrlBtns.appendChild(node);
-                }
+        // Toolbar wrappers and stats strip to move as a unit
+        var toolbarWrapperIds = ['studio-toolbar-btns','live-stats-row'];
+        // Also grab the stats row (it's a sibling div without an ID — find by class)
+        var controlSourceIds = toolbarWrapperIds.concat(panelIds);
+
+        // Walk ALL siblings of the video placeholder's parent and collect anything
+        // that is a control element (not the video, not the chat card, not end-stream btn)
+        var parent = _videoPlaceholder.parentNode;
+        var allSiblings = Array.prototype.slice.call(parent.childNodes);
+        allSiblings.forEach(function(node) {
+            if (node.nodeType !== 1) return;
+            if (node === _videoPlaceholder) return;
+            if (node === _chatPlaceholder) return;
+            var nodeId = node.id || '';
+            var btnText = (node.textContent || '').trim();
+            var btnOnclick = node.getAttribute ? (node.getAttribute('onclick') || '') : '';
+            // Skip original End Stream button
+            if (node.tagName === 'BUTTON' && (
+                btnText.indexOf('End Stream') !== -1 ||
+                btnOnclick.indexOf('endLiveStream') !== -1
+            )) {
+                node.style.display = 'none';
+                return;
             }
-            node = next;
-        }
+            // Skip the chat card itself (moved separately below)
+            if (node === chatEl) return;
+            // Panels go into panels area
+            if (panelIds.indexOf(nodeId) !== -1) {
+                ctrlPanels.appendChild(node);
+            } else {
+                // Everything else (stats strip, toolbar wrapper, any misc elements) → buttons row
+                ctrlBtns.appendChild(node);
+            }
+        });
 
         // Move chat card into top of right column (before the controls)
         // cinemaChatCol already contains cinema-end-btn-wrap; insert before it
@@ -24188,37 +24197,37 @@ html:not(.dark) .brand-name {
         var fsBtn = document.getElementById('cinema-fs-btn');
         if (fsBtn) fsBtn.parentNode.removeChild(fsBtn);
 
-        // Restore all controls children back before the chat placeholder
-        // (btns and panels divs contain the original elements)
+        // Restore chat to original position FIRST (it sits at top of the panel)
+        var chatEl = cinemaChatCol && cinemaChatCol.querySelector('.live-chat-card');
+        if (chatEl && _chatPlaceholder.parentNode) {
+            _chatPlaceholder.parentNode.insertBefore(chatEl, _chatPlaceholder);
+        }
+
+        // Restore all controls AFTER the chat card (before the video placeholder)
+        // btns and panels divs contain the original elements collected during enterCinema
         if (controlsBar) {
             var btnsDiv   = controlsBar.querySelector('#cinema-controls-btns');
             var panelsDiv = controlsBar.querySelector('#cinema-controls-panels');
-            // Restore from btns div
+            // Restore toolbar/stats elements before the video placeholder
             if (btnsDiv) {
                 while (btnsDiv.firstChild) {
                     var el = btnsDiv.firstChild;
                     el.style.display = ''; // un-hide any we hid
-                    _chatPlaceholder.parentNode.insertBefore(el, _chatPlaceholder);
+                    _videoPlaceholder.parentNode.insertBefore(el, _videoPlaceholder);
                 }
             }
-            // Restore from panels div
+            // Restore panels before the video placeholder
             if (panelsDiv) {
                 while (panelsDiv.firstChild) {
-                    _chatPlaceholder.parentNode.insertBefore(panelsDiv.firstChild, _chatPlaceholder);
+                    _videoPlaceholder.parentNode.insertBefore(panelsDiv.firstChild, _videoPlaceholder);
                 }
             }
             controlsBar.parentNode.removeChild(controlsBar);
         }
 
-        // Restore video to original position
+        // Restore video to original position (after controls, before anything else that was after it)
         if (videoEl && _videoPlaceholder.parentNode) {
             _videoPlaceholder.parentNode.insertBefore(videoEl, _videoPlaceholder);
-        }
-
-        // Restore chat to original position
-        var chatEl = cinemaChatCol && cinemaChatCol.querySelector('.live-chat-card');
-        if (chatEl && _chatPlaceholder.parentNode) {
-            _chatPlaceholder.parentNode.insertBefore(chatEl, _chatPlaceholder);
         }
 
         // Hide end btn wrap
