@@ -7396,7 +7396,7 @@ html:not(.dark) .brand-name {
                         </div>
 
                         <!-- Viewer reactions bar -->
-                        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+                        <div id="viewer-reactions-bar" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
                             <button onclick="sendReaction('❤️')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">❤️</button>
                             <button onclick="sendReaction('🔥')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">🔥</button>
                             <button onclick="sendReaction('😂')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">😂</button>
@@ -19048,7 +19048,7 @@ html:not(.dark) .brand-name {
     // ── Helpers ───────────────────────────────────────────────────
     function $(id) { return document.getElementById(id); }
     function setText(id, val) { const el = $(id); if (el) el.textContent = val; }
-    function show(id)  { const el = $(id); if (!el) return; el.style.display = (id === 'live-active-panel' || id === 'live-broadcast-panel') ? 'flex' : 'block'; }
+    function show(id)  { const el = $(id); if (!el) return; el.style.display = (id === 'live-active-panel' || id === 'live-broadcast-panel' || id === 'live-player-wrap') ? 'flex' : 'block'; }
     function hide(id)  { const el = $(id); if (el) el.style.display = 'none'; }
 
     function waitForFb(cb) {
@@ -24663,17 +24663,17 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 #live-player-wrap button[onclick="endLiveStream()"] { display:none!important; }
 #viewer-leaderboard { display:none!important; }
 
-/* Reactions row — hide */
+/* Reactions row — hide; also hide the reaction emoji bar itself */
 #live-player-wrap .live-action-row + div { display:none!important; }
+/* The emoji reaction bar only shows when player-wrap is visible (has display:flex) */
+#live-player-wrap[style*="display:none"] #viewer-reactions-bar { display:none!important; }
 
 /* ══ VIEWER PANEL — reorder with flex ═══════════════════════
-   #live-player-wrap has overflow-y:auto. Make it a flex column
-   and use order to rearrange: chat → gifts → action row
-   All other elements (poll-card, star-goal etc) are display:none
-   or position:absolute so they won't affect flow.
+   #live-player-wrap uses flex when VISIBLE.
+   show() sets display:flex; hide() sets display:none.
+   The flex override only applies when shown.
 ══════════════════════════════════════════════════════════════ */
-#live-player-wrap {
-    display:flex!important;
+#live-player-wrap[style*="display:flex"] {
     flex-direction:column!important;
     overflow-y:auto!important;
     max-height:calc(100vh - 60px)!important;
