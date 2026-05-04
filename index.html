@@ -7380,9 +7380,30 @@ html:not(.dark) .brand-name {
                             </div>
                         </div>
 
-                        <!-- ACTION ROW MOVED BELOW GIFTS -->
+                        <!-- Hype + Stars row -->
+                        <div class="live-action-row">
+                            <div class="live-stars-pill">
+                                <span style="color:var(--gold);">★</span>
+                                <span id="live-creator-stars-watch">0</span>
+                                <span style="font-size:0.62rem;color:var(--text-muted);">creator Stars</span>
+                            </div>
+                            <button class="btn live-hype-btn" id="live-hype-btn" onclick="sendLiveHype()">
+                                ⚡ Hype <span style="font-size:0.65rem;opacity:0.6;font-weight:600;"> · 1★</span>&nbsp;<span id="live-hype-count" style="opacity:0.75;font-size:0.7rem;">(0)</span>
+                            </button>
+                            <button class="raise-hand-btn" id="viewer-raise-hand-btn" onclick="toggleRaiseHand()">✋ Raise Hand</button>
+                            <button id="viewer-cohost-btn" onclick="requestCoHost()">🎤 Join Stage</button>
+                            <button class="btn btn-outline btn-sm" onclick="leaveLiveStream()">✕ Leave</button>
+                        </div>
 
-                        <!-- Viewer reactions bar REMOVED -->
+                        <!-- Viewer reactions bar -->
+                        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+                            <button onclick="sendReaction('❤️')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">❤️</button>
+                            <button onclick="sendReaction('🔥')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">🔥</button>
+                            <button onclick="sendReaction('😂')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">😂</button>
+                            <button onclick="sendReaction('🚀')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">🚀</button>
+                            <button onclick="sendReaction('💎')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">💎</button>
+                            <button onclick="sendReaction('👏')" style="font-size:1.3rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:8px;transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.85)'" onmouseup="this.style.transform=''">👏</button>
+                        </div>
 
                         <!-- Active Poll (viewer side — shown when host launches one) -->
                         <!-- viewer-poll-card: now shown as in-video overlay; kept in DOM for JS references only -->
@@ -7410,8 +7431,11 @@ html:not(.dark) .brand-name {
                             </div>
                         </div>
 
-                        <!-- viewer leaderboard hidden -->
-                        <div id="viewer-leaderboard" style="display:none!important;"><div id="viewer-lb-list"></div></div>
+                        <!-- Gift Leaderboard (viewer side) -->
+                        <div class="live-leaderboard" id="viewer-leaderboard" style="display:none;">
+                            <div class="live-lb-head">🏆 Top Gifters</div>
+                            <div id="viewer-lb-list"></div>
+                        </div>
 
                         <!-- Gift Panel -->
                         <div class="live-gift-card" id="viewer-gift-panel">
@@ -7440,25 +7464,15 @@ html:not(.dark) .brand-name {
                             </div>
                         </div>
 
-                        <!-- 3. ACTION ROW — all inline -->
-                        <div class="live-action-row">
-                            <button class="btn live-hype-btn" id="live-hype-btn" onclick="sendLiveHype()">⚡ Hype <span class="hype-meta">· 1★ <span id="live-hype-count">(0)</span></span></button>
-                            <button class="viewer-action-btn" id="viewer-raise-hand-btn" onclick="toggleRaiseHand()">✋ Hand</button>
-                            <button class="viewer-action-btn" id="viewer-cohost-btn" onclick="requestCoHost()">🎤 Stage</button>
-                            <button class="viewer-leave-btn" onclick="leaveLiveStream()">✕ Leave</button>
-                            <span id="live-creator-stars-watch" style="display:none;">0</span>
-                        </div>
-
-                        <!-- 1. CHAT -->
-                        <div class="viewer-chat-wrap" id="viewer-panel-chat-card">
+                        <!-- Live Chat (input in panel, messages mirrored to floating overlay) -->
+                        <div class="card live-chat-card" id="viewer-panel-chat-card">
+                            <div class="live-chat-head">💬 Live Chat</div>
                             <div id="live-chat-feed" class="live-chat-feed"></div>
                             <div class="live-chat-input-row">
-                                <input type="text" id="live-chat-input" class="field" placeholder="Say something…" style="margin-top:0;" onkeydown="if(event.key='Enter')sendLiveChat()">
+                                <input type="text" id="live-chat-input" class="field" placeholder="Say something…" style="margin-top:0;" onkeydown="if(event.key==='Enter')sendLiveChat()">
                                 <button class="btn btn-purple btn-sm" onclick="sendLiveChat()">Send</button>
                             </div>
                         </div>
-
-                        <!-- 2. GIFT PANEL (placed here by original order — preserved) -->
                     </div>
 
                     <!-- Stream browser — shows available streams -->
@@ -7670,8 +7684,12 @@ html:not(.dark) .brand-name {
                             <button class="studio-btn" id="btn-screen-share" onclick="toggleScreenShare()">
                                 <span class="studio-btn-icon">🖥</span> Share Screen
                             </button>
-                            <button class="studio-btn" id="btn-noise-suppress" onclick="toggleNoiseSuppression()" style="display:none!important;"></button>
-                            <button class="studio-btn" id="btn-vbg" onclick="toggleVBGPicker()" style="display:none!important;"></button>
+                            <button class="studio-btn" id="btn-noise-suppress" onclick="toggleNoiseSuppression()">
+                                <span class="studio-btn-icon">🎙</span> Noise Cancel
+                            </button>
+                            <button class="studio-btn" id="btn-vbg" onclick="toggleVBGPicker()">
+                                <span class="studio-btn-icon">🌅</span> Background
+                            </button>
                             <button class="studio-btn" id="btn-cohost" onclick="toggleCohostPanel()" title="Manage viewer requests to join your stage">
                                 <span class="studio-btn-icon">🎤</span> Stage Requests
                             </button>
@@ -24609,32 +24627,61 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
     setTimeout(addCinemaShortcut, 1200);
 })();
 </script>
-<!-- LUXURY BROADCAST RESKIN v10 — targets actual rendered selectors -->
+
+<!-- LUXURY NEBULA PRISM — CSS ONLY, ZERO HTML CHANGES -->
 <style id="luxury-v10">
 
-/* ══ HIDE unwanted elements ════════════════════════════════ */
+/* ══ HIDE unwanted broadcaster buttons ══════════════════════ */
 #btn-noise-suppress, #btn-vbg {
     display:none!important; width:0!important; height:0!important;
     padding:0!important; margin:0!important; overflow:hidden!important; pointer-events:none!important;
 }
 .live-stars-pill { display:none!important; }
 
-/* End Stream hidden on viewer side — broadcaster only */
-#live-watch-panel button[onclick="endLiveStream()"],
-#live-player-wrap button[onclick="endLiveStream()"] {
-    display:none!important;
-}
-/* Viewer leaderboard always hidden */
+/* ══ HIDE End Stream + Top Gifters on VIEWER side ═══════════ */
+/* These only appear inside #live-player-wrap (viewer) not cinema */
+#live-player-wrap button[onclick="endLiveStream()"] { display:none!important; }
 #viewer-leaderboard { display:none!important; }
 
-/* ══ BROADCASTER DESKTOP — cinema layout ═══════════════════ */
+/* Reactions row — hide */
+#live-player-wrap .live-action-row + div { display:none!important; }
+
+/* ══ VIEWER PANEL — reorder with flex ═══════════════════════
+   #live-player-wrap has overflow-y:auto. Make it a flex column
+   and use order to rearrange: chat → gifts → action row
+   All other elements (poll-card, star-goal etc) are display:none
+   or position:absolute so they won't affect flow.
+══════════════════════════════════════════════════════════════ */
+#live-player-wrap {
+    display:flex!important;
+    flex-direction:column!important;
+    overflow-y:auto!important;
+    max-height:calc(100vh - 60px)!important;
+}
+/* Video stays first */
+#cohost-stage-wrap       { order:1!important; }
+#live-remote-video-container { order:2!important; }
+
+/* Action row (hype/hand/stage/leave) → LAST */
+#live-player-wrap .live-action-row { order:10!important; }
+
+/* Hidden poll/goal/leaderboard — push out of flow */
+#viewer-poll-card, #viewer-star-goal { order:0!important; }
+
+/* Gift panel → second to last */
+#viewer-gift-panel { order:9!important; }
+
+/* Chat card → middle (after video, before gifts) */
+#viewer-panel-chat-card { order:5!important; }
+
+/* ══ BROADCASTER CINEMA LAYOUT ══════════════════════════════ */
 #cinema-chat-col {
     display:flex!important; flex-direction:column!important; overflow:hidden!important;
     background:radial-gradient(ellipse 100% 50% at 50% 100%,rgba(70,20,180,0.1) 0%,transparent 70%),linear-gradient(180deg,#0a0818,#07050f)!important;
     border-left:1px solid rgba(110,65,230,0.16)!important;
 }
 #cinema-controls {
-    order:1!important; flex:1 1 auto!important; min-height:0!important;
+    order:2!important; flex:1 1 auto!important; min-height:0!important;
     max-height:none!important; overflow-y:auto!important; overflow-x:hidden!important;
     scrollbar-width:thin!important; scrollbar-color:rgba(120,80,220,0.3) transparent!important;
     display:flex!important; flex-direction:column!important;
@@ -24643,27 +24690,31 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 }
 #cinema-controls-panels { flex:1!important; overflow-y:visible!important; max-height:none!important; padding:4px 8px 8px!important; }
 #cinema-controls-panels > * { margin-bottom:8px!important; }
-#cinema-end-btn-wrap { order:2!important; flex-shrink:0!important; background:linear-gradient(180deg,#090714,#060510)!important; border-top:1px solid rgba(175,25,25,0.22)!important; padding:8px 10px!important; }
-#cinema-chat-col .live-chat-card { order:3!important; flex-shrink:0!important; flex:0 0 auto!important; border-radius:0!important; border:none!important; border-top:1px solid rgba(110,65,230,0.18)!important; background:transparent!important; }
-#cinema-chat-col .live-chat-feed, #cinema-chat-col #live-broadcast-chat-feed { display:none!important; }
+#cinema-end-btn-wrap { order:3!important; flex-shrink:0!important; background:linear-gradient(180deg,#090714,#060510)!important; border-top:1px solid rgba(175,25,25,0.22)!important; padding:8px 10px!important; }
+#cinema-chat-col .live-chat-card { order:1!important; flex-shrink:0!important; flex:0 0 auto!important; border-radius:0!important; border:none!important; border-top:1px solid rgba(110,65,230,0.18)!important; background:transparent!important; }
+#cinema-chat-col .live-chat-feed,
+#cinema-chat-col #live-broadcast-chat-feed { display:none!important; }
 #cinema-chat-col .live-chat-head { display:none!important; }
 #cinema-chat-col .live-chat-input-row { background:rgba(10,8,20,0.95)!important; border-top:1px solid rgba(100,65,210,0.2)!important; padding:10px!important; }
 #cinema-chat-col .live-chat-input-row .field { background:rgba(255,255,255,0.05)!important; border:1px solid rgba(110,75,210,0.25)!important; color:rgba(210,200,245,0.9)!important; border-radius:10px!important; }
 #cinema-chat-col .live-chat-input-row .field::placeholder { color:rgba(135,105,205,0.45)!important; }
 #cinema-chat-col .live-chat-input-row .btn-purple { background:radial-gradient(ellipse 55% 45% at 22% 18%,rgba(200,170,255,0.22) 0%,transparent 60%),linear-gradient(145deg,#4a30a0,#321e80)!important; border:1px solid rgba(155,115,255,0.42)!important; color:#ede8ff!important; font-weight:800!important; border-radius:10px!important; }
 
-/* ══ GEM BUTTONS (broadcaster studio) ══════════════════════ */
+/* ══ GEM BUTTONS (broadcaster) ══════════════════════════════ */
 #cinema-controls-btns { display:grid!important; grid-template-columns:repeat(4,1fr)!important; gap:8px!important; padding:10px 10px 6px!important; overflow:visible!important; flex-shrink:0!important; }
 #cinema-controls-btns .studio-btn {
     display:flex!important; flex-direction:column!important; align-items:center!important; justify-content:center!important;
     gap:5px!important; padding:13px 4px 10px!important;
     clip-path:polygon(18% 0%,82% 0%,100% 18%,100% 82%,82% 100%,18% 100%,0% 82%,0% 18%)!important;
-    border-radius:0!important; border:none!important; white-space:normal!important; text-align:center!important; line-height:1.2!important;
-    aspect-ratio:1/1!important; cursor:pointer!important; position:relative!important; isolation:isolate!important; overflow:hidden!important;
+    border-radius:0!important; border:none!important; white-space:normal!important; text-align:center!important;
+    line-height:1.2!important; aspect-ratio:1/1!important; cursor:pointer!important;
+    position:relative!important; isolation:isolate!important; overflow:hidden!important;
     background:radial-gradient(ellipse 50% 40% at 22% 15%,rgba(230,200,255,0.30) 0%,transparent 55%),radial-gradient(ellipse 30% 50% at 88% 30%,rgba(180,140,255,0.18) 0%,transparent 50%),radial-gradient(ellipse 60% 45% at 50% 95%,rgba(40,10,100,0.55) 0%,transparent 60%),conic-gradient(from 135deg at 50% 45%,#1e1650 0deg,#2d2070 45deg,#1a1248 90deg,#261b62 135deg,#1e1650 180deg,#2a1e6a 225deg,#1a1248 270deg,#261b62 315deg,#1e1650 360deg)!important;
     box-shadow:0 0 0 2px rgba(100,60,220,0.25),0 0 12px rgba(90,50,200,0.3),0 8px 24px rgba(0,0,0,0.8),inset 2px 2px 0 rgba(220,190,255,0.20),inset -2px -2px 0 rgba(0,0,0,0.55)!important;
-    color:rgba(210,190,255,0.88)!important; font-size:0.50rem!important; font-weight:800!important; letter-spacing:0.5px!important; text-transform:uppercase!important;
-    text-shadow:0 1px 4px rgba(0,0,0,0.95),0 0 6px rgba(140,100,255,0.3)!important; transition:all 0.22s cubic-bezier(0.34,1.4,0.64,1)!important;
+    color:rgba(210,190,255,0.88)!important; font-size:0.50rem!important; font-weight:800!important;
+    letter-spacing:0.5px!important; text-transform:uppercase!important;
+    text-shadow:0 1px 4px rgba(0,0,0,0.95),0 0 6px rgba(140,100,255,0.3)!important;
+    transition:all 0.22s cubic-bezier(0.34,1.4,0.64,1)!important;
 }
 #cinema-controls-btns .studio-btn::before { content:''!important; position:absolute!important; top:6%!important; left:14%!important; right:14%!important; height:32%!important; background:linear-gradient(160deg,rgba(255,255,255,0.20) 0%,transparent 100%)!important; clip-path:polygon(15% 0%,85% 0%,100% 30%,85% 100%,15% 100%,0% 30%)!important; pointer-events:none!important; z-index:2!important; }
 #cinema-controls-btns .studio-btn::after { content:''!important; position:absolute!important; top:16%!important; left:18%!important; width:5px!important; height:5px!important; background:radial-gradient(circle,rgba(255,255,255,0.9) 0%,transparent 70%)!important; border-radius:50%!important; pointer-events:none!important; z-index:3!important; filter:blur(0.5px)!important; }
@@ -24673,7 +24724,7 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 #cinema-controls-btns .studio-btn.active-gold { background:radial-gradient(ellipse 50% 40% at 22% 15%,rgba(255,230,120,0.32) 0%,transparent 55%),conic-gradient(from 135deg at 50% 45%,#221400 0deg,#301e02 45deg,#1a0f00 90deg,#281802 135deg,#221400 180deg,#2c1a01 225deg,#1a0f00 270deg,#281802 315deg,#221400 360deg)!important; box-shadow:0 0 0 2px rgba(200,155,30,0.35),0 0 18px rgba(200,155,30,0.5),0 8px 22px rgba(0,0,0,0.8)!important; color:#d4a820!important; }
 #cinema-controls-btns .studio-btn-icon { font-size:1.3rem!important; line-height:1!important; display:block!important; position:relative!important; z-index:4!important; filter:drop-shadow(0 0 6px rgba(180,140,255,0.6)) drop-shadow(0 2px 5px rgba(0,0,0,0.9))!important; transition:filter 0.2s,transform 0.2s!important; }
 #cinema-controls-btns .studio-btn:hover .studio-btn-icon { filter:drop-shadow(0 0 12px rgba(220,190,255,1.0)) drop-shadow(0 2px 6px rgba(0,0,0,0.8))!important; transform:scale(1.12) translateY(-1px)!important; }
-#cinema-controls-btns .studio-btn.active .studio-btn-icon { filter:drop-shadow(0 0 10px rgba(255,80,80,1.0)) !important; }
+#cinema-controls-btns .studio-btn.active .studio-btn-icon { filter:drop-shadow(0 0 10px rgba(255,80,80,1.0))!important; }
 #cinema-controls-btns .studio-btn.active-teal .studio-btn-icon { filter:drop-shadow(0 0 10px rgba(45,210,185,1.0))!important; }
 #cinema-controls-btns .studio-btn.active-gold .studio-btn-icon { filter:drop-shadow(0 0 10px rgba(220,175,40,1.0))!important; }
 #cinema-controls-btns .studio-btn > span:not(.studio-btn-icon) { position:relative!important; z-index:4!important; }
@@ -24686,16 +24737,11 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 #live-stat-stars { color:#d4a820!important; }
 .live-stat-label { color:rgba(135,105,210,0.55)!important; font-size:0.44rem!important; letter-spacing:0.8px!important; text-transform:uppercase!important; white-space:nowrap!important; }
 
-/* ══ LEADERBOARD (broadcaster desktop only) ══════════════════ */
-#gift-leaderboard {
-    background:radial-gradient(ellipse 80% 40% at 50% 0%,rgba(110,65,235,0.1) 0%,transparent 70%),linear-gradient(180deg,#121026,#0e0b1e)!important;
-    border:1px solid rgba(115,78,218,0.25)!important; border-radius:14px!important;
-    padding:10px 12px!important; box-shadow:0 4px 18px rgba(0,0,0,0.6)!important;
-}
+/* ══ LEADERBOARD ════════════════════════════════════════════ */
+#gift-leaderboard { background:radial-gradient(ellipse 80% 40% at 50% 0%,rgba(110,65,235,0.1) 0%,transparent 70%),linear-gradient(180deg,#121026,#0e0b1e)!important; border:1px solid rgba(115,78,218,0.25)!important; border-radius:14px!important; padding:10px 12px!important; box-shadow:0 4px 18px rgba(0,0,0,0.6)!important; }
 .live-lb-head { color:rgba(195,170,255,0.88)!important; font-size:0.62rem!important; font-weight:800!important; letter-spacing:1px!important; text-transform:uppercase!important; border-bottom:1px solid rgba(110,75,210,0.2)!important; padding-bottom:7px!important; margin-bottom:8px!important; }
 .live-lb-row { display:flex!important; align-items:center!important; gap:8px!important; padding:5px 0!important; border-bottom:1px solid rgba(100,65,200,0.1)!important; font-size:0.7rem!important; }
 .live-lb-row:last-child { border-bottom:none!important; }
-.live-lb-rank { width:20px!important; flex-shrink:0!important; }
 .live-lb-name { flex:1!important; color:rgba(210,200,245,0.88)!important; font-weight:600!important; overflow:hidden!important; text-overflow:ellipsis!important; white-space:nowrap!important; }
 .live-lb-amt { color:#d4a820!important; font-weight:800!important; font-size:0.68rem!important; white-space:nowrap!important; }
 
@@ -24706,41 +24752,12 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 #cinema-controls-panels #lower-third-editor,#cinema-controls-panels #poll-creator,#cinema-controls-panels #goal-setter,#cinema-controls-panels #layout-picker,#cinema-controls-panels #hand-queue-card,#cinema-controls-panels #cohost-panel,#cinema-controls-panels #vbg-picker { background:radial-gradient(ellipse 80% 40% at 50% 0%,rgba(110,65,235,0.08) 0%,transparent 70%),linear-gradient(180deg,#121026,#0e0b1e)!important; border:1px solid rgba(115,78,218,0.22)!important; border-radius:14px!important; }
 #cinema-controls-panels .field { background:rgba(255,255,255,0.04)!important; border:1px solid rgba(105,72,205,0.22)!important; color:rgba(210,200,245,0.9)!important; border-radius:8px!important; }
 #cinema-controls-panels .btn-purple { background:linear-gradient(145deg,#4a30a0,#321e80)!important; border:1px solid rgba(145,108,250,0.4)!important; color:#ede8ff!important; font-weight:800!important; border-radius:10px!important; }
-.layout-opt-btn { background:linear-gradient(145deg,#1b1536,#120f26)!important; border:1px solid rgba(105,72,205,0.22)!important; color:rgba(182,162,232,0.78)!important; border-radius:10px!important; transition:all 0.2s!important; }
+.layout-opt-btn { background:linear-gradient(145deg,#1b1536,#120f26)!important; border:1px solid rgba(105,72,205,0.22)!important; color:rgba(182,162,232,0.78)!important; border-radius:10px!important; }
 
-/* ══ VIDEO OVERLAYS (poll/goal on video — mobile size) ══════ */
-.vid-overlay-poll, .vid-overlay-goal {
-    max-width: 55% !important;
-    font-size: 0.62rem !important;
-}
-.vop-head, .vog-head { font-size: 0.58rem !important; }
-.vop-question { font-size: 0.65rem !important; }
-
-/* ══ LIVE BADGES ════════════════════════════════════════════ */
-.live-badge-pill { background:linear-gradient(135deg,rgba(210,28,28,0.92),rgba(148,8,8,0.88))!important; border:1px solid rgba(255,75,75,0.35)!important; box-shadow:0 0 14px rgba(218,28,28,0.52)!important; font-weight:800!important; letter-spacing:1px!important; font-size:0.58rem!important; border-radius:20px!important; }
-#stream-health { background:rgba(4,12,6,0.82)!important; border:1px solid rgba(24,175,98,0.32)!important; border-radius:20px!important; padding:3px 10px!important; backdrop-filter:blur(8px)!important; }
-.live-viewer-chip { background:rgba(10,8,22,0.82)!important; border:1px solid rgba(125,88,235,0.28)!important; color:rgba(188,162,255,0.88)!important; border-radius:20px!important; padding:3px 10px!important; font-size:0.6rem!important; font-weight:700!important; backdrop-filter:blur(8px)!important; }
-
-/* ══ VIEWER PANEL LAYOUT ════════════════════════════════════ */
-
-/* Chat wrap */
-.viewer-chat-wrap {
-    background:radial-gradient(ellipse 80% 40% at 50% 0%,rgba(110,65,235,0.08) 0%,transparent 70%),linear-gradient(180deg,#121026,#0e0b1e)!important;
-    border:1px solid rgba(115,78,218,0.22)!important; border-radius:14px!important;
-    overflow:hidden!important; margin-bottom:10px!important;
-}
-#live-chat-feed { max-height:130px!important; overflow-y:auto!important; padding:8px 10px!important; font-size:0.75rem!important; background:transparent!important; }
-.viewer-chat-wrap .live-chat-input-row { background:rgba(10,8,20,0.95)!important; border-top:1px solid rgba(100,65,210,0.18)!important; padding:8px 10px!important; display:flex!important; gap:6px!important; }
-.viewer-chat-wrap .live-chat-input-row .field { flex:1!important; background:rgba(255,255,255,0.05)!important; border:1px solid rgba(110,75,210,0.25)!important; color:rgba(210,200,245,0.9)!important; border-radius:20px!important; padding:7px 12px!important; font-size:0.78rem!important; }
-.viewer-chat-wrap .live-chat-input-row .field::placeholder { color:rgba(135,105,205,0.45)!important; }
-.viewer-chat-wrap .live-chat-input-row .btn-purple { background:linear-gradient(145deg,#4a30a0,#321e80)!important; border:1px solid rgba(155,115,255,0.42)!important; color:#ede8ff!important; font-weight:800!important; border-radius:20px!important; padding:7px 14px!important; white-space:nowrap!important; }
-
-/* Gift panel */
-.live-gift-card { background:radial-gradient(ellipse 80% 40% at 50% 0%,rgba(110,65,235,0.1) 0%,transparent 70%),linear-gradient(180deg,#121026,#0e0b1e)!important; border:1px solid rgba(115,78,218,0.25)!important; border-radius:14px!important; box-shadow:0 4px 18px rgba(0,0,0,0.6)!important; padding:12px!important; margin-bottom:8px!important; }
+/* ══ GIFT GEMS (viewer) ══════════════════════════════════════ */
+.live-gift-card { background:radial-gradient(ellipse 80% 40% at 50% 0%,rgba(110,65,235,0.1) 0%,transparent 70%),linear-gradient(180deg,#121026,#0e0b1e)!important; border:1px solid rgba(115,78,218,0.25)!important; border-radius:14px!important; padding:12px!important; margin-bottom:8px!important; }
 .live-gift-head { color:rgba(195,170,255,0.85)!important; font-size:0.62rem!important; font-weight:800!important; letter-spacing:1px!important; text-transform:uppercase!important; border-bottom:1px solid rgba(110,75,210,0.2)!important; padding-bottom:7px!important; margin-bottom:10px!important; }
 .live-gift-grid { display:grid!important; grid-template-columns:repeat(4,1fr)!important; gap:8px!important; }
-
-/* Gift gem buttons */
 .gift-btn { display:flex!important; flex-direction:column!important; align-items:center!important; justify-content:center!important; gap:4px!important; padding:10px 4px!important; clip-path:polygon(18% 0%,82% 0%,100% 18%,100% 82%,82% 100%,18% 100%,0% 82%,0% 18%)!important; border-radius:0!important; border:none!important; aspect-ratio:1/1!important; cursor:pointer!important; position:relative!important; isolation:isolate!important; overflow:hidden!important; transition:all 0.2s cubic-bezier(0.34,1.4,0.64,1)!important; }
 .gift-btn.spark { background:radial-gradient(ellipse 50% 40% at 22% 15%,rgba(200,170,255,0.28) 0%,transparent 55%),conic-gradient(from 135deg at 50% 45%,#1e1650 0deg,#2d2070 45deg,#1a1248 90deg,#261b62 135deg,#1e1650 180deg,#2a1e6a 225deg,#1a1248 270deg,#261b62 315deg,#1e1650 360deg)!important; box-shadow:0 0 0 2px rgba(100,60,220,0.28),0 0 12px rgba(90,50,200,0.35),0 6px 18px rgba(0,0,0,0.75),inset 2px 2px 0 rgba(210,185,255,0.18)!important; }
 .gift-btn.fire { background:radial-gradient(ellipse 50% 40% at 22% 15%,rgba(255,200,100,0.28) 0%,transparent 55%),conic-gradient(from 135deg at 50% 45%,#221400 0deg,#301e02 45deg,#1a0f00 90deg,#281802 135deg,#221400 180deg,#2c1a01 225deg,#1a0f00 270deg,#281802 315deg,#221400 360deg)!important; box-shadow:0 0 0 2px rgba(200,130,20,0.3),0 0 12px rgba(200,140,20,0.4),0 6px 18px rgba(0,0,0,0.75),inset 2px 2px 0 rgba(255,210,110,0.18)!important; }
@@ -24753,51 +24770,69 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 .gift-btn .gift-name { font-size:0.5rem!important; font-weight:800!important; color:rgba(215,200,255,0.9)!important; position:relative!important; z-index:4!important; text-shadow:0 1px 3px rgba(0,0,0,0.9)!important; }
 .gift-btn .gift-cost { font-size:0.5rem!important; color:#d4a820!important; font-weight:800!important; position:relative!important; z-index:4!important; }
 
-/* Action row — single line */
-.live-action-row { display:flex!important; flex-wrap:nowrap!important; gap:6px!important; align-items:center!important; padding:8px 0!important; margin-bottom:6px!important; }
-#live-hype-btn { flex:1!important; min-width:0!important; background:radial-gradient(ellipse 50% 40% at 22% 15%,rgba(255,230,100,0.28) 0%,transparent 55%),conic-gradient(from 135deg at 50% 45%,#221400 0deg,#301e02 45deg,#1a0f00 90deg,#281802 135deg,#221400 180deg,#2c1a01 225deg,#1a0f00 270deg,#281802 315deg,#221400 360deg)!important; border:none!important; border-radius:10px!important; box-shadow:0 0 0 2px rgba(200,155,30,0.35),0 0 14px rgba(200,155,30,0.4),inset 2px 2px 0 rgba(255,225,120,0.15)!important; color:#d4a820!important; font-weight:800!important; padding:7px 10px!important; font-size:0.72rem!important; white-space:nowrap!important; }
-.hype-meta { font-size:0.6rem!important; opacity:0.7!important; font-weight:600!important; }
-.viewer-action-btn { flex:0 0 auto!important; background:linear-gradient(145deg,#1a1438,#110f26)!important; border:1px solid rgba(115,78,218,0.3)!important; color:rgba(195,170,255,0.88)!important; border-radius:10px!important; font-weight:700!important; font-size:0.68rem!important; padding:7px 8px!important; cursor:pointer!important; white-space:nowrap!important; }
-.viewer-leave-btn { flex:0 0 auto!important; background:transparent!important; border:1px solid rgba(200,50,50,0.25)!important; color:rgba(255,100,100,0.6)!important; border-radius:10px!important; font-size:0.68rem!important; font-weight:700!important; padding:7px 8px!important; cursor:pointer!important; white-space:nowrap!important; }
+/* ══ VIEWER ACTION ROW — compact single line ════════════════ */
+#live-player-wrap .live-action-row {
+    display:flex!important; flex-wrap:nowrap!important; gap:6px!important;
+    align-items:center!important; padding:8px 0!important; margin-bottom:6px!important;
+}
+#live-player-wrap .live-action-row .live-stars-pill { display:none!important; }
+#live-hype-btn { flex:1!important; min-width:0!important; font-size:0.75rem!important; padding:7px 10px!important; white-space:nowrap!important; }
+#viewer-raise-hand-btn, #viewer-cohost-btn {
+    flex:0 0 auto!important; font-size:0.7rem!important; padding:7px 8px!important;
+    white-space:nowrap!important; border-radius:10px!important;
+    background:linear-gradient(145deg,#1a1438,#110f26)!important;
+    border:1px solid rgba(115,78,218,0.3)!important; color:rgba(195,170,255,0.88)!important; font-weight:700!important;
+}
+#live-player-wrap .live-action-row .btn-outline[onclick="leaveLiveStream()"] {
+    flex:0 0 auto!important; font-size:0.68rem!important; padding:7px 8px!important;
+    white-space:nowrap!important; border-radius:10px!important;
+    border-color:rgba(200,50,50,0.25)!important; color:rgba(255,100,100,0.6)!important;
+}
+
+/* ══ VIEWER CHAT CARD ═══════════════════════════════════════ */
+#viewer-panel-chat-card {
+    background:radial-gradient(ellipse 80% 40% at 50% 0%,rgba(110,65,235,0.08) 0%,transparent 70%),linear-gradient(180deg,#121026,#0e0b1e)!important;
+    border:1px solid rgba(115,78,218,0.22)!important; border-radius:14px!important;
+    overflow:hidden!important;
+}
+#viewer-panel-chat-card .live-chat-head { display:none!important; }
+#live-chat-feed { max-height:130px!important; overflow-y:auto!important; padding:8px 10px!important; font-size:0.75rem!important; background:transparent!important; }
+#viewer-panel-chat-card .live-chat-input-row { background:rgba(10,8,20,0.95)!important; border-top:1px solid rgba(100,65,210,0.18)!important; padding:8px 10px!important; display:flex!important; gap:6px!important; }
+#viewer-panel-chat-card .live-chat-input-row .field { flex:1!important; background:rgba(255,255,255,0.05)!important; border:1px solid rgba(110,75,210,0.25)!important; color:rgba(210,200,245,0.9)!important; border-radius:20px!important; padding:7px 12px!important; font-size:0.78rem!important; }
+#viewer-panel-chat-card .live-chat-input-row .field::placeholder { color:rgba(135,105,205,0.45)!important; }
+#viewer-panel-chat-card .live-chat-input-row .btn-purple { background:linear-gradient(145deg,#4a30a0,#321e80)!important; border:1px solid rgba(155,115,255,0.42)!important; color:#ede8ff!important; font-weight:800!important; border-radius:20px!important; padding:7px 14px!important; white-space:nowrap!important; }
+
+/* ══ VIDEO OVERLAYS (poll/goal) — smaller on mobile ═════════ */
+.vid-overlay-poll { max-width:55%!important; }
+.vid-overlay-goal { max-width:50%!important; }
+
+/* ══ LIVE BADGES ════════════════════════════════════════════ */
+.live-badge-pill { background:linear-gradient(135deg,rgba(210,28,28,0.92),rgba(148,8,8,0.88))!important; border:1px solid rgba(255,75,75,0.35)!important; box-shadow:0 0 14px rgba(218,28,28,0.52)!important; font-weight:800!important; letter-spacing:1px!important; font-size:0.58rem!important; border-radius:20px!important; }
+#stream-health { background:rgba(4,12,6,0.82)!important; border:1px solid rgba(24,175,98,0.32)!important; border-radius:20px!important; padding:3px 10px!important; backdrop-filter:blur(8px)!important; }
+.live-viewer-chip { background:rgba(10,8,22,0.82)!important; border:1px solid rgba(125,88,235,0.28)!important; color:rgba(188,162,255,0.88)!important; border-radius:20px!important; padding:3px 10px!important; font-size:0.6rem!important; font-weight:700!important; backdrop-filter:blur(8px)!important; }
 
 /* ══ MOBILE ══════════════════════════════════════════════════ */
 @media (max-width: 768px) {
-
-    /* Video */
     #live-remote-video-container { height:48vw!important; min-height:180px!important; max-height:250px!important; }
-
-    /* Poll/Goal overlays on video — smaller on mobile */
-    .vid-overlay-poll { max-width:60%!important; font-size:0.58rem!important; padding:8px!important; }
-    .vid-overlay-goal { max-width:50%!important; font-size:0.58rem!important; padding:6px 8px!important; }
-    .vop-question { font-size:0.62rem!important; }
-
-    /* Chat */
-    #live-chat-feed { max-height:90px!important; font-size:0.7rem!important; }
-    .viewer-chat-wrap .live-chat-input-row { padding:6px 8px!important; }
-    .viewer-chat-wrap .live-chat-input-row .field { font-size:0.72rem!important; padding:6px 10px!important; }
-    .viewer-chat-wrap .live-chat-input-row .btn-purple { font-size:0.68rem!important; padding:6px 10px!important; }
-
-    /* Gifts */
+    .vid-overlay-poll { max-width:62%!important; font-size:0.56rem!important; padding:6px 8px!important; }
+    .vid-overlay-goal { max-width:52%!important; font-size:0.56rem!important; padding:5px 8px!important; }
+    .vop-question { font-size:0.6rem!important; }
+    #live-chat-feed { max-height:85px!important; font-size:0.7rem!important; }
+    #viewer-panel-chat-card .live-chat-input-row { padding:6px 8px!important; }
+    #viewer-panel-chat-card .live-chat-input-row .field { font-size:0.72rem!important; padding:5px 10px!important; }
     .live-gift-card { padding:8px!important; }
     .live-gift-grid { gap:5px!important; }
-    .gift-btn { padding:8px 2px!important; }
-    .gift-btn .gift-icon { font-size:0.9rem!important; }
-    .gift-btn .gift-name, .gift-btn .gift-cost { font-size:0.44rem!important; }
-
-    /* Action row */
-    .live-action-row { gap:4px!important; }
+    .gift-btn { padding:7px 2px!important; }
+    .gift-btn .gift-icon { font-size:0.88rem!important; }
+    .gift-btn .gift-name,.gift-btn .gift-cost { font-size:0.42rem!important; }
     #live-hype-btn { font-size:0.65rem!important; padding:6px 8px!important; }
-    .viewer-action-btn { font-size:0.6rem!important; padding:5px 6px!important; }
-    .viewer-leave-btn { font-size:0.6rem!important; padding:5px 6px!important; }
-
-    /* Stats */
+    #viewer-raise-hand-btn,#viewer-cohost-btn { font-size:0.6rem!important; padding:5px 6px!important; }
+    #live-player-wrap .live-action-row .btn-outline[onclick="leaveLiveStream()"] { font-size:0.6rem!important; padding:5px 6px!important; }
     .live-stat-val { font-size:0.72rem!important; }
     .live-stat-label { font-size:0.38rem!important; }
     .live-stat-chip { padding:8px 3px!important; }
-
-    /* Badges */
     .live-badge-pill { font-size:0.5rem!important; padding:2px 7px!important; }
-    .live-viewer-chip, #stream-health { font-size:0.5rem!important; padding:2px 7px!important; }
+    .live-viewer-chip,#stream-health { font-size:0.5rem!important; padding:2px 7px!important; }
 }
 
 </style>
