@@ -1063,178 +1063,175 @@
         .live-chat-input-row .field { margin-top:0 !important; flex:1; width:0 !important; min-width:0; }
         .live-chat-input-row .btn   { width:auto !important; margin-top:0 !important; flex-shrink:0; }
 
-        /* ═══════════════════════════════════════════════════════════════
-           CINEMA MODE — no DOM moving, pure CSS fixed positioning
-           body.cinema-mode toggled by JS. Elements stay in the DOM;
-           CSS repositions them visually using position:fixed.
-        ═══════════════════════════════════════════════════════════════ */
-
-        /* 1. Hide chrome */
+        /* ── Cinema Mode ── only triggered by JS adding class to body ── */
         body.cinema-mode #sidebar,
-        body.cinema-mode #right-panel,
-        body.cinema-mode #topnav,
-        body.cinema-mode #hype-ticker,
+        body.cinema-mode #right-panel { display:none !important; }
+
+        /* Hide raw broadcaster/viewer panels instantly when cinema is active — prevents flash of buttons */
+        body.cinema-mode #live-active-panel {
+            visibility: hidden !important;
+            pointer-events: none !important;
+        }
+        body.cinema-mode #live-player-wrap > .card,
+        body.cinema-mode #live-player-wrap > .live-chat-card,
+        body.cinema-mode #live-player-wrap > .live-stats-row {
+            display: none !important;
+        }
+        /* Cinema shell and everything inside it stays fully visible */
+        body.cinema-mode #cinema-shell { visibility: visible !important; }
+        body.cinema-mode #app-body { grid-template-columns:1fr !important; }
         body.cinema-mode .page-heading,
-        body.cinema-mode #live-tabs,
+        body.cinema-mode #live-tabs { display:none !important; }
+        body.cinema-mode #topnav { display:none !important; }
+        body.cinema-mode #hype-ticker { display:none !important; }
         body.cinema-mode .feed-toggle-row { display:none !important; }
         body.cinema-mode #page-live { height:100vh; overflow:hidden; padding:0 !important; }
-        body.cinema-mode #app-body  { grid-template-columns:1fr !important; }
 
-        /* 2. Cinema shell: full-screen black backdrop */
         #cinema-shell { display:none; }
         body.cinema-mode #cinema-shell {
-            display:block !important;
-            position:fixed; inset:0; z-index:50;
-            background:#000; pointer-events:none;
+            display:flex !important; height:100vh; overflow:hidden; top:0 !important;
         }
-
-        /* 3. VIDEO — fixed left side, right edge leaves 340px for controls */
-        body.cinema-mode #live-broadcaster-video-container,
-        body.cinema-mode #live-remote-video-container {
-            position:fixed !important;
-            top:0 !important; left:0 !important;
-            right:340px !important; bottom:0 !important;
-            width:auto !important; height:auto !important;
-            z-index:51 !important;
-            border-radius:0 !important;
-            pointer-events:auto !important;
+        /* Left col: just the video, fills all remaining space */
+        #cinema-video-col {
+            flex:1; display:flex; flex-direction:column;
+            background:#000; position:relative; overflow:hidden; min-width:0;
         }
-
-        /* 4. Hide everything in the active-panel / player-wrap that we don't
-              want showing — only the elements we explicitly re-show below render */
-        body.cinema-mode #live-active-panel {
-            visibility:hidden !important;
-            pointer-events:none !important;
+        #cinema-video-col .live-stream-box {
+            flex:1 !important; height:auto !important; min-height:0 !important;
+            border-radius:0 !important; overflow:hidden !important; position:relative !important;
         }
-        body.cinema-mode #live-player-wrap { overflow:hidden !important; }
-
-        /* 5. Studio toolbar — fixed right column, top */
-        body.cinema-mode .studio-toolbar {
-            visibility:visible !important;
-            pointer-events:auto !important;
-            position:fixed !important;
-            top:0 !important; right:0 !important;
-            width:340px !important;
-            background:var(--bg-card2) !important;
-            border-left:1px solid var(--border) !important;
-            border-bottom:1px solid var(--border) !important;
-            z-index:52 !important;
-            display:flex !important; flex-wrap:wrap !important;
-            gap:4px !important; padding:6px 8px !important;
-            overflow-x:hidden !important; overflow-y:auto !important;
-            max-height:58vh !important;
-            box-sizing:border-box !important;
+        #cinema-video-col .live-stream-box > div[style*="position:absolute"],
+        #cinema-video-col .live-stream-box > div[style*="position: absolute"] {
+            position:absolute !important;
         }
-        body.cinema-mode .studio-btn {
-            padding:5px 10px !important; font-size:0.7rem !important;
+        /* ── In split/grid layouts, cohost-self-pip must NOT be forced absolute ──
+           The layout CSS classes set position:relative via !important rules, but the
+           cinema override above would win because it also uses !important on a more
+           specific selector. We re-override here for each layout so the pip becomes
+           a proper flex/grid cell instead of a floating overlay. */
+        #cinema-video-col .live-stream-box.layout-split2 #cohost-self-pip,
+        #cinema-video-col .live-stream-box.layout-pip-bottom #cohost-self-pip,
+        #cinema-video-col .live-stream-box.layout-grid4 #cohost-self-pip {
+            position:relative !important;
+            inset:auto !important;
+        }
+        #cinema-video-col .live-stream-box.layout-split2 #live-remote-video,
+        #cinema-video-col .live-stream-box.layout-split2 #cohost-pip-viewer {
+            position:relative !important;
+            inset:auto !important;
+        }
+        #cinema-video-col .live-stream-box.layout-pip-bottom #live-remote-video,
+        #cinema-video-col .live-stream-box.layout-grid4 #live-remote-video,
+        #cinema-video-col .live-stream-box.layout-grid4 #cohost-pip-viewer {
+            position:relative !important;
+            inset:auto !important;
+        }
+        /* Right col: split into chat (top, scrollable) + controls (bottom, fixed height) */
+        #cinema-chat-col {
+            width:340px; flex-shrink:0; display:flex; flex-direction:column;
+            background:var(--bg-panel); border-left:1px solid var(--border); overflow:hidden;
+        }
+        /* Chat fills top half of right column */
+        #cinema-chat-col .live-chat-card {
+            display:flex; flex-direction:column; flex:1; min-height:0;
+            border-radius:0 !important; border:none !important; background:transparent !important;
+            overflow:hidden;
+        }
+        /* Desktop: panel feed hidden — messages go to floating overlay */
+        #cinema-chat-col .live-chat-feed,
+        #cinema-chat-col #live-broadcast-chat-feed,
+        #cinema-chat-col #live-chat-feed { display:none !important; }
+        #cinema-chat-col .live-chat-head { display:none !important; }
+        /* Mobile: show a compact chat feed inside cinema-chat-col instead of floating overlay */
+        @media(max-width:700px){
+            #cinema-chat-col .live-chat-feed,
+            #cinema-chat-col #live-broadcast-chat-feed,
+            #cinema-chat-col #live-chat-feed {
+                display:flex !important; flex-direction:column;
+                max-height:90px; overflow-y:auto; flex:1; min-height:0;
+                padding:4px 8px;
+            }
+            #cinema-chat-col .live-chat-head { display:block !important; font-size:0.65rem; padding:4px 8px; }
+        }
+        /* Controls section — bottom of right column, grows with content up to 55% height */
+        #cinema-controls {
+            flex-shrink:0;
+            background:var(--bg-card2); border-top:2px solid var(--border);
+            display:flex; flex-direction:column; gap:0;
+            overflow:hidden; position:relative;
+            max-height:55%;
+            min-height:44px;
+        }
+        /* Buttons row inside controls */
+        #cinema-controls-btns {
+            display:flex; flex-wrap:wrap; gap:4px; padding:6px 8px;
+            overflow-x:auto; overflow-y:hidden; flex-shrink:0;
+            scrollbar-width:thin;
+        }
+        /* Panels area inside controls — scrollable, shows panels when opened */
+        #cinema-controls-panels {
+            flex:1; overflow-y:auto; overflow-x:hidden;
+            padding:4px 8px 8px;
+            scrollbar-width:thin;
+            /* Give it a minimum visible height when a panel is open */
+        }
+        #cinema-controls-panels:not(:empty) { min-height:80px; }
+        #cinema-controls-panels > * { margin-bottom:8px !important; }
+        /* Studio buttons in cinema controls */
+        #cinema-controls .studio-btn {
+            padding:4px 8px !important; font-size:0.7rem !important;
             gap:4px !important; white-space:nowrap !important; flex-shrink:0 !important;
         }
-        body.cinema-mode .studio-btn-icon { font-size:0.8rem !important; }
-
-        /* 6. Broadcaster chat input — fixed right column, just above end-stream */
-        body.cinema-mode #bc-panel-chat-card {
-            visibility:visible !important;
-            pointer-events:auto !important;
-            position:fixed !important;
-            bottom:52px !important; right:0 !important;
-            width:340px !important;
-            z-index:52 !important;
-            border-radius:0 !important;
-            border-left:1px solid var(--border) !important;
-            border-top:1px solid var(--border) !important;
-            border-right:none !important; border-bottom:none !important;
-            background:var(--bg-panel) !important;
-            box-sizing:border-box !important;
+        /* Action row and its buttons inside cinema controls */
+        #cinema-controls-btns .live-action-row {
+            display:flex; flex-wrap:wrap; gap:4px; width:100%; padding:2px 0;
         }
-        body.cinema-mode #bc-panel-chat-card .live-chat-head { display:none !important; }
-        body.cinema-mode #live-broadcast-chat-feed { display:none !important; }
-
-        /* 7. Viewer chat — same position */
-        body.cinema-mode #viewer-panel-chat-card {
-            visibility:visible !important;
-            pointer-events:auto !important;
-            position:fixed !important;
-            bottom:52px !important; right:0 !important;
-            width:340px !important;
-            z-index:52 !important;
-            border-radius:0 !important;
-            border-left:1px solid var(--border) !important;
-            border-top:1px solid var(--border) !important;
-            border-right:none !important; border-bottom:none !important;
-            background:var(--bg-panel) !important;
-            box-sizing:border-box !important;
+        #cinema-controls-btns .live-action-row .btn,
+        #cinema-controls-btns .live-action-row button {
+            font-size:0.68rem !important; padding:4px 8px !important;
+            flex-shrink:0 !important;
         }
-        body.cinema-mode #viewer-panel-chat-card .live-chat-head { display:none !important; }
-        body.cinema-mode #live-chat-feed { display:none !important; }
-
-        /* 8. End Stream button — fixed right column, very bottom */
-        body.cinema-mode #cinema-end-btn-wrap {
-            position:fixed !important;
-            bottom:0 !important; right:0 !important;
-            width:340px !important;
-            z-index:52 !important;
-            background:var(--bg-panel) !important;
-            border-left:1px solid var(--border) !important;
-            border-top:1px solid var(--border) !important;
-            padding:6px 8px !important;
-            display:flex !important;
-            box-sizing:border-box !important;
+        #cinema-controls-btns .live-stars-pill {
+            font-size:0.65rem !important;
         }
-
-        /* 9. Popup panels (poll creator, vbg, etc.) — slide out over right column */
-        body.cinema-mode #poll-creator,
-        body.cinema-mode #lower-third-editor,
-        body.cinema-mode #vbg-picker,
-        body.cinema-mode #layout-picker,
-        body.cinema-mode #goal-setter,
-        body.cinema-mode #hand-queue-card,
-        body.cinema-mode #cohost-panel {
-            visibility:visible !important;
-            pointer-events:auto !important;
-            position:fixed !important;
-            right:0 !important; bottom:52px !important;
-            width:340px !important;
-            z-index:53 !important;
-            background:var(--bg-card) !important;
-            border-left:1px solid var(--border) !important;
-            border-top:1px solid var(--border) !important;
-            max-height:50vh !important;
-            overflow-y:auto !important;
-            box-sizing:border-box !important;
+        /* Reaction buttons in cinema */
+        #cinema-controls-btns > div[style*="display:flex"] button {
+            font-size:1rem !important; padding:2px !important;
         }
-
-        /* 10. Viewer action row — right column, above chat */
-        body.cinema-mode #live-player-wrap .live-action-row {
-            visibility:visible !important;
-            pointer-events:auto !important;
-            position:fixed !important;
-            right:0 !important; bottom:108px !important;
-            width:340px !important;
-            z-index:52 !important;
-            background:var(--bg-card2) !important;
-            border-left:1px solid var(--border) !important;
-            border-top:1px solid var(--border) !important;
-            padding:6px 8px !important;
-            display:flex !important; flex-wrap:wrap !important; gap:4px !important;
-            box-sizing:border-box !important;
+        #cinema-controls .studio-btn-icon { font-size:0.8rem !important; }
+        #cinema-controls .studio-toolbar { display:contents !important; }
+        /* Panels inside controls — displayed normally, no more fixed positioning */
+        /* Host-only toggleable panels — hidden until button clicked */
+        #cinema-controls-panels #poll-creator,
+        #cinema-controls-panels #lower-third-editor,
+        #cinema-controls-panels #vbg-picker,
+        #cinema-controls-panels #cohost-panel,
+        #cinema-controls-panels #layout-picker,
+        #cinema-controls-panels #goal-setter,
+        #cinema-controls-panels #hand-queue-card,
+        #cinema-controls-panels #host-poll-card,
+        #cinema-controls-panels #star-goal-display {
+            position:relative !important;
+            bottom:auto !important; left:auto !important; right:auto !important;
+            max-height:none !important;
+            overflow-y:visible !important;
+            z-index:1 !important;
+            margin:0 0 6px 0 !important;
+            display:none; /* shown by JS toggle */
         }
-
-        /* 11. Fullscreen — hide right column, video fills entire screen */
-        body.cinema-fullscreen .studio-toolbar,
-        body.cinema-fullscreen #bc-panel-chat-card,
-        body.cinema-fullscreen #viewer-panel-chat-card,
-        body.cinema-fullscreen #cinema-end-btn-wrap,
-        body.cinema-fullscreen #live-player-wrap .live-action-row { display:none !important; }
-        body.cinema-fullscreen #live-broadcaster-video-container,
-        body.cinema-fullscreen #live-remote-video-container { right:0 !important; }
-
-        /* Fullscreen button inside video */
-        .cinema-fs-btn {
-            position:absolute; bottom:10px; left:10px; z-index:20;
-            background:rgba(0,0,0,0.6); border:none; color:#fff;
-            border-radius:6px; padding:5px 10px; cursor:pointer; font-size:0.78rem;
+        /* Viewer panels — shown/hidden by Firestore, keep their natural display state */
+        #cinema-controls-panels #viewer-poll-card,
+        #cinema-controls-panels #viewer-star-goal,
+        #cinema-controls-panels #viewer-leaderboard,
+        #cinema-controls-panels #viewer-gift-panel {
+            position:relative !important;
+            bottom:auto !important; left:auto !important; right:auto !important;
+            max-height:none !important;
+            overflow-y:visible !important;
+            z-index:1 !important;
+            margin:0 0 6px 0 !important;
+            /* display controlled by Firestore listener */
         }
-
         /* ── STREAM LAYOUT SYSTEM ───────────────────────────────────── */
         .layout-opt-btn {
             display:flex; flex-direction:column; align-items:center; gap:5px;
@@ -19619,9 +19616,6 @@ html:not(.dark) .brand-name {
         const confirmed = confirm(`End your stream?\n\nTotal Stars received this session: ${liveStarsEarned.toFixed(1)} ★\n(Gift stars are credited to your Creator balance in real-time.)`);
         if (!confirmed) return;
 
-        // Restore DOM from cinema mode BEFORE hiding panels — prevents displaced elements
-        if (typeof exitCinema === 'function') { try { exitCinema(); } catch(_) {} }
-
         // Capture and immediately null the stream id so no re-entrant calls can fire
         const _endingId = currentStreamId;
         currentStreamId = null;
@@ -24083,43 +24077,105 @@ html:not(.dark) .brand-name {
 
 <script>
 (function(){
-    /* ═══════════════════════════════════════════════════════════════
-       CINEMA MODE — pure CSS approach, zero DOM moving.
-
-       The #cinema-shell is a fixed full-screen overlay (z-index:50).
-       We let the ORIGINAL elements stay exactly where they are in the
-       DOM and use CSS (added via a <style> tag) to:
-         • stretch the video container to fill the left column area
-         • position the chat input + studio controls in the right column
-       All layout is done with position:fixed on the originals.
-       enterCinema / exitCinema simply toggle body.cinema-mode.
-    ═══════════════════════════════════════════════════════════════ */
-
+    // Placeholders so we can restore original positions
+    var _videoPlaceholder = document.createComment('cinema-video-placeholder');
+    var _chatPlaceholder  = document.createComment('cinema-chat-placeholder');
     var _inCinema = false;
-    var _cinemaStyleEl = null;   // injected <style> removed on exit
-    var _fsBtnEl = null;         // fullscreen button injected into video
 
-    // Widths must match the #cinema-chat-col width in CSS (340px)
-    var CHAT_COL_W = 340;
-
-    function enterCinema(videoContainerId) {
+    function enterCinema(videoContainerId, chatFeedId) {
         if (_inCinema) return;
         _inCinema = true;
 
-        var videoEl    = document.getElementById(videoContainerId);
-        var endBtnWrap = document.getElementById('cinema-end-btn-wrap');
+        var videoEl = document.getElementById(videoContainerId);
+        var feedEl  = document.getElementById(chatFeedId);
+        var chatEl  = feedEl ? feedEl.closest('.live-chat-card') : null;
+        var cinemaVideoCol = document.getElementById('cinema-video-col');
+        var cinemaChatCol  = document.getElementById('cinema-chat-col');
+        var endBtnWrap     = document.getElementById('cinema-end-btn-wrap');
 
-        if (!videoEl) { _inCinema = false; return; }
+        if (!videoEl || !chatEl) { _inCinema = false; return; }
 
-        // Fullscreen button
-        _fsBtnEl = document.createElement('button');
-        _fsBtnEl.className = 'cinema-fs-btn';
-        _fsBtnEl.id = 'cinema-fs-btn';
-        _fsBtnEl.textContent = '⛶ Fullscreen';
-        _fsBtnEl.onclick = window.toggleCinemaFullscreen;
-        videoEl.appendChild(_fsBtnEl);
+        // Insert placeholders in original positions so we can restore later
+        videoEl.parentNode.insertBefore(_videoPlaceholder, videoEl);
+        chatEl.parentNode.insertBefore(_chatPlaceholder, chatEl);
 
-        // Show end stream button
+        // Remove hardcoded height so flex takes over
+        videoEl.style.height = '';
+        videoEl.style.flex = '1';
+        videoEl.style.minHeight = '0';
+
+        // Add fullscreen button inside video element
+        var fsBtn = document.createElement('button');
+        fsBtn.className = 'cinema-fs-btn';
+        fsBtn.id = 'cinema-fs-btn';
+        fsBtn.textContent = '⛶ Fullscreen';
+        fsBtn.onclick = window.toggleCinemaFullscreen;
+        videoEl.appendChild(fsBtn);
+
+        // Move video into video col (only the video — no controls bar here)
+        cinemaVideoCol.innerHTML = '';
+        cinemaVideoCol.appendChild(videoEl);
+
+        // Build controls section for bottom of right column
+        // Structure: #cinema-controls > #cinema-controls-btns + #cinema-controls-panels
+        var controlsBar   = document.createElement('div');
+        controlsBar.id    = 'cinema-controls';
+
+        var ctrlBtns      = document.createElement('div');
+        ctrlBtns.id       = 'cinema-controls-btns';
+        controlsBar.appendChild(ctrlBtns);
+
+        var ctrlPanels    = document.createElement('div');
+        ctrlPanels.id     = 'cinema-controls-panels';
+        controlsBar.appendChild(ctrlPanels);
+
+        // Scan siblings between placeholders: buttons/toolbars → ctrlBtns, panels → ctrlPanels
+        // Skip the original End Stream button (handled by the static wrap)
+        // Hide the normal-mode End Stream wrap; cinema mode has its own
+        var panelEndWrap = document.getElementById('panel-end-stream-wrap');
+        if (panelEndWrap) panelEndWrap.style.display = 'none';
+
+        var panelIds = ['poll-creator','lower-third-editor','vbg-picker','cohost-panel','layout-picker',
+                        'goal-setter','hand-queue-card','host-poll-card','star-goal-display',
+                        'recording-status','gift-leaderboard','bc-live-stats-row',
+                        // Viewer-side panels
+                        'viewer-poll-card','viewer-star-goal','viewer-leaderboard','viewer-gift-panel'];
+        var node = _videoPlaceholder.nextSibling;
+        while (node && node !== _chatPlaceholder) {
+            var next = node.nextSibling;
+            if (node.nodeType === 1) {
+                var btnText    = (node.textContent || '').trim();
+                var btnOnclick = node.getAttribute('onclick') || '';
+                var nodeId     = node.id || '';
+                // Skip panel End Stream wrap — cinema mode has its own
+                if (nodeId === 'panel-end-stream-wrap') {
+                    // already hidden above, leave in place
+                } else if (node.tagName === 'BUTTON' && (
+                    btnText.indexOf('End Stream') !== -1 ||
+                    btnOnclick.indexOf('endLiveStream') !== -1
+                )) {
+                    // hide the original, keep in DOM so exitCinema can restore
+                    node.style.display = 'none';
+                } else if (panelIds.indexOf(nodeId) !== -1) {
+                    // Panel elements go into panels area
+                    ctrlPanels.appendChild(node);
+                } else {
+                    // Buttons, toolbars go into buttons row
+                    ctrlBtns.appendChild(node);
+                }
+            }
+            node = next;
+        }
+
+        // Layout order in cinema-chat-col (mobile streamer view):
+        // 1. Controls (gem buttons) — fills scrollable area
+        // 2. Chat input — anchored at the bottom, above End Stream
+        // 3. End Stream button
+        cinemaChatCol.insertBefore(controlsBar, endBtnWrap);
+        // Insert chat card AFTER controls, just above the end-stream button
+        cinemaChatCol.insertBefore(chatEl, endBtnWrap);
+
+        // Show the end stream button wrap
         if (endBtnWrap) endBtnWrap.style.display = 'flex';
 
         document.body.classList.add('cinema-mode');
@@ -24129,14 +24185,67 @@ html:not(.dark) .brand-name {
         if (!_inCinema) return;
         _inCinema = false;
 
-        // Remove fullscreen btn
-        if (_fsBtnEl && _fsBtnEl.parentNode) { _fsBtnEl.parentNode.removeChild(_fsBtnEl); _fsBtnEl = null; }
+        var videoEl        = document.getElementById('live-broadcaster-video-container') ||
+                             document.getElementById('live-remote-video-container');
+        var cinemaVideoCol = document.getElementById('cinema-video-col');
+        var cinemaChatCol  = document.getElementById('cinema-chat-col');
+        var controlsBar    = document.getElementById('cinema-controls');
+        var endBtnWrap     = document.getElementById('cinema-end-btn-wrap');
 
-        var endBtnWrap = document.getElementById('cinema-end-btn-wrap');
+        // Remove fullscreen btn
+        var fsBtn = document.getElementById('cinema-fs-btn');
+        if (fsBtn) fsBtn.parentNode.removeChild(fsBtn);
+
+        // Restore all controls children back before the chat placeholder
+        // (btns and panels divs contain the original elements)
+        if (controlsBar) {
+            var btnsDiv   = controlsBar.querySelector('#cinema-controls-btns');
+            var panelsDiv = controlsBar.querySelector('#cinema-controls-panels');
+            // Restore from btns div
+            if (btnsDiv) {
+                while (btnsDiv.firstChild) {
+                    var el = btnsDiv.firstChild;
+                    el.style.display = ''; // un-hide any we hid
+                    _chatPlaceholder.parentNode.insertBefore(el, _chatPlaceholder);
+                }
+            }
+            // Restore from panels div
+            if (panelsDiv) {
+                while (panelsDiv.firstChild) {
+                    _chatPlaceholder.parentNode.insertBefore(panelsDiv.firstChild, _chatPlaceholder);
+                }
+            }
+            controlsBar.parentNode.removeChild(controlsBar);
+        }
+
+        // Restore video to original position
+        if (videoEl && _videoPlaceholder.parentNode) {
+            _videoPlaceholder.parentNode.insertBefore(videoEl, _videoPlaceholder);
+        }
+
+        // Restore chat to original position
+        var chatEl = cinemaChatCol && cinemaChatCol.querySelector('.live-chat-card');
+        if (chatEl && _chatPlaceholder.parentNode) {
+            _chatPlaceholder.parentNode.insertBefore(chatEl, _chatPlaceholder);
+        }
+
+        // Hide end btn wrap
         if (endBtnWrap) endBtnWrap.style.display = 'none';
+
+        // Restore normal-mode End Stream wrap
+        var panelEndWrap = document.getElementById('panel-end-stream-wrap');
+        if (panelEndWrap) panelEndWrap.style.display = '';
+
+        // Clean up placeholders
+        if (_videoPlaceholder.parentNode) _videoPlaceholder.parentNode.removeChild(_videoPlaceholder);
+        if (_chatPlaceholder.parentNode)  _chatPlaceholder.parentNode.removeChild(_chatPlaceholder);
 
         document.body.classList.remove('cinema-mode');
         document.body.classList.remove('cinema-fullscreen');
+
+        // Reset placeholders for next use
+        _videoPlaceholder = document.createComment('cinema-video-placeholder');
+        _chatPlaceholder  = document.createComment('cinema-chat-placeholder');
     }
 
     window.toggleCinemaFullscreen = function() {
@@ -24171,7 +24280,9 @@ html:not(.dark) .brand-name {
         // Apply cinema-mode class immediately so raw panel is hidden via CSS
         document.body.classList.add('cinema-mode');
         setTimeout(function(){
-            enterCinema('live-broadcaster-video-container');
+            var vc = document.getElementById('live-broadcaster-video-container');
+            if (vc) vc.style.height = '';
+            enterCinema('live-broadcaster-video-container', 'live-broadcast-chat-feed');
         }, 400);
     };
 
@@ -24194,7 +24305,8 @@ html:not(.dark) .brand-name {
             var hasVideo = vc && vc.querySelector('video');
             attempts++;
             if (hasVideo || attempts >= maxAttempts) {
-                enterCinema('live-remote-video-container');
+                if (vc) vc.style.height = '';
+                enterCinema('live-remote-video-container', 'live-chat-feed');
             } else {
                 setTimeout(waitForRemoteVideo, 100);
             }
@@ -24555,14 +24667,16 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 <!-- LUXURY NEBULA PRISM — CSS ONLY, ZERO HTML CHANGES -->
 <style id="luxury-v10">
 
-/* ══ HIDE unwanted broadcaster buttons ══════════════════════ */
-#btn-noise-suppress, #btn-vbg {
-    display:none!important;
-    position:absolute!important;
-    visibility:hidden!important;
-    pointer-events:none!important;
-    width:0!important; height:0!important;
-    overflow:hidden!important;
+/* ══ HIDE unwanted broadcaster buttons ══════════════════════
+   The cinema grid rule (#cinema-controls-btns .studio-btn) has
+   specificity (1,0,1) and uses display:flex!important.
+   We need higher specificity to keep these two buttons hidden.
+   Using ID+ID gives (2,0,0) which beats (1,0,1). */
+#btn-noise-suppress, #btn-vbg,
+#cinema-controls-btns #btn-noise-suppress,
+#cinema-controls-btns #btn-vbg {
+    display:none!important; width:0!important; height:0!important;
+    padding:0!important; margin:0!important; overflow:hidden!important; pointer-events:none!important;
 }
 .live-stars-pill { display:none!important; }
 
@@ -24618,8 +24732,9 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 }
 #cinema-controls-panels { flex:1!important; overflow-y:visible!important; max-height:none!important; padding:4px 8px 8px!important; }
 #cinema-controls-panels > * { margin-bottom:8px!important; }
-#cinema-end-btn-wrap { order:3!important; flex-shrink:0!important; background:linear-gradient(180deg,#090714,#060510)!important; border-top:1px solid rgba(175,25,25,0.22)!important; padding:8px 10px!important; }
-#cinema-chat-col .live-chat-card { order:1!important; flex-shrink:0!important; flex:0 0 auto!important; border-radius:0!important; border:none!important; border-top:1px solid rgba(110,65,230,0.18)!important; background:transparent!important; }
+#cinema-end-btn-wrap { order:4!important; flex-shrink:0!important; background:linear-gradient(180deg,#090714,#060510)!important; border-top:1px solid rgba(175,25,25,0.22)!important; padding:8px 10px!important; }
+/* Chat input anchored at the bottom — below controls (order:2), above End Stream (order:4) */
+#cinema-chat-col .live-chat-card { order:3!important; flex-shrink:0!important; flex:0 0 auto!important; border-radius:0!important; border:none!important; border-top:1px solid rgba(110,65,230,0.18)!important; background:transparent!important; }
 #cinema-chat-col .live-chat-feed,
 #cinema-chat-col #live-broadcast-chat-feed { display:none!important; }
 #cinema-chat-col .live-chat-head { display:none!important; }
