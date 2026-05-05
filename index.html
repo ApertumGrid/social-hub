@@ -24704,16 +24704,16 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 #cohost-stage-wrap       { order:1!important; }
 #live-remote-video-container { order:2!important; }
 
-/* Action row (hype/hand/stage/leave) → LAST */
-#live-player-wrap .live-action-row { order:10!important; }
+/* Action row (hype/hand/stage/leave) → immediately after video */
+#live-player-wrap .live-action-row { order:3!important; }
 
 /* Hidden poll/goal/leaderboard — push out of flow */
 #viewer-poll-card, #viewer-star-goal { order:0!important; }
 
-/* Gift panel → second to last */
-#viewer-gift-panel { order:9!important; }
+/* Gift panel → after action row */
+#viewer-gift-panel { order:4!important; }
 
-/* Chat card → middle (after video, before gifts) */
+/* Chat card → at the bottom, after gifts */
 #viewer-panel-chat-card { order:5!important; }
 
 /* ══ BROADCASTER CINEMA LAYOUT ══════════════════════════════ */
@@ -24854,86 +24854,170 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 #stream-health { background:rgba(4,12,6,0.82)!important; border:1px solid rgba(24,175,98,0.32)!important; border-radius:20px!important; padding:3px 10px!important; backdrop-filter:blur(8px)!important; }
 .live-viewer-chip { background:rgba(10,8,22,0.82)!important; border:1px solid rgba(125,88,235,0.28)!important; color:rgba(188,162,255,0.88)!important; border-radius:20px!important; padding:3px 10px!important; font-size:0.6rem!important; font-weight:700!important; backdrop-filter:blur(8px)!important; }
 
-/* ══ MOBILE VIEWER — complete clean layout ═══════════════════ */
+/* ══ MOBILE VIEWER — complete clean layout ═══════════════════
+   Target order on screen (top → bottom):
+   1. Video (compact ~46vw) with chat messages floating UP inside it
+   2. Action row: Hype · Raise Hand · Join Stage · Leave (1 line)
+   3. Send a Gift header + 4 gem buttons
+   4. Chat input bar
+   END STREAM hidden — viewers cannot end streams
+═════════════════════════════════════════════════════════════ */
 @media (max-width: 768px) {
-    /* ── VIDEO: 16:9-ish, capped so it doesn't eat the whole screen ── */
+
+    /* ── 1. VIDEO: compact, never taller than ~46% viewport ── */
     #live-remote-video-container {
-        height: 52vw!important;
-        min-height: 190px!important;
-        max-height: 260px!important;
+        height: 46vw!important;
+        min-height: 180px!important;
+        max-height: 240px!important;
+        position: relative!important;
     }
 
-    /* ── VIDEO OVERLAYS: sized down for narrow viewport ── */
-    .vid-overlay-poll { max-width:62%!important; font-size:0.56rem!important; padding:6px 8px!important; }
-    .vid-overlay-goal { max-width:52%!important; font-size:0.56rem!important; padding:5px 8px!important; }
-    .vop-question { font-size:0.6rem!important; }
+    /* ── FLOATING CHAT: scrolls up inside the video on mobile ──
+       Enable it — messages rise from bottom-left of the video */
+    #live-player-wrap #viewer-floating-chat {
+        display: flex!important;
+        position: absolute!important;
+        bottom: 8px!important;
+        left: 8px!important;
+        width: 58%!important;
+        max-height: 70%!important;
+        flex-direction: column!important;
+        justify-content: flex-end!important;
+        pointer-events: none!important;
+        z-index: 22!important;
+    }
+    #live-player-wrap #viewer-floating-chat .sfc-feed {
+        max-height: 130px!important;
+        overflow: hidden!important;
+        display: flex!important;
+        flex-direction: column!important;
+        justify-content: flex-end!important;
+        gap: 3px!important;
+        mask-image: linear-gradient(to bottom, transparent 0%, black 30%)!important;
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 30%)!important;
+    }
+    /* Shrink message text to fit inside video */
+    #live-player-wrap #viewer-floating-chat .sfc-msg-bubble {
+        padding: 3px 8px!important;
+    }
+    #live-player-wrap #viewer-floating-chat .sfc-msg-user {
+        font-size: 0.6rem!important;
+    }
+    #live-player-wrap #viewer-floating-chat .sfc-msg-text {
+        font-size: 0.7rem!important;
+    }
+    #live-player-wrap #viewer-floating-chat .sfc-msg-av {
+        width: 20px!important;
+        height: 20px!important;
+    }
+
+    /* ── VIDEO OVERLAYS: poll & goal — tiny pills, don't dominate ── */
+    #live-player-wrap .vid-overlay-poll {
+        max-width: 44%!important;
+        width: auto!important;
+        font-size: 0.5rem!important;
+        padding: 5px 7px!important;
+        bottom: 8px!important;
+        right: 8px!important;
+        border-radius: 10px!important;
+    }
+    #live-player-wrap .vid-overlay-goal {
+        max-width: 40%!important;
+        width: auto!important;
+        font-size: 0.5rem!important;
+        padding: 5px 7px!important;
+        top: 36px!important;
+        right: 8px!important;
+        border-radius: 10px!important;
+    }
+    #live-player-wrap .vid-overlay-poll .vop-head,
+    #live-player-wrap .vid-overlay-goal .vog-head { font-size: 0.48rem!important; margin-bottom: 4px!important; }
+    #live-player-wrap .vid-overlay-poll .vop-question { font-size: 0.52rem!important; margin-bottom: 5px!important; }
+    #live-player-wrap .vid-overlay-poll .vop-label { font-size: 0.52rem!important; padding: 4px 6px!important; }
+    #live-player-wrap .vid-overlay-goal .vog-track { height: 5px!important; margin-bottom: 3px!important; }
+    #live-player-wrap .vid-overlay-goal .vog-nums { font-size: 0.48rem!important; }
 
     /* ── BADGES / STATUS CHIPS ── */
-    .live-badge-pill { font-size:0.5rem!important; padding:2px 7px!important; }
-    .live-viewer-chip, #stream-health { font-size:0.5rem!important; padding:2px 7px!important; }
+    .live-badge-pill { font-size: 0.5rem!important; padding: 2px 7px!important; }
+    .live-viewer-chip, #stream-health { font-size: 0.5rem!important; padding: 2px 7px!important; }
 
-    /* ── STATS CHIPS ── */
-    .live-stat-val   { font-size:0.72rem!important; }
-    .live-stat-label { font-size:0.38rem!important; }
-    .live-stat-chip  { padding:8px 3px!important; }
-
-    /* ── GIFTS ── */
-    .live-gift-card { padding:8px!important; }
-    .live-gift-grid { gap:5px!important; }
-    .gift-btn { padding:7px 2px!important; }
-    .gift-btn .gift-icon { font-size:0.88rem!important; }
-    .gift-btn .gift-name, .gift-btn .gift-cost { font-size:0.42rem!important; }
-
-    /* ── VIEWER ACTION ROW: 4 equal-width buttons, no wrapping ── */
+    /* ── 2. ACTION ROW: Hype · Raise Hand · Join Stage · Leave — all on one line ── */
     #live-player-wrap .live-action-row {
         display: grid!important;
         grid-template-columns: 1fr 1fr 1fr 1fr!important;
         gap: 5px!important;
-        padding: 8px 0!important;
-        margin-bottom: 4px!important;
-        /* Hide the stars-pill — it breaks the grid */
+        padding: 8px 10px!important;
+        margin-bottom: 0!important;
+        align-items: stretch!important;
     }
+    /* Stars pill not needed on mobile — hides cleanly */
     #live-player-wrap .live-action-row .live-stars-pill {
         display: none!important;
     }
+    /* All 4 action buttons: equal width, compact, single line */
     #live-hype-btn,
     #viewer-raise-hand-btn,
     #viewer-cohost-btn,
     #live-player-wrap .live-action-row .btn-outline[onclick="leaveLiveStream()"] {
         width: 100%!important;
-        font-size: 0.6rem!important;
-        padding: 7px 4px!important;
+        font-size: 0.58rem!important;
+        padding: 8px 2px!important;
         text-align: center!important;
         white-space: nowrap!important;
         overflow: hidden!important;
         text-overflow: ellipsis!important;
         border-radius: 10px!important;
+        display: flex!important;
+        align-items: center!important;
+        justify-content: center!important;
+        margin: 0!important;
     }
-    /* Leave button: red tint */
+    /* Leave button: subtle red */
     #live-player-wrap .live-action-row .btn-outline[onclick="leaveLiveStream()"] {
-        border-color: rgba(200,50,50,0.3)!important;
-        color: rgba(255,100,100,0.75)!important;
+        border-color: rgba(200,50,50,0.35)!important;
+        color: rgba(255,100,100,0.8)!important;
     }
 
-    /* ── EMOJI REACTIONS: hidden on mobile (grid is tight) ── */
-    #viewer-reactions-bar { display:none!important; }
+    /* ── EMOJI REACTIONS BAR: hidden — action row is the controls ── */
+    #viewer-reactions-bar { display: none!important; }
 
-    /* ── VIEWER CHAT: NOT fixed — inline at bottom, above nav bar ──
-       Using fixed was covering the action row buttons. Instead keep it
-       inline but compact so it sits naturally below the action row. */
+    /* ── 3. GIFT PANEL: compact ── */
+    .live-gift-card { padding: 8px 10px!important; margin: 0!important; }
+    .live-gift-grid { gap: 6px!important; }
+    .gift-btn { padding: 8px 2px!important; }
+    .gift-btn .gift-icon { font-size: 0.9rem!important; }
+    .gift-btn .gift-name,
+    .gift-btn .gift-cost { font-size: 0.42rem!important; }
+
+    /* ── 4. CHAT: inline input at the bottom — no fixed/absolute ── */
     #viewer-panel-chat-card {
         position: static!important;
-        border-radius: 12px!important;
-        margin-bottom: 70px!important; /* clear the mobile nav bar */
+        border-radius: 0!important;
+        margin: 0!important;
+        margin-bottom: 16px!important;
     }
-    #live-chat-feed { max-height:100px!important; font-size:0.7rem!important; }
-    #viewer-panel-chat-card .live-chat-input-row { padding:6px 8px!important; }
-    #viewer-panel-chat-card .live-chat-input-row .field { font-size:0.72rem!important; padding:5px 10px!important; }
+    /* Hide the scrolling feed inside the panel card — it lives in the video overlay now */
+    #viewer-panel-chat-card .live-chat-head { display: none!important; }
+    #viewer-panel-chat-card #live-chat-feed { display: none!important; }
+    #viewer-panel-chat-card .live-chat-input-row {
+        padding: 8px 10px!important;
+        border-top: none!important;
+    }
+    #viewer-panel-chat-card .live-chat-input-row .field {
+        font-size: 0.8rem!important;
+        padding: 8px 12px!important;
+    }
 
-    /* ── VIEWER: hide End Stream button entirely (viewers can't end streams) ── */
+    /* ── END STREAM: completely hidden for viewers ── */
     #panel-end-stream-wrap,
     #live-player-wrap button[onclick="endLiveStream()"],
-    #live-player-wrap #panel-end-stream-btn { display:none!important; }
+    #live-player-wrap #panel-end-stream-btn { display: none!important; }
+
+    /* ── LEADERBOARD: hidden on mobile viewer to save space ── */
+    #viewer-leaderboard { display: none!important; }
+
+    /* ── STATS ROW (bc-live-stats-row) — not in viewer but guard it ── */
+    #live-player-wrap .live-stats-row { display: none!important; }
 }
 
 </style>
