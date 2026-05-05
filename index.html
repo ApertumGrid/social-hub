@@ -24171,8 +24171,9 @@ html:not(.dark) .brand-name {
         cinemaChatCol.insertBefore(controlsBar, endBtnWrap);
         cinemaChatCol.insertBefore(chatEl, endBtnWrap);
 
-        // Show the end stream button wrap
-        if (endBtnWrap) endBtnWrap.style.display = 'flex';
+        // Show the end stream button wrap — only for broadcaster, not mobile viewers
+        var isMobileViewer = window.innerWidth <= 768 && videoContainerId === 'live-remote-video-container';
+        if (endBtnWrap && !isMobileViewer) endBtnWrap.style.display = 'flex';
 
         document.body.classList.add('cinema-mode');
     }
@@ -24885,8 +24886,11 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
     /* ── EMOJI REACTIONS BAR: hidden ── */
     #viewer-reactions-bar { display:none!important; }
 
-    /* ── 2. ACTION ROW — 4 buttons, one line ── */
-    #live-player-wrap .live-action-row {
+    /* ── 2. ACTION ROW — 4 buttons, one line ──
+       Applies both in #live-player-wrap AND after enterCinema moves it
+       into #cinema-controls-btns (which fires ~1s after viewer joins) ── */
+    #live-player-wrap .live-action-row,
+    #cinema-controls-btns .live-action-row {
         width: 100%!important;
         display: grid!important;
         grid-template-columns: 1fr 1fr 1fr 1fr!important;
@@ -24896,14 +24900,18 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
         margin: 0!important;
         box-sizing: border-box!important;
         flex-shrink: 0!important;
+        flex-wrap: nowrap!important;
     }
-    #live-player-wrap .live-action-row .live-stars-pill {
+    #live-player-wrap .live-action-row .live-stars-pill,
+    #cinema-controls-btns .live-action-row .live-stars-pill {
         display: none!important;
     }
     #live-hype-btn,
     #viewer-raise-hand-btn,
     #viewer-cohost-btn,
-    #live-player-wrap .live-action-row .btn-outline[onclick="leaveLiveStream()"] {
+    #live-player-wrap .live-action-row .btn-outline[onclick="leaveLiveStream()"],
+    #cinema-controls-btns .live-action-row .btn-outline[onclick="leaveLiveStream()"],
+    #cinema-controls-btns .live-action-row button {
         width: 100%!important;
         min-width: 0!important;
         font-size: 0.55rem!important;
@@ -24917,8 +24925,10 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
         justify-content: center!important;
         margin: 0!important;
         box-sizing: border-box!important;
+        flex-shrink: 1!important;
     }
-    #live-player-wrap .live-action-row .btn-outline[onclick="leaveLiveStream()"] {
+    #live-player-wrap .live-action-row .btn-outline[onclick="leaveLiveStream()"],
+    #cinema-controls-btns .live-action-row .btn-outline[onclick="leaveLiveStream()"] {
         border-color: rgba(200,50,50,0.35)!important;
         color: rgba(255,100,100,0.8)!important;
     }
@@ -24962,13 +24972,15 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
     .gift-btn .gift-name,
     .gift-btn .gift-cost { font-size: 0.38rem!important; }
 
-    /* ── END STREAM: NEVER shown to viewers ── */
+    /* ── END STREAM: NEVER shown to viewers ──
+       enterCinema() calls endBtnWrap.style.display='flex' — override it ── */
     #panel-end-stream-wrap,
     #panel-end-stream-btn,
     #live-player-wrap #panel-end-stream-wrap,
     #live-player-wrap #panel-end-stream-btn,
     #live-player-wrap button[onclick="endLiveStream()"],
     #live-player-wrap #cinema-end-btn-wrap,
+    #cinema-end-btn-wrap,
     .cinema-end-btn-wrap { display:none!important; }
 
     /* ── LEADERBOARD + STATS: hidden ── */
