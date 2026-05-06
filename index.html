@@ -19987,8 +19987,9 @@ html:not(.dark) .brand-name {
                 }
             });
 
-            // Show player, hide browser
+            // Show player, hide browser and tabs
             hide('live-stream-browser');
+            hide('live-tabs');
             show('live-player-wrap');
 
             // Populate stream info
@@ -20108,6 +20109,7 @@ html:not(.dark) .brand-name {
 
         hide('live-player-wrap');
         show('live-stream-browser');
+        show('live-tabs');
         window.loadStreamBrowser();
     };
 
@@ -24293,8 +24295,7 @@ html:not(.dark) .brand-name {
     }
     var _patchedJoin = async function() {
         await _origJoin.apply(this, arguments);
-        // On mobile, skip cinema mode for viewers — the mobile CSS layout handles everything correctly.
-        // Cinema mode is desktop-only for viewers.
+        // On mobile, skip cinema mode for viewers — mobile CSS layout handles everything.
         if (window.innerWidth <= 768) return;
 
         // Wait for the remote video container to have actual video content before
@@ -24648,7 +24649,7 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
             'opacity:0', 'pointer-events:none'
         ].join(';');
         btn.onclick = function() {
-            if (window.innerWidth <= 768) return; // desktop only for viewers
+            if (window.innerWidth <= 768) return;
             if (typeof enterCinema === 'function') {
                 enterCinema('live-remote-video-container', 'live-chat-feed');
             }
@@ -24854,48 +24855,52 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 .live-viewer-chip { background:rgba(10,8,22,0.82)!important; border:1px solid rgba(125,88,235,0.28)!important; color:rgba(188,162,255,0.88)!important; border-radius:20px!important; padding:3px 10px!important; font-size:0.6rem!important; font-weight:700!important; backdrop-filter:blur(8px)!important; }
 
 /* ══ MOBILE VIEWER — final layout (top → bottom):
-   1. Video (compact)
-   2. Hype · Raise Hand · Join Stage · Leave  (ONE row)
-   3. Chat feed (messages)
+   1. Video (compact, always has height)
+   2. Hype · Raise Hand · Join Stage · Leave  (ONE row, 4 equal columns)
+   3. Chat feed (messages scrolling up)
    4. Send a Gift (compact strip)
    5. Chat input bar
-   END STREAM = HIDDEN — viewers cannot end streams
+   END STREAM = HIDDEN always — viewers cannot end streams
 ════════════════════════════════════════════════════════════ */
 @media (max-width: 768px) {
 
-    /* ── 1. VIDEO ── */
-    #live-remote-video-container {
+    /* ── LIVE TABS: hidden while inside a stream, shown by JS on leave ── */
+    #live-player-wrap[style*="display:flex"] ~ * { }
+
+    /* ── 1. VIDEO: always has height so action row doesn't float alone ── */
+    #live-player-wrap #live-remote-video-container {
         height: 50vw!important;
         min-height: 185px!important;
         max-height: 250px!important;
+        display: block!important;
+        position: relative!important;
     }
 
     /* ── VIDEO OVERLAYS: small pills, don't dominate the video ── */
-    .vid-overlay-poll,
-    .vid-overlay-goal {
+    #live-player-wrap .vid-overlay-poll,
+    #live-player-wrap .vid-overlay-goal {
         max-width: 40%!important;
         font-size: 0.44rem!important;
         padding: 4px 5px!important;
         border-radius: 7px!important;
     }
-    .vop-question { font-size:0.46rem!important; }
-    .vop-label    { font-size:0.44rem!important; padding:3px 5px!important; }
-    .vog-nums     { font-size:0.44rem!important; }
-    .vog-track    { height:4px!important; margin:3px 0!important; }
-    .vop-head, .vog-head { font-size:0.42rem!important; margin-bottom:3px!important; }
+    #live-player-wrap .vop-question { font-size:0.46rem!important; }
+    #live-player-wrap .vop-label    { font-size:0.44rem!important; padding:3px 5px!important; }
+    #live-player-wrap .vog-nums     { font-size:0.44rem!important; }
+    #live-player-wrap .vog-track    { height:4px!important; margin:3px 0!important; }
+    #live-player-wrap .vop-head,
+    #live-player-wrap .vog-head     { font-size:0.42rem!important; margin-bottom:3px!important; }
 
     /* ── BADGES ── */
-    .live-badge-pill { font-size:0.48rem!important; padding:2px 6px!important; }
-    .live-viewer-chip, #stream-health { font-size:0.48rem!important; padding:2px 6px!important; }
+    #live-player-wrap .live-badge-pill    { font-size:0.48rem!important; padding:2px 6px!important; }
+    #live-player-wrap .live-viewer-chip,
+    #live-player-wrap #stream-health      { font-size:0.48rem!important; padding:2px 6px!important; }
 
     /* ── EMOJI REACTIONS BAR: hidden ── */
-    #viewer-reactions-bar { display:none!important; }
+    #live-player-wrap #viewer-reactions-bar { display:none!important; }
 
-    /* ── 2. ACTION ROW — 4 buttons, one line ──
-       Applies both in #live-player-wrap AND after enterCinema moves it
-       into #cinema-controls-btns (which fires ~1s after viewer joins) ── */
-    #live-player-wrap .live-action-row,
-    #cinema-controls-btns .live-action-row {
+    /* ── 2. ACTION ROW — 4 buttons in ONE line, scoped to player only ── */
+    #live-player-wrap .live-action-row {
         width: 100%!important;
         display: grid!important;
         grid-template-columns: 1fr 1fr 1fr 1fr!important;
@@ -24907,16 +24912,13 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
         flex-shrink: 0!important;
         flex-wrap: nowrap!important;
     }
-    #live-player-wrap .live-action-row .live-stars-pill,
-    #cinema-controls-btns .live-action-row .live-stars-pill {
+    #live-player-wrap .live-action-row .live-stars-pill {
         display: none!important;
     }
-    #live-hype-btn,
-    #viewer-raise-hand-btn,
-    #viewer-cohost-btn,
-    #live-player-wrap .live-action-row .btn-outline[onclick="leaveLiveStream()"],
-    #cinema-controls-btns .live-action-row .btn-outline[onclick="leaveLiveStream()"],
-    #cinema-controls-btns .live-action-row button {
+    #live-player-wrap #live-hype-btn,
+    #live-player-wrap #viewer-raise-hand-btn,
+    #live-player-wrap #viewer-cohost-btn,
+    #live-player-wrap .live-action-row .btn-outline[onclick="leaveLiveStream()"] {
         width: 100%!important;
         min-width: 0!important;
         font-size: 0.55rem!important;
@@ -24932,65 +24934,60 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
         box-sizing: border-box!important;
         flex-shrink: 1!important;
     }
-    #live-player-wrap .live-action-row .btn-outline[onclick="leaveLiveStream()"],
-    #cinema-controls-btns .live-action-row .btn-outline[onclick="leaveLiveStream()"] {
+    #live-player-wrap .live-action-row .btn-outline[onclick="leaveLiveStream()"] {
         border-color: rgba(200,50,50,0.35)!important;
         color: rgba(255,100,100,0.8)!important;
     }
 
     /* ── 3. CHAT FEED ── */
-    #viewer-panel-chat-card {
+    #live-player-wrap #viewer-panel-chat-card {
         position: static!important;
         border-radius: 0!important;
         margin: 0!important;
     }
-    #live-chat-feed {
+    #live-player-wrap #live-chat-feed {
         max-height: 130px!important;
         font-size: 0.72rem!important;
         display: flex!important;
     }
-    #viewer-panel-chat-card .live-chat-input-row {
+    #live-player-wrap #viewer-panel-chat-card .live-chat-input-row {
         padding: 8px 10px!important;
     }
-    #viewer-panel-chat-card .live-chat-input-row .field {
+    #live-player-wrap #viewer-panel-chat-card .live-chat-input-row .field {
         font-size: 0.8rem!important;
         padding: 8px 12px!important;
     }
 
     /* ── 4. GIFT PANEL — compact strip ── */
-    .live-gift-card {
+    #live-player-wrap .live-gift-card {
         padding: 6px 8px!important;
         margin: 0!important;
         border-radius: 0!important;
     }
-    .live-gift-head {
+    #live-player-wrap .live-gift-head {
         font-size: 0.5rem!important;
         padding-bottom: 4px!important;
         margin-bottom: 5px!important;
     }
-    .live-gift-grid { gap: 5px!important; }
-    .gift-btn {
+    #live-player-wrap .live-gift-grid { gap: 5px!important; }
+    #live-player-wrap .gift-btn {
         padding: 5px 2px!important;
         border-radius: 8px!important;
     }
-    .gift-btn .gift-icon { font-size: 0.75rem!important; }
-    .gift-btn .gift-name,
-    .gift-btn .gift-cost { font-size: 0.38rem!important; }
+    #live-player-wrap .gift-btn .gift-icon { font-size: 0.75rem!important; }
+    #live-player-wrap .gift-btn .gift-name,
+    #live-player-wrap .gift-btn .gift-cost { font-size: 0.38rem!important; }
 
-    /* ── END STREAM: NEVER shown to viewers ──
-       enterCinema() calls endBtnWrap.style.display='flex' — override it ── */
-    #panel-end-stream-wrap,
-    #panel-end-stream-btn,
+    /* ── END STREAM: NEVER shown to viewers ── */
     #live-player-wrap #panel-end-stream-wrap,
     #live-player-wrap #panel-end-stream-btn,
     #live-player-wrap button[onclick="endLiveStream()"],
     #live-player-wrap #cinema-end-btn-wrap,
-    #cinema-end-btn-wrap,
-    .cinema-end-btn-wrap { display:none!important; }
+    #cinema-end-btn-wrap { display:none!important; }
 
     /* ── LEADERBOARD + STATS: hidden ── */
-    #viewer-leaderboard { display:none!important; }
-    #live-player-wrap .live-stats-row { display:none!important; }
+    #live-player-wrap #viewer-leaderboard { display:none!important; }
+    #live-player-wrap .live-stats-row     { display:none!important; }
 }
 
 </style>
