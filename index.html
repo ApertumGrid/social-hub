@@ -19166,7 +19166,6 @@ html:not(.dark) .brand-name {
             const _autoJoinCandidate = streams.length === 1 ? streams[0] : null;
             const _isOwnStream = _autoJoinCandidate && _myAddr &&
                 (_autoJoinCandidate.hostAddr || '').toLowerCase() === _myAddr;
-            // Never auto-join on mobile/touch devices — user must tap the stream card themselves.
             var _isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (window.innerWidth <= 768);
             if (streams.length === 1 && !_watchingStreamId && !isHosting && !_autoJoinFired && !_isOwnStream && !_isMobile) {
                 _autoJoinFired = true;
@@ -19817,7 +19816,14 @@ html:not(.dark) .brand-name {
                         if (remoteEl) {
                             remoteEl.style.cssText = '';
                             const playRemoteWhenReady = () => {
-                                if (remoteEl.offsetWidth > 0 || remoteEl.offsetHeight > 0) {
+                                // On mobile the inner div is position:absolute so offsetWidth may
+                                // be 0 even when the container has height. Measure the container instead.
+                                const container = $('live-remote-video-container') || remoteEl;
+                                const hasSize = container.offsetWidth > 0 || container.offsetHeight > 0;
+                                if (hasSize) {
+                                    // Force the inner div to fill so Agora can inject into it
+                                    remoteEl.style.width  = container.offsetWidth  + 'px';
+                                    remoteEl.style.height = container.offsetHeight + 'px';
                                     remoteUser.videoTrack.play(remoteEl);
                                     // If we just promoted to co-host, re-apply the current
                                     // stream layout now that host video is playing again
@@ -21285,16 +21291,11 @@ html:not(.dark) .brand-name {
                 if (window._localAudioTrack_ref) { window._localAudioTrack_ref.stop(); window._localAudioTrack_ref.close(); window._localAudioTrack_ref = null; }
             } catch(_) {}
 
-            // Nuclear option — ask browser for all active MediaStreamTracks and stop them all
-            // This guarantees the OS camera indicator turns off even if Agora holds references
+            // Nuclear — get a fresh stream and immediately kill it to force OS to release camera
             try {
-                if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-                    // Requesting zero-constraint stream forces browser to surface active tracks
-                    // then we immediately stop them all
-                    navigator.mediaDevices.getUserMedia({video:true, audio:true})
-                        .then(function(s){ s.getTracks().forEach(function(t){ t.stop(); }); })
-                        .catch(function(){});
-                }
+                navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                    .then(function(s) { s.getTracks().forEach(function(t) { t.stop(); }); })
+                    .catch(function() {});
             } catch(_) {}
 
         } catch(e) { console.warn('[Live] Agora cleanup:', e); }
@@ -24353,9 +24354,7 @@ html:not(.dark) .brand-name {
         }
     }
     var _patchedEnd = async function() {
-        // Run Agora cleanup FIRST (stops camera, leaves channel) with DOM intact
         await _origEnd.apply(this, arguments);
-        // Then restore cinema DOM — Agora is done with it
         exitCinema();
     };
 
