@@ -11294,6 +11294,9 @@ html:not(.dark) .brand-name {
             if (feedItems)    feedItems.style.display    = '';
             if (feedHeading)  feedHeading.style.display  = '';
             if (loadMoreBtn)  loadMoreBtn.style.display  = '';
+            // Restore feed toggle row
+            const feedToggleRowHome = document.querySelector('.feed-toggle-row');
+            if (feedToggleRowHome) feedToggleRowHome.style.display = '';
             // Restore signals + category bar on home
             if (signalsBarEl)  signalsBarEl.classList.remove('signals-hidden');
             if (categoryBarEl) categoryBarEl.classList.remove('signals-hidden');
@@ -11320,6 +11323,9 @@ html:not(.dark) .brand-name {
             if (feedItems)    feedItems.style.display    = 'none';
             if (feedHeading)  feedHeading.style.display  = 'none';
             if (loadMoreBtn)  loadMoreBtn.style.display  = 'none';
+            // Hide feed toggle row (Global Feed / Following) — it belongs to home only
+            const feedToggleRow = document.querySelector('.feed-toggle-row');
+            if (feedToggleRow) feedToggleRow.style.display = 'none';
             // FIX 1: Hide signals bar and category bar on all non-home tabs
             if (signalsBarEl)  signalsBarEl.classList.add('signals-hidden');
             if (categoryBarEl) categoryBarEl.classList.add('signals-hidden');
@@ -19817,39 +19823,28 @@ html:not(.dark) .brand-name {
                             remoteEl.style.cssText = '';
                             const playRemoteWhenReady = () => {
                                 // On mobile the inner div is position:absolute so offsetWidth may
-                                // be 0 even when the container has height. Measure the container instead.
+                                // be 0 even when the container has height. Use getBoundingClientRect
+                                // as it works during flex layout before offsetWidth is available.
                                 const container = $('live-remote-video-container') || remoteEl;
-                                // Use getBoundingClientRect as fallback — it works even during flex layout
                                 const rect = container.getBoundingClientRect();
-                                const w = container.offsetWidth  || rect.width  || 0;
-                                const h = container.offsetHeight || rect.height || 0;
+                                const w = container.offsetWidth  || Math.round(rect.width)  || 0;
+                                const h = container.offsetHeight || Math.round(rect.height) || 0;
                                 const hasSize = w > 0 || h > 0;
                                 if (hasSize) {
                                     // Force the inner div to fill so Agora can inject into it
                                     remoteEl.style.position = 'absolute';
-                                    remoteEl.style.top    = '0';
-                                    remoteEl.style.left   = '0';
-                                    remoteEl.style.width  = '100%';
-                                    remoteEl.style.height = '100%';
-                                    // Also explicitly size for Agora's internal canvas
-                                    remoteEl.style.minWidth  = (w || 300) + 'px';
-                                    remoteEl.style.minHeight = (h || 200) + 'px';
+                                    remoteEl.style.top      = '0';
+                                    remoteEl.style.left     = '0';
+                                    remoteEl.style.width    = '100%';
+                                    remoteEl.style.height   = '100%';
                                     remoteUser.videoTrack.play(remoteEl);
-                                    // After play, reset min-width/min-height so CSS takes over
+                                    // After play, force Agora's injected video element to fill
                                     setTimeout(function() {
-                                        remoteEl.style.minWidth  = '';
-                                        remoteEl.style.minHeight = '';
-                                        // Force Agora's internal video element to fill container
                                         var agoraVid = remoteEl.querySelector('video');
                                         if (agoraVid) {
-                                            agoraVid.style.width  = '100%';
-                                            agoraVid.style.height = '100%';
-                                            agoraVid.style.objectFit = 'cover';
-                                            agoraVid.style.position = 'absolute';
-                                            agoraVid.style.top = '0';
-                                            agoraVid.style.left = '0';
+                                            agoraVid.style.cssText = 'position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;object-fit:cover!important;';
                                         }
-                                    }, 300);
+                                    }, 350);
                                     // If we just promoted to co-host, re-apply the current
                                     // stream layout now that host video is playing again
                                     if (_justPromotedToCoHost) {
@@ -24336,44 +24331,28 @@ html:not(.dark) .brand-name {
     }
     var _patchedJoin = async function() {
         await _origJoin.apply(this, arguments);
-
-        // On mobile, skip cinema mode for viewers — mobile CSS layout handles everything.
-        // But we DO need to trigger Agora resize so it paints into the now-visible container.
+        // On mobile, skip cinema mode — mobile CSS handles layout.
+        // But trigger a resize event so Agora repaints into the now-visible container.
         if (window.innerWidth <= 768) {
-            // Wait for the container to have a painted size, then fire a resize event
-            // so Agora redraws its video track into the correct dimensions.
-            var _mobileAttempts = 0;
-            function _mobileResizeFix() {
+            var _mob = 0;
+            (function _mobFix() {
                 var vc = document.getElementById('live-remote-video-container');
                 var rv = document.getElementById('live-remote-video');
                 var rect = vc ? vc.getBoundingClientRect() : null;
-                var hasSize = rect && (rect.width > 0 || rect.height > 0);
-                _mobileAttempts++;
-                if (hasSize) {
-                    // Force Agora's internal video to fill the container
+                if (rect && rect.width > 0) {
+                    // Force fill styles
                     if (rv) {
                         rv.style.position = 'absolute';
-                        rv.style.top = '0';
-                        rv.style.left = '0';
-                        rv.style.width = '100%';
-                        rv.style.height = '100%';
-                        var agoraVid = rv.querySelector('video');
-                        if (agoraVid) {
-                            agoraVid.style.width = '100%';
-                            agoraVid.style.height = '100%';
-                            agoraVid.style.objectFit = 'cover';
-                            agoraVid.style.position = 'absolute';
-                            agoraVid.style.top = '0';
-                            agoraVid.style.left = '0';
-                        }
+                        rv.style.top = rv.style.left = '0';
+                        rv.style.width = rv.style.height = '100%';
+                        var vid = rv.querySelector('video');
+                        if (vid) vid.style.cssText = 'position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;object-fit:cover!important;';
                     }
-                    // Dispatch resize so Agora SDK repaints
                     try { window.dispatchEvent(new Event('resize')); } catch(_) {}
-                } else if (_mobileAttempts < 20) {
-                    setTimeout(_mobileResizeFix, 200);
+                } else if (_mob++ < 25) {
+                    setTimeout(_mobFix, 200);
                 }
-            }
-            setTimeout(_mobileResizeFix, 400);
+            })();
             return;
         }
 
@@ -24712,8 +24691,6 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 // ── CINEMA SHORTCUT BUTTON ON VIEWER STREAM BOX ──────────────────
 (function() {
     function addCinemaShortcut() {
-        // Cinema shortcut is desktop only
-        if (window.innerWidth <= 768) return;
         var box = document.getElementById('live-remote-video-container');
         if (!box || document.getElementById('cinema-shortcut-btn')) return;
         var btn = document.createElement('button');
@@ -24760,6 +24737,24 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
     top: 0 !important; left: 0 !important;
     width: 100% !important; height: 100% !important;
     object-fit: cover !important;
+}
+
+/* ══ MOBILE LIVE PAGE — break out of feed-col padding and fill properly ══ */
+@media (max-width: 768px) {
+    /* page-live on mobile: remove feed-col's padding-top bleed */
+    #page-live {
+        margin-top: -50px !important; /* cancel feed-col padding-top */
+        padding-top: 0 !important;
+    }
+    /* live-player-wrap: full available height below all sticky bars */
+    /* sticky bars: topnav(50px) + mobile-dashboard(~68px) + hype-ticker(24px) = ~142px */
+    #live-player-wrap[style*="display:flex"] {
+        max-height: calc(100vh - 142px) !important;
+        overflow-y: auto !important;
+        flex-direction: column !important;
+    }
+    /* page-live heading and tabs */
+    #page-live .page-heading { margin-top: 50px !important; }
 }
 
 /* ══ HIDE unwanted broadcaster buttons ══════════════════════
@@ -24958,21 +24953,17 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 
     /* ── 1. VIDEO: always has height so nothing floats without it ── */
     #live-player-wrap #live-remote-video-container {
-        height: 56.25vw!important; /* 16:9 ratio */
+        height: 56.25vw!important; /* 16:9 */
         min-height: 200px!important;
         max-height: 280px!important;
         display: block!important;
         position: relative!important;
         background: #0d0a1a!important;
         overflow: hidden!important;
+        flex-shrink: 0!important;
     }
-    /* Ensure the Agora render target fills the container */
-    #live-player-wrap #live-remote-video-container #live-remote-video {
-        position: absolute!important;
-        top: 0!important; left: 0!important;
-        width: 100%!important; height: 100%!important;
-    }
-    /* Agora injects a div wrapper and video element — force them to fill */
+    /* Force Agora render target and its injected children to fill */
+    #live-player-wrap #live-remote-video-container #live-remote-video,
     #live-player-wrap #live-remote-video-container #live-remote-video > div,
     #live-player-wrap #live-remote-video-container #live-remote-video video {
         position: absolute!important;
