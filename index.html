@@ -11294,9 +11294,8 @@ html:not(.dark) .brand-name {
             if (feedItems)    feedItems.style.display    = '';
             if (feedHeading)  feedHeading.style.display  = '';
             if (loadMoreBtn)  loadMoreBtn.style.display  = '';
-            // Restore feed toggle row
-            const feedToggleRowHome = document.querySelector('.feed-toggle-row');
-            if (feedToggleRowHome) feedToggleRowHome.style.display = '';
+            const feedToggleRow = document.querySelector('.feed-toggle-row');
+            if (feedToggleRow) feedToggleRow.style.display = '';
             // Restore signals + category bar on home
             if (signalsBarEl)  signalsBarEl.classList.remove('signals-hidden');
             if (categoryBarEl) categoryBarEl.classList.remove('signals-hidden');
@@ -11323,7 +11322,6 @@ html:not(.dark) .brand-name {
             if (feedItems)    feedItems.style.display    = 'none';
             if (feedHeading)  feedHeading.style.display  = 'none';
             if (loadMoreBtn)  loadMoreBtn.style.display  = 'none';
-            // Hide feed toggle row (Global Feed / Following) — it belongs to home only
             const feedToggleRow = document.querySelector('.feed-toggle-row');
             if (feedToggleRow) feedToggleRow.style.display = 'none';
             // FIX 1: Hide signals bar and category bar on all non-home tabs
@@ -19823,28 +19821,14 @@ html:not(.dark) .brand-name {
                             remoteEl.style.cssText = '';
                             const playRemoteWhenReady = () => {
                                 // On mobile the inner div is position:absolute so offsetWidth may
-                                // be 0 even when the container has height. Use getBoundingClientRect
-                                // as it works during flex layout before offsetWidth is available.
+                                // be 0 even when the container has height. Measure the container instead.
                                 const container = $('live-remote-video-container') || remoteEl;
-                                const rect = container.getBoundingClientRect();
-                                const w = container.offsetWidth  || Math.round(rect.width)  || 0;
-                                const h = container.offsetHeight || Math.round(rect.height) || 0;
-                                const hasSize = w > 0 || h > 0;
+                                const hasSize = container.offsetWidth > 0 || container.offsetHeight > 0;
                                 if (hasSize) {
                                     // Force the inner div to fill so Agora can inject into it
-                                    remoteEl.style.position = 'absolute';
-                                    remoteEl.style.top      = '0';
-                                    remoteEl.style.left     = '0';
-                                    remoteEl.style.width    = '100%';
-                                    remoteEl.style.height   = '100%';
+                                    remoteEl.style.width  = container.offsetWidth  + 'px';
+                                    remoteEl.style.height = container.offsetHeight + 'px';
                                     remoteUser.videoTrack.play(remoteEl);
-                                    // After play, force Agora's injected video element to fill
-                                    setTimeout(function() {
-                                        var agoraVid = remoteEl.querySelector('video');
-                                        if (agoraVid) {
-                                            agoraVid.style.cssText = 'position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;object-fit:cover!important;';
-                                        }
-                                    }, 350);
                                     // If we just promoted to co-host, re-apply the current
                                     // stream layout now that host video is playing again
                                     if (_justPromotedToCoHost) {
@@ -24331,30 +24315,8 @@ html:not(.dark) .brand-name {
     }
     var _patchedJoin = async function() {
         await _origJoin.apply(this, arguments);
-        // On mobile, skip cinema mode — mobile CSS handles layout.
-        // But trigger a resize event so Agora repaints into the now-visible container.
-        if (window.innerWidth <= 768) {
-            var _mob = 0;
-            (function _mobFix() {
-                var vc = document.getElementById('live-remote-video-container');
-                var rv = document.getElementById('live-remote-video');
-                var rect = vc ? vc.getBoundingClientRect() : null;
-                if (rect && rect.width > 0) {
-                    // Force fill styles
-                    if (rv) {
-                        rv.style.position = 'absolute';
-                        rv.style.top = rv.style.left = '0';
-                        rv.style.width = rv.style.height = '100%';
-                        var vid = rv.querySelector('video');
-                        if (vid) vid.style.cssText = 'position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;object-fit:cover!important;';
-                    }
-                    try { window.dispatchEvent(new Event('resize')); } catch(_) {}
-                } else if (_mob++ < 25) {
-                    setTimeout(_mobFix, 200);
-                }
-            })();
-            return;
-        }
+        // On mobile, skip cinema mode for viewers — mobile CSS layout handles everything.
+        if (window.innerWidth <= 768) return;
 
         // Wait for the remote video container to have actual video content before
         // entering cinema mode — avoids showing local camera preview by mistake.
@@ -24728,34 +24690,6 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 <!-- LUXURY NEBULA PRISM — CSS ONLY, ZERO HTML CHANGES -->
 <style id="luxury-v10">
 
-/* ══ AGORA VIDEO FILL FIX — ensures Agora-injected video always fills container ══ */
-#live-remote-video > div,
-#live-remote-video > video,
-#live-broadcaster-video > div,
-#live-broadcaster-video > video {
-    position: absolute !important;
-    top: 0 !important; left: 0 !important;
-    width: 100% !important; height: 100% !important;
-    object-fit: cover !important;
-}
-
-/* ══ MOBILE LIVE PAGE — break out of feed-col padding and fill properly ══ */
-@media (max-width: 768px) {
-    /* page-live on mobile: remove feed-col's padding-top bleed */
-    #page-live {
-        margin-top: -50px !important; /* cancel feed-col padding-top */
-        padding-top: 0 !important;
-    }
-    /* live-player-wrap: flex column, scroll handled by body on mobile */
-    #live-player-wrap[style*="display:flex"] {
-        max-height: none !important;
-        overflow-y: visible !important;
-        flex-direction: column !important;
-    }
-    /* page-live heading and tabs */
-    #page-live .page-heading { margin-top: 50px !important; }
-}
-
 /* ══ HIDE unwanted broadcaster buttons ══════════════════════
    #cinema-controls-btns .studio-btn uses display:flex!important at specificity (1,0,1).
    Double-ID selector (2,0,0) beats it. */
@@ -24784,7 +24718,8 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 ══════════════════════════════════════════════════════════════ */
 #live-player-wrap[style*="display:flex"] {
     flex-direction:column!important;
-    overflow-y:visible!important;
+    overflow-y:auto!important;
+    max-height:calc(100vh - 60px)!important;
 }
 /* Video stays first */
 #cohost-stage-wrap           { order:1!important; }
@@ -24951,7 +24886,7 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 
     /* ── 1. VIDEO: always has height so nothing floats without it ── */
     #live-player-wrap #live-remote-video-container {
-        height: 56.25vw!important; /* 16:9 */
+        height: 56.25vw!important;
         min-height: 200px!important;
         max-height: 280px!important;
         display: block!important;
@@ -24960,7 +24895,7 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
         overflow: hidden!important;
         flex-shrink: 0!important;
     }
-    /* Force Agora render target and its injected children to fill */
+    /* Agora render target and its injected children must fill the container */
     #live-player-wrap #live-remote-video-container #live-remote-video,
     #live-player-wrap #live-remote-video-container #live-remote-video > div,
     #live-player-wrap #live-remote-video-container #live-remote-video video {
