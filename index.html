@@ -1451,8 +1451,16 @@
                 max-height:calc(100vh - 46vw);
                 overflow:hidden; display:flex; flex-direction:column;
             }
-            #cinema-chat-col .live-chat-input-row { padding:6px 8px; }
+            #cinema-chat-col .live-chat-input-row { padding:6px 8px; display:flex !important; }
             #cinema-chat-col .live-chat-input-row input { font-size:0.8rem; }
+            /* Make chat card visible and properly sized in mobile cinema */
+            #cinema-chat-col .live-chat-card {
+                display:flex !important; flex-direction:column !important;
+                flex-shrink:0 !important; min-height:52px !important;
+            }
+            #cinema-chat-col .live-chat-feed {
+                min-height:0 !important; max-height:80px !important;
+            }
             #cinema-controls { max-height:none; flex:1; overflow-y:auto; min-height:0; }
             #cinema-controls-panels #viewer-gift-panel {
                 display:block !important;
@@ -19826,6 +19834,8 @@ html:not(.dark) .brand-name {
                                     remoteEl.style.width  = container.offsetWidth  + 'px';
                                     remoteEl.style.height = container.offsetHeight + 'px';
                                     remoteUser.videoTrack.play(remoteEl);
+                                    // Store track globally so enterCinema can re-play after DOM move
+                                    window._liveHostVideoTrack = remoteUser.videoTrack;
                                     // If we just promoted to co-host, re-apply the current
                                     // stream layout now that host video is playing again
                                     if (_justPromotedToCoHost) {
@@ -24139,6 +24149,24 @@ html:not(.dark) .brand-name {
         cinemaVideoCol.innerHTML = '';
         cinemaVideoCol.appendChild(videoEl);
 
+        // After DOM move, Agora loses its render context — force it to re-render
+        setTimeout(function() {
+            // Dispatch resize so Agora SDK redraws all playing tracks
+            try { window.dispatchEvent(new Event('resize')); } catch(_) {}
+            // Also explicitly re-play if we have the track reference
+            if (window._liveHostVideoTrack) {
+                var remoteEl = document.getElementById('live-remote-video');
+                if (remoteEl) {
+                    var col = document.getElementById('cinema-video-col');
+                    var w = col ? col.offsetWidth  : 320;
+                    var h = col ? col.offsetHeight : 240;
+                    remoteEl.style.width  = w + 'px';
+                    remoteEl.style.height = h + 'px';
+                    try { window._liveHostVideoTrack.play(remoteEl); } catch(_) {}
+                }
+            }
+        }, 300);
+
         // Build controls section for bottom of right column
         // Structure: #cinema-controls > #cinema-controls-btns + #cinema-controls-panels
         var controlsBar   = document.createElement('div');
@@ -24350,6 +24378,7 @@ html:not(.dark) .brand-name {
     }
     var _patchedLeave = async function() {
         exitCinema();
+        window._liveHostVideoTrack = null;
         await _origLeave.apply(this, arguments);
     };
 
