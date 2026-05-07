@@ -1453,7 +1453,6 @@
             }
             #cinema-chat-col .live-chat-input-row { padding:6px 8px; display:flex !important; }
             #cinema-chat-col .live-chat-input-row input { font-size:0.8rem; }
-            /* Make chat card visible and properly sized in mobile cinema */
             #cinema-chat-col .live-chat-card {
                 display:flex !important; flex-direction:column !important;
                 flex-shrink:0 !important; min-height:52px !important;
@@ -7313,7 +7312,7 @@ html:not(.dark) .brand-name {
                 <!-- ── WATCH TAB ── -->
                 <div id="live-watch-panel">
                     <!-- Active stream player -->
-                    <div id="live-player-wrap" style="display:none;overflow-y:auto;max-height:calc(100vh - 60px);">
+                    <div id="live-player-wrap" style="display:none;">
                         <!-- Co-host stage (shown when viewer is promoted to co-host) -->
                         <div id="cohost-stage-wrap">
                             <div id="cohost-local-video"></div>
@@ -11303,6 +11302,8 @@ html:not(.dark) .brand-name {
             if (feedItems)    feedItems.style.display    = '';
             if (feedHeading)  feedHeading.style.display  = '';
             if (loadMoreBtn)  loadMoreBtn.style.display  = '';
+            const feedToggleRow = document.querySelector('.feed-toggle-row');
+            if (feedToggleRow) feedToggleRow.style.display = '';
             // Restore signals + category bar on home
             if (signalsBarEl)  signalsBarEl.classList.remove('signals-hidden');
             if (categoryBarEl) categoryBarEl.classList.remove('signals-hidden');
@@ -11329,6 +11330,8 @@ html:not(.dark) .brand-name {
             if (feedItems)    feedItems.style.display    = 'none';
             if (feedHeading)  feedHeading.style.display  = 'none';
             if (loadMoreBtn)  loadMoreBtn.style.display  = 'none';
+            const feedToggleRow = document.querySelector('.feed-toggle-row');
+            if (feedToggleRow) feedToggleRow.style.display = 'none';
             // FIX 1: Hide signals bar and category bar on all non-home tabs
             if (signalsBarEl)  signalsBarEl.classList.add('signals-hidden');
             if (categoryBarEl) categoryBarEl.classList.add('signals-hidden');
@@ -19834,7 +19837,7 @@ html:not(.dark) .brand-name {
                                     remoteEl.style.width  = container.offsetWidth  + 'px';
                                     remoteEl.style.height = container.offsetHeight + 'px';
                                     remoteUser.videoTrack.play(remoteEl);
-                                    // Store track globally so enterCinema can re-play after DOM move
+                                    // Store track so enterCinema can re-play after DOM move
                                     window._liveHostVideoTrack = remoteUser.videoTrack;
                                     // If we just promoted to co-host, re-apply the current
                                     // stream layout now that host video is playing again
@@ -24141,7 +24144,7 @@ html:not(.dark) .brand-name {
         fsBtn.onclick = window.toggleCinemaFullscreen;
         videoEl.appendChild(fsBtn);
 
-        // Hide waiting room before moving — prevents black flash during cinema transition
+        // Hide waiting room before the DOM move — prevents black flash
         var _wr = videoEl.querySelector('#live-waiting-room');
         if (_wr) { _wr.style.transition = 'none'; _wr.style.display = 'none'; }
 
@@ -24149,11 +24152,9 @@ html:not(.dark) .brand-name {
         cinemaVideoCol.innerHTML = '';
         cinemaVideoCol.appendChild(videoEl);
 
-        // After DOM move, Agora loses its render context — force it to re-render
+        // Agora loses render context after DOM move — force re-render
         setTimeout(function() {
-            // Dispatch resize so Agora SDK redraws all playing tracks
             try { window.dispatchEvent(new Event('resize')); } catch(_) {}
-            // Also explicitly re-play if we have the track reference
             if (window._liveHostVideoTrack) {
                 var remoteEl = document.getElementById('live-remote-video');
                 if (remoteEl) {
@@ -24202,7 +24203,6 @@ html:not(.dark) .brand-name {
                 if (nodeId === 'panel-end-stream-wrap') {
                     // already hidden above, leave in place
                 } else if (nodeId === 'viewer-reactions-bar') {
-                    // hide reactions bar in cinema — not needed there
                     node.style.display = 'none';
                 } else if (node.tagName === 'BUTTON' && (
                     btnText.indexOf('End Stream') !== -1 ||
@@ -24356,7 +24356,6 @@ html:not(.dark) .brand-name {
             var hasVideo = vc && vc.querySelector('video');
             attempts++;
             if (hasVideo || attempts >= maxAttempts) {
-                // Hide waiting room immediately before cinema moves the container
                 var wr = document.getElementById('live-waiting-room');
                 if (wr) wr.style.display = 'none';
                 if (vc) vc.style.height = '';
@@ -24919,11 +24918,23 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 
     /* ── 1. VIDEO: always has height so nothing floats without it ── */
     #live-player-wrap #live-remote-video-container {
-        height: 50vw!important;
-        min-height: 185px!important;
-        max-height: 250px!important;
+        height: 56.25vw!important;
+        min-height: 200px!important;
+        max-height: 280px!important;
         display: block!important;
         position: relative!important;
+        background: #0d0a1a!important;
+        overflow: hidden!important;
+        flex-shrink: 0!important;
+    }
+    /* Agora render target and its injected children must fill the container */
+    #live-player-wrap #live-remote-video-container #live-remote-video,
+    #live-player-wrap #live-remote-video-container #live-remote-video > div,
+    #live-player-wrap #live-remote-video-container #live-remote-video video {
+        position: absolute!important;
+        top: 0!important; left: 0!important;
+        width: 100%!important; height: 100%!important;
+        object-fit: cover!important;
     }
 
     /* ── VIDEO OVERLAYS: small pills ── */
