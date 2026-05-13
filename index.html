@@ -7640,6 +7640,14 @@ html:not(.dark) .brand-name {
                                     " title="Preview camera first">
                                         <span style="font-size:1.2rem;">📷</span> Cam Off
                                     </button>
+                                    <button id="pre-btn-flip" onclick="preFlipCamera()" style="
+                                        background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.1);
+                                        border-radius:12px; padding:12px 6px 10px; color:rgba(255,255,255,0.5);
+                                        font-size:0.62rem; font-weight:600; cursor:pointer; display:none; flex-direction:column;
+                                        align-items:center; gap:6px; opacity:0.45; pointer-events:none; transition:all 0.2s;
+                                    " title="Switch front/rear camera">
+                                        <span style="font-size:1.2rem;">🔄</span> Flip
+                                    </button>
                                     <button id="live-preview-btn" onclick="startLocalPreview()" style="
                                         background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.1);
                                         border-radius:12px; padding:12px 6px 10px; color:rgba(255,255,255,0.6);
@@ -7814,6 +7822,9 @@ html:not(.dark) .brand-name {
                             </button>
                             <button class="studio-btn" id="btn-cam-off" onclick="toggleCamera()">
                                 <span class="studio-btn-icon">📷</span> Cam Off
+                            </button>
+                            <button class="studio-btn" id="btn-flip-cam" onclick="flipCamera()" style="display:none;" title="Switch between front and rear camera">
+                                <span class="studio-btn-icon">🔄</span> Flip Cam
                             </button>
                             <button class="studio-btn" id="btn-start-poll" onclick="togglePollCreator()">
                                 <span class="studio-btn-icon">📊</span> Poll
@@ -22799,6 +22810,65 @@ html:not(.dark) .brand-name {
         }
     };
 
+    // ── FLIP CAMERA (mobile — front ↔ rear) ──────────────────────
+    var _currentFacingMode = 'user'; // 'user' = front, 'environment' = rear
+
+    // Flip while live — unpublish, swap track, republish
+    window.flipCamera = async function() {
+        if (!localVideoTrack) { showToast('Start your stream first.'); return; }
+        var btn = document.getElementById('btn-flip-cam');
+        try {
+            _currentFacingMode = _currentFacingMode === 'user' ? 'environment' : 'user';
+            var label = _currentFacingMode === 'user' ? 'Front' : 'Rear';
+            if (btn) btn.innerHTML = '<span class="studio-btn-icon">⏳</span> Switching…';
+
+            await agoraClient.unpublish([localVideoTrack]);
+            localVideoTrack.stop();
+            localVideoTrack.close();
+
+            localVideoTrack = await window.AgoraRTC.createCameraVideoTrack({
+                facingMode: _currentFacingMode
+            });
+
+            var container = document.getElementById('live-broadcaster-video');
+            if (container) localVideoTrack.play(container);
+
+            await agoraClient.publish([localVideoTrack]);
+
+            if (btn) btn.innerHTML = '<span class="studio-btn-icon">🔄</span> ' + label + ' Cam';
+            showToast('📷 Switched to ' + label + ' camera');
+        } catch(e) {
+            _currentFacingMode = _currentFacingMode === 'user' ? 'environment' : 'user';
+            if (btn) btn.innerHTML = '<span class="studio-btn-icon">🔄</span> Flip Cam';
+            console.error('[Live] flipCamera error:', e);
+            showToast('Camera flip failed. Try again.');
+        }
+    };
+
+    // Flip during preview (before going live)
+    window.preFlipCamera = function() {
+        _currentFacingMode = _currentFacingMode === 'user' ? 'environment' : 'user';
+        var label = _currentFacingMode === 'user' ? 'Front' : 'Rear';
+        var vid = document.getElementById('live-local-video');
+        if (vid && vid.srcObject) {
+            vid.srcObject.getTracks().forEach(function(t){ t.stop(); });
+            vid.srcObject = null;
+        }
+        if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack.close(); localVideoTrack = null; }
+        navigator.mediaDevices.getUserMedia({
+            video: { facingMode: _currentFacingMode }, audio: false
+        }).then(function(stream) {
+            var v = document.getElementById('live-local-video');
+            if (v) { v.srcObject = stream; v.style.display = 'block'; }
+            var ph = document.getElementById('live-preview-placeholder');
+            if (ph) ph.style.display = 'none';
+            showToast('📷 Switched to ' + label + ' camera');
+        }).catch(function() {
+            _currentFacingMode = _currentFacingMode === 'user' ? 'environment' : 'user';
+            showToast('Camera flip failed. Check permissions.');
+        });
+    };
+
     // ── LOWER THIRD ───────────────────────────────────────────────
     window.toggleLowerThird = function() {
         const ed = $('lower-third-editor');
@@ -25182,19 +25252,40 @@ document.addEventListener('change', function(e) {
         if (knob) knob.style.transform = e.target.checked ? 'translateX(20px)' : 'translateX(0)';
     }
 });
-// Unlock mic/cam buttons after preview starts
+// Unlock mic/cam buttons after preview starts + show flip if mobile
 var _origStartPreview = window.startLocalPreview;
 if (_origStartPreview) {
     window.startLocalPreview = function() {
         _origStartPreview.apply(this, arguments);
         setTimeout(function() {
             var m = document.getElementById('pre-btn-mic');
-            var c = document.getElementById('pre-btn-cam');
-            if (m) { m.style.opacity='1'; m.style.pointerEvents='auto'; }
-            if (c) { c.style.opacity='1'; c.style.pointerEvents='auto'; }
+            var cam = document.getElementById('pre-btn-cam');
+            var flip = document.getElementById('pre-btn-flip');
+            if (m)   { m.style.opacity='1';   m.style.pointerEvents='auto'; }
+            if (cam) { cam.style.opacity='1'; cam.style.pointerEvents='auto'; }
+            if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+                navigator.mediaDevices.enumerateDevices().then(function(devices) {
+                    var cams = devices.filter(function(d){ return d.kind === 'videoinput'; });
+                    if (cams.length >= 2 && flip) {
+                        flip.style.display = 'flex';
+                        flip.style.opacity = '1';
+                        flip.style.pointerEvents = 'auto';
+                    }
+                }).catch(function(){});
+            }
         }, 800);
     };
 }
+// Show studio flip button on page load if 2+ cameras available
+document.addEventListener('DOMContentLoaded', function() {
+    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        navigator.mediaDevices.enumerateDevices().then(function(devices) {
+            var cams = devices.filter(function(d){ return d.kind === 'videoinput'; });
+            var btn = document.getElementById('btn-flip-cam');
+            if (cams.length >= 2 && btn) btn.style.display = '';
+        }).catch(function(){});
+    }
+});
 </script>
 </body>
 </html>
