@@ -14160,11 +14160,14 @@ html:not(.dark) .brand-name {
             heroMsgBtn.style.display = 'none';
             heroMsgBtn.dataset.targetAddr = addrLower;
             heroMsgBtn.dataset.targetName = wallName || addrLower;
-            if (!ownWall && userHasMailbox && window.db) {
+            // Triple-guard: never show message button on own wall
+            const isSelf = userAddress && addrLower === userAddress.toLowerCase();
+            if (!ownWall && !isSelf && userHasMailbox && window.db) {
                 window.fs.getDoc(window.fs.doc(window.db, 'users', addrLower))
                     .then(snap => {
-                        // Double-check ownWall inside the async callback too
-                        if (!ownWall && snap.exists() && snap.data().hasMailbox === true) {
+                        // Re-check own-wall in async callback in case wall changed
+                        const stillSelf = userAddress && addrLower === userAddress.toLowerCase();
+                        if (!ownWall && !stillSelf && snap.exists() && snap.data().hasMailbox === true) {
                             heroMsgBtn.style.display = '';
                         }
                     })
@@ -16404,6 +16407,34 @@ html:not(.dark) .brand-name {
     // Show a simple toast listing followers/following (full UI would need a modal)
     async function showFollowList(type) {
         if (!_heroTargetAddr || !window.db) return;
+
+        // Build or reuse modal
+        let modal = document.getElementById('follow-list-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'follow-list-modal';
+            modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);';
+            modal.innerHTML = `
+              <div style="background:var(--bg-card);border-radius:18px;width:min(380px,92vw);max-height:70vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.35);overflow:hidden;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px;border-bottom:1px solid var(--border);">
+                  <h3 id="flm-title" style="font-size:1rem;font-weight:700;color:var(--text-primary);margin:0;"></h3>
+                  <button onclick="document.getElementById('follow-list-modal').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:1.3rem;color:var(--text-muted);line-height:1;">×</button>
+                </div>
+                <div id="flm-body" style="overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px;">
+                  <div style="text-align:center;color:var(--text-muted);padding:20px;font-size:0.85rem;">Loading…</div>
+                </div>
+              </div>`;
+            modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+            document.body.appendChild(modal);
+        }
+
+        modal.style.display = 'flex';
+        const titleEl = document.getElementById('flm-title');
+        const bodyEl  = document.getElementById('flm-body');
+        const label = type === 'followers' ? 'Followers' : 'Following';
+        titleEl.textContent = label;
+        bodyEl.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px;font-size:0.85rem;">Loading…</div>';
+
         try {
             const field = type === 'followers' ? 'following' : 'follower';
             const q = window.fs.query(
@@ -16414,11 +16445,43 @@ html:not(.dark) .brand-name {
             const addrs = [];
             snap.forEach(d => {
                 const other = type === 'followers' ? d.data().follower : d.data().following;
-                addrs.push(other.slice(0,6) + '…' + other.slice(-4));
+                if (other) addrs.push(other.toLowerCase());
             });
-            if (addrs.length === 0) return showToast('No ' + type + ' yet.');
-            showToast(addrs.length + ' ' + type + ': ' + addrs.slice(0,5).join(', ') + (addrs.length > 5 ? '…' : ''));
-        } catch (e) { console.warn('[showFollowList]', e); }
+
+            if (addrs.length === 0) {
+                bodyEl.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:24px;font-size:0.85rem;">No ' + label.toLowerCase() + ' yet.</div>';
+                return;
+            }
+
+            // Fetch display names/avatars for each address
+            const rows = await Promise.all(addrs.map(async addr => {
+                let name = addr.slice(0,6) + '…' + addr.slice(-4);
+                let avatar = 'https://api.dicebear.com/7.x/identicon/svg?seed=' + addr;
+                try {
+                    const metaSnap = await window.fs.getDoc(window.fs.doc(window.db, 'user_metadata', addr));
+                    if (metaSnap.exists()) {
+                        const md = metaSnap.data();
+                        if (md.displayName) name = md.displayName;
+                        if (md.avatarUrl)   avatar = md.avatarUrl;
+                    }
+                } catch (_) {}
+                return { addr, name, avatar };
+            }));
+
+            bodyEl.innerHTML = rows.map(r => `
+              <div onclick="document.getElementById('follow-list-modal').style.display='none';viewUserWall('${r.addr}');"
+                   style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;cursor:pointer;transition:background 0.15s;"
+                   onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='transparent'">
+                <img src="${r.avatar}" alt="" style="width:38px;height:38px;border-radius:50%;object-fit:cover;border:2px solid var(--border);flex-shrink:0;" onerror="this.src='https://api.dicebear.com/7.x/identicon/svg?seed=${r.addr}'">
+                <div>
+                  <div style="font-weight:600;font-size:0.88rem;color:var(--text-primary);">${r.name}</div>
+                  <div style="font-size:0.72rem;color:var(--text-muted);font-family:var(--font-mono);">${r.addr.slice(0,6)}…${r.addr.slice(-4)}</div>
+                </div>
+              </div>`).join('');
+        } catch (e) {
+            console.warn('[showFollowList]', e);
+            bodyEl.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:24px;font-size:0.85rem;">Could not load list.</div>';
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════
