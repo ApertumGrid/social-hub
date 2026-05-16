@@ -37,9 +37,13 @@
     <meta property="og:type"         content="website">
     <meta property="og:site_name"    content="SocialHub">
     <meta property="og:title"        content="SOCIALHUB — The Future of Social" id="og-title">
-    <meta property="og:description"  content="A decentralised social platform where every interaction has real value." id="og-desc">
+    <meta property="og:description"  content="A decentralised social platform where every interaction has real value. Post, tip, follow — and earn." id="og-desc">
     <meta property="og:image"        content="https://i.postimg.cc/NM62Rv8R/Screenshot-2026-05-15-111751.png" id="og-image">
     <meta property="og:url"          content="" id="og-url">
+    <meta name="twitter:card"        content="summary_large_image">
+    <meta name="twitter:title"       content="SOCIALHUB — The Future of Social" id="tw-title">
+    <meta name="twitter:description" content="A decentralised social platform where every interaction has real value." id="tw-desc">
+    <meta name="twitter:image"       content="https://i.postimg.cc/NM62Rv8R/Screenshot-2026-05-15-111751.png" id="tw-image">
     <meta name="twitter:card"        content="summary_large_image">
     <meta name="twitter:title"       content="SOCIALHUB — The Future of Social" id="tw-title">
     <meta name="twitter:description" content="A decentralised social platform where every interaction has real value." id="tw-desc">
@@ -18656,35 +18660,67 @@ html:not(.dark) .brand-name {
     function sharePostTo(platform, postId, event) {
         if (event) { event.stopPropagation(); event.preventDefault(); }
 
-        // Pull the actual post text from the card so the share message is meaningful
-        var card     = document.querySelector('[data-id="' + postId + '"]');
-        var rawText  = card ? ((card.querySelector('.post-body') || {}).textContent || '').trim() : '';
-        var snippet  = rawText.length > 120 ? rawText.substring(0, 120) + '…' : rawText;
+        // Pull rich post data from the rendered card
+        var card       = document.querySelector('[data-id="' + postId + '"]');
+        var rawText    = card ? ((card.querySelector('.post-body') || {}).textContent || '').trim() : '';
+        var authorName = card ? ((card.querySelector('.post-author') || {}).textContent || '').trim() : '';
+        var avatarEl   = card ? card.querySelector('.post-avatar, .avatar, img[src]') : null;
+        var avatarUrl  = avatarEl ? avatarEl.src : '';
+
+        // Clean up author name (remove boosted badge text if present)
+        authorName = authorName.replace(/🚀.*$/,'').trim() || 'SocialHub User';
+
+        // Truncate post text
+        var snippet = rawText.length > 200 ? rawText.substring(0, 200) + '…' : rawText;
         var shareUrl = _buildPostShareUrl(postId);
 
-        // Build a rich share message: post snippet + URL
-        var shareMsg = snippet
-            ? '"' + snippet + '"\n\n🌐 SocialHub — ' + shareUrl
-            : '🌐 Check out this post on SocialHub!\n' + shareUrl;
+        // Dynamically update OG meta tags so link scrapers get post-specific content
+        var ogTitle = document.getElementById('og-title');
+        var ogDesc  = document.getElementById('og-desc');
+        var ogImg   = document.getElementById('og-image');
+        var ogUrl   = document.getElementById('og-url');
+        if (ogTitle) ogTitle.setAttribute('content', authorName + ' on SocialHub');
+        if (ogDesc)  ogDesc.setAttribute('content',  snippet || 'Check out this post on SocialHub — where every interaction has real value.');
+        if (ogImg && avatarUrl)  ogImg.setAttribute('content', avatarUrl);
+        if (ogUrl)   ogUrl.setAttribute('content', shareUrl);
+
+        // Build the rich share text — this is what shows in Telegram/WhatsApp ABOVE the link preview
+        // Format: author header + post content + CTA + link
+        var richText = '👤 ' + authorName + ' on SocialHub\n'
+                     + '━━━━━━━━━━━━━━\n'
+                     + (snippet ? '"' + snippet + '"\n\n' : '')
+                     + '💬 React, tip & follow on SocialHub\n'
+                     + '🔗 ' + shareUrl;
+
+        // Shorter version for Telegram's &text= param (shown as caption above preview card)
+        var tgCaption = '👤 ' + authorName + '\n'
+                      + (snippet ? '"' + snippet.substring(0,120) + (snippet.length > 120 ? '…' : '') + '"\n\n' : '')
+                      + '💬 SocialHub — where every interaction has real value';
 
         if (platform === 'telegram') {
-            var tgUrl = 'https://t.me/share/url?url=' + encodeURIComponent(shareUrl)
-                      + '&text=' + encodeURIComponent(snippet ? '"' + snippet + '"\n\n🌐 SocialHub' : '🌐 Check out this post on SocialHub!');
+            // t.me/share/url — url becomes the clickable preview card, text shows above it
+            var tgUrl = 'https://t.me/share/url'
+                      + '?url='  + encodeURIComponent(shareUrl)
+                      + '&text=' + encodeURIComponent(tgCaption);
             window.open(tgUrl, '_blank', 'noopener,noreferrer,width=600,height=500');
             showToast('Opening Telegram…');
+
         } else if (platform === 'whatsapp') {
-            var waUrl = 'https://api.whatsapp.com/send?text=' + encodeURIComponent(shareMsg);
+            var waUrl = 'https://api.whatsapp.com/send?text=' + encodeURIComponent(richText);
             window.open(waUrl, '_blank', 'noopener,noreferrer,width=600,height=500');
             showToast('Opening WhatsApp…');
+
         } else if (platform === 'copy') {
+            var copyVal = shareUrl; // copy clean URL; rich text would be noisy in clipboard
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(shareUrl).then(function() {
+                navigator.clipboard.writeText(copyVal).then(function() {
                     showToast('📋 Post link copied!');
-                }).catch(function() { _fallbackCopyShareLink(shareUrl); });
+                }).catch(function() { _fallbackCopyShareLink(copyVal); });
             } else {
-                _fallbackCopyShareLink(shareUrl);
+                _fallbackCopyShareLink(copyVal);
             }
         }
+
         var dd = document.getElementById('share-dd-' + postId);
         if (dd) dd.classList.remove('open');
     }
