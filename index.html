@@ -14155,17 +14155,16 @@ html:not(.dark) .brand-name {
         }
 
         // Message button: only visible on OTHER's wall when BOTH users have mailboxes
-        // Store the target address on the button so startConversation() can read it
         const heroMsgBtn = document.getElementById('hero-msg-btn');
         if (heroMsgBtn) {
-            heroMsgBtn.style.display = 'none'; // hidden by default; revealed async below
+            heroMsgBtn.style.display = 'none';
             heroMsgBtn.dataset.targetAddr = addrLower;
             heroMsgBtn.dataset.targetName = wallName || addrLower;
             if (!ownWall && userHasMailbox && window.db) {
-                // Async check: does the target user also have a mailbox?
                 window.fs.getDoc(window.fs.doc(window.db, 'users', addrLower))
                     .then(snap => {
-                        if (snap.exists() && snap.data().hasMailbox === true) {
+                        // Double-check ownWall inside the async callback too
+                        if (!ownWall && snap.exists() && snap.data().hasMailbox === true) {
                             heroMsgBtn.style.display = '';
                         }
                     })
@@ -25190,14 +25189,16 @@ html .sidebar-jewel-nav .btn-comm svg path { stroke: rgba(190,160,60,0.7) !impor
 
 /* ── CARD ───────────────────────────────────────────────────── */
 html body #profile-hero {
-    background: linear-gradient(135deg, #090718 0%, #11082a 35%, #081522 100%) !important;
-    border: 1px solid rgba(124,92,191,0.45) !important;
+    background: linear-gradient(145deg, #07051a 0%, #0f0626 30%, #0a1428 60%, #060d1e 100%) !important;
+    border: 1px solid rgba(124,92,191,0.55) !important;
     border-radius: 24px !important;
     box-shadow:
-        0 0 0 1px rgba(45,212,191,0.07),
-        0 12px 50px rgba(0,0,0,0.7),
-        0 0 100px rgba(124,92,191,0.18),
-        inset 0 1px 0 rgba(255,255,255,0.07) !important;
+        0 0 0 1px rgba(45,212,191,0.08),
+        0 16px 60px rgba(0,0,0,0.8),
+        0 0 120px rgba(124,92,191,0.22),
+        0 0 60px rgba(45,212,191,0.06),
+        inset 0 1px 0 rgba(255,255,255,0.09),
+        inset 0 0 80px rgba(124,92,191,0.05) !important;
     padding: 0 !important;
     position: relative !important;
     overflow: visible !important;
@@ -25208,20 +25209,22 @@ html body #profile-hero::before {
     content:'' !important;
     position:absolute !important; inset:0 !important; border-radius:24px !important;
     background:
-        radial-gradient(ellipse 80% 45% at 50% 0%, rgba(124,92,191,0.22) 0%, transparent 65%),
-        radial-gradient(ellipse 50% 60% at 95% 85%, rgba(45,212,191,0.1) 0%, transparent 55%) !important;
+        radial-gradient(ellipse 90% 50% at 50% 0%, rgba(124,92,191,0.28) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 70% at 95% 90%, rgba(45,212,191,0.12) 0%, transparent 55%),
+        radial-gradient(ellipse 40% 40% at 5% 80%, rgba(240,180,41,0.06) 0%, transparent 50%) !important;
     pointer-events:none !important; z-index:0 !important;
 }
 
 /* Prismatic top bar */
 html body #profile-hero::after {
     content:'' !important;
-    position:absolute !important; top:0 !important; left:0 !important; right:0 !important; height:3px !important;
+    position:absolute !important; top:0 !important; left:0 !important; right:0 !important; height:4px !important;
     border-radius:24px 24px 0 0 !important;
-    background: linear-gradient(90deg, #7c5cbf, #2dd4bf, #f0b429, #2dd4bf, #7c5cbf) !important;
+    background: linear-gradient(90deg, #4a1f8a, #7c5cbf, #2dd4bf, #f0b429, #2dd4bf, #7c5cbf, #4a1f8a) !important;
     background-size:300% 100% !important;
     animation: _prismatic-bar 3s ease infinite !important;
     pointer-events:none !important; z-index:10 !important;
+    box-shadow: 0 0 16px rgba(124,92,191,0.6), 0 0 32px rgba(45,212,191,0.3) !important;
 }
 
 /* ── INNER WRAPPER ──────────────────────────────────────────── */
@@ -25269,9 +25272,10 @@ html body #profile-hero .hero-avatar-frame {
 /* Spinning conic ring */
 html body #profile-hero .hero-avatar-frame::before {
     content:'' !important;
-    position:absolute !important; inset:-5px !important; border-radius:50% !important;
-    background: conic-gradient(from 0deg, #7c5cbf 0%, #2dd4bf 25%, #f0b429 50%, #2dd4bf 75%, #7c5cbf 100%) !important;
-    animation: _crystal-spin 4s linear infinite !important; z-index:0 !important;
+    position:absolute !important; inset:-6px !important; border-radius:50% !important;
+    background: conic-gradient(from 0deg, #5b21b6 0%, #7c5cbf 15%, #2dd4bf 30%, #f0b429 50%, #2dd4bf 70%, #7c5cbf 85%, #5b21b6 100%) !important;
+    animation: _crystal-spin 3.5s linear infinite !important; z-index:0 !important;
+    filter: blur(0.5px) !important;
 }
 /* Dark gap */
 html body #profile-hero .hero-avatar-frame::after {
@@ -25321,14 +25325,15 @@ html body #profile-hero .hero-stats {
 html body #profile-hero .hero-stat {
     display:flex !important; flex-direction:column !important; gap:4px !important;
     padding:12px 18px !important;
-    background:rgba(255,255,255,0.05) !important;
-    border:1px solid rgba(255,255,255,0.1) !important;
+    background: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 100%) !important;
+    border:1px solid rgba(255,255,255,0.12) !important;
     border-radius:16px !important;
     position:relative !important; overflow:hidden !important;
-    backdrop-filter:blur(10px) !important;
+    backdrop-filter:blur(12px) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.3) !important;
 }
-html body #profile-hero .hero-stat:nth-child(1) { border-top:2px solid rgba(240,180,41,0.55) !important; }
-html body #profile-hero .hero-stat:nth-child(2) { border-top:2px solid rgba(45,212,191,0.55) !important; }
+html body #profile-hero .hero-stat:nth-child(1) { border-top:2px solid rgba(240,180,41,0.7) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.3), 0 0 20px rgba(240,180,41,0.08) !important; }
+html body #profile-hero .hero-stat:nth-child(2) { border-top:2px solid rgba(45,212,191,0.7) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.3), 0 0 20px rgba(45,212,191,0.08) !important; }
 
 html body #profile-hero .hero-stat-val {
     font-family:var(--font-mono) !important; font-size:1.3rem !important; font-weight:700 !important;
