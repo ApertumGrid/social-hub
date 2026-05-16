@@ -11721,8 +11721,8 @@ html:not(.dark) .brand-name {
             // Keep composer collapsed when returning to home — user opens it manually
             if (typeof _collapseComposer === 'function') _collapseComposer();
             const feedCol = document.getElementById('feed-col');
-            if (feedCol) feedCol.scrollTop = 0;
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (feedCol && !window._deepLinkScrollPending) feedCol.scrollTop = 0;
+            if (!window._deepLinkScrollPending) window.scrollTo({ top: 0, behavior: 'smooth' });
 
             // Clear community context when returning to Home
             _activeCommunity = null;
@@ -11896,25 +11896,33 @@ html:not(.dark) .brand-name {
         // global feed fires onSnapshot almost immediately).
         // If the card isn't present after the first wait, retry once more
         // at 700 ms so slower connections still land on the right card.
+        // Poll for the card to appear in the DOM — Firebase can take several
+        // seconds on a cold load, especially for new visitors not yet logged in.
+        // We poll every 300ms for up to 12 seconds before giving up.
+        let _jumpAttempts = 0;
+        const _jumpMax    = 40; // 40 × 300ms = 12 seconds
         function scrollAndFlash() {
             const card = document.querySelector('[data-id="' + postId + '"]');
-            if (!card) return false;
-            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            card.classList.remove('post-flash');
-            void card.offsetWidth;                        // force reflow so animation restarts
-            card.classList.add('post-flash');
-            setTimeout(() => card.classList.remove('post-flash'), 2400);
-            return true;
+            if (card) {
+                // Small extra delay so the card is fully painted before scrolling
+                setTimeout(function() {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    card.classList.remove('post-flash');
+                    void card.offsetWidth;
+                    card.classList.add('post-flash');
+                    setTimeout(() => card.classList.remove('post-flash'), 2400);
+                }, 80);
+                return;
+            }
+            _jumpAttempts++;
+            if (_jumpAttempts < _jumpMax) {
+                setTimeout(scrollAndFlash, 300);
+            } else {
+                console.warn('[jumpToPost] card not found after 12s:', postId);
+            }
         }
-
-        requestAnimationFrame(() => {
-            setTimeout(() => {
-                if (!scrollAndFlash()) {
-                    // Retry once for slow async Hub feeds
-                    setTimeout(scrollAndFlash, 600);
-                }
-            }, 350);
-        });
+        // Start polling after a short initial delay
+        setTimeout(scrollAndFlash, 400);
     }
     window.jumpToPost = jumpToPost;   // expose for any onclick= attribute
 
@@ -18816,6 +18824,9 @@ html:not(.dark) .brand-name {
         var postId = new URLSearchParams(window.location.search).get('post');
         if (!postId) return;
 
+        // Block _activateTab from resetting scroll position while we're deep-linking
+        window._deepLinkScrollPending = true;
+
         // Wait for _activateTab to be defined, then force-navigate to the
         // Global Feed so the post card is actually rendered in the DOM.
         var initWait = 0;
@@ -18839,14 +18850,16 @@ html:not(.dark) .brand-name {
                 if (card) {
                     clearInterval(poll);
                     setTimeout(function() {
+                        window._deepLinkScrollPending = false;
                         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         card.classList.remove('deep-link-highlight');
                         void card.offsetWidth;
                         card.classList.add('deep-link-highlight');
                         showToast('📌 Jumped to shared post');
                     }, 150);
-                } else if (elapsed >= 10000) {
+                } else if (elapsed >= 12000) {
                     clearInterval(poll);
+                    window._deepLinkScrollPending = false;
                     showToast('⚠️ Could not find the shared post — it may have been deleted.');
                 }
             }, 200);
@@ -18856,6 +18869,7 @@ html:not(.dark) .brand-name {
     window.toggleShareDropdown = toggleShareDropdown;
     window._closeAllPopups     = _closeAllPopups;
     window.sharePostTo         = sharePostTo;
+    window.openShareModal      = openShareModal;
 
     // ═══════════════════════════════════════════════════════════════════
     // 🌧️ RAIN BUTTON — post tipping with visual star rain animation
