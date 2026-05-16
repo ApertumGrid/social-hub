@@ -14143,7 +14143,11 @@ html:not(.dark) .brand-name {
         const actionsEl = document.getElementById('hero-actions');
         const tipTray   = document.getElementById('hero-tip-tray');
         if (tipTray) { tipTray.classList.remove('open'); _heroPendingTip = 0; }
-        if (actionsEl) actionsEl.style.display = ownWall ? 'none' : '';
+        if (actionsEl) {
+            // Use both inline style AND a class — the !important CSS rule checks the class
+            actionsEl.style.display = ownWall ? 'none' : '';
+            actionsEl.classList.toggle('own-wall-hidden', ownWall);
+        }
         // Show/hide Edit Identity button on own wall
         const heroEditBtn = document.getElementById('hero-edit-identity-btn');
         if (heroEditBtn) heroEditBtn.style.display = ownWall ? '' : 'none';
@@ -16458,11 +16462,21 @@ html:not(.dark) .brand-name {
                 let name = addr.slice(0,6) + '…' + addr.slice(-4);
                 let avatar = 'https://api.dicebear.com/7.x/identicon/svg?seed=' + addr;
                 try {
-                    const metaSnap = await window.fs.getDoc(window.fs.doc(window.db, 'user_metadata', addr));
-                    if (metaSnap.exists()) {
-                        const md = metaSnap.data();
-                        if (md.displayName) name = md.displayName;
-                        if (md.avatarUrl)   avatar = md.avatarUrl;
+                    // Primary: users collection (where displayName is written on profile save)
+                    const uSnap = await window.fs.getDoc(window.fs.doc(window.db, 'users', addr));
+                    if (uSnap.exists()) {
+                        const ud = uSnap.data();
+                        if (ud.displayName) name = ud.displayName;
+                        if (ud.avatarUrl)   avatar = ud.avatarUrl;
+                    }
+                    // Fallback: user_metadata (may have more recent overrides)
+                    if (name === addr.slice(0,6) + '…' + addr.slice(-4)) {
+                        const metaSnap = await window.fs.getDoc(window.fs.doc(window.db, 'user_metadata', addr));
+                        if (metaSnap.exists()) {
+                            const md = metaSnap.data();
+                            if (md.displayName) name = md.displayName;
+                            if (md.avatarUrl)   avatar = md.avatarUrl;
+                        }
                     }
                 } catch (_) {}
                 return { addr, name, avatar };
@@ -25448,8 +25462,14 @@ html body #profile-hero .hero-social-stat .hero-stat-label {
 
 /* ── ACTION BUTTONS ─────────────────────────────────────────── */
 html body #profile-hero .hero-actions {
-    display:flex !important; gap:8px !important; margin-top:14px !important;
+    gap:8px !important; margin-top:14px !important;
     flex-wrap:wrap !important; align-items:center !important;
+}
+html body #profile-hero .hero-actions:not([style*="display:none"]):not([style*="display: none"]):not(.own-wall-hidden) {
+    display:flex !important;
+}
+html body #profile-hero .hero-actions.own-wall-hidden {
+    display:none !important;
 }
 html body #profile-hero .hero-action-btn {
     padding:10px 20px !important; border-radius:50px !important;
