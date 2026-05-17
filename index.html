@@ -13745,9 +13745,9 @@ html:not(.dark) .brand-name {
         loadGlobalFeed();
 
         // 8. Scroll to top — both window (mobile) and feed-col div (desktop)
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (!window._deepLinkScrollPending) window.scrollTo({ top: 0, behavior: 'smooth' });
         const feedColEl = document.getElementById('feed-col');
-        if (feedColEl) feedColEl.scrollTop = 0;
+        if (feedColEl && !window._deepLinkScrollPending) feedColEl.scrollTop = 0;
     }
 
     function clearWall() {
@@ -13804,8 +13804,8 @@ html:not(.dark) .brand-name {
         loadGlobalFeed();
 
         // 8. Scroll to top
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        if (feedCol) feedCol.scrollTop = 0;
+        if (!window._deepLinkScrollPending) window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (feedCol && !window._deepLinkScrollPending) feedCol.scrollTop = 0;
     }
 
     // Expose for onclick attributes
@@ -14197,8 +14197,8 @@ html:not(.dark) .brand-name {
         const feedCol = document.getElementById('feed-col');
         if (feedCol) {
             feedCol.classList.add('wall-view');
-            feedCol.scrollTop = 0;
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (!window._deepLinkScrollPending) feedCol.scrollTop = 0;
+            if (!window._deepLinkScrollPending) window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         if (!window.db) return;
@@ -18693,10 +18693,14 @@ html:not(.dark) .brand-name {
                    + shareUrl;
 
         if (platform === 'telegram') {
-            var tgUrl = 'https://t.me/share/url?url=' + encodeURIComponent(shareUrl) + '&text=' + encodeURIComponent(tgCaption);
+            function _safeEncode(s) {
+            try { return encodeURIComponent(s); }
+            catch(_) { return encodeURIComponent(s.replace(/[\uD800-\uDFFF]/g, '')); }
+        }
+        var tgUrl = 'https://t.me/share/url?url=' + _safeEncode(shareUrl) + '&text=' + _safeEncode(tgCaption);
             window.open(tgUrl, '_blank', 'noopener,noreferrer,width=600,height=500');
         } else if (platform === 'whatsapp') {
-            window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(waText), '_blank', 'noopener,noreferrer,width=600,height=500');
+            window.open('https://api.whatsapp.com/send?text=' + _safeEncode(waText), '_blank', 'noopener,noreferrer,width=600,height=500');
         } else if (platform === 'copy') {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(shareUrl).then(function() { showToast('\ud83d\udccb Post link copied!'); }).catch(function() { _fallbackCopyShareLink(shareUrl); });
@@ -18858,12 +18862,13 @@ html:not(.dark) .brand-name {
                     clearInterval(poll);
                     console.log('[deepLink] Card FOUND after', elapsed, 'ms:', postId);
                     setTimeout(function() {
-                        window._deepLinkScrollPending = false;
                         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         card.classList.remove('deep-link-highlight');
                         void card.offsetWidth;
                         card.classList.add('deep-link-highlight');
                         showToast('📌 Jumped to shared post');
+                        // Keep flag active for 2s after scroll to block any late async scroll resets
+                        setTimeout(function() { window._deepLinkScrollPending = false; }, 2000);
                     }, 150);
                 } else if (elapsed >= 12000) {
                     clearInterval(poll);
