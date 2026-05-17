@@ -18821,8 +18821,15 @@ html:not(.dark) .brand-name {
 
     // Deep-link: on load read ?post=<id>, wait for card to render, scroll + flash
     (function resolvePostDeepLink() {
-        var postId = new URLSearchParams(window.location.search).get('post');
-        if (!postId) return;
+        var rawParam = new URLSearchParams(window.location.search).get('post');
+        if (!rawParam) return;
+
+        // Decode in case the ID was double-encoded
+        var postId = rawParam;
+        try { postId = decodeURIComponent(rawParam); } catch(_) {}
+
+        console.log('[deepLink] raw param:', rawParam);
+        console.log('[deepLink] decoded postId:', postId);
 
         // Block _activateTab from resetting scroll position while we're deep-linking
         window._deepLinkScrollPending = true;
@@ -18849,6 +18856,7 @@ html:not(.dark) .brand-name {
                 var card = document.querySelector('[data-id="' + postId + '"]');
                 if (card) {
                     clearInterval(poll);
+                    console.log('[deepLink] Card FOUND after', elapsed, 'ms:', postId);
                     setTimeout(function() {
                         window._deepLinkScrollPending = false;
                         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -18860,6 +18868,10 @@ html:not(.dark) .brand-name {
                 } else if (elapsed >= 12000) {
                     clearInterval(poll);
                     window._deepLinkScrollPending = false;
+                    // Log all card IDs so we can see the mismatch
+                    var allCards = document.querySelectorAll('[data-id]');
+                    console.log('[deepLink] Looking for:', postId);
+                    console.log('[deepLink] Cards in DOM:', Array.from(allCards).map(function(c){ return c.getAttribute('data-id'); }));
                     showToast('⚠️ Could not find the shared post — it may have been deleted.');
                 }
             }, 200);
