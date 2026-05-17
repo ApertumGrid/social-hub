@@ -18602,14 +18602,15 @@ html:not(.dark) .brand-name {
 
     function _buildPostShareUrl(postId) {
         try {
-            // Build from origin + pathname only — never carry ?hub= or other params
-            // into a post share link, or the recipient lands on the Communities tab
-            // instead of the Global Feed where the post actually lives.
-            var url = new URL(window.location.origin + window.location.pathname);
+            // Share links go through the Firebase Function so Telegram/WhatsApp
+            // bots get dynamic OG tags (author name, post image, post snippet).
+            // The function redirects humans straight to GitHub Pages automatically.
+            var fnBase = 'https://us-central1-socialhub-33014.cloudfunctions.net/share';
+            var url = new URL(fnBase);
             url.searchParams.set('post', postId);
             return url.toString();
         } catch (_) {
-            return window.location.origin + window.location.pathname + '?post=' + encodeURIComponent(postId);
+            return 'https://us-central1-socialhub-33014.cloudfunctions.net/share?post=' + encodeURIComponent(postId);
         }
     }
 
