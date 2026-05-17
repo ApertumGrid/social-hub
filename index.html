@@ -18825,6 +18825,9 @@ html:not(.dark) .brand-name {
     }
 
     // Deep-link: on load read ?post=<id>, wait for card to render, scroll + flash
+    // ONCE-ONLY guard — never runs more than once per page load
+    if (!window._postDeepLinkResolved) {
+    window._postDeepLinkResolved = true;
     (function resolvePostDeepLink() {
         var rawParam = new URLSearchParams(window.location.search).get('post');
         if (!rawParam) return;
@@ -18883,37 +18886,53 @@ html:not(.dark) .brand-name {
                     clearInterval(poll);
                     console.log('[deepLink] Card FOUND after', elapsed, 'ms:', postId);
 
-                    // Scroll immediately, then re-scroll at 1s, 2s, 3s intervals
-                    // to win the race against any async scroll resets that fire later.
-                    // Stop re-scrolling if the user has manually scrolled away.
                     function _doScroll() {
                         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
 
-                    _doScroll();
-                    card.classList.remove('deep-link-highlight');
-                    void card.offsetWidth;
-                    card.classList.add('deep-link-highlight');
-                    showToast('📌 Jumped to shared post');
+                    // Wait for images ABOVE this card to load first.
+                    // Images popping in shift card positions causing wrong scroll destination.
+                    function _scrollWhenReady() {
+                        var allImgs = Array.from(document.querySelectorAll('img'));
+                        var cardTop = card.getBoundingClientRect().top + window.scrollY;
+                        var pending = allImgs.filter(function(img) {
+                            return !img.complete &&
+                                   (img.getBoundingClientRect().top + window.scrollY) < cardTop;
+                        });
 
-                    // Re-scroll at 1s, 2s, 3.5s to beat any late async resets
-                    var _scrollTimes = [1000, 2000, 3500];
-                    var _userScrolled = false;
-                    var _scrollHandler = function() { _userScrolled = true; };
-                    window.addEventListener('wheel',      _scrollHandler, { once: true, passive: true });
-                    window.addEventListener('touchmove',  _scrollHandler, { once: true, passive: true });
+                        function _go() {
+                            _doScroll();
+                            card.classList.remove('deep-link-highlight');
+                            void card.offsetWidth;
+                            card.classList.add('deep-link-highlight');
+                            showToast('\ud83d\udccc Jumped to shared post');
+                            var _userScrolled = false;
+                            var _onScroll = function() { _userScrolled = true; };
+                            window.addEventListener('wheel',     _onScroll, { once: true, passive: true });
+                            window.addEventListener('touchmove', _onScroll, { once: true, passive: true });
+                            setTimeout(function() { if (!_userScrolled) _doScroll(); }, 1500);
+                            setTimeout(function() {
+                                window._deepLinkScrollPending = false;
+                                window.removeEventListener('wheel',     _onScroll);
+                                window.removeEventListener('touchmove', _onScroll);
+                            }, 4000);
+                        }
 
-                    _scrollTimes.forEach(function(delay) {
-                        setTimeout(function() {
-                            if (!_userScrolled) _doScroll();
-                        }, delay);
-                    });
+                        if (pending.length === 0) {
+                            _go();
+                        } else {
+                            var done = 0;
+                            pending.forEach(function(img) {
+                                function onDone() { if (++done >= pending.length) _go(); }
+                                img.addEventListener('load',  onDone, { once: true });
+                                img.addEventListener('error', onDone, { once: true });
+                            });
+                            // Safety: scroll anyway after 3s even if images stall
+                            setTimeout(function() { if (window._deepLinkScrollPending) _go(); }, 3000);
+                        }
+                    }
 
-                    setTimeout(function() {
-                        window._deepLinkScrollPending = false;
-                        window.removeEventListener('wheel',     _scrollHandler);
-                        window.removeEventListener('touchmove', _scrollHandler);
-                    }, 4500);
+                    _scrollWhenReady();
                 } else if (elapsed >= 12000) {
                     clearInterval(poll);
                     window._deepLinkScrollPending = false;
@@ -18926,6 +18945,7 @@ html:not(.dark) .brand-name {
             }, 200);
         }
     })();
+    } // end once-only guard
 
     window.toggleShareDropdown = toggleShareDropdown;
     window._closeAllPopups     = _closeAllPopups;
