@@ -18878,15 +18878,38 @@ html:not(.dark) .brand-name {
                 if (card) {
                     clearInterval(poll);
                     console.log('[deepLink] Card FOUND after', elapsed, 'ms:', postId);
-                    setTimeout(function() {
+
+                    // Scroll immediately, then re-scroll at 1s, 2s, 3s intervals
+                    // to win the race against any async scroll resets that fire later.
+                    // Stop re-scrolling if the user has manually scrolled away.
+                    function _doScroll() {
                         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        card.classList.remove('deep-link-highlight');
-                        void card.offsetWidth;
-                        card.classList.add('deep-link-highlight');
-                        showToast('📌 Jumped to shared post');
-                        // Keep flag active for 4s after scroll to block any late async scroll resets
-                        setTimeout(function() { window._deepLinkScrollPending = false; }, 4000);
-                    }, 150);
+                    }
+
+                    _doScroll();
+                    card.classList.remove('deep-link-highlight');
+                    void card.offsetWidth;
+                    card.classList.add('deep-link-highlight');
+                    showToast('📌 Jumped to shared post');
+
+                    // Re-scroll at 1s, 2s, 3.5s to beat any late async resets
+                    var _scrollTimes = [1000, 2000, 3500];
+                    var _userScrolled = false;
+                    var _scrollHandler = function() { _userScrolled = true; };
+                    window.addEventListener('wheel',      _scrollHandler, { once: true, passive: true });
+                    window.addEventListener('touchmove',  _scrollHandler, { once: true, passive: true });
+
+                    _scrollTimes.forEach(function(delay) {
+                        setTimeout(function() {
+                            if (!_userScrolled) _doScroll();
+                        }, delay);
+                    });
+
+                    setTimeout(function() {
+                        window._deepLinkScrollPending = false;
+                        window.removeEventListener('wheel',     _scrollHandler);
+                        window.removeEventListener('touchmove', _scrollHandler);
+                    }, 4500);
                 } else if (elapsed >= 12000) {
                     clearInterval(poll);
                     window._deepLinkScrollPending = false;
