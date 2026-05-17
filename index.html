@@ -8933,8 +8933,8 @@ html:not(.dark) .brand-name {
         const pageToNav = { home: 'home', earnings: 'studio', profile: 'home', info: 'info' };
         setBnav(pageToNav[page] || 'home');
 
-        // Scroll to top of feed on each tab change
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Scroll to top of feed on each tab change (skip during deep-link scroll)
+        if (!window._deepLinkScrollPending) window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function _lbtnActivate(el) {
@@ -18839,18 +18839,34 @@ html:not(.dark) .brand-name {
         // Block _activateTab from resetting scroll position while we're deep-linking
         window._deepLinkScrollPending = true;
 
-        // Wait for _activateTab to be defined, then force-navigate to the
-        // Global Feed so the post card is actually rendered in the DOM.
+        // Navigate to home feed WITHOUT using _activateTab (which calls switchPage
+        // which calls scrollTo top, overriding our deep-link scroll).
+        // Instead directly call switchPage with a flag, or just show the feed directly.
         var initWait = 0;
         var initPoll = setInterval(function() {
             initWait += 100;
-            if (typeof _activateTab === 'function') {
+            if (typeof switchPage === 'function' || typeof loadGlobalFeed === 'function') {
                 clearInterval(initPoll);
-                try { _activateTab('home', document.getElementById('nav-home')); } catch(_) {}
+                // Show the home page directly without scrolling
+                try {
+                    var homeEl = document.getElementById('page-home') || document.getElementById('feed-col');
+                    // Activate nav highlight without scroll side-effect
+                    var navHome = document.getElementById('nav-home');
+                    if (navHome && typeof _lbtnActivate === 'function') _lbtnActivate(navHome);
+                    if (typeof setBnav === 'function') setBnav('home');
+                    // Show home page
+                    document.querySelectorAll('.page').forEach(function(p){ p.style.display = 'none'; });
+                    var pg = document.getElementById('page-home');
+                    if (pg) pg.style.display = '';
+                    if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
+                } catch(e) {
+                    // Fallback — just try to load the feed
+                    try { if (typeof loadGlobalFeed === 'function') loadGlobalFeed(); } catch(_) {}
+                }
                 _pollForCard();
             } else if (initWait >= 5000) {
                 clearInterval(initPoll);
-                _pollForCard(); // try anyway
+                _pollForCard();
             }
         }, 100);
 
@@ -18868,8 +18884,8 @@ html:not(.dark) .brand-name {
                         void card.offsetWidth;
                         card.classList.add('deep-link-highlight');
                         showToast('📌 Jumped to shared post');
-                        // Keep flag active for 2s after scroll to block any late async scroll resets
-                        setTimeout(function() { window._deepLinkScrollPending = false; }, 2000);
+                        // Keep flag active for 4s after scroll to block any late async scroll resets
+                        setTimeout(function() { window._deepLinkScrollPending = false; }, 4000);
                     }, 150);
                 } else if (elapsed >= 12000) {
                     clearInterval(poll);
