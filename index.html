@@ -18890,49 +18890,52 @@ html:not(.dark) .brand-name {
                         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
 
-                    // Wait for images ABOVE this card to load first.
-                    // Images popping in shift card positions causing wrong scroll destination.
-                    function _scrollWhenReady() {
-                        var allImgs = Array.from(document.querySelectorAll('img'));
-                        var cardTop = card.getBoundingClientRect().top + window.scrollY;
-                        var pending = allImgs.filter(function(img) {
-                            return !img.complete &&
-                                   (img.getBoundingClientRect().top + window.scrollY) < cardTop;
-                        });
+                    // Watch the feed container for height changes (images loading in).
+                    // Once height has been stable for 400ms, scroll to the post.
+                    // Fallback: scroll after 4s no matter what.
+                    var feedEl = document.getElementById('feed-col') || document.getElementById('posts-feed') || document.body;
+                    var lastHeight = feedEl.scrollHeight;
+                    var stableTimer = null;
+                    var didScroll = false;
 
-                        function _go() {
-                            _doScroll();
-                            card.classList.remove('deep-link-highlight');
-                            void card.offsetWidth;
-                            card.classList.add('deep-link-highlight');
-                            showToast('\ud83d\udccc Jumped to shared post');
-                            var _userScrolled = false;
-                            var _onScroll = function() { _userScrolled = true; };
-                            window.addEventListener('wheel',     _onScroll, { once: true, passive: true });
-                            window.addEventListener('touchmove', _onScroll, { once: true, passive: true });
-                            setTimeout(function() { if (!_userScrolled) _doScroll(); }, 1500);
-                            setTimeout(function() {
-                                window._deepLinkScrollPending = false;
-                                window.removeEventListener('wheel',     _onScroll);
-                                window.removeEventListener('touchmove', _onScroll);
-                            }, 4000);
-                        }
-
-                        if (pending.length === 0) {
-                            _go();
-                        } else {
-                            var done = 0;
-                            pending.forEach(function(img) {
-                                function onDone() { if (++done >= pending.length) _go(); }
-                                img.addEventListener('load',  onDone, { once: true });
-                                img.addEventListener('error', onDone, { once: true });
-                            });
-                            // Safety: scroll anyway after 3s even if images stall
-                            setTimeout(function() { if (window._deepLinkScrollPending) _go(); }, 3000);
-                        }
+                    function _go() {
+                        if (didScroll) return;
+                        didScroll = true;
+                        if (observer) { try { observer.disconnect(); } catch(_) {} }
+                        _doScroll();
+                        card.classList.remove('deep-link-highlight');
+                        void card.offsetWidth;
+                        card.classList.add('deep-link-highlight');
+                        showToast('\ud83d\udccc Jumped to shared post');
+                        // One final re-scroll 800ms later to catch any last shifts
+                        var _userScrolled = false;
+                        var _onScroll = function() { _userScrolled = true; };
+                        window.addEventListener('wheel',     _onScroll, { once: true, passive: true });
+                        window.addEventListener('touchmove', _onScroll, { once: true, passive: true });
+                        setTimeout(function() { if (!_userScrolled) _doScroll(); }, 800);
+                        setTimeout(function() {
+                            window._deepLinkScrollPending = false;
+                            window.removeEventListener('wheel',     _onScroll);
+                            window.removeEventListener('touchmove', _onScroll);
+                        }, 3000);
                     }
 
-                    _scrollWhenReady();
+                    var observer = null;
+                    try {
+                        observer = new ResizeObserver(function() {
+                            // Height changed — reset the stable timer
+                            clearTimeout(stableTimer);
+                            stableTimer = setTimeout(_go, 400);
+                        });
+                        observer.observe(feedEl);
+                    } catch(_) {}
+
+                    // Start the stable timer immediately in case feed is already settled
+                    stableTimer = setTimeout(_go, 600);
+
+                    // Hard fallback — scroll after 4s no matter what
+                    setTimeout(_go, 4000);
+
                 } else if (elapsed >= 12000) {
                     clearInterval(poll);
                     window._deepLinkScrollPending = false;
