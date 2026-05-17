@@ -18602,12 +18602,12 @@ html:not(.dark) .brand-name {
             // Share links go through the Firebase Function so Telegram/WhatsApp
             // bots get dynamic OG tags (author name, post image, post snippet).
             // The function redirects humans straight to GitHub Pages automatically.
-            var fnBase = 'https://us-central1-socialhub-33014.cloudfunctions.net/share';
+            var fnBase = 'https://share.socialhubglobal.com';
             var url = new URL(fnBase);
             url.searchParams.set('post', postId);
             return url.toString();
         } catch (_) {
-            return 'https://us-central1-socialhub-33014.cloudfunctions.net/share?post=' + encodeURIComponent(postId);
+            return 'https://share.socialhubglobal.com/?post=' + encodeURIComponent(postId);
         }
     }
 
@@ -18698,7 +18698,14 @@ html:not(.dark) .brand-name {
         var tgUrl = 'https://t.me/share/url?url=' + _safeEncode(shareUrl) + '&text=' + _safeEncode(tgCaption);
             window.open(tgUrl, '_blank', 'noopener,noreferrer,width=600,height=500');
         } else if (platform === 'whatsapp') {
-            window.open('https://api.whatsapp.com/send?text=' + _safeEncode(waText), '_blank', 'noopener,noreferrer,width=600,height=500');
+            var waUrl = 'https://api.whatsapp.com/send?text=' + _safeEncode(waText);
+            var a = document.createElement('a');
+            a.href = waUrl;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function() { document.body.removeChild(a); }, 100);
         } else if (platform === 'copy') {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(shareUrl).then(function() { showToast('\ud83d\udccb Post link copied!'); }).catch(function() { _fallbackCopyShareLink(shareUrl); });
