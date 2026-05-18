@@ -17,6 +17,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="SocialHub">
     <link rel="apple-touch-icon" href="https://i.postimg.cc/NM62Rv8R/Screenshot-2026-05-15-111751.png">
+    <link rel="icon" type="image/png" href="https://i.postimg.cc/NM62Rv8R/Screenshot-2026-05-15-111751.png">
 
     <!-- PWA: Android + Chrome -->
     <meta name="theme-color" content="#7c5cbf">
@@ -18599,15 +18600,15 @@ html:not(.dark) .brand-name {
 
     function _buildPostShareUrl(postId) {
         try {
-            // Share links go through the Firebase Function so Telegram/WhatsApp
-            // bots get dynamic OG tags (author name, post image, post snippet).
-            // The function redirects humans straight to GitHub Pages automatically.
             var fnBase = 'https://share.socialhubglobal.com';
             var url = new URL(fnBase);
             url.searchParams.set('post', postId);
+            // Cache-bust: Telegram caches per URL, so each share gets a unique
+            // timestamp param forcing a fresh scrape every time
+            url.searchParams.set('t', Date.now());
             return url.toString();
         } catch (_) {
-            return 'https://socialhub-33014.web.app/?post=' + encodeURIComponent(postId);
+            return 'https://share.socialhubglobal.com/?post=' + encodeURIComponent(postId) + '&t=' + Date.now();
         }
     }
 
