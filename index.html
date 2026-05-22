@@ -7093,6 +7093,14 @@ html body #profile-hero #hero-tip-tray {
 /* â•â• VIDEO OVERLAYS (poll/goal) â€” smaller on mobile â•â•â•â•â•â•â•â•â• */
 .vid-overlay-poll { max-width:55%!important; }
 .vid-overlay-goal { max-width:50%!important; }
+/* ── Small-phone (≤480px): reposition overlays so they don't collide with action row ── */
+@media (max-width: 480px) {
+    #live-player-wrap .vid-overlay-goal { top: 6px!important; max-width: 42%!important; }
+    #live-player-wrap .vid-overlay-poll { bottom: 120px!important; max-width: 42%!important; }
+}
+/* ── Co-host: never show End Stream — only the actual host may end the stream ── */
+body.is-cohost #panel-end-stream-wrap,
+body.is-cohost #cinema-end-btn-wrap { display:none!important; }
 
 /* â•â• LIVE BADGES â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .live-badge-pill { background:linear-gradient(135deg,rgba(210,28,28,0.92),rgba(148,8,8,0.88))!important; border:1px solid rgba(255,75,75,0.35)!important; box-shadow:0 0 14px rgba(218,28,28,0.52)!important; font-weight:800!important; letter-spacing:1px!important; font-size:0.58rem!important; border-radius:20px!important; }
@@ -21617,6 +21625,7 @@ html body #profile-hero #hero-tip-tray {
         _justPromotedToCoHost = false;
         _pendingViewerLayout  = null;
         isCoHost              = false;
+        document.body.classList.remove('is-cohost');
         _isJoiningLive        = false;
         streamEntryFee        = 0;
         hasPassedGate         = false;
@@ -22802,6 +22811,7 @@ html body #profile-hero #hero-tip-tray {
             if (cohostVideoTrack) { try { cohostVideoTrack.stop(); cohostVideoTrack.close(); } catch(_) {} cohostVideoTrack = null; }
             if (cohostAudioTrack) { try { cohostAudioTrack.stop(); cohostAudioTrack.close(); } catch(_) {} cohostAudioTrack = null; }
             isCoHost = false;
+            document.body.classList.remove('is-cohost');
 
             // Unsubscribe co-host listener
             if (_cohostUnsub) { try { _cohostUnsub(); } catch(_) {} _cohostUnsub = null; }
@@ -23577,6 +23587,7 @@ html body #profile-hero #hero-tip-tray {
             var btn = $('viewer-cohost-btn');
             if (btn) { btn.textContent = '🎤 Leave Stage'; btn.style.opacity = ''; btn.style.pointerEvents = ''; btn.classList.add('active'); }
             isCoHost = true;
+            document.body.classList.add('is-cohost');
             showToast('🎤 You are now on stage! Everyone can see and hear you.');
         } catch(e) {
             console.error('[CoHost] promote error:', e);
@@ -23632,6 +23643,7 @@ html body #profile-hero #hero-tip-tray {
             var camBtn = $('cohost-btn-cam'); if (camBtn) camBtn.textContent = '📷 Cam Off';
 
             isCoHost = false;
+            document.body.classList.remove('is-cohost');
             var btn = $('viewer-cohost-btn');
             if (btn) {
                 btn.textContent = '🎤 Join Stage';
@@ -25811,7 +25823,7 @@ html body #profile-hero #hero-tip-tray {
 
         // Show the end stream button wrap — only for broadcaster, not mobile viewers
         var isMobileViewer = window.innerWidth <= 768 && videoContainerId === 'live-remote-video-container';
-        if (endBtnWrap && !isMobileViewer) endBtnWrap.style.display = 'flex';
+        if (endBtnWrap && !isMobileViewer && !document.body.classList.contains('is-cohost')) endBtnWrap.style.display = 'flex';
 
         document.body.classList.add('cinema-mode');
     }
