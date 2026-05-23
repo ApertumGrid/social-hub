@@ -774,6 +774,73 @@
         }
         #replay-modal-info { font-size:0.68rem; color:var(--text-muted); font-family:var(--font-mono); display:flex; gap:14px; flex-wrap:wrap; }
 
+        /* ── Stream Mode Selector (setup panel) ──────────────────────── */
+        .mode-selector { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+        .mode-card {
+            border:1.5px solid rgba(255,255,255,0.1); border-radius:12px;
+            padding:12px 8px; cursor:pointer; transition:all 0.15s;
+            text-align:center; background:rgba(255,255,255,0.04); position:relative;
+        }
+        .mode-card:hover:not(.mode-coming-soon) { border-color:rgba(255,255,255,0.25); background:rgba(255,255,255,0.07); }
+        .mode-card.active { border-color:rgba(224,62,62,0.6); background:rgba(224,62,62,0.09); }
+        .mode-card-icon { font-size:1.4rem; display:block; margin-bottom:5px; }
+        .mode-card-name { font-size:0.7rem; font-weight:700; color:#fff; margin-bottom:3px; }
+        .mode-card-desc { font-size:0.57rem; color:rgba(255,255,255,0.38); line-height:1.4; }
+        .mode-coming-soon { opacity:0.4; cursor:not-allowed; }
+        .mode-coming-soon::after {
+            content:'Soon'; position:absolute; top:6px; right:6px;
+            font-size:0.5rem; font-weight:700; color:#818cf8;
+            background:rgba(99,102,241,0.18); border:1px solid rgba(99,102,241,0.35);
+            border-radius:4px; padding:1px 5px; letter-spacing:0.5px;
+        }
+
+        /* ── Presentation mode — broadcaster PiP relocates to top-left ─ */
+        #live-broadcaster-video-container.layout-presentation #pip-camera-overlay {
+            top:12px !important; left:12px !important;
+            bottom:auto !important; right:auto !important;
+            width:180px !important; height:112px !important;
+            border:2px solid rgba(255,255,255,0.32) !important;
+            border-radius:10px !important; cursor:grab !important;
+        }
+        /* Floating chat overlay hidden in presentation — panel chat used instead */
+        #live-broadcaster-video-container.layout-presentation #bc-floating-chat { display:none !important; }
+
+        /* ── Presentation mode — viewer side-panel layout (desktop) ───── */
+        @media (min-width:769px) {
+            #live-player-wrap.pres-mode[style*="display:flex"] {
+                display:grid !important;
+                grid-template-columns:4fr 260px;
+                grid-template-rows:auto auto;
+                align-items:start;
+                gap:10px;
+                max-height:none !important;
+                overflow-y:visible !important;
+            }
+            #live-player-wrap.pres-mode #cohost-stage-wrap           { grid-column:1; grid-row:1; order:unset !important; }
+            #live-player-wrap.pres-mode #live-remote-video-container  { grid-column:1; grid-row:1; order:unset !important; }
+            #live-player-wrap.pres-mode .live-action-row              { grid-column:1; grid-row:2; order:unset !important; }
+            #live-player-wrap.pres-mode #viewer-poll-card,
+            #live-player-wrap.pres-mode #viewer-star-goal             { display:none !important; }
+            #live-player-wrap.pres-mode #viewer-panel-chat-card       {
+                grid-column:2; grid-row:1 / 3;
+                display:flex !important; flex-direction:column; min-height:360px;
+            }
+            #live-player-wrap.pres-mode #viewer-panel-chat-card .live-chat-feed { flex:1; min-height:0; overflow-y:auto; }
+            #live-player-wrap.pres-mode #viewer-vid-poll,
+            #live-player-wrap.pres-mode #viewer-vid-goal,
+            #live-player-wrap.pres-mode #viewer-floating-chat         { display:none !important; }
+        }
+        @media (max-width:768px) {
+            #live-player-wrap.pres-mode[style*="display:flex"] { flex-direction:column !important; }
+        }
+
+        /* ── Stream mode badge (stream browser card) ──────────────────── */
+        .stream-mode-badge {
+            display:inline-flex; align-items:center; gap:3px; font-size:0.57rem; font-weight:700;
+            padding:2px 6px; border-radius:50px; border:1px solid; vertical-align:middle; margin-left:4px;
+        }
+        .stream-mode-badge.pres { color:#818cf8; border-color:rgba(99,102,241,0.4); background:rgba(99,102,241,0.1); }
+
         .live-stream-box {
             position:relative;
             width:100%;
@@ -8972,6 +9039,28 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                         <option value="Lifestyle">🌿 Lifestyle</option>
                                         <option value="Music">🎵 Music</option>
                                     </select>
+                                </div>
+
+                                <!-- Stream Mode -->
+                                <div style="margin-bottom:20px;">
+                                    <div style="font-size:0.68rem; font-weight:600; color:rgba(255,255,255,0.4); letter-spacing:0.8px; margin-bottom:10px;">STREAM MODE</div>
+                                    <div class="mode-selector">
+                                        <div class="mode-card active" data-mode="social" onclick="selectStreamMode('social',this)">
+                                            <span class="mode-card-icon">📱</span>
+                                            <div class="mode-card-name">Social</div>
+                                            <div class="mode-card-desc">Camera · Chat overlay · Gifts &amp; polls</div>
+                                        </div>
+                                        <div class="mode-card" data-mode="presentation" onclick="selectStreamMode('presentation',this)">
+                                            <span class="mode-card-icon">🖥</span>
+                                            <div class="mode-card-name">Presentation</div>
+                                            <div class="mode-card-desc">Screen share · Side chat · Demos &amp; teaching</div>
+                                        </div>
+                                        <div class="mode-card mode-coming-soon" title="Hub Conference — coming soon">
+                                            <span class="mode-card-icon">🤝</span>
+                                            <div class="mode-card-name">Conference</div>
+                                            <div class="mode-card-desc">Group calls · Grid layout · DAO &amp; team calls</div>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <!-- Toggle switches -->
@@ -21043,7 +21132,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 <div class="live-stream-card-body">
                     <div class="live-stream-card-title">${_esc(s.title || 'Untitled Stream')}</div>
                     <div class="live-stream-card-meta">
-                        ${_esc(s.hostName || 'Creator')} · ${_esc(s.category || 'General')} · ★ ${(s.starsEarned || 0).toFixed(1)} earned
+                        ${_esc(s.hostName || 'Creator')} · ${_esc(s.category || 'General')} · ★ ${(s.starsEarned || 0).toFixed(1)} earned${s.streamMode === 'presentation' ? ' <span class="stream-mode-badge pres">📽 Presentation</span>' : ''}
                     </div>
                 </div>
             </div>
@@ -21167,6 +21256,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         const title    = ($('live-stream-title-input') || {}).value || 'Untitled Stream';
         const category = ($('live-stream-category') || {}).value   || 'General';
+        const _modeEl  = document.querySelector('.mode-card.active');
+        const streamMode = (_modeEl && _modeEl.dataset.mode) || 'social';
+        window._currentStreamMode = streamMode;
 
         if (!title.trim()) { showToast('Please enter a stream title.'); return; }
 
@@ -21199,7 +21291,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 entryFee:   streamEntryFee,
                 isPaid:     streamEntryFee > 0,
                 hasReplay:  false,
-                hostUid:    HOST_UID
+                hostUid:    HOST_UID,
+                streamMode: streamMode
             });
             currentStreamId = docRef.id;
             window._currentStreamId = currentStreamId; // expose for spotlight closure
@@ -21463,6 +21556,19 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     else           console.warn('[CloudRec] Start failed:', d.error);
                 }).catch(e => console.warn('[CloudRec] Start error:', e));
             })(currentStreamId, _activeLiveChannel);
+
+            // Presentation mode: apply broadcaster layout + auto-trigger screen share picker
+            if (streamMode === 'presentation') {
+                const _bcCon = document.getElementById('live-broadcaster-video-container');
+                if (_bcCon) _bcCon.classList.add('layout-presentation');
+                // Suppress the floating chat toggle — panel chat is always visible
+                _showBcFloatingChat && _showBcFloatingChat(); // no-op if already handled; CSS hides it
+                showToast('📽 Presentation Mode — choose a window or tab to share');
+                // Slight delay so Agora has finished publishing audio/video before track swap
+                setTimeout(function() {
+                    if (isHosting) window.toggleScreenShare();
+                }, 1800);
+            }
 
         } catch(e) {
             console.error('[Live] Go live error:', e);
@@ -22925,6 +23031,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 _applyViewerLayout(d.streamLayout);
             }
 
+            // ── SYNCHRONIZED STREAM MODE ─────────────────────────────
+            // pres-mode CSS class drives the side-panel chat grid layout on viewer side
+            if (!isHosting) {
+                var _pw = document.getElementById('live-player-wrap');
+                if (_pw) _pw.classList.toggle('pres-mode', d.streamMode === 'presentation');
+            }
+
             // ── CHAT ENABLED/DISABLED ─────────────────────────────────
             // Host can toggle comments off — lock the viewer chat input
             if (!isHosting) {
@@ -23085,6 +23198,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 cohostPip.style.cssText = 'grid-column:2/3;grid-row:1/2;position:relative;border-radius:0;border:none;min-height:0;overflow:hidden;';
                 if (cohostPip.parentElement !== container) container.appendChild(cohostPip);
             }
+        } else if (mode === 'presentation') {
+            // Presentation layout is driven by the pres-mode CSS class on #live-player-wrap.
+            // Just ensure the video div fills its grid cell normally.
+            _pendingViewerLayout = null;
+            if (hostVid) hostVid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
         }
     }
 
@@ -24429,9 +24547,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     }
                 }, 'disable');
 
-                // Unpublish camera, publish screen
+                // Unpublish camera FIRST — must complete before publishing screen.
+                // Swallowing this error causes CAN_NOT_PUBLISH_MULTIPLE_VIDEO_TRACKS on the next line.
                 if (localVideoTrack) {
-                    try { await agoraClient.unpublish(localVideoTrack); } catch(_) {}
+                    await agoraClient.unpublish(localVideoTrack);
                 }
                 await agoraClient.publish(screenTrack);
 
@@ -24444,6 +24563,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     pip.style.display = 'block';
                     pip.innerHTML = '';
                     localVideoTrack.play(pip);
+                    _makePipDraggable(pip);
                 }
 
                 const lbl = $('screen-share-label'); if (lbl) lbl.style.display = 'block';
@@ -26456,6 +26576,72 @@ document.addEventListener('DOMContentLoaded', function() {
         }).catch(function(){});
     }
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// Stream Mode Selector
+// ─────────────────────────────────────────────────────────────────────
+
+function selectStreamMode(mode, el) {
+    document.querySelectorAll('.mode-card').forEach(function(c) { c.classList.remove('active'); });
+    if (el) el.classList.add('active');
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Draggable PiP helper — used for #pip-camera-overlay during screen share
+// ─────────────────────────────────────────────────────────────────────
+
+function _makePipDraggable(el) {
+    var _dragging = false, _ox = 0, _oy = 0;
+    function _getCoords(e) {
+        return e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY }
+                         : { x: e.clientX, y: e.clientY };
+    }
+    function _onMove(e) {
+        if (!_dragging) return;
+        var c = _getCoords(e);
+        var parent = el.offsetParent || el.parentElement;
+        var pr = parent ? parent.getBoundingClientRect() : { left: 0, top: 0 };
+        var newLeft = Math.max(0, Math.min(c.x - pr.left - _ox, parent.offsetWidth  - el.offsetWidth));
+        var newTop  = Math.max(0, Math.min(c.y - pr.top  - _oy, parent.offsetHeight - el.offsetHeight));
+        el.style.left = newLeft + 'px';
+        el.style.top  = newTop  + 'px';
+        if (e.cancelable) e.preventDefault();
+    }
+    function _onUp() {
+        _dragging = false;
+        el.style.cursor = 'grab';
+        document.removeEventListener('mousemove', _onMove);
+        document.removeEventListener('mouseup',   _onUp);
+        document.removeEventListener('touchmove', _onMove);
+        document.removeEventListener('touchend',  _onUp);
+    }
+    function _onDown(e) {
+        var c = _getCoords(e);
+        var rect = el.getBoundingClientRect();
+        // Switch from bottom/right anchoring to top/left so drag maths work
+        var parent = el.offsetParent || el.parentElement;
+        var pr = parent ? parent.getBoundingClientRect() : { left: 0, top: 0 };
+        el.style.left   = (rect.left - pr.left) + 'px';
+        el.style.top    = (rect.top  - pr.top)  + 'px';
+        el.style.right  = 'auto';
+        el.style.bottom = 'auto';
+        _ox = c.x - rect.left;
+        _oy = c.y - rect.top;
+        _dragging = true;
+        el.style.cursor = 'grabbing';
+        document.addEventListener('mousemove', _onMove);
+        document.addEventListener('mouseup',   _onUp);
+        document.addEventListener('touchmove', _onMove, { passive: false });
+        document.addEventListener('touchend',  _onUp);
+        if (e.cancelable) e.preventDefault();
+    }
+    // Only attach once
+    if (!el._pipDragAttached) {
+        el._pipDragAttached = true;
+        el.addEventListener('mousedown',  _onDown);
+        el.addEventListener('touchstart', _onDown, { passive: false });
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // VOD / My Recordings
