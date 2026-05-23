@@ -717,6 +717,63 @@
         }
         .live-tab:hover:not(.active) { background:var(--bg-hover); color:var(--text-primary); }
 
+        /* ── Studio Tabs ──────────────────────────────────────────────── */
+        .studio-tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+        .studio-tab {
+            padding:7px 16px; font-size:0.72rem; font-weight:700; letter-spacing:0.5px;
+            border-radius:var(--radius-sm); border:1px solid var(--border);
+            background:var(--bg-input); color:var(--text-muted); cursor:pointer;
+            transition:all 0.15s; text-transform:uppercase;
+        }
+        .studio-tab.active {
+            background:rgba(99,102,241,0.15); border-color:rgba(99,102,241,0.45); color:#818cf8;
+        }
+        .studio-tab:hover:not(.active) { background:var(--bg-hover); color:var(--text-primary); }
+
+        /* ── Recording Cards ─────────────────────────────────────────── */
+        .rec-card {
+            background:var(--bg-input); border:1px solid var(--border);
+            border-radius:var(--radius-md); padding:14px; margin-bottom:10px;
+        }
+        .rec-card-title { font-size:0.82rem; font-weight:700; color:var(--text-white); margin-bottom:6px; }
+        .rec-card-meta { font-size:0.62rem; color:var(--text-muted); font-family:var(--font-mono); display:flex; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+        .rec-card-actions { display:flex; gap:8px; flex-wrap:wrap; }
+        .rec-btn { padding:6px 14px; font-size:0.7rem; font-weight:700; border-radius:var(--radius-sm); border:none; cursor:pointer; transition:all 0.15s; }
+        .rec-btn-watch { background:rgba(224,62,62,0.15); color:#f87171; border:1px solid rgba(224,62,62,0.3); }
+        .rec-btn-watch:hover { background:rgba(224,62,62,0.25); }
+        .rec-btn-share { background:rgba(99,102,241,0.12); color:#818cf8; border:1px solid rgba(99,102,241,0.25); }
+        .rec-btn-share:hover { background:rgba(99,102,241,0.22); }
+        #studio-recordings-panel .rec-empty { text-align:center; padding:32px 16px; color:var(--text-muted); font-size:0.78rem; }
+
+        /* ── Replay Modal ────────────────────────────────────────────── */
+        #replay-modal {
+            display:none; position:fixed; inset:0; z-index:9999;
+            background:rgba(0,0,0,0.92); flex-direction:column;
+            align-items:center; justify-content:center;
+        }
+        #replay-modal.open { display:flex; }
+        #replay-modal-inner {
+            width:min(860px,96vw); background:var(--bg-card);
+            border-radius:var(--radius-lg); border:1px solid var(--border);
+            overflow:hidden; display:flex; flex-direction:column; max-height:92vh;
+        }
+        #replay-modal-header {
+            display:flex; justify-content:space-between; align-items:center;
+            padding:14px 18px; border-bottom:1px solid var(--border); flex-shrink:0; gap:8px;
+        }
+        #replay-modal-title { font-size:0.88rem; font-weight:700; color:var(--text-white); flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        #replay-modal-close {
+            width:28px; height:28px; border-radius:50%; border:1px solid var(--border);
+            background:var(--bg-input); color:var(--text-muted); cursor:pointer;
+            font-size:1rem; line-height:1; flex-shrink:0;
+        }
+        #replay-video { width:100%; aspect-ratio:16/9; background:#000; display:block; }
+        #replay-modal-footer {
+            padding:12px 18px; display:flex; justify-content:space-between; align-items:center;
+            flex-shrink:0; gap:8px; flex-wrap:wrap; border-top:1px solid var(--border);
+        }
+        #replay-modal-info { font-size:0.68rem; color:var(--text-muted); font-family:var(--font-mono); display:flex; gap:14px; flex-wrap:wrap; }
+
         .live-stream-box {
             position:relative;
             width:100%;
@@ -8016,6 +8073,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             <div id="page-earnings" class="page">
                 <div class="page-heading">Creator <span>Studio</span></div>
 
+                <div class="studio-tabs">
+                    <div class="studio-tab active" onclick="setStudioTab('main',this)">Overview</div>
+                    <div class="studio-tab" onclick="setStudioTab('recordings',this)">My Recordings</div>
+                </div>
+
+                <div id="studio-main-panel">
                 <div class="card">
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
                         <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px;">
@@ -8197,6 +8260,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             ✦ SEED PROTOCOL LIQUIDITY
                         </button>
                         <div id="seed-vault-status" style="display:none; margin-top:6px; font-family:var(--font-mono); font-size:0.6rem; color:var(--teal); letter-spacing:0.8px; text-transform:uppercase; line-height:1.7;"></div>
+                    </div>
+                </div>
+                </div><!-- /studio-main-panel -->
+
+                <div id="studio-recordings-panel" style="display:none;">
+                    <div class="card">
+                        <div style="font-size:0.8rem; font-weight:700; color:var(--text-white); margin-bottom:14px;">My Recordings</div>
+                        <div id="recordings-list"><div class="rec-empty">Connect wallet to view recordings.</div></div>
                     </div>
                 </div>
             </div>
@@ -12824,6 +12895,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Clear ledger notification dot when Creator Studio is opened
             if (tabName === 'earnings' || tabName === 'studio' || tabName === 'ledger') {
                 if (typeof _notifDotClear === 'function') _notifDotClear();
+                if (typeof loadMyRecordings === 'function') loadMyRecordings();
             }
 
             // Inbox tab — show splash or active UI based on mailbox status
@@ -21380,6 +21452,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             showToast('🔴 You are now LIVE! Audience can join and Hype you.');
 
+            // Start server-side cloud recording (fire-and-forget — never blocks the stream)
+            (function(_sid, _ch) {
+                fetch('https://us-central1-socialhub-33014.cloudfunctions.net/startCloudRecording', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ streamId: _sid, channelName: _ch })
+                }).then(r => r.json()).then(d => {
+                    if (d.success) console.log('[CloudRec] Recording started, sid:', d.sid);
+                    else           console.warn('[CloudRec] Start failed:', d.error);
+                }).catch(e => console.warn('[CloudRec] Start error:', e));
+            })(currentStreamId, _activeLiveChannel);
+
         } catch(e) {
             console.error('[Live] Go live error:', e);
             showToast('Stream error: ' + (e.message || String(e)));
@@ -26372,6 +26456,201 @@ document.addEventListener('DOMContentLoaded', function() {
         }).catch(function(){});
     }
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// VOD / My Recordings
+// ─────────────────────────────────────────────────────────────────────
+
+function setStudioTab(name, el) {
+    document.querySelectorAll('.studio-tab').forEach(function(t) { t.classList.remove('active'); });
+    if (el) el.classList.add('active');
+    var main = document.getElementById('studio-main-panel');
+    var recs = document.getElementById('studio-recordings-panel');
+    if (main) main.style.display = (name === 'main') ? '' : 'none';
+    if (recs) recs.style.display = (name === 'recordings') ? '' : 'none';
+    if (name === 'recordings') _loadRecordingsList();
+}
+
+var _recCache = {};
+
+function loadMyRecordings() {
+    var recs = document.getElementById('studio-recordings-panel');
+    if (!recs || recs.style.display === 'none') return;
+    _loadRecordingsList();
+}
+
+function _loadRecordingsList() {
+    var addr = (window.userAddress || '').toLowerCase();
+    var list = document.getElementById('recordings-list');
+    if (!list) return;
+    if (!addr) {
+        list.innerHTML = '<div class="rec-empty">Connect wallet to view recordings.</div>';
+        return;
+    }
+    list.innerHTML = '<div class="rec-empty">Loading…</div>';
+    var q = window.fs.query(
+        window.fs.collection(window.db, 'completed_streams'),
+        window.fs.where('hostAddr', '==', addr),
+        window.fs.orderBy('createdAt', 'desc')
+    );
+    window.fs.getDocs(q).then(function(snap) {
+        if (snap.empty) {
+            list.innerHTML = '<div class="rec-empty">No recordings yet. Go live to create your first VOD.</div>';
+            return;
+        }
+        var html = '';
+        snap.forEach(function(ds) {
+            var d = ds.data();
+            _recCache[ds.id] = d;
+            var title  = _recEsc(d.title || 'Untitled Stream');
+            var date   = d.createdAt && d.createdAt.toDate
+                ? new Date(d.createdAt.toDate()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+                : '—';
+            var dur    = _fmtDuration(d.durationSeconds || 0);
+            var stars  = (d.starsEarned || 0).toLocaleString();
+            var hasVid = d.hasRecording && d.recordingUrls && d.recordingUrls.mp4;
+            html += '<div class="rec-card">';
+            html += '<div class="rec-card-title">' + title + '</div>';
+            html += '<div class="rec-card-meta">';
+            html += '<span>📅 ' + date + '</span><span>⏱ ' + dur + '</span><span>★ ' + stars + '</span>';
+            if (!hasVid) html += '<span style="color:#f87171;">⚠ No recording available</span>';
+            html += '</div>';
+            if (hasVid) {
+                html += '<div class="rec-card-actions">';
+                html += '<button class="rec-btn rec-btn-watch" onclick="openReplayById(' + JSON.stringify(ds.id) + ')">▶ Watch Replay</button>';
+                html += '<button class="rec-btn rec-btn-share" onclick="shareReplayCard(' + JSON.stringify(ds.id) + ')">↗ Share</button>';
+                html += '</div>';
+            }
+            html += '</div>';
+        });
+        list.innerHTML = html;
+    }).catch(function(err) {
+        list.innerHTML = '<div class="rec-empty">Failed to load recordings.</div>';
+        console.error('[Recordings]', err);
+    });
+}
+
+function _fmtDuration(secs) {
+    if (!secs) return '0:00';
+    var h = Math.floor(secs / 3600);
+    var m = Math.floor((secs % 3600) / 60);
+    var s = Math.floor(secs % 60);
+    if (h > 0) return h + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    return m + ':' + String(s).padStart(2,'0');
+}
+
+function _recEsc(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Replay Modal ──────────────────────────────────────────────────────
+
+var _replayStreamId = null;
+
+function openReplayById(streamId) {
+    var d = _recCache[streamId];
+    if (!d || !d.recordingUrls || !d.recordingUrls.mp4) return;
+    openReplay(streamId, d.recordingUrls.mp4, d.title || 'Stream Replay', d);
+}
+
+function openReplay(streamId, mp4Url, title, data) {
+    _replayStreamId = streamId;
+    document.getElementById('replay-modal-title').textContent = title || 'Stream Replay';
+    var date  = data && data.createdAt && data.createdAt.toDate
+        ? new Date(data.createdAt.toDate()).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+        : '';
+    var dur   = _fmtDuration((data && data.durationSeconds) || 0);
+    var stars = ((data && data.starsEarned) || 0).toLocaleString();
+    document.getElementById('replay-modal-info').innerHTML =
+        (date ? '<span>📅 ' + _recEsc(date) + '</span>' : '') +
+        '<span>⏱ ' + _recEsc(dur) + '</span><span>★ ' + _recEsc(stars) + '</span>';
+    var video = document.getElementById('replay-video');
+    video.src = mp4Url;
+    video.load();
+    document.getElementById('replay-modal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    if (history.pushState) {
+        var u = new URL(window.location.href);
+        u.searchParams.set('replay', streamId);
+        history.pushState({ replay: streamId }, '', u.toString());
+    }
+}
+
+function closeReplay() {
+    var video = document.getElementById('replay-video');
+    video.pause();
+    video.src = '';
+    document.getElementById('replay-modal').classList.remove('open');
+    document.body.style.overflow = '';
+    _replayStreamId = null;
+    if (history.pushState) {
+        var u = new URL(window.location.href);
+        u.searchParams.delete('replay');
+        history.pushState({}, '', u.toString());
+    }
+}
+
+function shareReplay() {
+    if (!_replayStreamId) return;
+    shareReplayCard(_replayStreamId);
+}
+
+function shareReplayCard(streamId) {
+    var u = new URL(window.location.href);
+    u.searchParams.set('replay', streamId);
+    var link = u.toString();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(function() {
+            showToast('🔗 Replay link copied!');
+        }).catch(function() { _copyReplayLink(link); });
+    } else {
+        _copyReplayLink(link);
+    }
+}
+
+function _copyReplayLink(link) {
+    var ta = document.createElement('textarea');
+    ta.value = link;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('🔗 Replay link copied!');
+}
+
+// ── Deep-link: ?replay=STREAM_ID opens replay modal on page load ──────
+(function() {
+    var rId = new URLSearchParams(window.location.search).get('replay');
+    if (!rId) return;
+    function tryOpen() {
+        if (!window.fs || !window.db) { setTimeout(tryOpen, 600); return; }
+        window.fs.getDoc(window.fs.doc(window.db, 'completed_streams', rId)).then(function(snap) {
+            if (!snap.exists()) return;
+            var d = snap.data();
+            if (d.hasRecording && d.recordingUrls && d.recordingUrls.mp4) {
+                _recCache[rId] = d;
+                openReplay(rId, d.recordingUrls.mp4, d.title || 'Stream Replay', d);
+            }
+        }).catch(function(e) { console.warn('[Replay deeplink]', e); });
+    }
+    setTimeout(tryOpen, 1200);
+})();
 </script>
+
+<!-- ── VOD Replay Modal ─────────────────────────────────────────────── -->
+<div id="replay-modal" onclick="if(event.target===this)closeReplay()">
+    <div id="replay-modal-inner">
+        <div id="replay-modal-header">
+            <div id="replay-modal-title">Stream Replay</div>
+            <button id="replay-modal-close" onclick="closeReplay()">✕</button>
+        </div>
+        <video id="replay-video" controls playsinline preload="metadata"></video>
+        <div id="replay-modal-footer">
+            <div id="replay-modal-info"></div>
+            <button class="rec-btn rec-btn-share" onclick="shareReplay()">↗ Share Replay</button>
+        </div>
+    </div>
+</div>
 </body>
 </html>
