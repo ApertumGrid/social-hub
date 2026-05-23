@@ -805,6 +805,32 @@
         /* Floating chat overlay hidden in presentation — panel chat used instead */
         #live-broadcaster-video-container.layout-presentation #bc-floating-chat { display:none !important; }
 
+        /* ── Presentation mode — compact broadcaster right panel ──────── */
+        /* Stats row hidden to reclaim ~60px; toolbar collapses to icon grid */
+        #live-active-panel.pres-active { flex-direction:column; }
+        #live-active-panel.pres-active .studio-toolbar {
+            display:grid !important;
+            grid-template-columns:repeat(7,1fr);
+            gap:4px; padding:6px 0; margin-bottom:6px;
+        }
+        #live-active-panel.pres-active .studio-btn {
+            padding:7px 2px !important;
+            border-radius:8px !important;
+            flex-direction:column;
+            justify-content:center; align-items:center;
+            gap:0 !important; white-space:normal !important;
+            font-size:0 !important; min-width:0;
+        }
+        #live-active-panel.pres-active .studio-btn-icon { font-size:1rem !important; }
+        #live-active-panel.pres-active #bc-live-stats-row { display:none !important; }
+        #live-active-panel.pres-active #bc-panel-chat-card {
+            flex:1 1 0; min-height:0;
+            display:flex !important; flex-direction:column;
+        }
+        #live-active-panel.pres-active #live-broadcast-chat-feed {
+            flex:1 1 0; min-height:0; overflow-y:auto;
+        }
+
         /* ── Presentation mode — viewer side-panel layout (desktop) ───── */
         @media (min-width:769px) {
             #live-player-wrap.pres-mode[style*="display:flex"] {
@@ -21561,6 +21587,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (streamMode === 'presentation') {
                 const _bcCon = document.getElementById('live-broadcaster-video-container');
                 if (_bcCon) _bcCon.classList.add('layout-presentation');
+                const _apEl = document.getElementById('live-active-panel');
+                if (_apEl) _apEl.classList.add('pres-active');
                 // Suppress the floating chat toggle — panel chat is always visible
                 _showBcFloatingChat && _showBcFloatingChat(); // no-op if already handled; CSS hides it
                 showToast('📽 Presentation Mode — choose a window or tab to share');
@@ -21633,6 +21661,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         show('live-setup-panel');
         hide('live-active-panel');
+        // Remove presentation-mode classes so the next stream starts clean
+        const _bcConEnd = document.getElementById('live-broadcaster-video-container');
+        if (_bcConEnd) _bcConEnd.classList.remove('layout-presentation');
+        const _apEnd = document.getElementById('live-active-panel');
+        if (_apEnd) _apEnd.classList.remove('pres-active');
         clearInterval(durationTimer);
         const badge = $('live-viewer-badge');
         if (badge) badge.style.display = 'none';
@@ -23241,8 +23274,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Unsubscribe co-host listener
             if (_cohostUnsub) { try { _cohostUnsub(); } catch(_) {} _cohostUnsub = null; }
 
-            if (localVideoTrack) { try { localVideoTrack.stop(); localVideoTrack.close(); } catch(_) {} localVideoTrack = null; }
-            if (localAudioTrack) { try { localAudioTrack.stop(); localAudioTrack.close(); } catch(_) {} localAudioTrack = null; }
+            if (localVideoTrack) { try { localVideoTrack.stop(); localVideoTrack.close(); } catch(_) {} localVideoTrack = null; window._localVideoTrack_ref = null; }
+            if (localAudioTrack) { try { localAudioTrack.stop(); localAudioTrack.close(); } catch(_) {} localAudioTrack = null; window._localAudioTrack_ref = null; }
             if (agoraClient)     { try { await agoraClient.leave(); } catch(_) {} agoraClient = null; }
 
             // ── Hard kill: stop every active media track on the page ──────────────
@@ -26703,8 +26736,8 @@ function _loadRecordingsList() {
             html += '</div>';
             if (hasVid) {
                 html += '<div class="rec-card-actions">';
-                html += '<button class="rec-btn rec-btn-watch" onclick="openReplayById(' + JSON.stringify(ds.id) + ')">▶ Watch Replay</button>';
-                html += '<button class="rec-btn rec-btn-share" onclick="shareReplayCard(' + JSON.stringify(ds.id) + ')">↗ Share</button>';
+                html += '<button class="rec-btn rec-btn-watch" data-id="' + ds.id + '" onclick="openReplayById(this.dataset.id)">▶ Watch Replay</button>';
+                html += '<button class="rec-btn rec-btn-share" data-id="' + ds.id + '" onclick="shareReplayCard(this.dataset.id)">↗ Share</button>';
                 html += '</div>';
             }
             html += '</div>';
