@@ -61,7 +61,7 @@
     <!-- 2. Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc, writeBatch, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc, writeBatch, arrayUnion, arrayRemove, limitToLast } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
         const firebaseConfig = {
@@ -78,7 +78,7 @@
         const storage = getStorage(app);
         window.db  = db;
         window.storage = storage;
-        window.fs  = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc, writeBatch, arrayUnion, arrayRemove };
+        window.fs  = { collection, addDoc, getDocs, query, orderBy, onSnapshot, doc, updateDoc, increment, where, runTransaction, setDoc, getDoc, serverTimestamp, deleteDoc, writeBatch, arrayUnion, arrayRemove, limitToLast };
         window.fsStorage = { ref, uploadBytesResumable, getDownloadURL };
     </script>
 
@@ -20779,11 +20779,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // ── Config ────────────────────────────────────────────────────
     const AGORA_APP_ID  = 'e26e79a0f99446f991beb0d6c68271a3';
     let   AGORA_TOKEN   = '';
+    let   AGORA_UID     = 0;
 
     async function fetchAgoraToken(channel) {
-        const res  = await fetch(`https://us-central1-socialhub-33014.cloudfunctions.net/getAgoraToken?channel=${encodeURIComponent(channel)}&uid=0`);
+        const walletParam = window.userAddress
+            ? '&walletAddress=' + encodeURIComponent(window.userAddress)
+            : '';
+        const res  = await fetch(`https://us-central1-socialhub-33014.cloudfunctions.net/getAgoraToken?channel=${encodeURIComponent(channel)}${walletParam}`);
         const data = await res.json();
+        if (!data.token) throw new Error('Token fetch failed');
         AGORA_TOKEN = data.token;
+        AGORA_UID   = data.uid;
     }
     const LIVE_CHANNEL_PREFIX = 'socialhub_live_';
     const LIVE_COL      = 'live_streams';
@@ -21103,7 +21109,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // Generate HOST_UID before creating the doc so it's included from the start.
             // This avoids the race where a viewer joins before the follow-up updateDoc fires.
-            const HOST_UID = 1 + Math.floor(Math.random() * 99998); // unique per session
+            // Deterministic UID from wallet — same formula as getAgoraToken Cloud Function.
+            // Range 10000–1009999. Computed before addDoc so hostUid is correct in the stream doc.
+            const HOST_UID = (parseInt((window.userAddress || '0x00000000').slice(2, 10), 16) % 1000000) + 10000;
 
             const docRef = await addDoc(collection(window.db, LIVE_COL), {
                 hostAddr:   userAddress,
@@ -21142,6 +21150,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             await agoraClient.setClientRole('host');
             await fetchAgoraToken(_activeLiveChannel);
             await agoraClient.join(AGORA_APP_ID, _activeLiveChannel, AGORA_TOKEN, HOST_UID);
+
+            agoraClient.on('connection-state-change', (curState, prevState) => {
+                if (curState === 'RECONNECTING') showToast('⚠️ Connection lost — reconnecting…');
+                if (curState === 'CONNECTED' && prevState === 'RECONNECTING') showToast('✓ Reconnected.');
+                if (curState === 'DISCONNECTED') showToast('Stream connection lost. Refresh to restart.');
+            });
 
             // 3. Publish tracks (create if not already previewed)
             if (!localVideoTrack || !localAudioTrack) {
@@ -21539,9 +21553,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const streamChannel = streamData.channel || (LIVE_CHANNEL_PREFIX + streamId);
             _activeLiveChannel = streamChannel;
             await fetchAgoraToken(streamChannel);
-            const _MY_VIEWER_UID = Math.floor(Math.random() * 99998) + 100000;
-            _myViewerUid = _MY_VIEWER_UID; // store at module scope so _promoteToCoHost can use it
-            await agoraClient.join(AGORA_APP_ID, streamChannel, AGORA_TOKEN, _MY_VIEWER_UID);
+            _myViewerUid = AGORA_UID; // set by fetchAgoraToken above — deterministic from wallet
+            await agoraClient.join(AGORA_APP_ID, streamChannel, AGORA_TOKEN, AGORA_UID);
+
+            agoraClient.on('connection-state-change', (curState, prevState) => {
+                if (curState === 'RECONNECTING') showToast('⚠️ Reconnecting to stream…');
+                if (curState === 'CONNECTED' && prevState === 'RECONNECTING') showToast('✓ Reconnected.');
+                if (curState === 'DISCONNECTED') showToast('Stream connection lost.');
+            });
 
             // hostUid tells us which publisher in the shared channel belongs to THIS stream
             // hostUid is now always in the doc from creation, but keep a mutable
@@ -22013,15 +22032,22 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!text || !_watchingStreamId) return;
         if (input) input.value = '';
 
-        if (!window.db || !window.fs) return;
-        const { collection, addDoc, serverTimestamp } = window.fs;
-        await addDoc(collection(window.db, LIVE_CHAT_COL, _watchingStreamId, 'messages'), {
-            author:   window._liveUserHandle || 'Viewer',
-            avatar:   window._liveUserAvatar || '',
-            text:     text,
-            ts:       serverTimestamp(),
-            isSystem: false
-        }).catch(e => console.warn('[Live chat]', e));
+        try {
+            const resp = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/sendLiveChat', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({
+                    streamId:      _watchingStreamId,
+                    text,
+                    senderAddress: window._liveUserAddress || '',
+                    senderAvatar:  window._liveUserAvatar  || ''
+                })
+            });
+            const data = await resp.json();
+            if (!data.success) console.warn('[Live chat]', data.error);
+        } catch(e) {
+            console.warn('[Live chat]', e);
+        }
     };
 
     // ── Broadcaster sends chat to their own stream ────────────────
@@ -22422,7 +22448,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.sendGift = async function(tierKey) {
         if (!_watchingStreamId) { showToast('Join a stream first to send gifts.'); return; }
 
-        // Read shared state from main IIFE bridge (exposed via updateUI)
         const userAddress = window._liveUserAddress || '';
         const userHandle  = window._liveUserHandle  || 'Viewer';
         const userAvatar  = window._liveUserAvatar  || '';
@@ -22438,100 +22463,45 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             return;
         }
 
+        const aptmPrice = window.aptmPriceUSD || 0;
+        if (aptmPrice <= 0) {
+            showToast('Waiting for price data — please try again in a moment.');
+            return;
+        }
+
         try {
-            const { doc, updateDoc, increment, getDoc, collection, addDoc, serverTimestamp } = window.fs;
+            const resp = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/sendGift', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({
+                    tierKey,
+                    watchingStreamId: _watchingStreamId,
+                    senderAddress:    userAddress,
+                    senderHandle:     userHandle,
+                    senderAvatar:     userAvatar,
+                    aptmPriceUsd:     aptmPrice
+                })
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                showToast(data.error || 'Gift failed. Please try again.');
+                return;
+            }
 
-            // Get host address from stream doc
-            const streamSnap = await getDoc(doc(window.db, LIVE_COL, _watchingStreamId));
-            if (!streamSnap.exists() || !streamSnap.data().active) { showToast('Stream has ended.'); return; }
-            const hostAddr = streamSnap.data().hostAddr;
-
-            // 1. Deduct from viewer via canonical spend waterfall.
-            await deductSpendableStars(userAddress.toLowerCase(), tier.cost);
-            // Update bridge so subsequent gifts in same session see correct balance
+            // Update local balance immediately for snappy UX
             if (typeof window._liveTotalSpendable === 'number') {
                 window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - tier.cost);
                 window._liveAvailableStars = window._liveTotalSpendable;
             }
 
-            // 2. Credit 80% to creator instantly
-            const creatorCut  = parseFloat((tier.cost * 0.8).toFixed(4));
-            const platformCut = parseFloat((tier.cost * 0.2).toFixed(4));
-            if (hostAddr) {
-                await updateDoc(doc(window.db, 'user_balances', hostAddr.toLowerCase()), {
-                    creatorStars: increment(creatorCut)
-                }).catch(() => {});
-            }
-
-            // 3. Credit 20% to platform — logAdminRevenue writes to platform_revenue
-            // collection (admin dashboard ledger) AND admin_revenue/global (withdrawable balance)
-            if (typeof window.logAdminRevenue === 'function') {
-                window.logAdminRevenue(userAddress.toLowerCase(), 'live_gift', platformCut);
-            } else {
-                // fallback: direct write to both collections
-                window.fs.addDoc(window.fs.collection(window.db, 'platform_revenue'), {
-                    sourceAddress: userAddress.toLowerCase(),
-                    actionType: 'live_gift', amount: platformCut, timestamp: Date.now()
-                }).catch(() => {});
-                await updateDoc(doc(window.db, 'admin_revenue', 'global'), {
-                    total: increment(platformCut)
-                }).catch(() => {});
-            }
-
-            // 3b. Log spend entry to viewer's ledger
-            await addDoc(collection(window.db, 'user_transactions'), {
-                type:           'spend',
-                amount:         tier.cost,
-                fromAddress:    userAddress.toLowerCase(),
-                toAddress:      hostAddr || '',
-                address:        userAddress.toLowerCase(),
-                description:    `${tier.icon} ${tier.name} Gift sent (${tier.cost}★ · creator gets ${creatorCut.toFixed(1)}★)`,
-                timestamp:      Date.now(),
-                schema_version: 2
-            }).catch(() => {});
-
-            // 3c. Log earn entry to host's ledger
-            if (hostAddr) {
-                addDoc(collection(window.db, 'user_transactions'), {
-                    type:           'earn',
-                    amount:         creatorCut,
-                    fromAddress:    userAddress.toLowerCase(),
-                    toAddress:      hostAddr.toLowerCase(),
-                    address:        hostAddr.toLowerCase(),
-                    description:    `${tier.icon} ${tier.name} Gift received from ${userHandle} (+${creatorCut.toFixed(1)}★)`,
-                    timestamp:      Date.now(),
-                    schema_version: 2
-                }).catch(() => {});
-            }
-
-            // 3d. Feed into Live Activity ticker (right panel)
             if (typeof window.tickerLog === 'function') {
                 window.tickerLog('spend', `${tier.name} Gift`, tier.cost, tier.icon);
             }
 
-            // 4. Update stream display counter
-            await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
-                starsEarned: increment(tier.cost),
-                hypeCount:   increment(1)
-            });
-
-            // 5. Post gift message to live chat
-            await addDoc(collection(window.db, LIVE_CHAT_COL, _watchingStreamId, 'messages'), {
-                author:    userHandle,
-                avatar:    userAvatar,
-                text:      `${tier.icon} ${userHandle} sent a ${tier.name}! (${tier.cost} ★)`,
-                ts:        serverTimestamp(),
-                isGift:    true,
-                giftTier:  tierKey,
-                giftIcon:  tier.icon,
-                giftStyle: tier.chatStyle
-            }).catch(() => {});
-
-            // 6. Full-screen burst for ALL gift tiers — scaled by tier
             _showGiftBurst(tier, userHandle);
-
             if (typeof updateUI === 'function') updateUI();
-            showToast(`${tier.icon} ${tier.name} sent! Creator gets ${creatorCut.toFixed(1)} ★ instantly.`);
+            const cut = data.creatorCut != null ? data.creatorCut : (tier.cost * 0.8);
+            showToast(`${tier.icon} ${tier.name} sent! Creator gets ${cut.toFixed(1)} ★ instantly.`);
 
         } catch(e) {
             console.warn('[Gift] Error:', e);
@@ -22699,11 +22669,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!window.db || !window.fs) { waitForFb(() => subscribeLiveChat(streamId, feedElId)); return; }
         if (_liveChatUnsubs[feedElId]) { try { _liveChatUnsubs[feedElId](); } catch(_) {} }
 
-        const { collection, query, orderBy, onSnapshot } = window.fs;
-        // Note: limit not available in window.fs — query without it, render last 50 client-side
+        const { collection, query, orderBy, onSnapshot, limitToLast } = window.fs;
         const q = query(
             collection(window.db, LIVE_CHAT_COL, streamId, 'messages'),
-            orderBy('ts', 'asc')
+            orderBy('ts', 'asc'),
+            limitToLast(100)
         );
 
         _liveChatUnsubs[feedElId] = onSnapshot(q, snap => {
