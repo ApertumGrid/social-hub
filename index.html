@@ -4,11 +4,11 @@
 
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <!-- Anti-flash: apply saved theme before any CSS renders -->
-    <script>try{if(localStorage.getItem('sh_theme')==='dark')document.documentElement.classList.add('dark');}catch(e){}</script>
+    <script>try{if(localStorage.getItem('sh_theme')!=='light')document.documentElement.classList.add('dark');}catch(e){}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>SOCIALHUB — The Future of Social</title>
 
@@ -20075,8 +20075,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     // Apply saved preference on load (before first paint via DOMContentLoaded)
     (function _initTheme() {
-        let saved = 'light';
-        try { saved = localStorage.getItem('sh_theme') || 'light'; } catch (_) {}
+        let saved = 'dark';
+        try { saved = localStorage.getItem('sh_theme') || 'dark'; } catch (_) {}
         _applyTheme(saved === 'dark');
     })();
 
@@ -20975,6 +20975,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 window._localAudioTrack_ref = localAudioTrack;
             }
             await agoraClient.publish([localVideoTrack, localAudioTrack]);
+            _showBcFloatingChat();
 
             // Subscribe to co-hosts who join the stage
             agoraClient.on('user-published', async (remoteUser, mediaType) => {
@@ -21587,6 +21588,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             hide('live-stream-browser');
             hide('live-tabs');
             show('live-player-wrap');
+            _showViewerFloatingChat();
 
             // Populate stream info
             setText('live-stream-host-name', streamData.hostName || 'Creator');
@@ -21885,11 +21887,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var sfcFeed = document.getElementById(sfcFeedId);
         if (!sfcFeed) return;
         var seen = _sfcSeenIds[sfcFeedId];
+        var _addedAny = false;
 
         msgs.forEach(function(m) {
             if (!m.id) return;
             if (seen.has(m.id)) return;
             seen.add(m.id);
+            _addedAny = true;
 
             // Build the overlay bubble
             var wrapper = document.createElement('div');
@@ -21927,6 +21931,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 sfcFeed.removeChild(sfcFeed.firstChild);
             }
         });
+
+        // If any new message arrived and the overlay is still hidden, show it immediately
+        if (_addedAny) {
+            if (sfcFeedId === 'bc-sfc-feed') {
+                var bcF = document.getElementById('bc-floating-chat');
+                if (bcF && bcF.style.display === 'none') { _showBcFloatingChat(); }
+            } else if (sfcFeedId === 'viewer-sfc-feed') {
+                var vF = document.getElementById('viewer-floating-chat');
+                if (vF && vF.style.display === 'none') { _showViewerFloatingChat(); }
+            }
+        }
     }
 
     // Reset seen-IDs when a new stream session starts
@@ -21975,26 +21990,43 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     // We use a polling approach to detect when stream is active and show the overlay
     var _sfcCheckInterval = null;
+    var _sfcCheckCount    = 0;
+    var _sfcCheckMax      = 20; // 20 × 1500ms = 30 s
     function _startSfcAutoDetect() {
         if (_sfcCheckInterval) clearInterval(_sfcCheckInterval);
+        _sfcCheckCount = 0;
         _sfcCheckInterval = setInterval(function() {
+            _sfcCheckCount++;
+            var bcDone = false, vDone = false;
+
             // Check broadcaster
-            var bcFeed = $('live-broadcast-chat-feed');
             var bcFloat = $('bc-floating-chat');
-            if (bcFeed && bcFloat && bcFloat.style.display === 'none') {
+            if (!bcFloat || bcFloat.style.display !== 'none') {
+                bcDone = true;
+            } else {
                 var bcWrap = document.getElementById('live-broadcaster-video-container');
                 if (bcWrap && bcWrap.style.display !== 'none') {
                     _showBcFloatingChat();
+                    bcDone = true;
                 }
             }
+
             // Check viewer
-            var vFeed = $('live-chat-feed');
             var vFloat = $('viewer-floating-chat');
-            if (vFeed && vFloat && vFloat.style.display === 'none') {
+            if (!vFloat || vFloat.style.display !== 'none') {
+                vDone = true;
+            } else {
                 var vWrap = $('live-player-wrap');
                 if (vWrap && vWrap.style.display !== 'none') {
                     _showViewerFloatingChat();
+                    vDone = true;
                 }
+            }
+
+            // Stop when both overlays are resolved, or after 30 s of retries
+            if ((bcDone && vDone) || _sfcCheckCount >= _sfcCheckMax) {
+                clearInterval(_sfcCheckInterval);
+                _sfcCheckInterval = null;
             }
         }, 1500);
     }
