@@ -5557,9 +5557,20 @@
             border-color: var(--purple-lt);
             color: var(--purple-lt);
         }
+        .comm-edit-btn {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 8px 14px; font-size: 0.75rem; font-weight: 600;
+            color: rgba(255,255,255,0.55);
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+            font-family: var(--font-body);
+        }
+        .comm-edit-btn:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); color: #fff; }
         @media (max-width: 600px) {
             .comm-header-v2 { gap: 10px; }
             .comm-follow-btn { min-height: 44px; padding: 8px 14px; font-size: 0.72rem; }
+            .comm-edit-btn  { min-height: 44px; padding: 8px 12px; font-size: 0.72rem; }
         }
         /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
            DEEP-LINK LOADING OVERLAY
@@ -8674,6 +8685,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         </div>
                         <div class="comm-member-chip" id="comm-member-chip">⬡ 0 Members</div>
                         <button class="comm-follow-btn" id="comm-follow-btn" data-cost="Costs 1 ★" onclick="commFollowHub()"><span class="pact-label">+ Follow Hub</span></button>
+                        <button class="comm-edit-btn" id="comm-edit-btn" style="display:none;" onclick="toggleCommEditPanel()">✎ Edit Hub</button>
+                    </div>
+                    <!-- Hub owner edit panel — shown only to the Hub creator -->
+                    <div id="comm-edit-panel" style="display:none; background:var(--bg-card2); border:1px solid rgba(124,92,191,0.25); border-radius:12px; padding:16px; margin-bottom:16px;">
+                        <div style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:12px;">✎ Edit Hub Details</div>
+                        <input type="text" id="comm-edit-name" class="field" placeholder="Hub Name" style="margin-bottom:8px;">
+                        <textarea id="comm-edit-desc" class="field" rows="3" placeholder="Description" style="margin-bottom:8px; resize:vertical;"></textarea>
+                        <input type="text" id="comm-edit-img" class="field" placeholder="Header Image URL (optional)" style="margin-bottom:12px;">
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn btn-purple" onclick="saveEditCommunityHub()">Save Changes</button>
+                            <button class="btn" onclick="toggleCommEditPanel()">Cancel</button>
+                        </div>
                     </div>
                     <div class="card" id="comm-composer-card" style="border-color:rgba(45,212,191,0.28); margin-bottom:16px;">
                         <div class="composer-row">
@@ -13439,6 +13462,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         description: lbl, postId: entityId,
                         communityId: _activeCommunity ? _activeCommunity.id : null
                     });
+                    if (_activeCommunity) {
+                        window.fs.updateDoc(
+                            window.fs.doc(window.db, 'communities', _activeCommunity.id),
+                            { totalStarsEarned: window.fs.increment(CONFIG.CREATOR_CUT) }
+                        ).catch(function(){});
+                    }
                 }
             }
 
@@ -16823,6 +16852,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             } catch (e) { console.warn('[comm header v2] member count failed:', e); }
         })();
 
+        // Show edit button only for the Hub owner
+        const editBtn = document.getElementById('comm-edit-btn');
+        if (editBtn) {
+            editBtn.style.display = (userAddress &&
+                userAddress.toLowerCase() === (comm.ownerId || '').toLowerCase())
+                ? 'inline-flex' : 'none';
+        }
+        // Hide edit panel when switching hubs
+        const editPanel = document.getElementById('comm-edit-panel');
+        if (editPanel) editPanel.style.display = 'none';
+
         // Load posts
         var container = document.getElementById('comm-feed-items');
         if (!container || !window.db) return;
@@ -17141,6 +17181,59 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         commMediaTabMode = 'url';
     }
     window.closeCommunityFeed = closeCommunityFeed;
+
+    // ─── Toggle the Hub edit panel (owner only) ───────────────────────────────────
+    function toggleCommEditPanel() {
+        var panel = document.getElementById('comm-edit-panel');
+        if (!panel) return;
+        var isOpen = panel.style.display !== 'none';
+        if (!isOpen && _activeCommunity) {
+            var n = document.getElementById('comm-edit-name');
+            var d = document.getElementById('comm-edit-desc');
+            var i = document.getElementById('comm-edit-img');
+            if (n) n.value = _activeCommunity.name        || '';
+            if (d) d.value = _activeCommunity.description || '';
+            if (i) i.value = _activeCommunity.headerImg   || '';
+        }
+        panel.style.display = isOpen ? 'none' : 'block';
+    }
+    window.toggleCommEditPanel = toggleCommEditPanel;
+
+    // ─── Save Hub edits to Firestore ─────────────────────────────────────────────
+    async function saveEditCommunityHub() {
+        if (!_activeCommunity || !userAddress) return;
+        if (userAddress.toLowerCase() !== (_activeCommunity.ownerId || '').toLowerCase()) {
+            return showToast('Only the Hub owner can edit this Hub.');
+        }
+        var name = (document.getElementById('comm-edit-name')?.value || '').trim();
+        var desc = (document.getElementById('comm-edit-desc')?.value || '').trim();
+        var img  = (document.getElementById('comm-edit-img')?.value  || '').trim();
+        if (!name) return showToast('Hub name cannot be empty.');
+        try {
+            await window.fs.updateDoc(
+                window.fs.doc(window.db, 'communities', _activeCommunity.id),
+                { name: name, description: desc, headerImg: img }
+            );
+            _activeCommunity = Object.assign({}, _activeCommunity, { name: name, description: desc, headerImg: img });
+            var nameEl    = document.getElementById('comm-feed-name');
+            var descEl    = document.getElementById('comm-feed-desc');
+            var bannerImg = document.getElementById('comm-feed-banner-img');
+            if (nameEl)    nameEl.textContent = name;
+            if (descEl)    descEl.textContent = desc;
+            if (bannerImg) {
+                if (img) { bannerImg.src = img; bannerImg.style.display = 'block'; }
+                else       bannerImg.style.display = 'none';
+            }
+            var idx = _allCommunities.findIndex(function(c) { return c.id === _activeCommunity.id; });
+            if (idx >= 0) _allCommunities[idx] = Object.assign({}, _allCommunities[idx], { name: name, description: desc, headerImg: img });
+            toggleCommEditPanel();
+            showToast('Hub updated ✓');
+        } catch (e) {
+            console.error('[saveEditCommunityHub]', e);
+            showToast('Failed to save. Try again.');
+        }
+    }
+    window.saveEditCommunityHub = saveEditCommunityHub;
 
     // ─── Toggle the Start Community form ─────────────────────────────────────────
     function toggleStartCommForm() {
@@ -18777,6 +18870,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                 // STEP E: Route 0.1★ to platform revenue
                 logAdminRevenue(senderAddr, 'community_follow_fee', 0.1);
+                window.fs.updateDoc(
+                    window.fs.doc(window.db, 'communities', commId),
+                    { totalStarsEarned: window.fs.increment(0.9) }
+                ).catch(function(){});
 
                 // STEP F: Log the earn entry with the CORRECT 90% amount (0.9, not 1.0)
                 if (creatorAddr) {
