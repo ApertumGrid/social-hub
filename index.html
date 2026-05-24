@@ -21932,6 +21932,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     let _liveStreamUnsub = null;   // Firestore listener teardown
     let _liveChatUnsub   = null;
     let _streamDocUnsub  = null;
+    let _patchStreamDocUnsub = null; // unsub for the supplemental snapshot (patch block)
     let _watchingStreamId = null;
     let _activeLiveChannel = null;
 
@@ -22539,6 +22540,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         _isStartingLive = false; // reset mutex so a new stream can start after
         _isJoiningLive  = false;
 
+        // Unsubscribe Firestore listeners BEFORE writing active:false so the
+        // snapshot callbacks cannot fire and trigger a spurious leaveLiveStream.
+        if (_streamDocUnsub)      { try { _streamDocUnsub();      } catch(_) {} _streamDocUnsub      = null; }
+        if (_patchStreamDocUnsub) { try { _patchStreamDocUnsub(); } catch(_) {} _patchStreamDocUnsub = null; }
+
         // Mark stream inactive in Firestore — retry once on failure
         for (let _attempt = 0; _attempt < 2; _attempt++) {
             try {
@@ -22574,9 +22580,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         liveViewerCount       = 0;
 
         // Unsubscribe any lingering Firestore listeners
-        if (_streamDocUnsub) { try { _streamDocUnsub(); } catch(_) {} _streamDocUnsub = null; }
-        if (_liveChatUnsub)  { try { _liveChatUnsub();  } catch(_) {} _liveChatUnsub  = null; }
-        if (_cohostUnsub)    { try { _cohostUnsub();    } catch(_) {} _cohostUnsub    = null; }
+        if (_streamDocUnsub)      { try { _streamDocUnsub();      } catch(_) {} _streamDocUnsub      = null; }
+        if (_patchStreamDocUnsub) { try { _patchStreamDocUnsub(); } catch(_) {} _patchStreamDocUnsub = null; }
+        if (_liveChatUnsub)       { try { _liveChatUnsub();       } catch(_) {} _liveChatUnsub       = null; }
+        if (_cohostUnsub)         { try { _cohostUnsub();         } catch(_) {} _cohostUnsub         = null; }
 
         show('live-setup-panel');
         hide('live-active-panel');
@@ -23059,9 +23066,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         window._pendingViewerSpotlight = false;
 
         // Unsubscribe listeners
-        if (_liveChatUnsub)  { try { _liveChatUnsub();  } catch(_) {} _liveChatUnsub  = null; }
-        if (_streamDocUnsub) { try { _streamDocUnsub(); } catch(_) {} _streamDocUnsub = null; }
-        if (_cohostUnsub)    { try { _cohostUnsub();    } catch(_) {} _cohostUnsub    = null; }
+        if (_liveChatUnsub)       { try { _liveChatUnsub();       } catch(_) {} _liveChatUnsub       = null; }
+        if (_streamDocUnsub)      { try { _streamDocUnsub();      } catch(_) {} _streamDocUnsub      = null; }
+        if (_patchStreamDocUnsub) { try { _patchStreamDocUnsub(); } catch(_) {} _patchStreamDocUnsub = null; }
+        if (_cohostUnsub)         { try { _cohostUnsub();         } catch(_) {} _cohostUnsub         = null; }
 
         // Reset paid gate overlay
         const overlay = $('paid-gate-overlay');
@@ -24265,12 +24273,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (window._localAudioTrack_ref) { window._localAudioTrack_ref.stop(); window._localAudioTrack_ref.close(); window._localAudioTrack_ref = null; }
             } catch(_) {}
 
-            // Nuclear — get a fresh stream and immediately kill it to force OS to release camera
-            try {
-                navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-                    .then(function(s) { s.getTracks().forEach(function(t) { t.stop(); }); })
-                    .catch(function() {});
-            } catch(_) {}
 
         } catch(e) { console.warn('[Live] Agora cleanup:', e); }
     }
@@ -26332,7 +26334,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     function subscribeStreamDoc(streamId) {
         if (!window.db || !window.fs) { waitForFb(() => subscribeStreamDoc(streamId)); return; }
         const { doc, onSnapshot } = window.fs;
-        onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
+        // Cancel any previous patch snapshot before registering a new one
+        if (_patchStreamDocUnsub) { try { _patchStreamDocUnsub(); } catch(_) {} _patchStreamDocUnsub = null; }
+        _patchStreamDocUnsub = onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
             if (!snap.exists()) return;
             const d = snap.data();
 
