@@ -14662,7 +14662,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // John's unspent deposit stays in his slot and is not accessible to Susan.
             const effectiveCap  = (postSyncAptm > 0) ? postSyncAptm : totalOwedAptm;
             const withdrawAptm  = Math.min(totalOwedAptm, effectiveCap);
-            const withdrawWei  = ethers.utils.parseEther(withdrawAptm.toFixed(18));
+            // Use BigNumber min to avoid float precision loss.
+            // Converting slot: wei→float→toFixed(18)→wei can round UP by a few wei,
+            // making the request marginally exceed the slot and causing a contract revert.
+            // Using postSyncWei (exact chain BigNumber) when it is the cap avoids this.
+            const _owedWei     = ethers.utils.parseEther(totalOwedAptm.toFixed(18));
+            const withdrawWei  = _owedWei.lte(postSyncWei) ? _owedWei : postSyncWei;
 
             if (withdrawAptm <= 0) {
                 _unlockSettle();
