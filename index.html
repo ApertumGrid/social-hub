@@ -5819,7 +5819,62 @@
         }
         #theme-toggle:hover { border-color: var(--purple-lt); background: var(--purple-dim); color: var(--purple-lt); }
 
-        
+        /* ── Notification Bell ─────────────────────────────────────── */
+        .notif-bell-btn {
+            position: relative; display: flex; align-items: center; justify-content: center;
+            width: 32px; height: 32px; border-radius: 50%;
+            border: 1px solid var(--border-md); background: var(--bg-input);
+            color: var(--text-secondary); font-size: 0.95rem; cursor: pointer;
+            transition: all 0.18s; flex-shrink: 0; -webkit-tap-highlight-color: transparent;
+        }
+        .notif-bell-btn:hover { border-color: var(--purple-lt); background: var(--purple-dim); color: var(--purple-lt); }
+        .notif-bell-btn.has-unread { color: var(--gold); border-color: rgba(240,180,41,0.4); }
+        .notif-badge {
+            position: absolute; top: -3px; right: -3px;
+            background: #ef4444; color: #fff;
+            font-size: 0.5rem; font-weight: 700; font-family: var(--font-mono);
+            min-width: 14px; height: 14px; padding: 0 2px; border-radius: 7px;
+            display: flex; align-items: center; justify-content: center;
+            line-height: 1; pointer-events: none;
+        }
+        .notif-panel {
+            position: absolute; top: calc(100% + 10px); right: 0;
+            width: 320px; max-height: 440px;
+            background: var(--bg-panel); border: 1px solid var(--border);
+            border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            z-index: 99001; display: flex; flex-direction: column; overflow: hidden;
+        }
+        .notif-panel-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 14px 10px; border-bottom: 1px solid var(--border);
+            font-size: 0.78rem; font-weight: 700; color: var(--text-primary); flex-shrink: 0;
+        }
+        .notif-mark-all {
+            font-size: 0.65rem; color: var(--text-muted); background: none; border: none;
+            cursor: pointer; font-family: var(--font-body); padding: 2px 6px;
+            border-radius: 8px; transition: all 0.15s;
+        }
+        .notif-mark-all:hover { color: var(--purple-lt); background: var(--purple-dim); }
+        .notif-list { overflow-y: auto; flex: 1; }
+        .notif-item {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 10px 14px; border-bottom: 1px solid var(--border);
+            transition: background 0.12s;
+        }
+        .notif-item:last-child { border-bottom: none; }
+        .notif-item.unread { background: rgba(124,92,191,0.06); }
+        .notif-item:hover { background: var(--bg-card); }
+        .notif-icon { font-size: 1rem; flex-shrink: 0; padding-top: 1px; }
+        .notif-body { flex: 1; min-width: 0; }
+        .notif-text { font-size: 0.72rem; color: var(--text-primary); line-height: 1.45; }
+        .notif-text strong { color: var(--purple-lt); }
+        .notif-time { font-size: 0.6rem; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); }
+        .notif-empty { padding: 28px 14px; text-align: center; font-size: 0.74rem; color: var(--text-muted); }
+        @media (max-width: 600px) {
+            .notif-panel { width: calc(100vw - 20px); right: -50px; }
+            .notif-bell-btn { width: 28px; height: 28px; font-size: 0.85rem; }
+        }
+
         /* â”€â”€ REPORT BUTTON â”€â”€ */
         .report-btn { background:none; border:none; cursor:pointer; font-size:0.62rem; color:var(--text-muted); padding:2px 6px; border-radius:20px; opacity:0.55; transition:all 0.14s; font-family:var(--font-body); }
         .report-btn:hover { opacity:1; color:#ef4444; background:rgba(239,68,68,0.08); }
@@ -7896,6 +7951,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 Live Stream
             </button>
             <button id="theme-toggle" onclick="toggleTheme()" title="Toggle dark / light mode">🌙</button>
+            <div id="notif-wrap" style="position:relative;">
+                <button class="notif-bell-btn" id="notif-bell-btn" onclick="toggleNotifPanel()" title="Notifications">
+                    🔔
+                    <span id="notif-badge" class="notif-badge" style="display:none;">0</span>
+                </button>
+                <div id="notif-panel" class="notif-panel" style="display:none;">
+                    <div class="notif-panel-head">
+                        <span>🔔 Notifications</span>
+                        <button class="notif-mark-all" onclick="markAllNotifsRead()">Mark all read</button>
+                    </div>
+                    <div id="notif-list" class="notif-list">
+                        <div class="notif-empty">No notifications yet</div>
+                    </div>
+                </div>
+            </div>
             <div id="wallet-dropdown-wrap" style="position:relative;">
                 <button id="wallet-btn" class="not-connected" onclick="toggleWalletDropdown()">
                     <span class="wallet-dot" id="wallet-indicator-dot"></span>
@@ -8823,7 +8893,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <div id="comm-edit-panel" style="display:none; background:var(--bg-card2); border:1px solid rgba(124,92,191,0.25); border-radius:12px; padding:16px; margin-bottom:16px;">
                         <div style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:12px;">✎ Edit Hub Details</div>
                         <input type="text" id="comm-edit-name" class="field" placeholder="Hub Name" style="margin-bottom:8px;">
-                        <textarea id="comm-edit-desc" class="field" rows="3" placeholder="Description" style="margin-bottom:8px; resize:vertical;"></textarea>
+                        <textarea id="comm-edit-desc" class="field" rows="3" placeholder="Description" style="margin-bottom:8px; resize:none; overflow:hidden;" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,400)+'px';"></textarea>
                         <input type="text" id="comm-edit-img" class="field" placeholder="Header Image URL (optional)" style="margin-bottom:12px;">
                         <div style="border-top:1px solid var(--border); padding-top:12px; margin-bottom:12px;">
                             <div style="font-size:0.72rem; font-weight:700; color:var(--text-secondary); margin-bottom:10px; letter-spacing:0.3px;">★ SUBSCRIPTIONS</div>
@@ -10204,6 +10274,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     let isActionPending    = false;  // global transaction lock — prevents double-spend on any async action
     let _activeCommunity   = null;   // null = no community context; object = { id, name, ownerId, ... } of active Hub
     let _hubSubStatus      = 'none'; // viewer's subscription status for the active Hub: 'active' | 'expired' | 'none'
+    let _notifUnsub        = null;   // Firestore onSnapshot teardown for notification listener
+    let _notifUnreadCt     = 0;      // current unread notification count
+    let _notifLastReadTs   = parseInt(localStorage.getItem('sh_notifLastRead') || '0', 10);
     let _allCommunities    = [];     // in-memory cache of community docs for client-side search
     let _commUnsub         = null;   // teardown fn for the communities onSnapshot listener
 
@@ -10761,6 +10834,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (walletBtn) walletBtn.classList.remove('not-connected');
         if (walletDot) walletDot.className = 'wallet-online-dot';
         if (addrEl)    addrEl.textContent  = address.slice(0,6) + '…' + address.slice(-4);
+        // Start notification listener for this wallet
+        if (typeof subscribeToNotifs === 'function') subscribeToNotifs(address);
     }
 
     function _setWalletDisconnectedUI() {
@@ -10773,6 +10848,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     }
 
     function disconnectWallet() {
+        // Tear down notification listener before clearing wallet state
+        if (typeof unsubscribeFromNotifs === 'function') unsubscribeFromNotifs();
         // Clear all in-memory wallet state
         userAddress     = '';
         window.userAddress = '';
@@ -13712,6 +13789,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             } else {
                 showToast("Hyped! Creator +0.8★");
             }
+            // Notify post/comment author (fire-and-forget)
+            writeNotif(recipientNorm, 'hype', { postId: entityId || null });
         } catch (e) {
             console.error(e);
             showToast("Hype failed.");
@@ -13814,6 +13893,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             };
 
             await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
+            // Notify post author (fire-and-forget)
+            writeNotif(recipientNorm, 'comment', { postId: String(postId), text: commentText.slice(0, 80) });
 
             // ── STEP A: Log spend FIRST — no spend record = no deduction ─────────────────
             await window.fs.addDoc(
@@ -17484,9 +17565,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var n = document.getElementById('comm-edit-name');
             var d = document.getElementById('comm-edit-desc');
             var i = document.getElementById('comm-edit-img');
-            if (n) n.value = _activeCommunity.name        || '';
-            if (d) d.value = _activeCommunity.description || '';
-            if (i) i.value = _activeCommunity.headerImg   || '';
+            if (n) n.value = _activeCommunity.name || '';
+            if (d) {
+                d.value = _activeCommunity.description || '';
+                d.style.height = 'auto';
+                d.style.height = Math.min(d.scrollHeight, 400) + 'px';
+            }
+            if (i) i.value = _activeCommunity.headerImg || '';
             var _se  = document.getElementById('comm-edit-sub-enabled');
             var _sp  = document.getElementById('comm-edit-sub-price');
             var _spr = document.getElementById('comm-edit-sub-price-row');
@@ -17775,6 +17860,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             return showToast('Subscription failed — please try again.');
         }
         showToast('Subscribed! ✓ Access granted for 30 days.');
+        writeNotif(ownerAddr, 'subscribe', { hubName: _activeCommunity.name || _activeCommunity.id, communityId: _activeCommunity.id, amount: price });
         // Refresh hub to unblur subscriber-only posts
         await openCommunityFeed(_activeCommunity, { updateUrl: false });
     }
@@ -17801,6 +17887,156 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (row) row.style.display = (cb && cb.checked) ? 'flex' : 'none';
     }
     window.toggleSubPriceField = toggleSubPriceField;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NOTIFICATION BELL
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // ─── Icons and text templates per notification type ───────────────────────────
+    var _NOTIF_META = {
+        hype:      { icon: '❤️', label: 'liked your post' },
+        comment:   { icon: '💬', label: 'commented on your post' },
+        follow:    { icon: '👥', label: 'followed your Hub' },
+        tip:       { icon: '💫', label: 'sent you a tip' },
+        subscribe: { icon: '🔒', label: 'subscribed to your Hub' },
+        rain:      { icon: '🌧️', label: 'rained stars on your post' }
+    };
+
+    function _notifRelTime(ts) {
+        var diff = Date.now() - (ts || 0);
+        if (diff < 60000)     return 'just now';
+        if (diff < 3600000)   return Math.floor(diff / 60000) + 'm ago';
+        if (diff < 86400000)  return Math.floor(diff / 3600000) + 'h ago';
+        if (diff < 604800000) return Math.floor(diff / 86400000) + 'd ago';
+        return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    // ─── Write a notification (fire-and-forget, never blocks) ────────────────────
+    function writeNotif(recipientAddr, type, payload) {
+        if (!window.db || !recipientAddr || !userAddress) return;
+        var addr = recipientAddr.toLowerCase();
+        if (addr === userAddress.toLowerCase()) return; // never self-notify
+        var doc = Object.assign({
+            type:      type,
+            actorAddr: userAddress.toLowerCase(),
+            actorName: userHandle || 'Anonymous',
+            read:      false,
+            timestamp: Date.now()
+        }, payload || {});
+        window.fs.addDoc(
+            window.fs.collection(window.db, 'notifications', addr, 'items'),
+            doc
+        ).catch(function(e) { console.warn('[writeNotif]', e); });
+    }
+
+    // ─── Badge update ─────────────────────────────────────────────────────────────
+    function _updateBellBadge(count) {
+        var badge = document.getElementById('notif-badge');
+        var bell  = document.getElementById('notif-bell-btn');
+        if (!badge || !bell) return;
+        if (count > 0) {
+            badge.textContent = count > 99 ? '99+' : String(count);
+            badge.style.display = 'flex';
+            bell.classList.add('has-unread');
+        } else {
+            badge.style.display = 'none';
+            bell.classList.remove('has-unread');
+        }
+        _notifUnreadCt = count;
+    }
+
+    // ─── Render notifications into panel ─────────────────────────────────────────
+    function _renderNotifList(notifs) {
+        var el = document.getElementById('notif-list');
+        if (!el) return;
+        if (!notifs || notifs.length === 0) {
+            el.innerHTML = '<div class="notif-empty">No notifications yet</div>';
+            return;
+        }
+        el.innerHTML = notifs.map(function(n) {
+            var meta    = _NOTIF_META[n.type] || { icon: '🔔', label: n.type };
+            var isUnread = n.timestamp > _notifLastReadTs;
+            var actor   = escHtml(n.actorName || 'Someone');
+            var label   = meta.label;
+            // Augment label for types that carry extra context
+            if (n.type === 'tip'       && n.amount)  label = 'tipped you <strong>' + n.amount + '★</strong>';
+            if (n.type === 'follow'    && n.hubName) label = 'followed your Hub <strong>' + escHtml(n.hubName) + '</strong>';
+            if (n.type === 'subscribe' && n.hubName) label = 'subscribed to <strong>' + escHtml(n.hubName) + '</strong>';
+            return '<div class="notif-item' + (isUnread ? ' unread' : '') + '">'
+                + '<div class="notif-icon">' + meta.icon + '</div>'
+                + '<div class="notif-body">'
+                +   '<div class="notif-text"><strong>' + actor + '</strong> ' + label + '</div>'
+                +   '<div class="notif-time">' + _notifRelTime(n.timestamp) + '</div>'
+                + '</div>'
+                + '</div>';
+        }).join('');
+    }
+
+    // ─── Subscribe to live notification stream ────────────────────────────────────
+    function subscribeToNotifs(addr) {
+        if (_notifUnsub) { try { _notifUnsub(); } catch(_) {} _notifUnsub = null; }
+        if (!window.db || !addr) return;
+        var normAddr = addr.toLowerCase();
+        _notifUnsub = window.fs.onSnapshot(
+            window.fs.query(
+                window.fs.collection(window.db, 'notifications', normAddr, 'items'),
+                window.fs.orderBy('timestamp', 'desc'),
+                window.fs.limit(30)
+            ),
+            function(snap) {
+                var notifs = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
+                var unread = notifs.filter(function(n) { return (n.timestamp || 0) > _notifLastReadTs; }).length;
+                _updateBellBadge(unread);
+                _renderNotifList(notifs);
+            },
+            function(e) { console.warn('[notif listener]', e); }
+        );
+    }
+    window.subscribeToNotifs = subscribeToNotifs;
+
+    function unsubscribeFromNotifs() {
+        if (_notifUnsub) { try { _notifUnsub(); } catch(_) {} _notifUnsub = null; }
+        _updateBellBadge(0);
+        var el = document.getElementById('notif-list');
+        if (el) el.innerHTML = '<div class="notif-empty">No notifications yet</div>';
+    }
+    window.unsubscribeFromNotifs = unsubscribeFromNotifs;
+
+    // ─── Toggle notification panel ────────────────────────────────────────────────
+    function toggleNotifPanel() {
+        var panel = document.getElementById('notif-panel');
+        if (!panel) return;
+        var isOpen = panel.style.display !== 'none';
+        if (isOpen) {
+            panel.style.display = 'none';
+        } else {
+            panel.style.display = 'flex';
+            // Mark read on open
+            markAllNotifsRead();
+            // Close on outside click
+            setTimeout(function() {
+                document.addEventListener('click', function _cno(e) {
+                    var wrap = document.getElementById('notif-wrap');
+                    if (wrap && !wrap.contains(e.target)) {
+                        panel.style.display = 'none';
+                        document.removeEventListener('click', _cno);
+                    }
+                });
+            }, 20);
+        }
+    }
+    window.toggleNotifPanel = toggleNotifPanel;
+
+    // ─── Mark all notifications as read ──────────────────────────────────────────
+    function markAllNotifsRead() {
+        _notifLastReadTs = Date.now();
+        localStorage.setItem('sh_notifLastRead', String(_notifLastReadTs));
+        _updateBellBadge(0);
+        // Re-render to remove unread highlights
+        var items = document.querySelectorAll('#notif-list .notif-item.unread');
+        items.forEach(function(it) { it.classList.remove('unread'); });
+    }
+    window.markAllNotifsRead = markAllNotifsRead;
 
     // ─── Toggle the Start Community form ─────────────────────────────────────────
     function toggleStartCommForm() {
@@ -18675,6 +18911,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             document.querySelectorAll('.tip-preset-btn').forEach(b => b.classList.remove('selected'));
 
             showToast('★ Sent ' + amount + '★! Creator receives ' + creatorCut.toFixed(2) + '★.');
+            writeNotif(_heroTargetAddr, 'tip', { amount: amount });
         } catch (e) {
             console.error('[sendHeroTip]', e);
             showToast('Tip failed. Please try again.');
@@ -19464,6 +19701,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 _followingSet.add(commId);
                 if (followBtn) { followBtn.textContent = '✓ Following Hub'; followBtn.classList.add('following'); }
                 showToast('Following ' + (_activeCommunity.name || 'Hub') + '! 0.9★ sent to creator.');
+                writeNotif(creatorAddr, 'follow', { hubName: _activeCommunity.name || commId, communityId: commId });
                 if (typeof loadMyNetwork === 'function') loadMyNetwork();
             }
 
