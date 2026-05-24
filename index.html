@@ -11085,32 +11085,27 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     // Cache for applyPriceUpdate so heartbeat price ticks can reprice without a Firestore read
                     window._lastDepositedAptm = depositedAptmFb;
 
-                    // ── CORRECT FORMULA: onChain - spentAPTM ──────────────────────
-                    // The contract balance never changes when stars are spent (spending
-                    // only writes to Firebase). So we subtract the APTM equivalent of
-                    // all stars ever spent to get the true spendable balance.
+                    // ── BALANCE SOURCE OF TRUTH: Firebase aptmBalance ─────────────
+                    // aptmBalance is atomically decremented by sendGift CF on every spend
+                    // and incremented on every deposit. It is also the field read by
+                    // settleStarsToWallet as the settlement source of truth.
                     //
-                    //   currentAptmBalance = onChainAptm - (spentStarsTotal × $0.01 / livePrice)
-                    //
-                    // This means:
-                    //   price moves  → formula re-evaluates spentAptm at new price ✓
-                    //   stars spent  → spentStarsTotal grows → balance drops correctly ✓
-                    //   hard refresh → reads onChain + spentTotal → same result every time ✓
+                    // The previous formula (onChainAptm - spentAptm) diverges when the
+                    // per-user on-chain slot (starBalances) does not equal the deposited
+                    // amount — e.g. if a prior settlement partially withdrew on-chain
+                    // without zeroing Firebase, or if depositAPTM() credits the vault
+                    // rather than the individual slot. Using _fbAptmBalance (d.aptmBalance)
+                    // keeps the display consistent with what settlement will actually use.
                     const livePrice       = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
                     const spentStarsTotal = Math.max(0, parseFloat(d.spentStarsTotal || 0));
-                    const spentAptm       = (livePrice > 0)
-                        ? (spentStarsTotal * CONFIG.STAR_USD) / livePrice
-                        : 0;
-                    // ── GUARD: if user has zero stars in Firebase, balance must be 0 ─
-                    // After withdrawal, stars AND spentStarsTotal are both zeroed.
-                    // onChainAptm - spentAptm = onChainAptm - 0 = full pool balance,
-                    // which for the admin wallet is the seeded liquidity. Wrong.
-                    // If purchasedStars + creatorEarnings == 0, the user has nothing.
+                    // ── GUARD: if user has zero stars AND zero aptmBalance, show 0 ──
+                    // After a full withdrawal Firebase zeroes aptmBalance, stars, and
+                    // creatorStars — all three being 0 means the user has no balance.
                     const totalStars      = purchasedStars + creatorEarnings;
-                    currentAptmBalance    = (totalStars > 0)
-                        ? Math.max(0, onChainAptm - spentAptm)
-                        : 0; // no stars = no personal balance, regardless of on-chain value
-                    console.log(`[syncData] onChain=${onChainAptm.toFixed(6)} APTM | spent=${spentStarsTotal.toFixed(4)}★ (${spentAptm.toFixed(6)} APTM) | livePrice=$${livePrice.toFixed(6)} | spendableAptm=${currentAptmBalance.toFixed(6)} APTM | displayStars=${livePrice > 0 ? ((currentAptmBalance * livePrice) / CONFIG.STAR_USD).toFixed(2) : '?'}★`);
+                    currentAptmBalance    = (totalStars > 0 || _fbAptmBalance > 0)
+                        ? Math.max(0, _fbAptmBalance)
+                        : 0;
+                    console.log(`[syncData] onChain=${onChainAptm.toFixed(6)} APTM | fbAptmBal=${_fbAptmBalance.toFixed(6)} APTM | spent=${spentStarsTotal.toFixed(4)}★ | livePrice=$${livePrice.toFixed(6)} | displayBalance=${currentAptmBalance.toFixed(6)} APTM | displayStars=${livePrice > 0 ? ((currentAptmBalance * livePrice) / CONFIG.STAR_USD).toFixed(2) : '?'}★`);
                     await window.fs.updateDoc(userRef, { lastSync: Date.now() });
                 }
             } else {
@@ -11140,9 +11135,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
                 const onChainAptm = parseFloat(ethers.utils.formatEther(balRaw)) || 0;
 
-                // Read net stars from Firebase — already spend-deducted, no subtraction needed
-                let fbStarsNet  = 0;
-                let fbEarnedNet = 0;
+                // Read net stars and aptmBalance from Firebase — single read, no duplication
+                let fbStarsNet   = 0;
+                let fbEarnedNet  = 0;
+                let fbAptmBalRefresh = 0;
                 if (window.db) {
                     try {
                         const snap = await window.fs.getDoc(
@@ -11152,6 +11148,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             const d         = snap.data();
                             fbEarnedNet     = Math.max(0, parseFloat(d.creatorStars || 0));
                             creatorEarnings = fbEarnedNet;
+                            fbAptmBalRefresh = Math.max(0, parseFloat(d.aptmBalance || 0));
+                            _fbAptmBalance   = fbAptmBalRefresh;
                             // purchasedStars = live star value of APTM held (reprices with market)
                             const depAptm   = Math.max(0,
                                 parseFloat(d.depositedAptm  || 0) ||
@@ -11169,30 +11167,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     } catch (_) {}
                 }
 
-                // ── CORRECT FORMULA: onChain - spentAPTM ─────────────────────
-                // Read spentStarsTotal from Firebase and subtract APTM equivalent
-                // from the on-chain balance. Price-movement-proof and spend-accurate.
-                let fbSpentTotal = 0;
-                if (window.db) {
-                    try {
-                        const spentSnap = await window.fs.getDoc(
-                            window.fs.doc(window.db, 'user_balances', addr.toLowerCase())
-                        );
-                        if (spentSnap.exists()) {
-                            fbSpentTotal = Math.max(0, parseFloat(spentSnap.data().spentStarsTotal || 0));
-                        }
-                    } catch (_) {}
-                }
+                // ── BALANCE SOURCE OF TRUTH: Firebase aptmBalance ────────────
+                // Use the same field that settleStarsToWallet reads. It is already
+                // atomically spend-decremented by the sendGift CF so no manual
+                // subtraction is needed. Avoids divergence when the on-chain slot
+                // does not equal the deposited amount.
                 const livePrice   = currentAptmPriceUsd > 0 ? currentAptmPriceUsd : (window.aptmPriceUSD || 0);
-                const spentAptm   = (livePrice > 0)
-                    ? (fbSpentTotal * CONFIG.STAR_USD) / livePrice
-                    : 0;
-                // ─ GUARD: zero stars = zero personal balance ─
-                // Prevents seeded pool APTM from appearing as personal balance
-                // when the user has no stars (e.g. right after a full withdrawal).
+                // ─ GUARD: zero stars AND zero aptmBalance = zero personal balance ─
                 const fbTotalStars = fbStarsNet + fbEarnedNet;
-                const netAptm      = (fbTotalStars > 0)
-                    ? Math.max(0, onChainAptm - spentAptm)
+                const netAptm      = (fbTotalStars > 0 || fbAptmBalRefresh > 0)
+                    ? Math.max(0, fbAptmBalRefresh)
                     : 0;
 
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
@@ -14549,9 +14533,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         // ── Step 5: Confirmation modal ─────────────────────────────────────────
         const shortfallLine = aptmShortfall > 0.0001
-            ? ("\u26a0 Vault gap: " + aptmShortfall.toFixed(4) + " APTM shortfall\n" +
-               "  Contract holds " + onChainAptm.toFixed(4) + " but you are owed " + totalOwedAptm.toFixed(4) + "\n" +
-               "  Contact admin to seed the vault before withdrawing.\n\n")
+            ? ("\u26a0 Slot gap: your on-chain slot holds " + onChainAptm.toFixed(4) + " APTM\n" +
+               "  but you are owed " + totalOwedAptm.toFixed(4) + " APTM (" + aptmShortfall.toFixed(4) + " gap).\n" +
+               "  You will only receive " + finalWithdrawAptm.toFixed(4) + " APTM now.\n" +
+               "  Contact admin to top up your slot before settling in full.\n\n")
             : "";
 
         const syncLine = fbCreatorStars > 0
