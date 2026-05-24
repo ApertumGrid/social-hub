@@ -24249,14 +24249,40 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Unsubscribe co-host listener
             if (_cohostUnsub) { try { _cohostUnsub(); } catch(_) {} _cohostUnsub = null; }
 
-            if (localVideoTrack) { try { localVideoTrack.stop(); localVideoTrack.close(); } catch(_) {} localVideoTrack = null; window._localVideoTrack_ref = null; }
-            if (localAudioTrack) { try { localAudioTrack.stop(); localAudioTrack.close(); } catch(_) {} localAudioTrack = null; window._localAudioTrack_ref = null; }
-            if (agoraClient)     { try { await agoraClient.leave(); } catch(_) {} agoraClient = null; }
+            // Step 1: unpublish before closing (Agora's required sequence)
+            if (agoraClient && (localVideoTrack || localAudioTrack)) {
+                try {
+                    var _tracksToUnpub = [localVideoTrack, localAudioTrack].filter(Boolean);
+                    if (_tracksToUnpub.length) await agoraClient.unpublish(_tracksToUnpub);
+                } catch(_) {}
+            }
 
-            // ── Hard kill: stop every active media track on the page ──────────────
-            // Agora's .stop()/.close() stops rendering but may not release the OS
-            // camera indicator. Enumerating all video elements and stopping their
-            // srcObject tracks guarantees the camera light goes off.
+            // Step 2: stop and close local tracks, also stopping the underlying
+            // MediaStreamTrack directly — Agora's .close() alone does not always
+            // release the OS camera indicator in Chrome.
+            if (localVideoTrack) {
+                try {
+                    var _mstV = localVideoTrack.getMediaStreamTrack ? localVideoTrack.getMediaStreamTrack() : null;
+                    if (_mstV) _mstV.stop();
+                    localVideoTrack.stop();
+                    localVideoTrack.close();
+                } catch(_) {}
+                localVideoTrack = null; window._localVideoTrack_ref = null;
+            }
+            if (localAudioTrack) {
+                try {
+                    var _mstA = localAudioTrack.getMediaStreamTrack ? localAudioTrack.getMediaStreamTrack() : null;
+                    if (_mstA) _mstA.stop();
+                    localAudioTrack.stop();
+                    localAudioTrack.close();
+                } catch(_) {}
+                localAudioTrack = null; window._localAudioTrack_ref = null;
+            }
+
+            // Step 3: leave channel
+            if (agoraClient) { try { await agoraClient.leave(); } catch(_) {} agoraClient = null; }
+
+            // Step 4: kill any raw getUserMedia streams (preFlipCamera uses srcObject directly)
             try {
                 document.querySelectorAll('video').forEach(function(v) {
                     if (v.srcObject) {
@@ -24266,8 +24292,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 });
             } catch(_) {}
 
-            // Also stop any tracks Agora injected without a srcObject reference
-            // by using the window refs we stored at track-creation time
+            // Step 5: window refs as final backstop
             try {
                 if (window._localVideoTrack_ref) { window._localVideoTrack_ref.stop(); window._localVideoTrack_ref.close(); window._localVideoTrack_ref = null; }
                 if (window._localAudioTrack_ref) { window._localAudioTrack_ref.stop(); window._localAudioTrack_ref.close(); window._localAudioTrack_ref = null; }
