@@ -9100,13 +9100,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                             <span style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform 0.2s;box-shadow:0 2px 6px rgba(0,0,0,0.4);" id="toggle-paid-knob"></span>
                                         </label>
                                     </div>
-                                    <!-- Record Stream toggle -->
+                                    <!-- Record Stream toggle (local — MediaRecorder to device) -->
                                     <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 0; border-top:1px solid rgba(255,255,255,0.06);">
                                         <span style="font-size:0.82rem; color:rgba(255,255,255,0.7); font-weight:500;">⏺ Record Stream</span>
                                         <label style="position:relative; display:inline-block; width:44px; height:24px; cursor:pointer; flex-shrink:0;">
                                             <input type="checkbox" id="setup-record-toggle" onchange="var t=this; t.parentNode.querySelector('span').style.background=t.checked?'#e03e3e':'rgba(255,255,255,0.15)';" style="opacity:0;width:0;height:0;position:absolute;">
                                             <span style="position:absolute;inset:0;background:rgba(255,255,255,0.15);border-radius:24px;transition:background 0.2s;"></span>
                                             <span style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform 0.2s;box-shadow:0 2px 6px rgba(0,0,0,0.4);" id="toggle-rec-knob"></span>
+                                        </label>
+                                    </div>
+                                    <!-- Save to My Recordings toggle (cloud — Agora Cloud Recording to Firebase Storage) -->
+                                    <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 0; border-top:1px solid rgba(255,255,255,0.06);">
+                                        <div>
+                                            <span style="font-size:0.82rem; color:rgba(255,255,255,0.7); font-weight:500;">☁ Save to My Recordings</span>
+                                            <div style="font-size:0.62rem; color:rgba(255,255,255,0.3); margin-top:2px;">Saves a replay to your Creator Studio</div>
+                                        </div>
+                                        <label style="position:relative; display:inline-block; width:44px; height:24px; cursor:pointer; flex-shrink:0;">
+                                            <input type="checkbox" id="setup-cloud-record-toggle" onchange="var t=this; t.parentNode.querySelector('span').style.background=t.checked?'var(--purple-lt)':'rgba(255,255,255,0.15)';" style="opacity:0;width:0;height:0;position:absolute;">
+                                            <span style="position:absolute;inset:0;background:rgba(255,255,255,0.15);border-radius:24px;transition:background 0.2s;"></span>
+                                            <span style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform 0.2s;box-shadow:0 2px 6px rgba(0,0,0,0.4);" id="toggle-cloud-rec-knob"></span>
                                         </label>
                                     </div>
                                 </div>
@@ -21294,7 +21306,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Read paid admission + recording settings from setup panel
             const paidChecked = ($('setup-paid-toggle') || {}).checked || false;
             const entryFeeVal = parseInt(($('setup-entry-fee') || {}).value || '0', 10) || 0;
-            const willRecord  = ($('setup-record-toggle') || {}).checked || false;
+            const willRecord      = ($('setup-record-toggle')       || {}).checked || false;
+            const willCloudRecord = ($('setup-cloud-record-toggle') || {}).checked || false;
             streamEntryFee = paidChecked && entryFeeVal > 0 ? entryFeeVal : 0;
 
             // Generate HOST_UID before creating the doc so it's included from the start.
@@ -21571,8 +21584,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             showToast('🔴 You are now LIVE! Audience can join and Hype you.');
 
-            // Start server-side cloud recording (fire-and-forget — never blocks the stream)
-            (function(_sid, _ch) {
+            // Start server-side cloud recording only when host opted in
+            if (willCloudRecord) (function(_sid, _ch) {
                 fetch('https://us-central1-socialhub-33014.cloudfunctions.net/startCloudRecording', {
                     method:  'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -21679,6 +21692,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (paidChk) paidChk.checked = false;
         const recChk = $('setup-record-toggle');
         if (recChk) recChk.checked = false;
+        const cloudRecChk = $('setup-cloud-record-toggle');
+        if (cloudRecChk) cloudRecChk.checked = false;
+        const cloudRecKnob = $('toggle-cloud-rec-knob');
+        if (cloudRecKnob) cloudRecKnob.style.transform = 'translateX(0)';
+        const cloudRecTrack = cloudRecChk && cloudRecChk.parentNode && cloudRecChk.parentNode.querySelector('span');
+        if (cloudRecTrack) cloudRecTrack.style.background = 'rgba(255,255,255,0.15)';
         const feeRow = $('paid-fee-row');
         if (feeRow) feeRow.style.display = 'none';
         const feeInp = $('setup-entry-fee');
@@ -26572,6 +26591,10 @@ document.addEventListener('change', function(e) {
     }
     if (e.target.id === 'setup-record-toggle') {
         var knob = document.getElementById('toggle-rec-knob');
+        if (knob) knob.style.transform = e.target.checked ? 'translateX(20px)' : 'translateX(0)';
+    }
+    if (e.target.id === 'setup-cloud-record-toggle') {
+        var knob = document.getElementById('toggle-cloud-rec-knob');
         if (knob) knob.style.transform = e.target.checked ? 'translateX(20px)' : 'translateX(0)';
     }
 });
