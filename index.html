@@ -10274,6 +10274,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     let isActionPending    = false;  // global transaction lock — prevents double-spend on any async action
     let _activeCommunity   = null;   // null = no community context; object = { id, name, ownerId, ... } of active Hub
     let _hubSubStatus      = 'none'; // viewer's subscription status for the active Hub: 'active' | 'expired' | 'none'
+    let _earnUnsub         = null;   // Firestore onSnapshot teardown for subscribeToEarnings
+    let _adminRevenueUnsub = null;   // Firestore onSnapshot teardown for subscribeAdminRevenue
     let _notifUnsub        = null;   // Firestore onSnapshot teardown for notification listener
     let _notifUnreadCt     = 0;      // current unread notification count
     let _notifLastReadTs   = parseInt(localStorage.getItem('sh_notifLastRead') || '0', 10);
@@ -11628,9 +11630,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.armSpendLock = armSpendLock;
 
     function subscribeToEarnings(walletAddr) {
+        if (_earnUnsub) { try { _earnUnsub(); } catch(_) {} _earnUnsub = null; }
         if (!walletAddr || !window.db) return;
         const ref = window.fs.doc(window.db, "user_balances", walletAddr.toLowerCase());
-        window.fs.onSnapshot(ref, (snap) => {
+        _earnUnsub = window.fs.onSnapshot(ref, (snap) => {
             // ── WRITE-LOCK GUARD ─────────────────────────────────────────────
             // If a spend is in flight, the incoming snapshot may still carry the
             // pre-deduction star count. Ignore it for 3 seconds so the local
@@ -12060,6 +12063,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // ADMIN REVENUE — subscribes and updates both desktop + drawer
     // ═══════════════════════════════════════════════════════════════════
     function subscribeAdminRevenue(walletAddr) {
+        if (_adminRevenueUnsub) { try { _adminRevenueUnsub(); } catch(_) {} _adminRevenueUnsub = null; }
         if (!walletAddr || !window.db) return;
         if (walletAddr.toLowerCase() !== CONFIG.ADMIN_ADDRESS.toLowerCase()) return;
 
@@ -12247,20 +12251,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             window.fs.orderBy('timestamp', 'desc')
         );
 
-        window.fs.onSnapshot(q, (snap) => {
+        var _adminUnsub1 = null, _adminUnsub2 = null, _adminUnsub3 = null;
+        function _cancelAdminListeners() {
+            if (_adminUnsub1) { try { _adminUnsub1(); } catch(_) {} _adminUnsub1 = null; }
+            if (_adminUnsub2) { try { _adminUnsub2(); } catch(_) {} _adminUnsub2 = null; }
+            if (_adminUnsub3) { try { _adminUnsub3(); } catch(_) {} _adminUnsub3 = null; }
+        }
+        _adminRevenueUnsub = _cancelAdminListeners;
+
+        _adminUnsub1 = window.fs.onSnapshot(q, (snap) => {
             const docs = [];
             snap.forEach(d => docs.push(d.data()));
             _renderMCD(docs);
-
-
-
         }, (err) => {
             // Fallback: composite index may not be ready — query without orderBy
             console.warn('[MCD] onSnapshot fallback (no index):', err.message);
             const fq = window.fs.query(
                 window.fs.collection(window.db, 'platform_revenue')
             );
-            window.fs.onSnapshot(fq, (snap) => {
+            _adminUnsub2 = window.fs.onSnapshot(fq, (snap) => {
                 const docs = [];
                 snap.forEach(d => docs.push(d.data()));
                 docs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
@@ -12273,7 +12282,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // "how much can I withdraw right now" figure. Distinct from the historical
         // lifetime sum shown in mcd-total-rev (which sums all platform_revenue docs).
         const globalRef = window.fs.doc(window.db, 'admin_revenue', 'global');
-        window.fs.onSnapshot(globalRef, (snap) => {
+        _adminUnsub3 = window.fs.onSnapshot(globalRef, (snap) => {
             const total = snap.exists() ? (snap.data().total || 0) : 0;
             const s = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
             // Withdrawable fields — these show the CURRENT balance, not the historical sum
