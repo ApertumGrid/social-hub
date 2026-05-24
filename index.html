@@ -5578,11 +5578,35 @@
             background: var(--bg-card2);
             border: 1px solid rgba(124,92,191,0.2);
             border-radius: var(--radius-md);
-            padding: 16px;
+            padding: 14px 16px;
         }
-        .ca-title {
-            font-size: 0.82rem; font-weight: 700; color: var(--text-primary);
-            margin-bottom: 14px; letter-spacing: 0.2px;
+        /* Toggle button replaces the old static title */
+        .ca-toggle {
+            display: flex; align-items: center; justify-content: space-between;
+            width: 100%; background: none; border: none; padding: 0; cursor: pointer;
+            font-family: var(--font-body); font-size: 0.82rem; font-weight: 700;
+            color: var(--text-primary); letter-spacing: 0.2px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .ca-toggle:hover { color: var(--purple-lt); }
+        .ca-chevron {
+            font-size: 0.8rem; color: var(--text-muted); flex-shrink: 0;
+            display: inline-block;
+            transform: rotate(-90deg);
+            transition: transform 0.3s ease;
+        }
+        .ca-inner.ca-open .ca-chevron { transform: rotate(0deg); }
+        /* Collapsible body */
+        .ca-body {
+            max-height: 0;
+            overflow: hidden;
+            opacity: 0;
+            transition: max-height 0.38s ease, opacity 0.22s ease;
+        }
+        .ca-inner.ca-open .ca-body {
+            max-height: 1000px;
+            opacity: 1;
+            padding-top: 14px;
         }
         .ca-stats-row {
             display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px;
@@ -8764,25 +8788,30 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <!-- Hub Analytics Panel — owner only, populated by loadHubAnalytics() -->
                     <div id="comm-analytics-panel" style="display:none; margin-bottom:16px;">
                         <div class="ca-inner">
-                            <div class="ca-title">📊 Hub Analytics</div>
-                            <div class="ca-stats-row">
-                                <div class="ca-stat">
-                                    <div class="ca-stat-val" id="ca-stars">—</div>
-                                    <div class="ca-stat-label">⭐ Stars Earned</div>
+                            <button class="ca-toggle" onclick="toggleHubAnalytics()">
+                                <span>📊 Hub Analytics</span>
+                                <span class="ca-chevron">▾</span>
+                            </button>
+                            <div class="ca-body">
+                                <div class="ca-stats-row">
+                                    <div class="ca-stat">
+                                        <div class="ca-stat-val" id="ca-stars">—</div>
+                                        <div class="ca-stat-label">⭐ Stars Earned</div>
+                                    </div>
+                                    <div class="ca-stat">
+                                        <div class="ca-stat-val" id="ca-followers">—</div>
+                                        <div class="ca-stat-label">👥 Followers</div>
+                                    </div>
+                                    <div class="ca-stat">
+                                        <div class="ca-stat-val" id="ca-posts">—</div>
+                                        <div class="ca-stat-label">📝 Posts</div>
+                                    </div>
                                 </div>
-                                <div class="ca-stat">
-                                    <div class="ca-stat-val" id="ca-followers">—</div>
-                                    <div class="ca-stat-label">👥 Followers</div>
-                                </div>
-                                <div class="ca-stat">
-                                    <div class="ca-stat-val" id="ca-posts">—</div>
-                                    <div class="ca-stat-label">📝 Posts</div>
-                                </div>
+                                <div class="ca-section-hd">❤️ Top Posts</div>
+                                <div id="ca-top-posts"><div class="ca-empty">Loading…</div></div>
+                                <div class="ca-section-hd">📈 Follower Growth <span style="font-weight:400;color:var(--text-muted);font-size:0.62rem;">(last 30 days)</span></div>
+                                <div class="ca-chart-wrap" id="ca-growth-chart"><div class="ca-empty">Loading…</div></div>
                             </div>
-                            <div class="ca-section-hd">❤️ Top Posts</div>
-                            <div id="ca-top-posts"><div class="ca-empty">Loading…</div></div>
-                            <div class="ca-section-hd">📈 Follower Growth <span style="font-weight:400;color:var(--text-muted);font-size:0.62rem;">(last 30 days)</span></div>
-                            <div class="ca-chart-wrap" id="ca-growth-chart"><div class="ca-empty">Loading…</div></div>
                         </div>
                     </div>
                     <div class="card" id="comm-composer-card" style="border-color:rgba(45,212,191,0.28); margin-bottom:16px;">
@@ -17274,6 +17303,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var ap = document.getElementById('comm-analytics-panel');
         if (ap) {
             ap.style.display = 'none';
+            var apInner = ap.querySelector('.ca-inner');
+            if (apInner) apInner.classList.remove('ca-open'); // collapse for next open
             var starsEl = document.getElementById('ca-stars');
             var followersEl = document.getElementById('ca-followers');
             var postsEl = document.getElementById('ca-posts');
@@ -17452,6 +17483,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
     }
     window.loadHubAnalytics = loadHubAnalytics;
+
+    // ─── Toggle Hub Analytics panel open / closed ─────────────────────────────────
+    function toggleHubAnalytics() {
+        var inner = document.querySelector('#comm-analytics-panel .ca-inner');
+        if (inner) inner.classList.toggle('ca-open');
+    }
+    window.toggleHubAnalytics = toggleHubAnalytics;
 
     // ─── Toggle the Start Community form ─────────────────────────────────────────
     function toggleStartCommForm() {
