@@ -17899,7 +17899,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         follow:    { icon: '👥', label: 'followed your Hub' },
         tip:       { icon: '💫', label: 'sent you a tip' },
         subscribe: { icon: '🔒', label: 'subscribed to your Hub' },
-        rain:      { icon: '🌧️', label: 'rained stars on your post' }
+        rain:      { icon: '🌧️', label: 'rained stars on your post' },
+        dm:        { icon: '✉️', label: 'sent you a message' }
     };
 
     function _notifRelTime(ts) {
@@ -17962,6 +17963,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (n.type === 'tip'       && n.amount)  label = 'tipped you <strong>' + n.amount + '★</strong>';
             if (n.type === 'follow'    && n.hubName) label = 'followed your Hub <strong>' + escHtml(n.hubName) + '</strong>';
             if (n.type === 'subscribe' && n.hubName) label = 'subscribed to <strong>' + escHtml(n.hubName) + '</strong>';
+            if (n.type === 'dm'        && n.preview) label = 'sent you a message: <em>' + escHtml(n.preview.slice(0, 40)) + (n.preview.length > 40 ? '…' : '') + '</em>';
             return '<div class="notif-item' + (isUnread ? ' unread' : '') + '">'
                 + '<div class="notif-icon">' + meta.icon + '</div>'
                 + '<div class="notif-body">'
@@ -19478,6 +19480,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 window.fs.collection(window.db, 'messages', threadId, 'msgs'),
                 { from: addr, to, text, ts: now }
             );
+            // Notify recipient via bell (fire-and-forget)
+            writeNotif(to, 'dm', { preview: text.slice(0, 80) });
             // Optimistic UI — textContent + pre-wrap CSS renders \n as visible line breaks
             const list = document.getElementById('msg-list-' + threadId);
             if (list) {
@@ -22010,6 +22014,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!window.db || !window.fs) { waitForFb(window.loadStreamBrowser); return; }
         const { collection, query, where, onSnapshot } = window.fs;
 
+        // Kill zombie streams owned by the current user whenever the browser opens
+        if (typeof _cleanStaleStreams === 'function') _cleanStaleStreams();
+
         // Tear down previous listener and reset auto-join flag for fresh browse session
         if (_liveStreamUnsub) { try { _liveStreamUnsub(); } catch(_) {} }
         var _autoJoinFired = false;
@@ -22738,7 +22745,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 // handled by cohost-self-pip inside _promoteToCoHost.
                 // Guard checks BOTH the stored viewer UID AND the co-host published UID
                 // in case Agora reassigns the UID during role promotion.
-                if (remoteUser.uid === _MY_VIEWER_UID) return;
+                if (remoteUser.uid === _myViewerUid) return;
                 if (window._cohostPublishedUid && remoteUser.uid === window._cohostPublishedUid) return;
 
                 await agoraClient.subscribe(remoteUser, mediaType);
@@ -22767,6 +22774,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                     remoteEl.style.width  = container.offsetWidth  + 'px';
                                     remoteEl.style.height = container.offsetHeight + 'px';
                                     remoteUser.videoTrack.play(remoteEl);
+                                    // Hide waiting room — _wrTimer only fires once at page load;
+                                    // subsequent joins need explicit hide here.
+                                    var _wr = document.getElementById('live-waiting-room');
+                                    if (_wr) { _wr.style.transition = 'opacity 0.6s ease'; _wr.style.opacity = '0'; setTimeout(function() { _wr.style.display = 'none'; }, 650); }
                                     // Store track so enterCinema can re-play after DOM move
                                     window._liveHostVideoTrack = remoteUser.videoTrack;
                                     // If we just promoted to co-host, re-apply the current
@@ -22792,7 +22803,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             setTimeout(playRemoteWhenReady, 50);
                         }
                     }
-                    if (mediaType === 'audio') remoteUser.audioTrack.play();
+                    if (mediaType === 'audio') {
+                        try {
+                            remoteUser.audioTrack.play();
+                        } catch(e) {
+                            console.warn('[viewer] Audio autoplay blocked — showing unmute prompt', e);
+                            _showUnmutePrompt(remoteUser.audioTrack);
+                        }
+                    }
                 } else {
                     // Co-host joined the stage — show their video as a PiP on the viewer's screen
                     if (mediaType === 'video') {
@@ -22896,7 +22914,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                         showToast('🎤 Someone joined the stage!');
                     }
-                    if (mediaType === 'audio') remoteUser.audioTrack.play();
+                    if (mediaType === 'audio') {
+                        try { remoteUser.audioTrack.play(); } catch(e) { _showUnmutePrompt(remoteUser.audioTrack); }
+                    }
                 }
             });
 
@@ -22944,6 +22964,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             hide('live-stream-browser');
             hide('live-tabs');
             show('live-player-wrap');
+            // Reset waiting room so it shows while video connects (fixes subsequent joins
+            // where the waiting room was left hidden from a previous session)
+            var _wrEl = document.getElementById('live-waiting-room');
+            if (_wrEl) { _wrEl.style.transition = ''; _wrEl.style.opacity = '1'; _wrEl.style.display = 'flex'; }
             _showViewerFloatingChat();
 
             // Populate stream info
@@ -23000,6 +23024,27 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
     };
 
+    // ── Unmute prompt — shown when browser autoplay blocks audio ─────
+    function _showUnmutePrompt(audioTrack) {
+        if (document.getElementById('unmute-prompt')) return;
+        var btn = document.createElement('button');
+        btn.id = 'unmute-prompt';
+        btn.textContent = '🔊 Tap to hear audio';
+        btn.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9999;background:#7c5cbf;color:#fff;border:none;border-radius:24px;padding:10px 22px;font-size:0.85rem;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.4);';
+        btn.onclick = function() {
+            try { audioTrack.play(); } catch(_) {}
+            btn.remove();
+        };
+        document.body.appendChild(btn);
+        setTimeout(function() { if (btn.parentNode) btn.remove(); }, 12000);
+    }
+    // Agora SDK hook — fires when any track autoplay is blocked
+    if (window.AgoraRTC) {
+        window.AgoraRTC.onAutoplayFailed = function() {
+            console.warn('[Agora] Autoplay failed — user gesture required for audio');
+        };
+    }
+
     // ── Leave stream ──────────────────────────────────────────────
     window.leaveLiveStream = async function() {
         // Clean up co-host state first
@@ -23040,6 +23085,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // Reset paid gate overlay
         const overlay = $('paid-gate-overlay');
         if (overlay) overlay.classList.remove('visible');
+
+        // Remove unmute prompt if still on screen
+        var _up = document.getElementById('unmute-prompt');
+        if (_up) _up.remove();
 
         // Remove any leftover cohost-self-pip or cohost-pip-viewer from DOM
         ['cohost-self-pip','cohost-pip-viewer'].forEach(function(id) {
@@ -24320,28 +24369,31 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // crashed tabs, mobile background kills, etc.
     function _cleanStaleStreams() {
         if (!window.db || !window.fs) return;
-        const addr = (window._liveUserAddress || window.userAddress || '').toLowerCase();
-        if (!addr) {
+        const rawAddr  = window._liveUserAddress || window.userAddress || '';
+        const addrLow  = rawAddr.toLowerCase();
+        if (!addrLow) {
             // User address not loaded yet — retry in 2s
             setTimeout(_cleanStaleStreams, 2000);
             return;
         }
         const { collection, query, where, getDocs, doc, updateDoc } = window.fs;
-        getDocs(query(
-            collection(window.db, LIVE_COL),
-            where('hostAddr', '==', addr),
-            where('active', '==', true)
-        )).then(snap => {
+        // hostAddr may be stored as checksummed (mixed-case) or lowercase depending on when
+        // the stream was created. Run two queries and deduplicate by doc id.
+        const killSet = new Set();
+        function killDocs(snap) {
             const now = Date.now();
             snap.forEach(d => {
-                // Kill everything — if user is currently live they'll have a fresh doc
-                if (d.id !== currentStreamId) {
-                    updateDoc(doc(window.db, LIVE_COL, d.id), {
-                        active: false, endedAt: now
-                    }).catch(() => {});
+                if (d.id !== currentStreamId && !killSet.has(d.id)) {
+                    killSet.add(d.id);
+                    updateDoc(doc(window.db, LIVE_COL, d.id), { active: false, endedAt: now }).catch(() => {});
                 }
             });
-            if (snap.size > 0) console.log(`[Live] Cleaned ${snap.size} zombie stream(s) for ${addr}`);
+        }
+        const q1 = getDocs(query(collection(window.db, LIVE_COL), where('hostAddr', '==', addrLow),  where('active', '==', true)));
+        const q2 = getDocs(query(collection(window.db, LIVE_COL), where('hostAddr', '==', rawAddr),  where('active', '==', true)));
+        Promise.all([q1, q2]).then(([s1, s2]) => {
+            killDocs(s1); killDocs(s2);
+            if (killSet.size > 0) console.log(`[Live] Cleaned ${killSet.size} zombie stream(s) for ${addrLow}`);
         }).catch(() => {});
     }
 
@@ -24983,6 +25035,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (btn) { btn.textContent = '🎤 Leave Stage'; btn.style.opacity = ''; btn.style.pointerEvents = ''; btn.classList.add('active'); }
             isCoHost = true;
             document.body.classList.add('is-cohost');
+            // Explicitly hide End Stream in both normal and cinema panel — CSS !important
+            // can be overridden by an inline style set before promotion, so force it here too.
+            ['panel-end-stream-wrap', 'cinema-end-btn-wrap', 'panel-end-stream-btn'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.style.setProperty('display', 'none', 'important');
+            });
             showToast('🎤 You are now on stage! Everyone can see and hear you.');
         } catch(e) {
             console.error('[CoHost] promote error:', e);
