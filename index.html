@@ -5609,7 +5609,7 @@
             padding-top: 14px;
         }
         .ca-stats-row {
-            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px;
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(65px, 1fr)); gap: 8px; margin-bottom: 16px;
         }
         .ca-stat {
             background: var(--bg-card); border: 1px solid var(--border);
@@ -5659,6 +5659,48 @@
             font-family: var(--font-mono); line-height: 1; white-space: nowrap;
         }
         .ca-empty { font-size: 0.72rem; color: var(--text-muted); padding: 6px 0; }
+        /* ── Hub Subscription ─────────────────────────────────────── */
+        .hub-sub-btn {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 8px 14px; font-size: 0.75rem; font-weight: 700;
+            color: var(--gold); background: rgba(240,180,41,0.1);
+            border: 1px solid rgba(240,180,41,0.35); border-radius: 20px;
+            cursor: pointer; white-space: nowrap; flex-shrink: 0;
+            font-family: var(--font-body); transition: background 0.15s;
+        }
+        .hub-sub-btn:hover { background: rgba(240,180,41,0.2); }
+        .hub-sub-btn.subbed { color: var(--teal); background: rgba(45,212,191,0.1); border-color: rgba(45,212,191,0.3); }
+        .hub-sub-btn.renew  { color: #fb923c; background: rgba(251,146,60,0.1); border-color: rgba(251,146,60,0.35); }
+        .hub-sub-expired-notice {
+            background: rgba(251,146,60,0.08); border: 1px solid rgba(251,146,60,0.3);
+            border-radius: 8px; padding: 8px 12px; margin-bottom: 12px;
+            font-size: 0.72rem; color: #fb923c; line-height: 1.45;
+        }
+        .comm-visibility-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .comm-visibility-btn {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 5px 12px; font-size: 0.7rem; font-weight: 600;
+            color: var(--text-secondary); background: var(--bg-card);
+            border: 1px solid var(--border); border-radius: 16px; cursor: pointer;
+            font-family: var(--font-body); transition: all 0.15s;
+        }
+        .comm-visibility-btn.locked { color: var(--purple-lt); border-color: rgba(124,92,191,0.4); background: rgba(124,92,191,0.1); }
+        .hub-post-lock-wrap { position: relative; overflow: hidden; border-radius: 8px; }
+        .hub-post-lock-blur { filter: blur(6px); user-select: none; pointer-events: none; max-height: 60px; overflow: hidden; }
+        .hub-post-lock-overlay {
+            position: absolute; inset: 0; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 6px;
+            background: rgba(13,10,24,0.65); border-radius: 8px;
+            font-size: 0.7rem; color: var(--text-muted); min-height: 56px;
+        }
+        .hub-post-lock-overlay strong { color: var(--text-primary); font-size: 0.8rem; }
+        .ca-sub-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.67rem; }
+        .ca-sub-row:last-child { border-bottom: none; }
+        .ca-sub-wallet { font-family: var(--font-mono); flex: 1; color: var(--text-primary); }
+        .ca-sub-expiry { color: var(--text-muted); white-space: nowrap; }
+        .ca-sub-status-active  { color: var(--teal); font-weight: 700; white-space: nowrap; }
+        .ca-sub-status-expired { color: #fb923c; font-weight: 700; white-space: nowrap; }
+        @media (max-width: 600px) { .hub-sub-btn { min-height: 44px; padding: 8px 12px; font-size: 0.72rem; } }
         /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
            DEEP-LINK LOADING OVERLAY
         â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
@@ -8773,13 +8815,30 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div class="comm-member-chip" id="comm-member-chip">⬡ 0 Members</div>
                         <button class="comm-follow-btn" id="comm-follow-btn" data-cost="Costs 1 ★" onclick="commFollowHub()"><span class="pact-label">+ Follow Hub</span></button>
                         <button class="comm-edit-btn" id="comm-edit-btn" style="display:none;" onclick="toggleCommEditPanel()">✎ Edit Hub</button>
+                        <button class="hub-sub-btn" id="comm-sub-btn" style="display:none;" onclick="commSubscribeToHub()">★ Subscribe</button>
                     </div>
+                    <!-- Subscription expiry notice — non-owner viewers with expired subscription -->
+                    <div id="comm-sub-expired-notice" class="hub-sub-expired-notice" style="display:none;"></div>
                     <!-- Hub owner edit panel — shown only to the Hub creator -->
                     <div id="comm-edit-panel" style="display:none; background:var(--bg-card2); border:1px solid rgba(124,92,191,0.25); border-radius:12px; padding:16px; margin-bottom:16px;">
                         <div style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:12px;">✎ Edit Hub Details</div>
                         <input type="text" id="comm-edit-name" class="field" placeholder="Hub Name" style="margin-bottom:8px;">
                         <textarea id="comm-edit-desc" class="field" rows="3" placeholder="Description" style="margin-bottom:8px; resize:vertical;"></textarea>
                         <input type="text" id="comm-edit-img" class="field" placeholder="Header Image URL (optional)" style="margin-bottom:12px;">
+                        <div style="border-top:1px solid var(--border); padding-top:12px; margin-bottom:12px;">
+                            <div style="font-size:0.72rem; font-weight:700; color:var(--text-secondary); margin-bottom:10px; letter-spacing:0.3px;">★ SUBSCRIPTIONS</div>
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.75rem; color:var(--text-primary); margin-bottom:10px;">
+                                <input type="checkbox" id="comm-edit-sub-enabled" onchange="toggleSubPriceField()" style="accent-color:var(--purple-lt); width:14px; height:14px;">
+                                Enable Subscriptions
+                            </label>
+                            <div id="comm-edit-sub-price-row" style="display:none; align-items:center; gap:8px; font-size:0.73rem; color:var(--text-secondary);">
+                                Monthly price:
+                                <select id="comm-edit-sub-price" class="field" style="width:auto; padding:4px 8px; font-size:0.73rem;">
+                                    <option value="20">20 ★</option>
+                                    <option value="25">25 ★</option>
+                                </select>
+                            </div>
+                        </div>
                         <div style="display:flex; gap:8px;">
                             <button class="btn btn-purple" onclick="saveEditCommunityHub()">Save Changes</button>
                             <button class="btn" onclick="toggleCommEditPanel()">Cancel</button>
@@ -8806,11 +8865,19 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                         <div class="ca-stat-val" id="ca-posts">—</div>
                                         <div class="ca-stat-label">📝 Posts</div>
                                     </div>
+                                    <div class="ca-stat" id="ca-sub-stat" style="display:none;">
+                                        <div class="ca-stat-val" id="ca-subscribers">—</div>
+                                        <div class="ca-stat-label">🔒 Subscribers</div>
+                                    </div>
                                 </div>
                                 <div class="ca-section-hd">❤️ Top Posts</div>
                                 <div id="ca-top-posts"><div class="ca-empty">Loading…</div></div>
                                 <div class="ca-section-hd">📈 Follower Growth <span style="font-weight:400;color:var(--text-muted);font-size:0.62rem;">(last 30 days)</span></div>
                                 <div class="ca-chart-wrap" id="ca-growth-chart"><div class="ca-empty">Loading…</div></div>
+                                <div id="ca-subscribers-section" style="display:none;">
+                                    <div class="ca-section-hd">🔒 Subscribers</div>
+                                    <div id="ca-subscribers-list"><div class="ca-empty">Loading…</div></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -8871,6 +8938,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         </div>
 
                         <div class="fee-display" id="comm-post-fee-display"></div>
+                        <div id="comm-visibility-row" class="comm-visibility-row" style="display:none;">
+                            <button id="comm-visibility-btn" class="comm-visibility-btn" onclick="togglePostVisibility()">&#128065; Everyone</button>
+                        </div>
                         <button class="btn btn-teal" id="comm-broadcast-btn" onclick="handleCommBroadcast()">◈ Broadcast to Hub</button>
                     </div>
                     <!-- ── End Community Composer ── -->
@@ -10133,6 +10203,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     let _categoryFilter    = null;   // null = all categories; string = e.g. 'Crypto', 'Creative'…
     let isActionPending    = false;  // global transaction lock — prevents double-spend on any async action
     let _activeCommunity   = null;   // null = no community context; object = { id, name, ownerId, ... } of active Hub
+    let _hubSubStatus      = 'none'; // viewer's subscription status for the active Hub: 'active' | 'expired' | 'none'
     let _allCommunities    = [];     // in-memory cache of community docs for client-side search
     let _commUnsub         = null;   // teardown fn for the communities onSnapshot listener
 
@@ -16597,22 +16668,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         try {
             const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
             const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
+            var _subsOnly = !!(document.getElementById('comm-visibility-btn') &&
+                               document.getElementById('comm-visibility-btn').classList.contains('locked'));
             await window.fs.addDoc(window.fs.collection(window.db, 'posts'), {
-                text:          txt,
-                media:         mediaUrl,
-                firebase:      isFirebase,
-                author:        postAuthorName,
-                authorAddr:    userAddress,
-                avatar:        postAuthorPic,
-                timestamp:     Date.now(),
-                hypes:         0,
-                type:          postType,
-                feePaid:       isAdmin ? 0 : feeAmount,
-                isBoosted:     false,
-                category:      'Global',
-                communityId:   _activeCommunity.id,
-                communityName: _activeCommunity.name,
-                isVisible:     true
+                text:            txt,
+                media:           mediaUrl,
+                firebase:        isFirebase,
+                author:          postAuthorName,
+                authorAddr:      userAddress,
+                avatar:          postAuthorPic,
+                timestamp:       Date.now(),
+                hypes:           0,
+                type:            postType,
+                feePaid:         isAdmin ? 0 : feeAmount,
+                isBoosted:       false,
+                category:        'Global',
+                communityId:     _activeCommunity.id,
+                communityName:   _activeCommunity.name,
+                isVisible:       true,
+                subscribersOnly: _subsOnly
             });
 
             // ── Reset composer ────────────────────────────────────────────────
@@ -16990,6 +17064,47 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
         }
 
+        // ── Subscription state: check before rendering posts ──────────────────────
+        var commSubEnabled = !!(comm.subscriptionsEnabled);
+        var userSubStatus  = 'none'; // 'active' | 'expired' | 'none' — closed over by forEach below
+        _hubSubStatus      = 'none';
+        var _subBtn    = document.getElementById('comm-sub-btn');
+        var _subNotice = document.getElementById('comm-sub-expired-notice');
+        var _visRow    = document.getElementById('comm-visibility-row');
+        var _visBtn    = document.getElementById('comm-visibility-btn');
+        // Visibility toggle in composer — owner only when subscriptions are enabled
+        if (_visRow) _visRow.style.display = (isHubOwner && commSubEnabled) ? 'flex' : 'none';
+        if (_visBtn) { _visBtn.textContent = '👁 Everyone'; _visBtn.classList.remove('locked'); }
+        if (commSubEnabled && !isHubOwner) {
+            if (_subBtn) _subBtn.style.display = 'inline-flex';
+            if (userAddress && window.db) {
+                try {
+                    var subCheck  = await checkHubSubscription(comm.id, userAddress);
+                    userSubStatus = subCheck.status;
+                    _hubSubStatus = userSubStatus;
+                    if (userSubStatus === 'active') {
+                        if (_subBtn) { _subBtn.textContent = '✅ Subscribed'; _subBtn.classList.remove('renew'); _subBtn.classList.add('subbed'); _subBtn.disabled = true; }
+                        if (_subNotice) _subNotice.style.display = 'none';
+                    } else if (userSubStatus === 'expired') {
+                        if (_subBtn) { _subBtn.textContent = '🔄 Renew (' + (comm.subscriptionPrice || 20) + '★/mo)'; _subBtn.classList.remove('subbed'); _subBtn.classList.add('renew'); _subBtn.disabled = false; }
+                        if (_subNotice) {
+                            var _expDate = new Date(subCheck.expiryDate || 0).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                            _subNotice.textContent = '⚠️ Your subscription expired on ' + _expDate + '. Renew to access subscribers-only posts.';
+                            _subNotice.style.display = 'block';
+                        }
+                    } else {
+                        if (_subBtn) { _subBtn.textContent = '★ Subscribe (' + (comm.subscriptionPrice || 20) + '★/mo)'; _subBtn.classList.remove('subbed', 'renew'); _subBtn.disabled = false; }
+                        if (_subNotice) _subNotice.style.display = 'none';
+                    }
+                } catch (_subErr) { console.warn('[openCommunityFeed] sub check:', _subErr); }
+            } else {
+                if (_subBtn) { _subBtn.textContent = '★ Subscribe (' + (comm.subscriptionPrice || 20) + '★/mo)'; _subBtn.classList.remove('subbed', 'renew'); _subBtn.disabled = false; }
+            }
+        } else {
+            if (_subBtn)    _subBtn.style.display    = 'none';
+            if (_subNotice) _subNotice.style.display = 'none';
+        }
+
         // Load posts
         var container = document.getElementById('comm-feed-items');
         if (!container || !window.db) return;
@@ -17100,10 +17215,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 // Media
                 if (mediaHtml) card.insertAdjacentHTML('beforeend', mediaHtml);
 
-                // Body
+                // Body — subscriber-only posts blurred for non-subscribers
                 var body = document.createElement('div');
                 body.className = 'post-body';
-                body.innerHTML = (typeof linkify === 'function' ? linkify(post.text) : escHtml(post.text));
+                var _ptxt = (typeof linkify === 'function' ? linkify(post.text) : escHtml(post.text));
+                if (post.subscribersOnly && !isHubOwner && userSubStatus !== 'active') {
+                    var _lkWrap = document.createElement('div');
+                    _lkWrap.className = 'hub-post-lock-wrap';
+                    var _lkBlur = document.createElement('div');
+                    _lkBlur.className = 'hub-post-lock-blur';
+                    _lkBlur.innerHTML = _ptxt;
+                    var _lkOver = document.createElement('div');
+                    _lkOver.className = 'hub-post-lock-overlay';
+                    _lkOver.innerHTML = '<strong>🔒 Subscribers Only</strong><span>Subscribe to read this post</span>';
+                    _lkWrap.appendChild(_lkBlur);
+                    _lkWrap.appendChild(_lkOver);
+                    body.appendChild(_lkWrap);
+                } else {
+                    body.innerHTML = _ptxt;
+                }
                 card.appendChild(body);
 
                 // Actions bar
@@ -17323,6 +17453,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (cm) cm.value = '';
         commSelectedFile = null;
         commMediaTabMode = 'url';
+        // Reset subscription UI
+        var _cSubBtn = document.getElementById('comm-sub-btn');
+        if (_cSubBtn) { _cSubBtn.style.display = 'none'; _cSubBtn.classList.remove('subbed', 'renew'); _cSubBtn.disabled = false; }
+        var _cNotice = document.getElementById('comm-sub-expired-notice');
+        if (_cNotice) _cNotice.style.display = 'none';
+        var _cVisRow = document.getElementById('comm-visibility-row');
+        var _cVisBtn = document.getElementById('comm-visibility-btn');
+        if (_cVisRow) _cVisRow.style.display = 'none';
+        if (_cVisBtn) { _cVisBtn.textContent = '👁 Everyone'; _cVisBtn.classList.remove('locked'); }
+        _hubSubStatus = 'none';
+        // Reset subscriber analytics
+        var _cSubStat    = document.getElementById('ca-sub-stat');
+        var _cSubCount   = document.getElementById('ca-subscribers');
+        var _cSubSection = document.getElementById('ca-subscribers-section');
+        var _cSubList    = document.getElementById('ca-subscribers-list');
+        if (_cSubStat)    _cSubStat.style.display    = 'none';
+        if (_cSubCount)   _cSubCount.textContent      = '—';
+        if (_cSubSection) _cSubSection.style.display  = 'none';
+        if (_cSubList)    _cSubList.innerHTML          = '<div class="ca-empty">Loading…</div>';
     }
     window.closeCommunityFeed = closeCommunityFeed;
 
@@ -17338,6 +17487,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (n) n.value = _activeCommunity.name        || '';
             if (d) d.value = _activeCommunity.description || '';
             if (i) i.value = _activeCommunity.headerImg   || '';
+            var _se  = document.getElementById('comm-edit-sub-enabled');
+            var _sp  = document.getElementById('comm-edit-sub-price');
+            var _spr = document.getElementById('comm-edit-sub-price-row');
+            if (_se)  _se.checked = !!_activeCommunity.subscriptionsEnabled;
+            if (_sp && _activeCommunity.subscriptionPrice) _sp.value = String(_activeCommunity.subscriptionPrice);
+            if (_spr) _spr.style.display = !!_activeCommunity.subscriptionsEnabled ? 'flex' : 'none';
         }
         panel.style.display = isOpen ? 'none' : 'block';
     }
@@ -17349,16 +17504,19 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (userAddress.toLowerCase() !== (_activeCommunity.ownerId || '').toLowerCase()) {
             return showToast('Only the Hub owner can edit this Hub.');
         }
-        var name = (document.getElementById('comm-edit-name')?.value || '').trim();
-        var desc = (document.getElementById('comm-edit-desc')?.value || '').trim();
-        var img  = (document.getElementById('comm-edit-img')?.value  || '').trim();
+        var name       = (document.getElementById('comm-edit-name')?.value || '').trim();
+        var desc       = (document.getElementById('comm-edit-desc')?.value || '').trim();
+        var img        = (document.getElementById('comm-edit-img')?.value  || '').trim();
+        var subEnabled = !!(document.getElementById('comm-edit-sub-enabled')?.checked);
+        var subPrice   = parseInt(document.getElementById('comm-edit-sub-price')?.value || '20', 10);
+        if (isNaN(subPrice) || subPrice < 1) subPrice = 20;
         if (!name) return showToast('Hub name cannot be empty.');
         try {
             await window.fs.updateDoc(
                 window.fs.doc(window.db, 'communities', _activeCommunity.id),
-                { name: name, description: desc, headerImg: img }
+                { name: name, description: desc, headerImg: img, subscriptionsEnabled: subEnabled, subscriptionPrice: subPrice }
             );
-            _activeCommunity = Object.assign({}, _activeCommunity, { name: name, description: desc, headerImg: img });
+            _activeCommunity = Object.assign({}, _activeCommunity, { name: name, description: desc, headerImg: img, subscriptionsEnabled: subEnabled, subscriptionPrice: subPrice });
             var nameEl    = document.getElementById('comm-feed-name');
             var descEl    = document.getElementById('comm-feed-desc');
             var bannerImg = document.getElementById('comm-feed-banner-img');
@@ -17369,7 +17527,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 else       bannerImg.style.display = 'none';
             }
             var idx = _allCommunities.findIndex(function(c) { return c.id === _activeCommunity.id; });
-            if (idx >= 0) _allCommunities[idx] = Object.assign({}, _allCommunities[idx], { name: name, description: desc, headerImg: img });
+            if (idx >= 0) _allCommunities[idx] = Object.assign({}, _allCommunities[idx], { name: name, description: desc, headerImg: img, subscriptionsEnabled: subEnabled, subscriptionPrice: subPrice });
             toggleCommEditPanel();
             showToast('Hub updated ✓');
         } catch (e) {
@@ -17392,6 +17550,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const followersEl = document.getElementById('ca-followers');
         const topPostsEl  = document.getElementById('ca-top-posts');
         const chartEl     = document.getElementById('ca-growth-chart');
+        const subStatEl   = document.getElementById('ca-sub-stat');
+        const subCountEl  = document.getElementById('ca-subscribers');
+        const subSection  = document.getElementById('ca-subscribers-section');
+        const subListEl   = document.getElementById('ca-subscribers-list');
+        // Show subscriber stat and section only when subscriptions are enabled
+        if (subStatEl)  subStatEl.style.display  = comm.subscriptionsEnabled ? '' : 'none';
+        if (subSection) subSection.style.display = comm.subscriptionsEnabled ? 'block' : 'none';
 
         const starsVal = typeof comm.totalStarsEarned === 'number' ? comm.totalStarsEarned : 0;
         const postsVal = typeof comm.postCount        === 'number' ? comm.postCount        : 0;
@@ -17481,6 +17646,48 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (topPostsEl)  topPostsEl.innerHTML    = '<div class="ca-empty">Could not load posts</div>';
             if (chartEl)     chartEl.innerHTML       = '<div class="ca-empty">Could not load chart</div>';
         }
+
+        // ── Subscriber analytics (only when subscriptions enabled) ────────────────
+        if (comm.subscriptionsEnabled && window.db) {
+            try {
+                var subSnap = await window.fs.getDocs(
+                    window.fs.query(
+                        window.fs.collection(window.db, 'subscriptions'),
+                        window.fs.where('communityId', '==', commId)
+                    )
+                );
+                var allSubs    = subSnap.docs.map(function(d) { return d.data(); });
+                var now        = Date.now();
+                var activeSubs = allSubs.filter(function(s) { return s.expiryDate && s.expiryDate > now; });
+                if (subCountEl) subCountEl.textContent = activeSubs.length.toLocaleString();
+                if (subListEl) {
+                    if (allSubs.length === 0) {
+                        subListEl.innerHTML = '<div class="ca-empty">No subscribers yet</div>';
+                    } else {
+                        var sortedSubs = allSubs.sort(function(a, b) { return (b.startDate || 0) - (a.startDate || 0); });
+                        subListEl.innerHTML = sortedSubs.map(function(s) {
+                            var w    = s.subscriberWallet || 'unknown';
+                            var sh   = w.length > 10 ? w.slice(0,6) + '…' + w.slice(-4) : w;
+                            var iAct = s.expiryDate && s.expiryDate > now;
+                            var exp  = s.expiryDate
+                                ? new Date(s.expiryDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+                                : '—';
+                            var sCls = iAct ? 'ca-sub-status-active' : 'ca-sub-status-expired';
+                            var sTxt = iAct ? 'Active' : 'Expired';
+                            return '<div class="ca-sub-row">'
+                                + '<div class="ca-sub-wallet">' + escHtml(sh) + '</div>'
+                                + '<div class="ca-sub-expiry">exp ' + escHtml(exp) + '</div>'
+                                + '<div class="' + sCls + '">' + sTxt + '</div>'
+                                + '</div>';
+                        }).join('');
+                    }
+                }
+            } catch (e) {
+                console.warn('[loadHubAnalytics] subscriber query failed:', e);
+                if (subCountEl) subCountEl.textContent = '—';
+                if (subListEl)  subListEl.innerHTML    = '<div class="ca-empty">Could not load</div>';
+            }
+        }
     }
     window.loadHubAnalytics = loadHubAnalytics;
 
@@ -17490,6 +17697,110 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (inner) inner.classList.toggle('ca-open');
     }
     window.toggleHubAnalytics = toggleHubAnalytics;
+
+    // ─── Check viewer's subscription status for a Hub ─────────────────────────────
+    async function checkHubSubscription(commId, userAddr) {
+        if (!window.db || !commId || !userAddr) return { status: 'none', expiryDate: null };
+        try {
+            var snap = await window.fs.getDocs(
+                window.fs.query(
+                    window.fs.collection(window.db, 'subscriptions'),
+                    window.fs.where('communityId', '==', commId),
+                    window.fs.where('subscriberWallet', '==', userAddr.toLowerCase())
+                )
+            );
+            if (snap.empty) return { status: 'none', expiryDate: null };
+            var subs = snap.docs
+                .map(function(d) { return d.data(); })
+                .sort(function(a, b) { return (b.expiryDate || 0) - (a.expiryDate || 0); });
+            var latest = subs[0];
+            var status = (latest.expiryDate && latest.expiryDate > Date.now()) ? 'active' : 'expired';
+            return { status: status, expiryDate: latest.expiryDate || null };
+        } catch (e) {
+            console.warn('[checkHubSubscription]', e);
+            return { status: 'none', expiryDate: null };
+        }
+    }
+
+    // ─── Subscribe to Hub ─────────────────────────────────────────────────────────
+    async function commSubscribeToHub() {
+        if (!userAddress) return showToast('Connect your wallet to subscribe.');
+        if (!_activeCommunity || !_activeCommunity.subscriptionsEnabled) return;
+        var price     = _activeCommunity.subscriptionPrice || 20;
+        var ownerAddr = (_activeCommunity.ownerId || '').toLowerCase();
+        // Deduct stars from subscriber's spendable balance
+        try {
+            await deductSpendableStars(userAddress, price);
+        } catch (e) {
+            console.error('[commSubscribeToHub] deduction failed:', e);
+            return showToast('Not enough stars. You need ' + price + '★ to subscribe.');
+        }
+        var creatorCut  = Math.round(price * 0.9 * 100) / 100;  // 90% to hub owner
+        var platformCut = Math.round((price - creatorCut) * 100) / 100; // 10% platform
+        var now         = Date.now();
+        var expiryDate  = now + (30 * 24 * 60 * 60 * 1000); // 30 days
+        // Credit 90% to hub owner
+        try {
+            await creditCreatorStars(ownerAddr, creatorCut);
+        } catch (e) {
+            console.warn('[commSubscribeToHub] creditCreatorStars failed:', e);
+        }
+        // Log ledger entries
+        logTransaction('spend', price, {
+            from:        userAddress.toLowerCase(),
+            to:          ownerAddr,
+            description: 'Hub Subscription — ' + (_activeCommunity.name || _activeCommunity.id),
+            communityId: _activeCommunity.id
+        });
+        logTransaction('earn', creatorCut, {
+            from:        userAddress.toLowerCase(),
+            to:          ownerAddr,
+            description: 'Hub Subscription income — ' + (_activeCommunity.name || _activeCommunity.id),
+            communityId: _activeCommunity.id
+        });
+        logAdminRevenue(userAddress, 'hub_subscription_fee', platformCut);
+        // Write subscription document
+        try {
+            await window.fs.addDoc(window.fs.collection(window.db, 'subscriptions'), {
+                subscriberWallet: userAddress.toLowerCase(),
+                communityId:      _activeCommunity.id,
+                hubOwnerWallet:   ownerAddr,
+                startDate:        now,
+                expiryDate:       expiryDate,
+                price:            price,
+                status:           'active'
+            });
+        } catch (e) {
+            console.error('[commSubscribeToHub] write sub doc failed:', e);
+            return showToast('Subscription failed — please try again.');
+        }
+        showToast('Subscribed! ✓ Access granted for 30 days.');
+        // Refresh hub to unblur subscriber-only posts
+        await openCommunityFeed(_activeCommunity, { updateUrl: false });
+    }
+    window.commSubscribeToHub = commSubscribeToHub;
+
+    // ─── Toggle post visibility (owner composer — Everyone ↔ Subscribers Only) ────
+    function togglePostVisibility() {
+        var btn = document.getElementById('comm-visibility-btn');
+        if (!btn) return;
+        if (btn.classList.contains('locked')) {
+            btn.classList.remove('locked');
+            btn.textContent = '👁️ Everyone';
+        } else {
+            btn.classList.add('locked');
+            btn.textContent = '🔒 Subscribers Only';
+        }
+    }
+    window.togglePostVisibility = togglePostVisibility;
+
+    // ─── Toggle subscription price field visible in edit panel ────────────────────
+    function toggleSubPriceField() {
+        var cb  = document.getElementById('comm-edit-sub-enabled');
+        var row = document.getElementById('comm-edit-sub-price-row');
+        if (row) row.style.display = (cb && cb.checked) ? 'flex' : 'none';
+    }
+    window.toggleSubPriceField = toggleSubPriceField;
 
     // ─── Toggle the Start Community form ─────────────────────────────────────────
     function toggleStartCommForm() {
