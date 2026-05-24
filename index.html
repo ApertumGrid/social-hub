@@ -22017,9 +22017,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // Kill zombie streams owned by the current user whenever the browser opens
         if (typeof _cleanStaleStreams === 'function') _cleanStaleStreams();
 
-        // Tear down previous listener and reset auto-join flag for fresh browse session
+        // Tear down previous listener
         if (_liveStreamUnsub) { try { _liveStreamUnsub(); } catch(_) {} }
-        var _autoJoinFired = false;
 
         // Simple query — no composite index needed
         const q = query(
@@ -22047,25 +22046,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             streams.sort((a, b) => (b.startedAt?.seconds || 0) - (a.startedAt?.seconds || 0));
             renderStreamBrowser(streams);
 
-            // ── AUTO-JOIN: if exactly one stream is live and the player isn't
-            // already open, jump straight into it so the user never sees "no streams".
-            // _autoJoinFired prevents this from re-triggering on every Firestore update.
-            // Never auto-join a stream owned by this user — they are the host, not a viewer.
-            // Never auto-join on mobile — user must tap the stream card themselves.
-            const _myAddr = (window._liveUserAddress || '').toLowerCase();
-            const _autoJoinCandidate = streams.length === 1 ? streams[0] : null;
-            const _isOwnStream = _autoJoinCandidate && _myAddr &&
-                (_autoJoinCandidate.hostAddr || '').toLowerCase() === _myAddr;
-            var _isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (window.innerWidth <= 768);
-            if (streams.length === 1 && !_watchingStreamId && !isHosting && !_autoJoinFired && !_isOwnStream && !_isMobile) {
-                _autoJoinFired = true;
-                const playerWrap = $('live-player-wrap');
-                const isPlayerOpen = playerWrap && playerWrap.style.display !== 'none';
-                if (!isPlayerOpen && typeof joinLiveStream === 'function') {
-                    // Small delay so the UI is painted first
-                    setTimeout(() => joinLiveStream(streams[0].id), 300);
-                }
-            }
+            // Viewer must click a stream card to join — no auto-join.
         }, err => {
             console.warn('[Live] Stream browser listener error:', err);
         });
