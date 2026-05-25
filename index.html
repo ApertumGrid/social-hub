@@ -1778,6 +1778,66 @@
             animation: gift-mega-shimmer 0.3s ease-in-out infinite;
         }
 
+        /* ★ Star amount on mega overlay */
+        .gift-mega-stars {
+            font-size: 2.8rem; font-weight: 900; letter-spacing: 2px;
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #fde68a 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: none;
+            filter: drop-shadow(0 0 18px rgba(251,191,36,0.9));
+            position: relative; z-index: 2;
+            animation: gift-mega-in 0.65s 0.05s cubic-bezier(0.34,1.56,0.64,1) both;
+        }
+
+        /* Fire tier mini burst */
+        @keyframes gift-fire-in {
+            0%   { opacity:0; transform:translateY(40px) scale(0.5); }
+            60%  { opacity:1; transform:translateY(-8px) scale(1.15); }
+            100% { opacity:1; transform:translateY(0)    scale(1); }
+        }
+        .gift-fire-overlay {
+            position: fixed; inset: 0; z-index: 9998; pointer-events: none;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: radial-gradient(ellipse at center, rgba(251,146,60,0.28) 0%, rgba(239,68,68,0.12) 45%, transparent 70%);
+        }
+        .gift-fire-emoji {
+            font-size: 5rem;
+            filter: drop-shadow(0 0 28px rgba(251,146,60,0.95));
+            animation: gift-fire-in 0.55s cubic-bezier(0.34,1.56,0.64,1) both;
+            position: relative; z-index: 2;
+        }
+        .gift-fire-stars {
+            font-size: 2rem; font-weight: 900; letter-spacing: 2px;
+            background: linear-gradient(135deg, #fb923c 0%, #fbbf24 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(0 0 12px rgba(251,146,60,0.8));
+            position: relative; z-index: 2;
+            animation: gift-fire-in 0.6s 0.08s cubic-bezier(0.34,1.56,0.64,1) both;
+        }
+
+        /* Combo streak badge */
+        @keyframes gift-combo-pulse {
+            0%   { transform: scale(1); }
+            30%  { transform: scale(1.35); }
+            60%  { transform: scale(0.95); }
+            100% { transform: scale(1); }
+        }
+        .gift-combo-badge {
+            position: fixed; top: 80px; right: 20px; z-index: 9999; pointer-events: none;
+            background: linear-gradient(135deg, rgba(240,180,41,0.95), rgba(251,146,60,0.9));
+            color: #1a0a00; font-weight: 900; font-size: 1.1rem;
+            padding: 8px 18px; border-radius: 50px;
+            border: 2px solid rgba(255,220,80,0.8);
+            box-shadow: 0 0 24px rgba(240,180,41,0.7), 0 4px 16px rgba(0,0,0,0.5);
+            letter-spacing: 0.5px;
+            font-family: var(--font-mono, monospace);
+        }
+        .gift-combo-badge.gift-combo-pop {
+            animation: gift-combo-pulse 0.35s cubic-bezier(0.34,1.56,0.64,1) both;
+        }
+
         /* old simple burst kept as fallback (unused) */
         @keyframes gift-burst {
             0%   { opacity:0; transform:scale(0.3); }
@@ -7559,7 +7619,10 @@ html body #profile-hero .hero-action-btn.btn-follow {
 }
 /* ── Co-host: never show End Stream — only the actual host may end the stream ── */
 body.is-cohost #panel-end-stream-wrap,
-body.is-cohost #cinema-end-btn-wrap { display:none!important; }
+body.is-cohost #cinema-end-btn-wrap,
+body.is-cohost #btn-end-stream-toolbar { display:none!important; }
+/* In cinema mode the dedicated cinema-end-btn-wrap is used instead */
+body.cinema-mode #btn-end-stream-toolbar { display:none!important; }
 
 /* â•â• LIVE BADGES â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 .live-badge-pill { background:linear-gradient(135deg,rgba(210,28,28,0.92),rgba(148,8,8,0.88))!important; border:1px solid rgba(255,75,75,0.35)!important; box-shadow:0 0 14px rgba(218,28,28,0.52)!important; font-weight:800!important; letter-spacing:1px!important; font-size:0.58rem!important; border-radius:20px!important; }
@@ -9868,6 +9931,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             </button>
                             <button class="studio-btn" id="btn-toggle-chat" onclick="toggleLiveChat()" title="Allow or block viewer comments">
                                 <span class="studio-btn-icon">💬</span> Comments
+                            </button>
+                            <button class="studio-btn" id="btn-end-stream-toolbar"
+                                    onclick="if(typeof endLiveStream==='function')endLiveStream()"
+                                    title="End your live stream"
+                                    style="flex-basis:100%;background:rgba(224,62,62,0.18);border:1px solid rgba(224,62,62,0.55);color:#e03e3e;font-weight:800;letter-spacing:0.5px;">
+                                <span class="studio-btn-icon">⏹</span> End Stream
                             </button>
                         </div>
 
@@ -24084,6 +24153,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             '<div class="gift-mega-bg" style="background:' + bgColor + ';"></div>' +
             streaksHtml +
             '<div class="gift-mega-emoji">' + tier.icon + '</div>' +
+            '<div class="gift-mega-stars">★ ' + tier.cost + '</div>' +
             '<div class="gift-mega-label">' + tier.name.toUpperCase() + '!</div>' +
             (senderName ? '<div class="gift-mega-sender">from ' + senderName + '</div>' : '');
         document.body.appendChild(el);
@@ -24096,26 +24166,71 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }, 2400);
     }
 
+    // Mini cinematic burst for Fire tier
+    function _showFireBurst(tier, senderName) {
+        var old = document.querySelector('.gift-fire-overlay');
+        if (old) old.remove();
+        var el = document.createElement('div');
+        el.className = 'gift-fire-overlay';
+        el.innerHTML =
+            '<div class="gift-fire-emoji">' + tier.icon + '</div>' +
+            '<div class="gift-fire-stars">★ ' + tier.cost + '</div>' +
+            (senderName ? '<div class="gift-mega-sender" style="font-size:0.78rem;">from ' + senderName + '</div>' : '');
+        document.body.appendChild(el);
+        setTimeout(function() {
+            el.style.transition = 'opacity 0.4s ease';
+            el.style.opacity = '0';
+            setTimeout(function(){ el.remove(); }, 420);
+        }, 1600);
+    }
+
+    // ── Combo streak tracker ─────────────────────────────────────
+    var _comboCount = 0, _comboTimer = null, _comboTotal = 0;
+    function _triggerCombo(cost) {
+        _comboCount++;
+        _comboTotal += cost;
+        if (_comboTimer) clearTimeout(_comboTimer);
+        // Show/update combo badge
+        var badge = document.getElementById('gift-combo-badge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'gift-combo-badge';
+            badge.className = 'gift-combo-badge';
+            document.body.appendChild(badge);
+        }
+        badge.textContent = '×' + _comboCount + '  ★ ' + _comboTotal;
+        badge.classList.remove('gift-combo-pop');
+        void badge.offsetWidth; // reflow to restart animation
+        badge.classList.add('gift-combo-pop');
+        // Reset after 2.5s of inactivity
+        _comboTimer = setTimeout(function() {
+            if (badge && badge.parentNode) {
+                badge.style.transition = 'opacity 0.4s';
+                badge.style.opacity = '0';
+                setTimeout(function() { if (badge.parentNode) badge.remove(); }, 420);
+            }
+            _comboCount = 0; _comboTotal = 0; _comboTimer = null;
+        }, 2500);
+    }
+
     // ── Main gift animation dispatcher ───────────────────────────
     function _showGiftBurst(tier, senderName) {
         senderName = senderName || '';
+        _triggerCombo(tier.cost);
         switch (tier.chatStyle) {
             case 'rocket':
-                // Full cinematic + 5 floating orbs
                 _showMegaBurst(tier, senderName);
                 _launchMultiFloat(tier, senderName, 5);
                 break;
             case 'diamond':
-                // Full cinematic + 3 floating orbs
                 _showMegaBurst(tier, senderName);
                 _launchMultiFloat(tier, senderName, 3);
                 break;
             case 'fire':
-                // 2 floating orbs, no mega overlay
+                _showFireBurst(tier, senderName);
                 _launchMultiFloat(tier, senderName, 2);
                 break;
             default:
-                // Spark: single float
                 _launchGiftFloat(tier, senderName);
                 break;
         }
