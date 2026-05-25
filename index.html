@@ -975,7 +975,7 @@
             50%      { transform: translateY(-4px); opacity: 1; }
         }
         .live-stream-meta {
-            position:absolute; bottom:12px; left:14px; right:14px;
+            position:absolute; bottom:12px; left:14px; right:70px;
             z-index:10;
         }
         .live-stream-host {
@@ -1578,7 +1578,7 @@
             z-index:1 !important;
         }
         .cinema-fs-btn {
-            position:absolute; bottom:10px; left:10px; z-index:20;
+            position:absolute; bottom:10px; right:10px; z-index:20;
             background:rgba(0,0,0,0.6); border:none; color:#fff;
             border-radius:6px; padding:5px 10px; cursor:pointer; font-size:0.78rem;
         }
@@ -9518,8 +9518,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                         -webkit-appearance:none; appearance:none;
                                         background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%228%22 viewBox=%220 0 12 8%22><path d=%22M1 1l5 5 5-5%22 stroke=%22rgba(255,255,255,0.4)%22 stroke-width=%221.5%22 fill=%22none%22/></svg>');
                                         background-repeat:no-repeat; background-position:right 14px center;
-                                    ">
-                                        <option value="Crypto">🪙 Crypto & Web3</option>
+                                    " onfocus="this.style.borderColor='rgba(224,62,62,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+                                        <option value="" disabled selected style="color:#888;">Select a category…</option>
+                                        <option value="Crypto">🪙 Crypto &amp; Web3</option>
                                         <option value="Creative">🎨 Creative</option>
                                         <option value="Gaming">🎮 Gaming</option>
                                         <option value="Education">📚 Education</option>
@@ -22412,13 +22413,31 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             console.warn('[Live] Zombie stream cleanup failed (non-fatal):', e);
         }
 
-        const title    = ($('live-stream-title-input') || {}).value || 'Untitled Stream';
-        const category = ($('live-stream-category') || {}).value   || 'General';
-        const _modeEl  = document.querySelector('.mode-card.active');
-        const streamMode = (_modeEl && _modeEl.dataset.mode) || 'social';
+        const _titleInput = $('live-stream-title-input');
+        const _catSelect  = $('live-stream-category');
+        const title       = _titleInput ? _titleInput.value.trim() : '';
+        const category    = _catSelect  ? _catSelect.value         : '';
+        const _modeEl     = document.querySelector('.mode-card.active');
+        const streamMode  = (_modeEl && _modeEl.dataset.mode) || 'social';
         window._currentStreamMode = streamMode;
 
-        if (!title.trim()) { showToast('Please enter a stream title.'); return; }
+        if (!title) {
+            showToast('Enter a stream title before going live.');
+            if (_titleInput) {
+                _titleInput.focus();
+                _titleInput.style.borderColor = 'rgba(224,62,62,0.75)';
+                setTimeout(() => { if (_titleInput) _titleInput.style.borderColor = 'rgba(255,255,255,0.1)'; }, 2500);
+            }
+            return;
+        }
+        if (!category) {
+            showToast('Select a category before going live.');
+            if (_catSelect) {
+                _catSelect.style.borderColor = 'rgba(224,62,62,0.75)';
+                setTimeout(() => { if (_catSelect) _catSelect.style.borderColor = 'rgba(255,255,255,0.1)'; }, 2500);
+            }
+            return;
+        }
 
         try {
             // 1. Create Firestore stream doc
