@@ -7688,12 +7688,30 @@ body.is-cohost #cinema-end-btn-wrap { display:none!important; }
     #live-player-wrap #panel-end-stream-wrap,
     #live-player-wrap #panel-end-stream-btn,
     #live-player-wrap button[onclick="endLiveStream()"],
-    #live-player-wrap #cinema-end-btn-wrap,
-    #cinema-end-btn-wrap { display:none!important; }
+    #live-player-wrap #cinema-end-btn-wrap { display:none!important; }
 
     /* â”€â”€ LEADERBOARD + STATS: hidden â”€â”€ */
     #live-player-wrap #viewer-leaderboard { display:none!important; }
     #live-player-wrap .live-stats-row     { display:none!important; }
+}
+
+/* Mobile broadcaster: End Stream always pinned at bottom of screen */
+@media (max-width: 768px) {
+    body.is-hosting #panel-end-stream-wrap {
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 200 !important;
+        background: rgba(14,11,30,0.96) !important;
+        border-top: 1px solid rgba(224,62,62,0.35) !important;
+        padding: 10px 16px !important;
+        margin: 0 !important;
+        backdrop-filter: blur(12px) !important;
+    }
+    body.is-hosting #live-active-panel {
+        padding-bottom: 60px !important;
+    }
 }
 
 
@@ -22497,6 +22515,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             window._currentStreamId = currentStreamId; // expose for spotlight closure
             _activeLiveChannel = LIVE_CHANNEL_PREFIX + currentStreamId;
             isHosting       = true;
+            document.body.classList.add('is-hosting');
             liveStarsEarned = 0;
             liveHypeCount   = 0;
 
@@ -22775,6 +22794,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             console.error('[Live] Go live error:', e);
             showToast('Stream error: ' + (e.message || String(e)));
             isHosting = false;
+            document.body.classList.remove('is-hosting');
         } finally {
             _isStartingLive = false; // always release mutex — success or failure
         }
@@ -22790,6 +22810,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const _endingId = currentStreamId;
         currentStreamId = null;
         isHosting       = false;
+        document.body.classList.remove('is-hosting');
         _isStartingLive = false; // reset mutex so a new stream can start after
         _isJoiningLive  = false;
 
@@ -24572,6 +24593,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         } catch(e) {}
         currentStreamId = null;
         isHosting = false;
+        document.body.classList.remove('is-hosting');
     }
 
     window.addEventListener('beforeunload', function() {
