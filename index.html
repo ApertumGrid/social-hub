@@ -7775,10 +7775,31 @@ body.cinema-mode #btn-end-stream-toolbar { display:none!important; }
     box-sizing: border-box !important;
 }
 @media (max-width: 768px) {
-    #panel-end-stream-wrap {
-        width: 100% !important;
-        left: 0 !important;
+    /* Mobile: toolbar button handles End Stream — hide the fixed-position wrap */
+    #panel-end-stream-wrap { display: none !important; }
+
+    /* Compact broadcaster studio toolbar on mobile (cinema mode is disabled on mobile) */
+    #live-active-panel .studio-toolbar {
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 5px !important;
+        padding: 6px 0 !important;
+        margin-bottom: 6px !important;
     }
+    #live-active-panel .studio-btn {
+        padding: 7px 4px !important;
+        border-radius: 10px !important;
+        font-size: 0.62rem !important;
+        gap: 3px !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+        align-items: center !important;
+        white-space: normal !important;
+        text-align: center !important;
+    }
+    #live-active-panel .studio-btn .studio-btn-icon { font-size: 1rem !important; }
+    /* End Stream button spans full row */
+    #btn-end-stream-toolbar { grid-column: 1 / -1 !important; flex-direction: row !important; }
 }
 
 
@@ -27681,7 +27702,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         cinemaChatCol.insertBefore(chatEl, endBtnWrap);
 
         // Show the end stream button wrap — only for the actual broadcaster
-        if (endBtnWrap && isHosting && !document.body.classList.contains('is-cohost')) endBtnWrap.style.display = 'flex';
+        if (endBtnWrap && document.body.classList.contains('is-hosting') && !document.body.classList.contains('is-cohost')) endBtnWrap.style.display = 'flex';
 
         document.body.classList.add('cinema-mode');
     }
@@ -27782,6 +27803,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     }
     var _patchedStart = async function() {
         await _origStart.apply(this, arguments);
+        if (window.innerWidth <= 768) return; // cinema mode disabled on mobile
         // Apply cinema-mode class immediately so raw panel is hidden via CSS
         document.body.classList.add('cinema-mode');
         setTimeout(function(){
