@@ -6980,7 +6980,7 @@ html body #profile-hero .hero-btn-row {
     margin-bottom:18px !important; align-items:center !important;
 }
 html body #profile-hero .hero-btn-row button {
-    display:inline-flex !important; align-items:center !important; gap:6px !important;
+    display:inline-flex; align-items:center !important; gap:6px !important;
     padding:7px 16px !important; border-radius:50px !important;
     font-size:0.7rem !important; font-weight:700 !important; cursor:pointer !important;
     letter-spacing:0.3px !important; transition:all 0.18s !important;
@@ -7248,10 +7248,17 @@ html body #profile-hero .hero-tier-wrap {
     padding-bottom:10px !important; display:flex !important; align-items:center !important;
 }
 html body #profile-hero .hero-tier-badge {
-    display:inline-flex !important; align-items:center !important; gap:5px !important;
+    display:none !important;
+    align-items:center !important; gap:5px !important;
     padding:5px 14px !important; border-radius:50px !important;
     font-size:0.66rem !important; font-weight:800 !important; letter-spacing:0.4px !important;
     border:1px solid !important;
+}
+html body #profile-hero .hero-tier-badge.tier-bronze,
+html body #profile-hero .hero-tier-badge.tier-silver,
+html body #profile-hero .hero-tier-badge.tier-gold,
+html body #profile-hero .hero-tier-badge.tier-diamond {
+    display:inline-flex !important;
 }
 html body #profile-hero .hero-tier-badge.tier-bronze {
     background:linear-gradient(135deg,rgba(205,127,50,0.22),rgba(150,90,30,0.14)) !important;
@@ -15957,6 +15964,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const liveBadgeEl = document.getElementById('hero-live-badge');
             if (!liveBadgeEl || !window.db) return;
             try {
+                const freshCutoff = Date.now() - 4 * 60 * 60 * 1000; // ignore streams > 4h old
                 const lsSnap = await window.fs.getDocs(
                     window.fs.query(
                         window.fs.collection(window.db, 'live_streams'),
@@ -15964,7 +15972,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         window.fs.where('active', '==', true)
                     )
                 );
-                liveBadgeEl.style.display = lsSnap.empty ? 'none' : '';
+                let isActuallyLive = false;
+                lsSnap.forEach(d => {
+                    const ts = d.data().startedAt || d.data().createdAt || d.data().timestamp || 0;
+                    if (ts > freshCutoff) isActuallyLive = true;
+                });
+                liveBadgeEl.style.display = isActuallyLive ? '' : 'none';
             } catch(_) { liveBadgeEl.style.display = 'none'; }
         })();
 
@@ -16014,7 +16027,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
         }, (_err) => { /* silently ignore — placeholder already shown */ });
 
-        // ── Step 4: Aggregate hype totals (posts + signals) — privacy-aware ───────
+        // ── Step 4: Aggregate stars (post hypes + signal hypes + gifts/streams via creatorStars) ───
         try {
             let totalHypes = 0;
             let postCount  = 0;
@@ -16036,12 +16049,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 sSnap.forEach(d => { totalHypes += (d.data().hypes || 0); });
             }
 
+            // Also include creatorStars from user_balances (gifts received in streams/tips)
+            try {
+                const balSnap = await window.fs.getDoc(window.fs.doc(window.db, 'user_balances', addrLower));
+                if (balSnap.exists()) {
+                    totalHypes += Math.max(0, parseFloat(balSnap.data().creatorStars || 0));
+                }
+            } catch(_) {}
+
             if (ownWall) {
                 // Own wall: show full earnings + USDT
                 const hypeEl  = document.getElementById('hero-hype-total');
                 const postEl  = document.getElementById('hero-post-count');
                 const usdtEl2 = document.getElementById('hero-usdt-estimate');
-                if (hypeEl)  hypeEl.textContent  = totalHypes + ' ★';
+                if (hypeEl)  hypeEl.textContent  = Math.round(totalHypes) + ' ★';
                 if (postEl)  postEl.textContent   = postCount;
                 if (usdtEl2) {
                     usdtEl2.textContent = `Est. Value: $${(totalHypes * 0.01).toFixed(2)} USDT`;
