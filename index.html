@@ -1696,13 +1696,18 @@
             }
 
             body.is-hosting #live-active-panel #live-broadcaster-video-container {
-                height: 40vh !important;
-                min-height: 0 !important;
+                height: 48vw !important;
+                min-height: 210px !important;
+                max-height: 310px !important;
                 flex-shrink: 0 !important;
             }
 
             body.is-hosting #live-active-panel #bc-live-stats-row { display: none !important; }
-            body.is-hosting #live-active-panel .studio-toolbar    { flex-shrink: 0 !important; }
+            body.is-hosting #live-active-panel .studio-toolbar {
+                flex-shrink: 0 !important;
+                max-height: 160px !important;
+                overflow-y: auto !important;
+            }
 
             body.is-hosting #live-active-panel #bc-panel-chat-card {
                 flex: 1 1 0 !important;
@@ -7874,30 +7879,32 @@ body.cinema-mode #btn-end-stream-toolbar { display:none!important; }
         padding: 0 !important;
         margin: 0 !important;
     }
-    /* Video: compact fixed height */
+    /* Video: taller on mobile for cinema feel */
     body.is-hosting #live-broadcaster-video-container {
         flex: 0 0 auto !important;
-        height: 42vw !important;
-        min-height: 200px !important;
-        max-height: 270px !important;
+        height: 48vw !important;
+        min-height: 210px !important;
+        max-height: 310px !important;
         width: 100% !important;
     }
     /* Stats row: hidden on mobile */
     body.is-hosting #bc-live-stats-row { display: none !important; }
-    /* Studio toolbar: 4-column compact grid */
+    /* Studio toolbar: 4-col grid, capped height so chat gets real space */
     body.is-hosting #live-active-panel .studio-toolbar {
         flex: 0 0 auto !important;
         display: grid !important;
         grid-template-columns: repeat(4, 1fr) !important;
-        gap: 4px !important;
-        padding: 4px !important;
+        gap: 3px !important;
+        padding: 3px !important;
         margin: 0 !important;
+        max-height: 160px !important;
+        overflow-y: auto !important;
     }
     /* Studio buttons: small flat tiles, no gem shape */
     body.is-hosting #live-active-panel .studio-btn {
-        padding: 6px 2px !important;
+        padding: 4px 2px !important;
         border-radius: 10px !important;
-        font-size: 0.55rem !important;
+        font-size: 0.5rem !important;
         flex-direction: column !important;
         align-items: center !important;
         justify-content: center !important;
@@ -7918,7 +7925,7 @@ body.cinema-mode #btn-end-stream-toolbar { display:none!important; }
     body.is-hosting #live-active-panel .studio-btn::before,
     body.is-hosting #live-active-panel .studio-btn::after { display: none !important; }
     body.is-hosting #live-active-panel .studio-btn .studio-btn-icon {
-        font-size: 1.1rem !important;
+        font-size: 0.95rem !important;
         filter: none !important;
         display: block !important;
     }
@@ -22918,6 +22925,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             _activeLiveChannel = LIVE_CHANNEL_PREFIX + currentStreamId;
             isHosting       = true;
             document.body.classList.add('is-hosting');
+            // Show camera flip unconditionally on mobile — camera permission is granted by this point
+            if (window.innerWidth <= 768) {
+                setTimeout(function() {
+                    var _fb = document.getElementById('btn-flip-cam');
+                    if (_fb) _fb.style.display = '';
+                }, 1200);
+            }
             liveStarsEarned = 0;
             liveHypeCount   = 0;
 
@@ -24693,7 +24707,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 </div>
             </div>`;
         }).join('');
-        feed.scrollTop = feed.scrollHeight;
+        requestAnimationFrame(function() { feed.scrollTop = feed.scrollHeight; });
     }
 
     // ── Subscribe to stream doc for live viewer/stars updates ─────
