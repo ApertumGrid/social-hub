@@ -8435,6 +8435,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <span style="font-size:1.1rem;">💼</span>
                             <div class="wdd-option-text"><span class="wdd-name">My Wallet</span><span class="wdd-sub">Balance &amp; Stars</span></div>
                         </button>
+                        <button class="wdd-option" id="wdd-admin-analytics-btn" style="display:none;" onclick="openAdminAnalytics();toggleWalletDropdown()">
+                            <span style="font-size:1.1rem;">📊</span>
+                            <div class="wdd-option-text"><span class="wdd-name">Analytics</span><span class="wdd-sub">Platform stats</span></div>
+                        </button>
                         <button class="wdd-option wdd-danger" onclick="disconnectWallet();toggleWalletDropdown()">
                             <span style="font-size:1.1rem;">🔌</span>
                             <div class="wdd-option-text"><span class="wdd-name">Disconnect</span><span class="wdd-sub">Sign out of wallet</span></div>
@@ -11287,6 +11291,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (walletBtn) walletBtn.classList.remove('not-connected');
         if (walletDot) walletDot.className = 'wallet-online-dot';
         if (addrEl)    addrEl.textContent  = address.slice(0,6) + '…' + address.slice(-4);
+        // Show analytics button only for admin wallet
+        var analyticsBtn = document.getElementById('wdd-admin-analytics-btn');
+        if (analyticsBtn) analyticsBtn.style.display =
+            address.toLowerCase() === CONFIG.ADMIN_ADDRESS.toLowerCase() ? '' : 'none';
         // Start notification listener for this wallet
         try { if (typeof subscribeToNotifs === 'function') subscribeToNotifs(address); } catch(_) {}
     }
@@ -28480,6 +28488,198 @@ function _copyReplayLink(link) {
         }).catch(function(e) { console.warn('[Replay deeplink]', e); });
     }
     setTimeout(tryOpen, 1200);
+})();
+</script>
+
+<!-- ── Admin Analytics Modal ──────────────────────────────────────── -->
+<style>
+#admin-analytics-overlay {
+    display:none; position:fixed; inset:0; z-index:99100;
+    background:rgba(0,0,0,0.82); backdrop-filter:blur(6px);
+    align-items:center; justify-content:center; padding:16px;
+}
+#admin-analytics-overlay.open { display:flex; }
+#admin-analytics-panel {
+    background:var(--bg-panel,#12102a); border:1px solid rgba(124,58,237,0.3);
+    border-radius:20px; width:100%; max-width:620px; max-height:88vh;
+    overflow-y:auto; padding:24px;
+    box-shadow:0 24px 80px rgba(0,0,0,0.6),0 0 0 1px rgba(124,58,237,0.15);
+}
+#admin-analytics-panel h2 {
+    margin:0 0 4px; font-size:1.1rem; font-weight:800; color:#fff;
+    display:flex; align-items:center; gap:8px;
+}
+.aa-subtitle { font-size:0.68rem; color:var(--text-muted,#888); margin-bottom:20px; }
+.aa-close {
+    float:right; background:none; border:none; color:#888; font-size:1.2rem;
+    cursor:pointer; margin-top:-2px; padding:0;
+}
+.aa-close:hover { color:#fff; }
+.aa-section-title {
+    font-size:0.62rem; font-weight:800; letter-spacing:1px; text-transform:uppercase;
+    color:var(--text-muted,#888); margin:20px 0 10px;
+}
+.aa-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+@media(max-width:480px) { .aa-grid { grid-template-columns:1fr; } }
+.aa-card {
+    background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+    border-radius:12px; padding:12px 14px;
+}
+.aa-card-label { font-size:0.6rem; color:var(--text-muted,#888); font-weight:700; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:4px; }
+.aa-card-value { font-size:1.35rem; font-weight:800; color:#fff; font-family:var(--font-mono,monospace); }
+.aa-card-value.gold { color:#ffb300; }
+.aa-card-value.teal { color:#2dd4bf; }
+.aa-card-value.purple { color:#a78bfa; }
+.aa-card-sub { font-size:0.6rem; color:var(--text-muted,#888); margin-top:2px; }
+.aa-earner-row {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:7px 12px; background:rgba(255,255,255,0.03);
+    border-radius:8px; margin-bottom:6px; font-size:0.72rem;
+}
+.aa-earner-addr { font-family:var(--font-mono,monospace); color:var(--text-secondary,#aaa); }
+.aa-earner-amt  { font-weight:800; color:#ffb300; }
+.aa-earner-rank { font-size:0.68rem; margin-right:8px; }
+.aa-loading { text-align:center; padding:40px; color:var(--text-muted,#888); font-size:0.82rem; }
+.aa-refresh-btn {
+    display:block; margin:18px auto 0; padding:8px 22px;
+    background:rgba(124,58,237,0.15); border:1px solid rgba(124,58,237,0.35);
+    border-radius:50px; color:#a78bfa; font-size:0.72rem; font-weight:700;
+    cursor:pointer; transition:background 0.15s;
+}
+.aa-refresh-btn:hover { background:rgba(124,58,237,0.28); }
+</style>
+<div id="admin-analytics-overlay" onclick="if(event.target===this)closeAdminAnalytics()">
+    <div id="admin-analytics-panel">
+        <h2>📊 SocialHub Analytics <button class="aa-close" onclick="closeAdminAnalytics()">✕</button></h2>
+        <div class="aa-subtitle" id="aa-generated-at">Loading…</div>
+        <div id="aa-body"><div class="aa-loading">⏳ Fetching platform data…</div></div>
+        <button class="aa-refresh-btn" onclick="loadAdminAnalytics()">↺ Refresh</button>
+    </div>
+</div>
+<script>
+(function() {
+    const ADMIN_ADDR = '0xe348fedea1850a0c2d4ac0fed3f903774de1e16a';
+    const STAR_USD   = 0.01;
+
+    function closeAdminAnalytics() {
+        var el = document.getElementById('admin-analytics-overlay');
+        if (el) el.classList.remove('open');
+    }
+    window.closeAdminAnalytics = closeAdminAnalytics;
+
+    async function loadAdminAnalytics() {
+        if (!window.db || !window.fs) { showToast('Firestore not ready.'); return; }
+        var overlay = document.getElementById('admin-analytics-overlay');
+        var body    = document.getElementById('aa-body');
+        var subEl   = document.getElementById('aa-generated-at');
+        if (!overlay || !body) return;
+        overlay.classList.add('open');
+        body.innerHTML = '<div class="aa-loading">⏳ Fetching platform data…</div>';
+        if (subEl) subEl.textContent = 'Loading…';
+
+        try {
+            var fs      = window.fs;
+            var db      = window.db;
+            var now     = Date.now();
+            var weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+            var price   = window.aptmPriceUSD || 0.33;
+
+            // ── Parallel fetches ─────────────────────────────────────────
+            var [
+                allUsersSnap, allPostsSnap, completedSnap,
+                weekTxSnap, allTxSpendSnap, weekEarnSnap
+            ] = await Promise.all([
+                fs.getDocs(fs.collection(db, 'users')),
+                fs.getDocs(fs.collection(db, 'posts')),
+                fs.getDocs(fs.collection(db, 'completed_streams')),
+                fs.getDocs(fs.query(fs.collection(db, 'user_transactions'),
+                    fs.where('timestamp', '>=', weekAgo))),
+                fs.getDocs(fs.query(fs.collection(db, 'user_transactions'),
+                    fs.where('type', '==', 'spend'))),
+                fs.getDocs(fs.query(fs.collection(db, 'user_transactions'),
+                    fs.where('type', '==', 'earn'),
+                    fs.where('timestamp', '>=', weekAgo)))
+            ]);
+
+            // ── Compute all-time gift stats ───────────────────────────────
+            var totalGifts = 0, totalStars = 0;
+            allTxSpendSnap.forEach(function(d) {
+                var data = d.data();
+                if (data.description && data.description.indexOf('Gift') !== -1) {
+                    totalGifts++;
+                    totalStars += (data.amount || 0);
+                }
+            });
+
+            // ── Compute weekly stats ──────────────────────────────────────
+            var weekGifts = 0, weekStars = 0, weekDeposits = 0, weekSettles = 0;
+            weekTxSnap.forEach(function(d) {
+                var data = d.data();
+                if (data.type === 'spend' && data.description && data.description.indexOf('Gift') !== -1) {
+                    weekGifts++;
+                    weekStars += (data.amount || 0);
+                }
+                if (data.type === 'deposit') weekDeposits++;
+                if (data.type === 'settle')  weekSettles++;
+            });
+
+            // ── Top 5 earners this week ───────────────────────────────────
+            var earnerMap = {};
+            weekEarnSnap.forEach(function(d) {
+                var data = d.data();
+                var addr = (data.address || data.toAddress || '').toLowerCase();
+                if (addr && addr !== ADMIN_ADDR) {
+                    earnerMap[addr] = (earnerMap[addr] || 0) + (data.amount || 0);
+                }
+            });
+            var topEarners = Object.entries(earnerMap)
+                .sort(function(a, b) { return b[1] - a[1]; })
+                .slice(0, 5);
+
+            // ── APTM equivalent ───────────────────────────────────────────
+            var totalAptm = ((totalStars * STAR_USD) / price).toFixed(1);
+            var weekAptm  = ((weekStars  * STAR_USD) / price).toFixed(1);
+
+            var medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+            var earnRows = topEarners.length ? topEarners.map(function(e, i) {
+                return '<div class="aa-earner-row">' +
+                    '<span><span class="aa-earner-rank">' + medals[i] + '</span>' +
+                    '<span class="aa-earner-addr">' + e[0].slice(0,6) + '…' + e[0].slice(-4) + '</span></span>' +
+                    '<span class="aa-earner-amt">+' + e[1].toFixed(1) + ' ★</span>' +
+                    '</div>';
+            }).join('') : '<div style="color:var(--text-muted);font-size:0.72rem;padding:8px 0;">No gift earnings this week yet.</div>';
+
+            var nowStr = new Date(now).toLocaleString('en-US', {
+                month:'short', day:'numeric', year:'numeric',
+                hour:'numeric', minute:'2-digit', hour12:true
+            });
+
+            body.innerHTML =
+                '<div class="aa-section-title">📅 This Week (7 days)</div>' +
+                '<div class="aa-grid">' +
+                    '<div class="aa-card"><div class="aa-card-label">Stars Gifted</div><div class="aa-card-value gold">' + weekStars.toFixed(0) + ' ★</div><div class="aa-card-sub">≈ ' + weekAptm + ' APTM</div></div>' +
+                    '<div class="aa-card"><div class="aa-card-label">Gift Transactions</div><div class="aa-card-value teal">' + weekGifts + '</div><div class="aa-card-sub">live-stream gifts</div></div>' +
+                    '<div class="aa-card"><div class="aa-card-label">Deposits</div><div class="aa-card-value purple">' + weekDeposits + '</div><div class="aa-card-sub">wallets funded</div></div>' +
+                    '<div class="aa-card"><div class="aa-card-label">Withdrawals</div><div class="aa-card-value">' + weekSettles + '</div><div class="aa-card-sub">creator settlements</div></div>' +
+                '</div>' +
+                '<div class="aa-section-title">🏆 All Time</div>' +
+                '<div class="aa-grid">' +
+                    '<div class="aa-card"><div class="aa-card-label">Total Wallets</div><div class="aa-card-value">' + allUsersSnap.size + '</div><div class="aa-card-sub">connected</div></div>' +
+                    '<div class="aa-card"><div class="aa-card-label">Total Posts</div><div class="aa-card-value">' + allPostsSnap.size + '</div><div class="aa-card-sub">published</div></div>' +
+                    '<div class="aa-card"><div class="aa-card-label">Stars Gifted</div><div class="aa-card-value gold">' + totalStars.toFixed(0) + ' ★</div><div class="aa-card-sub">≈ ' + totalAptm + ' APTM</div></div>' +
+                    '<div class="aa-card"><div class="aa-card-label">Streams Completed</div><div class="aa-card-value teal">' + completedSnap.size + '</div><div class="aa-card-sub">recorded</div></div>' +
+                '</div>' +
+                '<div class="aa-section-title">🎤 Top Earners This Week</div>' +
+                earnRows;
+
+            if (subEl) subEl.textContent = 'Generated ' + nowStr + ' · APTM ≈ $' + (price || 0).toFixed(4);
+
+        } catch (err) {
+            body.innerHTML = '<div class="aa-loading">❌ Failed to load: ' + (err.message || err) + '</div>';
+            console.error('[Analytics]', err);
+        }
+    }
+    window.openAdminAnalytics = loadAdminAnalytics;
 })();
 </script>
 
