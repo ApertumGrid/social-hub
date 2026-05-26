@@ -7348,7 +7348,7 @@ html body #profile-hero .hero-cover .hero-btn-row button {
 /* LIVE badge — bottom-right corner of cover */
 html body #profile-hero .hero-live-badge {
     position:absolute !important; bottom:14px !important; right:14px !important;
-    display:flex !important; align-items:center !important; gap:5px !important;
+    display:none; align-items:center; gap:5px;
     padding:5px 14px !important;
     background:rgba(200,20,20,0.92) !important;
     border:1px solid rgba(255,80,80,0.55) !important;
@@ -7357,6 +7357,9 @@ html body #profile-hero .hero-live-badge {
     color:#fff !important; -webkit-text-fill-color:#fff !important;
     animation:_live-pulse 1.5s ease-in-out infinite !important;
     z-index:5 !important;
+}
+html body #profile-hero .hero-live-badge.is-live {
+    display:flex !important;
 }
 
 /* AVATAR WRAP — pulled up to overlap cover bottom */
@@ -16241,11 +16244,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 );
                 let isActuallyLive = false;
                 lsSnap.forEach(d => {
-                    const ts = d.data().startedAt || d.data().createdAt || d.data().timestamp || 0;
+                    const raw = d.data().startedAt || d.data().createdAt || d.data().timestamp;
+                    const ts  = raw?.toMillis?.() ?? (raw?.seconds ? raw.seconds * 1000 : (raw || 0));
                     if (ts > freshCutoff) isActuallyLive = true;
                 });
-                liveBadgeEl.style.display = isActuallyLive ? '' : 'none';
-            } catch(_) { liveBadgeEl.style.display = 'none'; }
+                liveBadgeEl.classList.toggle('is-live', isActuallyLive);
+            } catch(_) { liveBadgeEl.classList.remove('is-live'); }
         })();
 
         const feedCol = document.getElementById('feed-col');
