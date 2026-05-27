@@ -11397,7 +11397,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // Update detected status labels before opening
         var mmStatus   = document.getElementById('wdd-mm-status');
         var xovaStatus = document.getElementById('wdd-xova-status');
-        var hasMetaMask = window.ethereum && window.ethereum.isMetaMask;
+        var hasMetaMask = (window.ethereum && window.ethereum.isMetaMask)
+                       || (window.ethereum && Array.isArray(window.ethereum.providers) && window.ethereum.providers.some(p => p.isMetaMask));
         // XOVA is connectable only if we can actually reach its provider —
         // window.xova alone is not enough; MetaMask also sets window.xova in some configs
         var hasXova = (window.xova && (window.xova.ethereum || typeof window.xova.request === 'function'))
@@ -11714,7 +11715,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 window._activeWCProvider = wcProv;
                 eth = wcProv;
             } else {
-                eth = await _waitForEthereum(4000);
+                // When multiple wallets are installed (e.g. XOVA + MetaMask), one of them
+                // takes over window.ethereum. Look for MetaMask specifically in the
+                // EIP-5749 providers array first, then fall back to window.ethereum.
+                if (window.ethereum && Array.isArray(window.ethereum.providers)) {
+                    eth = window.ethereum.providers.find(p => p.isMetaMask) || null;
+                }
+                if (!eth) eth = await _waitForEthereum(4000);
                 if (!eth) { showToast('No wallet detected. Please install MetaMask.'); return; }
             }
 
