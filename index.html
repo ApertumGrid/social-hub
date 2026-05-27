@@ -11398,7 +11398,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var mmStatus   = document.getElementById('wdd-mm-status');
         var xovaStatus = document.getElementById('wdd-xova-status');
         var hasMetaMask = window.ethereum && window.ethereum.isMetaMask;
-        var hasXova     = window.xova || (window.ethereum && window.ethereum.isXova);
+        // XOVA is connectable only if we can actually reach its provider —
+        // window.xova alone is not enough; MetaMask also sets window.xova in some configs
+        var hasXova = (window.xova && (window.xova.ethereum || typeof window.xova.request === 'function'))
+                   || (window.ethereum && window.ethereum.isXova)
+                   || (window.ethereum && Array.isArray(window.ethereum.providers) && window.ethereum.providers.some(p => p.isXova));
         if (mmStatus)   mmStatus.textContent   = hasMetaMask ? '✓ Detected' : 'Not installed';
         if (xovaStatus) xovaStatus.textContent = hasXova     ? '✓ Detected' : 'Not installed';
 
@@ -11654,15 +11658,26 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         try {
             let eth;
             if (walletType === 'xova') {
+                // Priority order for XOVA provider resolution:
+                // 1. window.xova.ethereum  — standard XOVA injection
+                // 2. window.xova itself    — some versions inject the provider directly on window.xova
+                // 3. window.ethereum.isXova — XOVA took over window.ethereum
+                // 4. EIP-5749 providers array — look for XOVA among multiple injected wallets
+                // Never fall back to generic window.ethereum — that silently connects MetaMask instead.
                 if (window.xova && window.xova.ethereum) {
                     eth = window.xova.ethereum;
+                } else if (window.xova && typeof window.xova.request === 'function') {
+                    eth = window.xova;
                 } else if (window.ethereum && window.ethereum.isXova) {
                     eth = window.ethereum;
-                } else if (window.ethereum) {
-                    // Mobile browsers: Xova may inject as generic window.ethereum
-                    eth = window.ethereum;
+                } else if (window.ethereum && Array.isArray(window.ethereum.providers)) {
+                    eth = window.ethereum.providers.find(p => p.isXova) || null;
+                    if (!eth) {
+                        showToast('XOVA Wallet not found. Open this page inside the XOVA app.');
+                        return;
+                    }
                 } else {
-                    showToast('XOVA Wallet not found. Install the XOVA app and open this page inside it.');
+                    showToast('XOVA Wallet not found. Open this page inside the XOVA app, or ensure the XOVA extension is active.');
                     return;
                 }
                 // Enforce Apertum chain before proceeding — shows switch prompt if on ETH or any other network
