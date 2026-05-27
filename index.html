@@ -10867,7 +10867,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     const CONFIG = {
         // ── Core vault contract — ALL balance checks use this address ──
         ADMIN_ADDRESS:    "0xe348fedea1850a0c2d4ac0fed3f903774de1e16a",
-        CONTRACT_ADDRESS: "0x42E0A97844ac6623207F2a363aa318E83268910F", // canonical checksummed form
+        CONTRACT_ADDRESS: "0x42E0A97844ac6623207F2a363aa318E83268910F", // V2 — switch to 0xe013f0eC16f4a1A3C44BbD8878ed611828760128 after V2 users withdraw
         STAR_USD:         0.01,
         PLATFORM_CUT:     0.2,
         CREATOR_CUT:      0.8,
@@ -15222,7 +15222,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // shows the 'Low Liquidity' warning banner.
     // ═══════════════════════════════════════════════════════════════════
     async function verifyVaultHealth() {
-        const VAULT_ADDRESS = CONFIG.CONTRACT_ADDRESS; // 0x42E0A97844ac6623207F2a363aa318E83268910F
+        const VAULT_ADDRESS = CONFIG.CONTRACT_ADDRESS; // SocialHubV3
         const broadcastBtn  = document.getElementById('broadcast-btn');
         const warningEl     = document.getElementById('vault-liquidity-warning');
         const settleBtn     = document.querySelector('button[onclick*="settleStarsToWallet"]') ||
@@ -15490,36 +15490,46 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 try { payload = await resp.json(); } catch (_) { payload = {}; }
 
                 if (!resp.ok || !payload.success) {
-                    console.error("[Settlement] syncStarsToBlockchain error:", payload);
-                    _unlockSettle();
-                    return alert(
-                        "Ledger sync failed \u2014 settlement aborted.\n\n" +
-                        (payload.error || payload.detail || ("HTTP " + resp.status)) +
-                        "\n\nNo funds moved. Your balances are unchanged.\nPlease try again."
-                    );
-                }
+                    console.warn("[Settlement] syncStarsToBlockchain error:", payload);
+                    // 402 = platform balance too low to cover creator earnings.
+                    // Don't abort \u2014 skip the sync, keep the stars, still withdraw
+                    // the purchased on-chain balance. Everything else proceeds.
+                    if (resp.status === 402 || (payload.error || '').toLowerCase().includes('insufficient')) {
+                        showToast("\u26a0 Creator stars kept \u2014 withdrawing purchased balance now\u2026");
+                        // restore creatorStars was already done by CF on 402
+                    } else {
+                        _unlockSettle();
+                        return alert(
+                            "Ledger sync failed \u2014 settlement aborted.\n\n" +
+                            (payload.error || payload.detail || ("HTTP " + resp.status)) +
+                            "\n\nNo funds moved. Your balances are unchanged.\nPlease try again."
+                        );
+                    }
+                } else {
+                    showToast("Earned stars synced \u2713 \u2014 waiting for chain to confirm\u2026");
 
-                showToast("Earned stars synced \u2713 \u2014 waiting for chain to confirm\u2026");
-
-                // Poll up to 20s for the on-chain balance to increase
-                let pollAttempts = 0;
-                let chainUpdated = false;
-                while (pollAttempts < 10) {
-                    await new Promise(r => setTimeout(r, 2000));
-                    pollAttempts++;
-                    try {
-                        const pollWei  = await hubContract.starBalances(finalAddr);
-                        const pollAptm = parseFloat(ethers.utils.formatEther(pollWei));
-                        showToast("Confirming on chain... (" + pollAttempts + "/10) " + pollAptm.toFixed(4) + " APTM");
-                        if (pollAptm > preSyncAptm + 0.001) {
-                            chainUpdated = true;
-                            showToast("Earned stars confirmed on-chain \u2713 opening MetaMask\u2026");
-                            break;
-                        }
-                    } catch (_) {}
-                }
-                if (!chainUpdated) {
-                    showToast("\u26a0 Chain slow to update \u2014 withdrawing available on-chain balance\u2026");
+                    // Poll up to 20s for the on-chain balance to increase
+                    let pollAttempts = 0;
+                    let chainUpdated = false;
+                    while (pollAttempts < 10) {
+                        await new Promise(r => setTimeout(r, 2000));
+                        pollAttempts++;
+                        try {
+                            const _roP = getRpcProvider();
+                            const _roC = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, _roP);
+                            const pollWei  = await _roC.starBalances(finalAddr);
+                            const pollAptm = parseFloat(ethers.utils.formatEther(pollWei));
+                            showToast("Confirming on chain... (" + pollAttempts + "/10) " + pollAptm.toFixed(4) + " APTM");
+                            if (pollAptm > preSyncAptm + 0.001) {
+                                chainUpdated = true;
+                                showToast("Earned stars confirmed on-chain \u2713 opening MetaMask\u2026");
+                                break;
+                            }
+                        } catch (_) {}
+                    }
+                    if (!chainUpdated) {
+                        showToast("\u26a0 Chain slow to update \u2014 withdrawing available on-chain balance\u2026");
+                    }
                 }
             } catch (networkErr) {
                 _unlockSettle();
@@ -15533,7 +15543,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // STEP B — Withdrawal: read FRESH on-chain balance, send exact amount.
         // ══════════════════════════════════════════════════════════════════════
         try {
-            const postSyncWei  = await hubContract.starBalances(finalAddr);
+            const _roP2 = getRpcProvider();
+            const _roC2 = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, _roP2);
+            const postSyncWei  = await _roC2.starBalances(finalAddr);
             const postSyncAptm = parseFloat(ethers.utils.formatEther(postSyncWei));
 
             if (postSyncWei.isZero()) {
@@ -29122,5 +29134,3 @@ function _copyReplayLink(link) {
 </div>
 </body>
 </html>
-
-    
