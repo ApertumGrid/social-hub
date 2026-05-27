@@ -10755,7 +10755,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             <div class="rp-card">
                 <div class="drawer-section-label" style="margin-bottom:10px;">Buy Stars</div>
                 <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:10px; line-height:1.5;">
-                    Deposit $APTM to receive Stars. MetaMask will open for the on-chain transaction.
+                    Deposit $APTM to receive Stars. Your wallet will open for the on-chain transaction.
                 </div>
                 <div style="display:flex; gap:8px; align-items:flex-end;">
                     <div style="flex:1;">
@@ -11610,6 +11610,43 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     }
     window.disconnectWallet = disconnectWallet;
 
+    // ── Chain enforcement — switches any EIP-1193 provider to Apertum (2786) ──
+    async function _ensureApertumChain(eth) {
+        if (!eth || !eth.request) return true;
+        try {
+            const chainIdHex = await eth.request({ method: 'eth_chainId' });
+            if (parseInt(chainIdHex, 16) === 2786) return true;
+            showToast('Wrong network — switching to Apertum…');
+            try {
+                await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0xAE2' }] });
+                return true;
+            } catch (switchErr) {
+                // 4902 = chain not yet added to wallet
+                if (switchErr.code === 4902 || (switchErr.message || '').includes('Unrecognized chain')) {
+                    await eth.request({
+                        method: 'wallet_addEthereumChain',
+                        params: [{
+                            chainId:           '0xAE2',
+                            chainName:         'Apertum',
+                            nativeCurrency:    { name: 'APTM', symbol: 'APTM', decimals: 18 },
+                            rpcUrls:           [APERTUM_RPC]
+                        }]
+                    });
+                    return true;
+                }
+                if (switchErr.code === 4001) {
+                    showToast('Chain switch rejected — please connect to Apertum network.');
+                    return false;
+                }
+                throw switchErr;
+            }
+        } catch (e) {
+            if (e.code === 4001) { showToast('Chain switch rejected — please connect to Apertum network.'); return false; }
+            console.warn('[Chain] _ensureApertumChain:', e);
+            return false;
+        }
+    }
+
     async function _connectWithProvider(walletType) {
         var dd = document.getElementById('wallet-dropdown');
         if (dd) dd.style.display = 'none';
@@ -11628,6 +11665,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     showToast('XOVA Wallet not found. Install the XOVA app and open this page inside it.');
                     return;
                 }
+                // Enforce Apertum chain before proceeding — shows switch prompt if on ETH or any other network
+                const _xovaOnApertum = await _ensureApertumChain(eth);
+                if (!_xovaOnApertum) return;
             } else if (walletType === 'walletconnect') {
                 // ── WalletConnect v2 ─────────────────────────────────────
                 // Lazily import WalletConnect EthereumProvider from CDN
@@ -13445,6 +13485,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!hubContract) {
             await connectWallet();
             if (!hubContract) return;
+        }
+        // Chain guard: ensure Apertum before sending so the wallet always shows APTM, not ETH
+        if (window._shLastEth) {
+            const onApertum = await _ensureApertumChain(window._shLastEth);
+            if (!onApertum) { showToast('Please switch to Apertum network to deposit.'); return; }
+            // Rebuild provider/signer/contract so ethers picks up the correct chain after a switch
+            try {
+                provider    = new ethers.providers.Web3Provider(window._shLastEth);
+                signer      = provider.getSigner();
+                hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
+                window.provider = provider; window.signer = signer; window.hubContract = hubContract;
+            } catch(_) {}
         }
         try {
             const aptmAmount = parseFloat(amt);
