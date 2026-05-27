@@ -11779,7 +11779,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (typeof _subscribeInboxDot === 'function') _subscribeInboxDot(userAddress);
             subscribeAdminRevenue(userAddress);
             startChainRefresh();
-            await loadProfileFromFirebase(userAddress);
+            await loadProfileFromFirebase(userAddress, walletType);
             if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
             if (typeof loadFollowingSet === 'function') loadFollowingSet();
 
@@ -12186,7 +12186,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     }
 
     // ── Load profile from Firebase when wallet connects ──────────────
-    async function loadProfileFromFirebase(walletAddr) {
+    async function loadProfileFromFirebase(walletAddr, walletType) {
         if (!walletAddr || !window.db) return;
         try {
             const userRef = window.fs.doc(window.db, "users", walletAddr.toLowerCase());
@@ -12209,6 +12209,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (handleInput) handleInput.value = data.displayName || '';
                 if (avatarInput) avatarInput.value  = data.avatarUrl  || '';
                 updateUI();
+            } else {
+                // New wallet — create users doc so admin bot fires and analytics count is correct.
+                // This path runs for every provider (MetaMask, XOVA, WalletConnect) on first connect.
+                await window.fs.setDoc(userRef, {
+                    address:          walletAddr.toLowerCase(),
+                    walletType:       walletType || 'unknown',
+                    firstConnectedAt: Date.now(),
+                    lastConnectedAt:  Date.now()
+                });
+                console.log('[Firebase] New users doc created for', walletAddr.slice(0,8));
             }
         } catch (e) {
             console.warn("loadProfileFromFirebase:", e);
