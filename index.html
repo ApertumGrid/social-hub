@@ -25355,6 +25355,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // ══════════════════════════════════════════════════════════════
 
     let screenTrack        = null;   // Agora screen video track
+    let screenAudioTrack   = null;   // Agora screen audio track (system audio)
     let isScreenSharing    = false;
     let isMicMuted         = false;
     let isCamOff           = false;
@@ -26466,6 +26467,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     try { await agoraClient.unpublish(screenTrack); } catch(_) {}
                     screenTrack.stop(); screenTrack.close(); screenTrack = null;
                 }
+                if (screenAudioTrack) {
+                    try { await agoraClient.unpublish(screenAudioTrack); } catch(_) {}
+                    screenAudioTrack.stop(); screenAudioTrack.close(); screenAudioTrack = null;
+                }
 
                 // Re-publish camera. Must be enabled first or Agora throws TRACK_IS_DISABLED.
                 if (localVideoTrack) {
@@ -26496,7 +26501,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         } else {
             // Start screen share
             try {
-                screenTrack = await window.AgoraRTC.createScreenVideoTrack({
+                const screenResult = await window.AgoraRTC.createScreenVideoTrack({
                     encoderConfig: {
                         width: { ideal: 1920, max: 1920 },
                         height: { ideal: 1080, max: 1080 },
@@ -26504,14 +26509,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         bitrateMax: 4000,
                         bitrateMin: 1500
                     }
-                }, 'disable');
+                }, 'auto');
+                // 'auto' returns [videoTrack, audioTrack|null] when system audio is shared,
+                // or just a videoTrack when the user doesn't check "Share system audio"
+                if (Array.isArray(screenResult)) {
+                    screenTrack = screenResult[0];
+                    screenAudioTrack = screenResult[1] || null;
+                } else {
+                    screenTrack = screenResult;
+                    screenAudioTrack = null;
+                }
 
                 // Unpublish camera FIRST — must complete before publishing screen.
                 // Swallowing this error causes CAN_NOT_PUBLISH_MULTIPLE_VIDEO_TRACKS on the next line.
                 if (localVideoTrack) {
                     await agoraClient.unpublish(localVideoTrack);
                 }
-                await agoraClient.publish(screenTrack);
+                const toPublish = [screenTrack];
+                if (screenAudioTrack) toPublish.push(screenAudioTrack);
+                await agoraClient.publish(toPublish);
 
                 // Play screen in main container
                 _playInContainer(screenTrack, 'live-broadcaster-video');
@@ -26536,7 +26552,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                 showToast('🖥 Screen share active — viewers can see your screen.');
             } catch(e) {
-                screenTrack = null;
+                screenTrack = null; screenAudioTrack = null;
                 if (e.name === 'NotAllowedError' || (e.message && e.message.includes('cancel'))) {
                     showToast('Screen share cancelled.');
                 } else {
