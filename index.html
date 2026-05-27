@@ -10625,7 +10625,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <span onclick="openLegal('privacy')" style="font-size:0.75rem; color:var(--text-secondary); cursor:pointer; transition:color 0.13s;" onmouseover="this.style.color='var(--teal)'" onmouseout="this.style.color='var(--text-secondary)'">🔒 Privacy Policy</span>
                 </div>
                 <div style="font-size:0.6rem; color:var(--text-muted); margin-top:14px; line-height:1.6; border-top:1px solid var(--border); padding-top:10px;">
-                    © 2025 SocialHub Protocol<br>Built on Apertum · <span style="color:var(--teal);">$APTM</span>
+                    © 2026 SocialHub Protocol<br>Built on Apertum · <span style="color:var(--teal);">$APTM</span>
                 </div>
             </div>
         </div><!-- /right-panel -->
@@ -15295,6 +15295,26 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             return alert("Connect Wallet First");
         }
 
+        // Guard: must be on Apertum before any on-chain call
+        if (window._shLastEth) {
+            const onApertum = await _ensureApertumChain(window._shLastEth);
+            if (!onApertum) {
+                if (_clickedBtn) _clickedBtn.disabled = false;
+                return;
+            }
+            // Rebuild contract with fresh provider after potential chain switch
+            try {
+                const freshProvider = new ethers.providers.Web3Provider(window._shLastEth);
+                const freshSigner   = freshProvider.getSigner();
+                hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, freshSigner);
+                provider = freshProvider;
+                signer   = freshSigner;
+                window.provider    = freshProvider;
+                window.signer      = freshSigner;
+                window.hubContract = hubContract;
+            } catch(_) {}
+        }
+
         // Dismiss HIW modal if open
         var _hiwOv = document.getElementById("hiw-overlay");
         if (_hiwOv && _hiwOv.classList.contains("open")) {
@@ -15339,9 +15359,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
 
         // ── Step 2: Read on-chain balance ──────────────────────────────────────
+        // Use the direct RPC provider (not the wallet) — view calls don't need
+        // a signer and this avoids failures from stale/dropped wallet connections.
         let onChainWei;
         try {
-            onChainWei = await hubContract.starBalances(finalAddr);
+            const roProvider = getRpcProvider();
+            const roContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, roProvider);
+            onChainWei = await roContract.starBalances(finalAddr);
         } catch (e) {
             if (_clickedBtn) _clickedBtn.disabled = false;
             return alert("Could not read your on-chain balance:\n" + (e.reason || e.message || String(e)).slice(0, 200));
@@ -22544,7 +22568,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             <h3>The Star Economy</h3><ul><li><strong>80/20 Split:</strong> Creators keep 80% of all Hype revenue.</li><li><strong>90/10 Split:</strong> Users keep 90% of engagement revenue from comments and follows.</li><li><strong>Hub Landlord Model:</strong> Community Hub owners earn 40% of all guest post interaction revenue.</li></ul>
             <h3>Entry Filter</h3><p>Community Hub creation requires a one-time <strong>1,000 Star</strong> fee to ensure high-quality content.</p>
             <h3>Mailbox &amp; Communications</h3><p>A one-time <strong>25 Star</strong> activation fee unlocks private direct messaging between sovereign users.</p>
-            <h3>Global Future</h3><p>Moving toward a USDT-based (BEP-20) stable economy. The $APTM token serves as the current settlement layer.</p>
+            <h3>Global Future</h3><p>Multi-chain support coming soon.</p>
         </div>
         <div class="legal-section" id="legal-terms">
             <h2>Terms of Service</h2>
@@ -29098,3 +29122,5 @@ function _copyReplayLink(link) {
 </div>
 </body>
 </html>
+
+    
