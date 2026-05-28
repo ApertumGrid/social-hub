@@ -15414,56 +15414,62 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             ? (fbCreatorStars * CONFIG.STAR_USD) / livePrice
             : 0;
 
-        // ── Step 4: Total owed = aptmBalance + earnedAptm ──────────────────────
-        // aptmBalance already accounts for deposits and spending (price-locked at spend time).
-        // earnedAptm is converted at live price (earned stars have no deposit price).
-        const totalOwedAptm = fbAptmBalance + earnedAptmValue;
+        // ── Step 3b: Pre-check — can the platform cover creator star payout? ───
+        // Read admin on-chain balance now so the confirm dialog shows the HONEST
+        // amount the user will actually receive. If empty, skip CF sync entirely.
+        let creatorSyncPossible = false;
+        if (fbCreatorStars > 0 && earnedAptmValue > 0) {
+            try {
+                const _adminRo  = getRpcProvider();
+                const _adminC   = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, _adminRo);
+                const _adminWei = await _adminC.starBalances(CONFIG.ADMIN_ADDRESS);
+                const _adminBal = parseFloat(ethers.utils.formatEther(_adminWei));
+                creatorSyncPossible = (_adminBal >= earnedAptmValue);
+                console.log("[Settlement] adminBal=" + _adminBal.toFixed(6) +
+                    " needed=" + earnedAptmValue.toFixed(6) +
+                    " creatorSyncPossible=" + creatorSyncPossible);
+            } catch (_) { creatorSyncPossible = false; }
+        }
 
-        // On-chain cap — contract will revert if we ask for more than it holds
-        // After Step A (sync), on-chain will increase by earnedAptmValue.
-        // We compute a projected cap: current on-chain + expected earned credit.
-        const projectedOnChain = onChainAptm + earnedAptmValue;
-        const finalWithdrawAptm = Math.min(totalOwedAptm, projectedOnChain);
-
-        const aptmShortfall = Math.max(0, totalOwedAptm - onChainAptm);
+        // ── Step 4: Determine what will actually be withdrawn now ─────────────
+        const totalOwedAptm   = fbAptmBalance + earnedAptmValue;
+        const withdrawNowAptm = fbAptmBalance + (creatorSyncPossible ? earnedAptmValue : 0);
 
         console.log("[Settlement] CALC" +
             " | fbAptmBalance=" + fbAptmBalance.toFixed(6) +
             " | fbCreatorStars=" + fbCreatorStars.toFixed(2) +
             " | earnedAptmValue=" + earnedAptmValue.toFixed(6) +
             " | totalOwed=" + totalOwedAptm.toFixed(6) +
+            " | withdrawNow=" + withdrawNowAptm.toFixed(6) +
             " | onChain=" + onChainAptm.toFixed(6) +
-            " | finalWithdraw=" + finalWithdrawAptm.toFixed(6) +
             " | livePrice=$" + livePrice.toFixed(6));
 
-        if (finalWithdrawAptm <= 0) {
+        if (withdrawNowAptm <= 0) {
             if (_clickedBtn) _clickedBtn.disabled = false;
-            return alert("Withdraw amount is 0.\n\nYour balance is 0 after accounting for spending.\nNo funds to withdraw.");
+            return alert("Withdraw amount is 0.\n\nYour APTM balance is 0.\nDeposit APTM or earn stars through interactions first.");
         }
 
         // ── Step 5: Confirmation modal ─────────────────────────────────────────
-        const shortfallLine = aptmShortfall > 0.0001
-            ? ("\u26a0 Slot gap: your on-chain slot holds " + onChainAptm.toFixed(4) + " APTM\n" +
-               "  but you are owed " + totalOwedAptm.toFixed(4) + " APTM (" + aptmShortfall.toFixed(4) + " gap).\n" +
-               "  You will only receive " + finalWithdrawAptm.toFixed(4) + " APTM now.\n" +
-               "  Contact admin to top up your slot before settling in full.\n\n")
+        const starsKeptNote = (fbCreatorStars > 0 && !creatorSyncPossible)
+            ? ("⚠ " + fbCreatorStars.toFixed(2) + " earned ★ KEPT — platform reserve is currently empty.\n" +
+               "  Your stars are safe and payable once the platform is funded.\n\n")
             : "";
-
-        const syncLine = fbCreatorStars > 0
-            ? ("Step 1 \u2014 " + fbCreatorStars.toFixed(2) + " earned \u2605 will be synced to contract.\nStep 2 \u2014 MetaMask opens to send APTM to your wallet.\n")
-            : "MetaMask will open to send APTM to your wallet.\n";
-
         const confirmed = confirm(
             "Settle Balance to Wallet\n\n" +
             "Purchased Balance:  " + fbAptmBalance.toFixed(6) + " APTM\n" +
-            "Creator Earnings:   " + fbCreatorStars.toFixed(2) + " \u2605 (\u2248 " + earnedAptmValue.toFixed(6) + " APTM)\n" +
+            (fbCreatorStars > 0
+                ? ("Creator Earnings:   " + fbCreatorStars.toFixed(2) + " \u2605 (\u2248 " + earnedAptmValue.toFixed(6) + " APTM)" +
+                   (creatorSyncPossible ? "" : " \u2014 kept for later") + "\n")
+                : "") +
             "\u2500".repeat(34) + "\n" +
-            "Total Owed:         " + totalOwedAptm.toFixed(6) + " APTM\n" +
-            "You Will Receive:   " + finalWithdrawAptm.toFixed(6) + " APTM\n" +
+            "You Will Receive:   " + withdrawNowAptm.toFixed(6) + " APTM\n" +
             "Live Price:         $" + livePrice.toFixed(4) + " / APTM\n" +
             "\u2500".repeat(34) + "\n\n" +
-            shortfallLine +
-            syncLine +
+            starsKeptNote +
+            (creatorSyncPossible
+                ? ("Step 1 \u2014 " + fbCreatorStars.toFixed(2) + " earned \u2605 will be synced to contract.\nStep 2 \u2014 ")
+                : "") +
+            "MetaMask opens to send APTM to your wallet.\n" +
             "Firebase balances zeroed ONLY after on-chain confirmation.\nProceed?"
         );
 
@@ -15494,7 +15500,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // ══════════════════════════════════════════════════════════════════════
         const preSyncAptm = onChainAptm;
 
-        if (fbCreatorStars > 0) {
+        if (fbCreatorStars > 0 && creatorSyncPossible) {
             showToast("Step 1/2 \u2014 Syncing " + fbCreatorStars.toFixed(2) + " earned \u2605 to contract\u2026");
             try {
                 const resp = await fetch(SYNC_FUNCTION_URL, {
@@ -15582,13 +15588,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // NOTE: this cap is per-user slot, NOT total contract balance.
             // Susan can withdraw her earned APTM even if John hasn't withdrawn yet.
             // John's unspent deposit stays in his slot and is not accessible to Susan.
-            const effectiveCap  = (postSyncAptm > 0) ? postSyncAptm : totalOwedAptm;
-            const withdrawAptm  = Math.min(totalOwedAptm, effectiveCap);
-            // Use BigNumber min to avoid float precision loss.
-            // Converting slot: wei→float→toFixed(18)→wei can round UP by a few wei,
-            // making the request marginally exceed the slot and causing a contract revert.
-            // Using postSyncWei (exact chain BigNumber) when it is the cap avoids this.
-            const _owedWei     = ethers.utils.parseEther(totalOwedAptm.toFixed(18));
+            // withdrawNowAptm was pre-computed (purchased balance only when platform empty,
+            // or purchased + earned when creator sync ran). Cap to on-chain slot to prevent
+            // contract revert — the exact slot amount is used as a BigNumber to avoid
+            // float rounding adding a few wei above the actual balance.
+            const withdrawAptm = Math.min(withdrawNowAptm, postSyncAptm > 0 ? postSyncAptm : withdrawNowAptm);
+            const _owedWei     = ethers.utils.parseEther(withdrawNowAptm.toFixed(18));
             const withdrawWei  = _owedWei.lte(postSyncWei) ? _owedWei : postSyncWei;
 
             if (withdrawAptm <= 0) {
