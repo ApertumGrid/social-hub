@@ -5114,6 +5114,7 @@
             user-select: none;
         }
         #lightbox-close {
+            display: none; /* hidden by default; shown only via #img-lightbox.open below */
             position: fixed; top: 18px; right: 22px;
             font-size: 2rem; line-height: 1;
             color: rgba(255,255,255,0.75);
@@ -5121,6 +5122,7 @@
             background: none; border: none;
             transition: color 0.15s;
         }
+        #img-lightbox.open #lightbox-close { display: block; }
         #lightbox-close:hover { color: #fff; }
 
         /* â”€â”€ auto-expand textarea â”€â”€ */
@@ -11867,12 +11869,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!provider   && window.provider)    provider    = window.provider;
         if (!hubContract || !signer) return;
         try {
-            const addr   = await signer.getAddress();
-            const balRaw = await _safeCall(() => hubContract.starBalances(addr));
-            const anchRaw = await _safeCall(() => hubContract.totalAnchors());
+            const addr = await signer.getAddress();
+
+            // Use the direct Apertum RPC for view calls — the wallet provider may be
+            // on Ethereum mainnet (WalletConnect default) and would fail to reach the
+            // Apertum contract. The RPC provider always hits the correct chain.
+            const roProvider = getRpcProvider();
+            const roContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, roProvider);
+            const balRaw  = await _safeCall(() => roContract.starBalances(addr));
+            const anchRaw = await _safeCall(() => roContract.totalAnchors());
 
             if (balRaw === null) {
-                console.warn('[syncData] starBalances returned null — provider may not be ready yet');
+                console.warn('[syncData] starBalances returned null — RPC may not be ready yet');
                 return;
             }
 
@@ -11951,8 +11959,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (!signer     && window.signer)      signer      = window.signer;
             if (!hubContract || !signer || !userAddress) return;
             try {
-                const addr   = await signer.getAddress();
-                const balRaw = await _safeCall(() => hubContract.starBalances(addr));
+                const addr     = await signer.getAddress();
+                const _roP     = getRpcProvider();
+                const _roC     = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, _roP);
+                const balRaw   = await _safeCall(() => _roC.starBalances(addr));
                 if (balRaw === null) {
                     console.warn('[ChainRefresh] starBalances returned null — skipping tick');
                     return;
@@ -12056,9 +12066,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 setStatus('Provider OK — fetching balance…', 'var(--teal)');
             }
 
-            // Step 3 — safe balance read
+            // Step 3 — safe balance read via direct RPC (wallet may be on wrong chain)
             const addr   = await signer.getAddress();
-            const balRaw = await _safeCall(() => hubContract.starBalances(addr));
+            const _msRo  = getRpcProvider();
+            const _msC   = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, _msRo);
+            const balRaw = await _safeCall(() => _msC.starBalances(addr));
 
             if (balRaw === null) {
                 setStatus('⚠ Contract read failed — RPC may be congested. Try again.', 'var(--gold)');
@@ -14102,6 +14114,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const feedItems    = document.getElementById('feed-items');
         const feedHeading  = document.querySelector('.feed-heading');
         const loadMoreBtn  = document.getElementById('load-more-btn');
+
+        // Close any open overlays when navigating between pages
+        if (typeof closeLightbox === 'function') closeLightbox();
+        if (typeof closeSignalLightbox === 'function') closeSignalLightbox();
 
         // 3. Reset ALL page states to hidden/inactive
         if (pageEarnings)    { pageEarnings.style.display    = 'none'; pageEarnings.classList.remove('active'); }
@@ -22375,7 +22391,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
 <!-- IMAGE LIGHTBOX OVERLAY (Index 19) -->
 <div id="img-lightbox" onclick="closeLightbox()">
-    <button id="lightbox-close" onclick="closeLightbox()" title="Close">✕</button>
+    <button id="lightbox-close" onclick="closeLightbox()" aria-label="Close">✕</button>
     <img id="lightbox-img" src="" alt="" onclick="event.stopPropagation()">
 </div>
 
