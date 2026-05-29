@@ -9056,7 +9056,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         </div>
                         <div class="mcd-sol-right">
                             <div class="mcd-sol-ratio" id="mcd-sol-ratio">— / —</div>
-                            <div class="mcd-sol-sub">Contract ★ / Liability ★</div>
+                            <div class="mcd-sol-sub">Contract USDT / Liability USDT</div>
                         </div>
                     </div>
 
@@ -12881,43 +12881,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     // Fall back per-user to their net stars value when initial_deposit
                     // is missing or zero — catches users who deposited before that
                     // field was added, preventing silent under-counting of liability.
-                    let totalUserLiabilityAptm = 0; // running APTM sum across all users
-                    const _lp = (typeof currentAptmPriceUsd !== "undefined" && currentAptmPriceUsd > 0)
-                        ? currentAptmPriceUsd
-                        : (window.aptmPriceUSD || 0);
+                    // USDT model: liability = depositedUsdt - (spentStarsTotal × $0.01)
+                    let totalDepositedUsdt = 0;
                     snap.forEach(function(d) {
-                        const data         = d.data();
-                        const initDep      = parseFloat(data.initial_deposit) || 0;
-                        const userStars    = (parseFloat(data.stars) || 0) + (parseFloat(data.creatorStars) || 0);
-                        const userSpent    = parseFloat(data.spentStarsTotal) || 0;
-                        // aptmBalance is written on every spend and deposit — most accurate
-                        const aptmBal      = parseFloat(data.aptmBalance) || 0;
-                        totalPurchased    += parseFloat(data.stars)        || 0;
-                        totalEarned       += parseFloat(data.creatorStars) || 0;
-                        totalInitDeposit  += initDep;
-                        totalSpentStars   += userSpent;
-
-                        // ── LIABILITY PRIORITY (best → fallback) ────────────────────────
-                        // 1. aptmBalance (written on every spend/deposit — most current)
-                        // 2. initial_deposit minus spent (accurate but zeroed on withdrawal)
-                        // 3. star-value fallback (under-counts but beats zero)
-                        // NOTE: initial_deposit is zeroed after withdrawal then rebuilt
-                        // on next deposit. aptmBalance is the only field that always
-                        // reflects what a user is CURRENTLY owed regardless of history.
-                        if (aptmBal > 0) {
-                            // Best path: aptmBalance is live and up-to-date
-                            totalUserLiabilityAptm += aptmBal;
-                        } else if (initDep > 0) {
-                            // Second path: initial_deposit recorded, subtract spent
-                            const spentAptm = (_lp > 0 && userSpent > 0)
-                                ? (userSpent * 0.01) / _lp : 0;
-                            totalUserLiabilityAptm += Math.max(0, initDep - spentAptm);
-                        } else if (userStars > 0 && _lp > 0) {
-                            // Last resort: use current star value
-                            totalUserLiabilityAptm += (userStars * 0.01) / _lp;
-                        }
+                        const data      = d.data();
+                        const depUsdt   = parseFloat(data.depositedUsdt) || 0;
+                        const userSpent = parseFloat(data.spentStarsTotal) || 0;
+                        totalPurchased     += parseFloat(data.stars)        || 0;
+                        totalEarned        += parseFloat(data.creatorStars) || 0;
+                        totalSpentStars    += userSpent;
+                        totalDepositedUsdt += depUsdt;
                     });
-                    window._mcdUserLiabilityAptm = totalUserLiabilityAptm; // pre-computed, price-aware
+                    window._mcdTotalDepositedUsdt = totalDepositedUsdt;
                     const totalCirculating = totalPurchased + totalEarned;
                     const s2 = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
                     s2('mcd-circulating', totalCirculating.toFixed(2) + ' ★');
@@ -12961,16 +12936,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;
             }
 
-            let contractBalAptm = null;  // null = call failed, distinct from 0
-            const raw = await _safeCall(() => provider.getBalance(CONFIG.CONTRACT_ADDRESS));
-            if (raw !== null) {
-                contractBalAptm = parseFloat(ethers.utils.formatEther(raw)) || 0;
-            }
-
-            // ── Red Flash suppression: only show DISCREPANCY when BOTH sides
-            // returned valid numbers. A null from the chain means the provider
-            // isn't ready — show a neutral "waiting" state instead of a false alarm.
-            if (contractBalAptm === null) {
+            // USDT model: read contract's USDT balance via ERC20 balanceOf
+            let contractBalUsdt = null;
+            try {
+                const _usdtRo  = new ethers.Contract(
+                    CONFIG.USDT_ADDRESS,
+                    ['function balanceOf(address) view returns (uint256)'],
+                    getRpcProvider()
+                );
+                const _usdtRaw = await Promise.race([
+                    _usdtRo.balanceOf(CONFIG.CONTRACT_ADDRESS),
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
+                ]);
+                contractBalUsdt = parseFloat(ethers.utils.formatUnits(_usdtRaw, 6));
+            } catch (_e) {
                 if (bar) bar.className = 'mcd-solvency loading';
                 if (statusEl) statusEl.textContent = 'CHAIN READ PENDING';
                 if (detailEl) detailEl.textContent = 'Waiting for provider response — will retry automatically.';
@@ -12978,89 +12957,44 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;
             }
 
-            // Solvency check in APTM — price-movement proof.
-            // Price dropping never triggers a false DISCREPANCY alarm.
-            const livePrice = (currentAptmPriceUsd > 0) ? currentAptmPriceUsd
-                            : (window.aptmPriceUSD > 0 ? window.aptmPriceUSD : 0);
+            // User liability: total USDT deposited minus USDT value of stars spent
+            const totalDepositedUsdt = window._mcdTotalDepositedUsdt || 0;
+            const totalSpentStars    = window._mcdSpentStars          || 0;
+            const userLiabilityUsdt  = Math.max(0, totalDepositedUsdt - (totalSpentStars * CONFIG.STAR_USD));
+            const adminRevUsdt       = adminRevStars * CONFIG.STAR_USD;
 
-            // ── User liability: initial_deposit minus spent APTM ────────────────
-            // Using initial_deposit (APTM actually deposited by each user, summed
-            // across all Firebase docs) gives the true liability regardless of
-            // price movement since deposit. Stars-to-APTM conversion at live price
-            // UNDER-counts when price has risen (same stars = less APTM at higher
-            // price), making the system appear more solvent than it is.
-            //
-            // Net liability = Σ(initial_deposit) - Σ(spentStars × $0.01 / livePrice)
-            // Spent APTM = value of stars already consumed — no longer owed.
-            //
-            // adminRevAptm is NOT added — already inside contractBalAptm.
-            const adminRevAptm       = (livePrice > 0) ? (adminRevStars * CONFIG.STAR_USD) / livePrice : 0; // display only
-            const totalInitDeposit   = window._mcdInitDeposit || 0;  // Σ initial_deposit
-            const totalSpentStars    = window._mcdSpentStars  || 0;  // Σ spentStarsTotal
-            const totalSpentAptm     = (livePrice > 0 && totalSpentStars > 0)
-                ? (totalSpentStars * CONFIG.STAR_USD) / livePrice
-                : 0;
-            // Fall back to star-based estimate if initial_deposit not yet aggregated
-            // ── BUG FIX: use pre-computed per-user liability ──────────────────────────
-            // window._mcdUserLiabilityAptm is computed per-user in the onSnapshot
-            // loop with a fallback for users missing initial_deposit.
-            // The previous approach recomputed from aggregate totalInitDeposit
-            // which silently dropped users whose initial_deposit field is 0 or
-            // missing (e.g. users who deposited before that field was added,
-            // or direct on-chain deposits bypassing the UI).
-            // Using the per-user pre-computed value captures ALL users correctly.
-            const totalStarsAllUsers = window._mcdTotalStars || (window._mcdPurchased || 0) + (window._mcdEarned || 0);
-            const starBasedAptm      = (livePrice > 0 && totalStarsAllUsers > 0)
-                ? (totalStarsAllUsers * CONFIG.STAR_USD) / livePrice
-                : 0;
-            // Use pre-computed per-user liability (with per-user fallback) if available.
-            // Fall back to aggregate calculation only if onSnapshot has not fired yet.
-            const userLiabilityAptm  = (window._mcdUserLiabilityAptm != null)
-                ? window._mcdUserLiabilityAptm
-                : (totalInitDeposit > 0)
-                    ? Math.max(0, totalInitDeposit - totalSpentAptm)
-                    : starBasedAptm;
-            const totalLiabilityAptm = userLiabilityAptm; // adminRevAptm excluded — already inside contractBalAptm
-
-            const contractBalStars   = livePrice > 0 ? (contractBalAptm * livePrice) / CONFIG.STAR_USD : 0;
-            const isSolvent          = contractBalAptm >= totalLiabilityAptm;
-            const discrepancyAptm    = Math.abs(contractBalAptm - totalLiabilityAptm);
-            const discrepancyUSD     = discrepancyAptm * livePrice;
-            const coverageRatio      = totalLiabilityAptm > 0
-                ? ((contractBalAptm / totalLiabilityAptm) * 100).toFixed(1)
+            const isSolvent      = contractBalUsdt >= userLiabilityUsdt;
+            const discrepancyUsd = Math.abs(contractBalUsdt - userLiabilityUsdt);
+            const coverageRatio  = userLiabilityUsdt > 0
+                ? ((contractBalUsdt / userLiabilityUsdt) * 100).toFixed(1)
                 : '∞';
 
             if (bar) bar.className = 'mcd-solvency ' + (isSolvent ? 'solvent' : 'insolvent');
             if (ratioEl) ratioEl.textContent =
-                contractBalAptm.toFixed(4) + ' APTM / ' + totalLiabilityAptm.toFixed(4) + ' APTM owed';
-            // Update User-Owned Debt card with correct APTM liability
+                '$' + contractBalUsdt.toFixed(2) + ' USDT / $' + userLiabilityUsdt.toFixed(2) + ' USDT owed';
+
             const pendingEl = document.getElementById('mcd-pending');
-            if (pendingEl) pendingEl.textContent = userLiabilityAptm.toFixed(4) + ' APTM';
+            if (pendingEl) pendingEl.textContent = '$' + userLiabilityUsdt.toFixed(2) + ' USDT';
 
             if (isSolvent) {
                 if (statusEl) statusEl.textContent = 'SYSTEM SOLVENT';
                 if (detailEl) detailEl.textContent =
-                    'Coverage: ' + coverageRatio + '% · Surplus: ' +
-                    discrepancyAptm.toFixed(4) + ' APTM ($' + discrepancyUSD.toFixed(2) + ')' +
-                    ' · Users owed: ' + userLiabilityAptm.toFixed(4) + ' APTM' +
-                    ' · Admin rev: ' + adminRevAptm.toFixed(4) + ' APTM' +
-                    ' · Price: $' + livePrice.toFixed(4);
+                    'Coverage: ' + coverageRatio + '% · Surplus: $' + discrepancyUsd.toFixed(2) +
+                    ' · Users owed: $' + userLiabilityUsdt.toFixed(2) + ' USDT' +
+                    ' · Admin rev: $' + adminRevUsdt.toFixed(2) + ' USDT';
             } else {
                 if (statusEl) statusEl.textContent = 'RESERVE DISCREPANCY';
                 if (detailEl) detailEl.textContent =
-                    'Shortfall: ' + discrepancyAptm.toFixed(4) + ' APTM ($' + discrepancyUSD.toFixed(2) + ')' +
+                    'Shortfall: $' + discrepancyUsd.toFixed(2) +
                     ' · Coverage: ' + coverageRatio + '%' +
-                    ' · Users owed: ' + userLiabilityAptm.toFixed(4) + ' APTM' +
-                    ' · Admin rev: ' + adminRevAptm.toFixed(4) + ' APTM' +
-                    ' · Price: $' + livePrice.toFixed(4);
+                    ' · Users owed: $' + userLiabilityUsdt.toFixed(2) + ' USDT' +
+                    ' · Admin rev: $' + adminRevUsdt.toFixed(2) + ' USDT';
             }
 
             console.log(
-                '[Solvency] Contract: ' + contractBalAptm.toFixed(6) + ' APTM' +
-                ' | userLiability=' + userLiabilityAptm.toFixed(6) + ' APTM' +
-                ' | adminRev=' + adminRevAptm.toFixed(6) + ' APTM' +
-                ' | totalOwed=' + totalLiabilityAptm.toFixed(6) + ' APTM' +
-                ' | price=$' + livePrice.toFixed(4) +
+                '[Solvency] Contract: $' + contractBalUsdt.toFixed(4) + ' USDT' +
+                ' | userLiability=$' + userLiabilityUsdt.toFixed(4) + ' USDT' +
+                ' | adminRev=$' + adminRevUsdt.toFixed(4) + ' USDT' +
                 ' | ' + (isSolvent ? 'SOLVENT ✓' : 'DISCREPANCY ✗') +
                 ' (' + coverageRatio + '% coverage)'
             );
