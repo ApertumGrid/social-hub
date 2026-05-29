@@ -8712,12 +8712,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <div class="vault-stars" id="user-stars">0 ★</div>
                     <div class="vault-divider"></div>
                     <div class="vault-stat-row">
-                        <span class="vault-label" style="margin:0;">Deposited</span>
-                        <span class="vault-stat-val gold"><span id="sidebar-purchased-stars">0.00</span> ★</span>
+                        <span class="vault-label" style="margin:0;">Purchased</span>
+                        <span class="vault-stat-val gold"><span id="sidebar-purchased-stars">0.0</span> ★</span>
                     </div>
-                    <div class="vault-stat-row">
-                        <span class="vault-label" style="margin:0;">Earned</span>
-                        <span class="vault-stat-val teal"><span id="sidebar-earned-stars">0</span> ★</span>
+                    <div class="vault-stat-row" id="sidebar-earned-row" style="display:none;">
+                        <span class="vault-label" style="margin:0; color:var(--teal);">+ Earned</span>
+                        <span class="vault-stat-val teal">+<span id="sidebar-earned-stars">0</span> ★</span>
                     </div>
                 </div>
                 <div class="vault-card-premium vault-card-aptm">
@@ -11760,12 +11760,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // Spendable = deposited minus already-spent stars (tracked in Firestore)
             currentUsdtBalance = Math.max(0, depositedHuman - (_spentStars * CONFIG.STAR_USD));
-            currentEarnedUsdt  = withdrawableHuman;
             currentAptmBalance = currentUsdtBalance; // legacy alias
 
             // Stars = spendable USDT / $0.01
             purchasedStars  = Math.max(0, Math.floor(currentUsdtBalance / CONFIG.STAR_USD * 10) / 10);
-            creatorEarnings = Math.floor(withdrawableHuman / CONFIG.STAR_USD * 10) / 10;
+            // creatorEarnings comes from Firestore only — on-chain withdrawableUSDT is 0
+            // until settlement and must not overwrite the Firestore value
+            creatorEarnings = 0;
 
             if (window.db) {
                 const userRef = window.fs.doc(window.db, 'user_balances', addr.toLowerCase());
@@ -11774,9 +11775,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     await window.fs.setDoc(userRef, { stars: 0, creatorStars: 0, depositedUsdt: 0, lastSync: Date.now(), address: addr.toLowerCase() });
                 } else {
                     const d = snap.data();
-                    // Merge Firebase creatorStars (off-chain earned) with on-chain withdrawable
+                    // Firestore creatorStars is the source of truth for earned balance
                     const fbCreatorStars = Math.max(0, parseFloat(d.creatorStars || 0));
-                    creatorEarnings = Math.max(creatorEarnings, fbCreatorStars);
+                    creatorEarnings  = fbCreatorStars;
+                    currentEarnedUsdt = fbCreatorStars * CONFIG.STAR_USD;
                     console.log(`[syncData] depositedUSDT=${depositedHuman.toFixed(4)} | withdrawableUSDT=${withdrawableHuman.toFixed(4)} | purchasedStars=${purchasedStars.toFixed(2)}★ | earnedStars=${creatorEarnings.toFixed(2)}★`);
                     await window.fs.updateDoc(userRef, { lastSync: Date.now() }).catch(() => {});
                 }
@@ -11810,10 +11812,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
                 if (!spendLockActive) {
                     currentUsdtBalance = Math.max(0, depHuman - (_spent * CONFIG.STAR_USD));
-                    currentEarnedUsdt  = earnHuman;
                     currentAptmBalance = currentUsdtBalance;
                     purchasedStars     = Math.max(0, Math.floor(currentUsdtBalance / CONFIG.STAR_USD * 10) / 10);
-                    creatorEarnings    = Math.floor(earnHuman / CONFIG.STAR_USD * 10) / 10;
+                    // Do NOT update creatorEarnings or currentEarnedUsdt from on-chain here.
+                    // withdrawableUSDT is 0 during normal operation — earnings live in Firestore
+                    // until settlement. subscribeToEarnings is the sole authority for creatorEarnings.
                     updateUI();
                 }
             } catch (e) { console.warn('[ChainRefresh] poll failed:', e); }
@@ -11906,6 +11909,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             s('user-stars',              availStr);
             s('sidebar-purchased-stars', depStars.toFixed(1));
             s('sidebar-earned-stars',    earnedStars.toFixed(1));
+            // Only show the earned row when there are actual earnings
+            const earnedRow = document.getElementById('sidebar-earned-row');
+            if (earnedRow) earnedRow.style.display = earnedStars > 0 ? '' : 'none';
             s('sidebar-equity-value',    myUsdtStr);
             s('live-price-display',      'BSC · 1 ★ = $0.01 USDT');
 
@@ -12220,7 +12226,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 purchasedStars     = Math.max(0, Math.floor((_depUsdt / CONFIG.STAR_USD - _spent) * 10) / 10);
                 currentUsdtBalance = Math.max(0, _depUsdt - (_spent * CONFIG.STAR_USD));
                 window._totalSpentStars = _spent;
-                creatorEarnings = Math.max(0, parseFloat(snap.data().creatorStars || 0));
+                creatorEarnings   = Math.max(0, parseFloat(snap.data().creatorStars || 0));
+                currentEarnedUsdt = creatorEarnings * CONFIG.STAR_USD;
             } else {
                 purchasedStars  = 0;
                 creatorEarnings = 0;
