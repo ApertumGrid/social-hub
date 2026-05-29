@@ -9012,7 +9012,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px;">
                             <div style="font-size:0.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:4px;">My USDT Balance</div>
                             <div style="font-family:var(--font-mono); font-size:0.95rem; font-weight:700; color:var(--teal); margin-top:6px;" id="earnings-aptm-value">$0.00 USDT</div>
-                            <div class="balance-note">= APTM × live price ÷ $0.01</div>
+                            <div class="balance-note">= 1 ★ = $0.01 USDT · fixed rate</div>
                         </div>
                     </div>
                     <div class="info-box">
@@ -9208,7 +9208,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 <div class="card" style="margin-bottom:14px; border-color:rgba(45,212,191,0.3); background:linear-gradient(135deg,rgba(45,212,191,0.04) 0%,transparent 100%);">
                     <div style="font-size:0.82rem; color:var(--text-primary); font-weight:700; margin-bottom:6px;">How Stars Work</div>
                     <div style="font-size:0.75rem; color:var(--text-secondary); line-height:1.7;">
-                        Stars (★) are SocialHub's on-chain currency powered by <strong style="color:#ffb300;">APTM</strong> on the Apertum network.
+                        Stars (★) are SocialHub's on-chain currency powered by <strong style="color:#26A17B;">USDT</strong> on the BNB Smart Chain.
                         Every action has a real cost and every creator earns real money — automatically, with no middlemen.
                         Platform fees go directly to <code style="font-size:0.68rem; background:rgba(255,255,255,0.06); padding:1px 5px; border-radius:4px;">admin_revenue/global</code> and are
                         completely separate from creator earnings. <strong style="color:var(--teal);">100% on-chain transparency.</strong>
@@ -14827,33 +14827,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // shows the 'Low Liquidity' warning banner.
     // ═══════════════════════════════════════════════════════════════════
     async function verifyVaultHealth() {
-        const VAULT_ADDRESS = CONFIG.CONTRACT_ADDRESS; // SocialHubV3
-        const broadcastBtn  = document.getElementById('broadcast-btn');
-        const warningEl     = document.getElementById('vault-liquidity-warning');
-        const settleBtn     = document.querySelector('button[onclick*="settleStarsToWallet"]') ||
-                              document.querySelector('button[onclick*="settleToWallet"]');
-
-        try {
-            const rpc = getRpcProvider();
-            // eth_getBalance returns the native coin (APTM) held in the vault
-            const balRaw  = await Promise.race([
-                rpc.getBalance(VAULT_ADDRESS),
-                new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
-            ]);
-            const balAptm = parseFloat(ethers.utils.formatEther(balRaw));
-
-            const isEmpty = balAptm <= 0;
-            if (broadcastBtn) broadcastBtn.disabled = isEmpty;
-            if (warningEl)    warningEl.style.display = isEmpty ? 'block' : 'none';
-
-            console.log(`[V19 VaultHealth] Vault balance: ${balAptm.toFixed(6)} APTM. Locked: ${isEmpty}`);
-            return balAptm;
-        } catch (e) {
-            console.warn('[V18 VaultHealth] RPC check failed — leaving buttons enabled:', e.message);
-            if (broadcastBtn) broadcastBtn.disabled = false;
-            if (warningEl)    warningEl.style.display = 'none';
-            return null;
-        }
+        // BSC/USDT: contract holds USDT (ERC20), not native coin — native balance check is obsolete.
+        // Always keep buttons enabled; star balance check handles spend gating.
+        const broadcastBtn = document.getElementById('broadcast-btn');
+        const warningEl    = document.getElementById('vault-liquidity-warning');
+        if (broadcastBtn) broadcastBtn.disabled = false;
+        if (warningEl)    warningEl.style.display = 'none';
+        return 1;
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -22203,7 +22183,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 </div>
                 <div class="hiw-scene-step">Step 1 of 4</div>
                 <div class="hiw-scene-title">Connect your wallet,<br>buy <span>Stars ★</span></div>
-                <div class="hiw-scene-body">Deposit <strong>$APTM</strong> and receive <strong>Stars ★</strong> instantly.<br><br><span class="hiw-scene-tag gold">1 Star = $0.01 USD</span><br><br>Stars are your on-platform currency —<br>spend them to interact with the community.</div>
+                <div class="hiw-scene-body">Deposit <strong>$USDT</strong> and receive <strong>Stars ★</strong> instantly.<br><br><span class="hiw-scene-tag gold">1 Star = $0.01 USDT</span><br><br>Stars are your on-platform currency —<br>spend them to interact with the community.</div>
             </div>
             <div class="hiw-scene" id="hiw-scene-2">
                 <div class="hiw-scene-art teal">
