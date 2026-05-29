@@ -11753,16 +11753,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;
             }
 
-            // BSC USDT = 18 decimals
-            const depositedHuman  = parseFloat(ethers.utils.formatUnits(balResult.deposited,    18)) || 0;
-            const withdrawableHuman = parseFloat(ethers.utils.formatUnits(balResult.withdrawable, 18)) || 0;
+            // USDT has 6 decimals on BSC
+            const depositedHuman    = parseFloat(ethers.utils.formatUnits(balResult.deposited    || 0, 6)) || 0;
+            const withdrawableHuman = parseFloat(ethers.utils.formatUnits(balResult.withdrawable || 0, 6)) || 0;
+            const _spentStars       = window._totalSpentStars || 0;
 
-            currentUsdtBalance = depositedHuman;
+            // Spendable = deposited minus already-spent stars (tracked in Firestore)
+            currentUsdtBalance = Math.max(0, depositedHuman - (_spentStars * CONFIG.STAR_USD));
             currentEarnedUsdt  = withdrawableHuman;
-            currentAptmBalance = depositedHuman; // legacy alias
+            currentAptmBalance = currentUsdtBalance; // legacy alias
 
-            // Stars = USDT / $0.01 (fixed, no oracle)
-            purchasedStars  = Math.floor(depositedHuman   / CONFIG.STAR_USD * 10) / 10;
+            // Stars = spendable USDT / $0.01
+            purchasedStars  = Math.max(0, Math.floor(currentUsdtBalance / CONFIG.STAR_USD * 10) / 10);
             creatorEarnings = Math.floor(withdrawableHuman / CONFIG.STAR_USD * 10) / 10;
 
             if (window.db) {
@@ -11801,15 +11803,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 const balResult = await _safeCall(() => _roC.getBalance(addr));
                 if (balResult === null) return;
 
-                const depHuman  = parseFloat(ethers.utils.formatUnits(balResult.deposited,    18)) || 0;
-                const earnHuman = parseFloat(ethers.utils.formatUnits(balResult.withdrawable, 18)) || 0;
+                const depHuman  = parseFloat(ethers.utils.formatUnits(balResult.deposited    || 0, 6)) || 0;
+                const earnHuman = parseFloat(ethers.utils.formatUnits(balResult.withdrawable || 0, 6)) || 0;
+                const _spent    = window._totalSpentStars || 0;
 
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
                 if (!spendLockActive) {
-                    currentUsdtBalance = depHuman;
+                    currentUsdtBalance = Math.max(0, depHuman - (_spent * CONFIG.STAR_USD));
                     currentEarnedUsdt  = earnHuman;
-                    currentAptmBalance = depHuman;
-                    purchasedStars     = Math.floor(depHuman  / CONFIG.STAR_USD * 10) / 10;
+                    currentAptmBalance = currentUsdtBalance;
+                    purchasedStars     = Math.max(0, Math.floor(currentUsdtBalance / CONFIG.STAR_USD * 10) / 10);
                     creatorEarnings    = Math.floor(earnHuman / CONFIG.STAR_USD * 10) / 10;
                     updateUI();
                 }
@@ -12211,13 +12214,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;
             }
             if (snap.exists()) {
-                // USDT model: purchasedStars from depositedUsdt, creatorEarnings from creatorStars
-                const _depUsdt = Math.max(0, parseFloat(snap.data().depositedUsdt || snap.data().depositedAptm || 0));
-                purchasedStars  = Math.floor(_depUsdt / CONFIG.STAR_USD * 10) / 10;
+                // USDT model: available = deposited minus spent (both tracked in Firestore)
+                const _depUsdt  = Math.max(0, parseFloat(snap.data().depositedUsdt || snap.data().depositedAptm || 0));
+                const _spent    = Math.max(0, parseFloat(snap.data().spentStarsTotal || 0));
+                purchasedStars     = Math.max(0, Math.floor((_depUsdt / CONFIG.STAR_USD - _spent) * 10) / 10);
+                currentUsdtBalance = Math.max(0, _depUsdt - (_spent * CONFIG.STAR_USD));
+                window._totalSpentStars = _spent;
                 creatorEarnings = Math.max(0, parseFloat(snap.data().creatorStars || 0));
             } else {
                 purchasedStars  = 0;
                 creatorEarnings = 0;
+                currentUsdtBalance = 0;
+                window._totalSpentStars = 0;
             }
             updateUI();
         });
@@ -28623,7 +28631,7 @@ function _copyReplayLink(link) {
             var db      = window.db;
             var now     = Date.now();
             var weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-            var price   = window.aptmPriceUSD || 0.33;
+            var price   = CONFIG.STAR_USD; // 1 ★ = $0.01 USDT fixed
 
             // ── Parallel fetches ─────────────────────────────────────────
             var [
@@ -28677,9 +28685,9 @@ function _copyReplayLink(link) {
                 .sort(function(a, b) { return b[1] - a[1]; })
                 .slice(0, 5);
 
-            // ── APTM equivalent ───────────────────────────────────────────
-            var totalAptm = ((totalStars * STAR_USD) / price).toFixed(1);
-            var weekAptm  = ((weekStars  * STAR_USD) / price).toFixed(1);
+            // ── USDT equivalent (fixed rate: 1 ★ = $0.01 USDT) ──────────
+            var totalUsdt = (totalStars * CONFIG.STAR_USD).toFixed(2);
+            var weekUsdt  = (weekStars  * CONFIG.STAR_USD).toFixed(2);
 
             var medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
             var earnRows = topEarners.length ? topEarners.map(function(e, i) {
@@ -28698,7 +28706,7 @@ function _copyReplayLink(link) {
             body.innerHTML =
                 '<div class="aa-section-title">📅 This Week (7 days)</div>' +
                 '<div class="aa-grid">' +
-                    '<div class="aa-card"><div class="aa-card-label">Stars Gifted</div><div class="aa-card-value gold">' + weekStars.toFixed(0) + ' ★</div><div class="aa-card-sub">≈ ' + weekAptm + ' APTM</div></div>' +
+                    '<div class="aa-card"><div class="aa-card-label">Stars Gifted</div><div class="aa-card-value gold">' + weekStars.toFixed(0) + ' ★</div><div class="aa-card-sub">≈ $' + weekUsdt + ' USDT</div></div>' +
                     '<div class="aa-card"><div class="aa-card-label">Gift Transactions</div><div class="aa-card-value teal">' + weekGifts + '</div><div class="aa-card-sub">live-stream gifts</div></div>' +
                     '<div class="aa-card"><div class="aa-card-label">Deposits</div><div class="aa-card-value purple">' + weekDeposits + '</div><div class="aa-card-sub">wallets funded</div></div>' +
                     '<div class="aa-card"><div class="aa-card-label">Withdrawals</div><div class="aa-card-value">' + weekSettles + '</div><div class="aa-card-sub">creator settlements</div></div>' +
@@ -28707,13 +28715,13 @@ function _copyReplayLink(link) {
                 '<div class="aa-grid">' +
                     '<div class="aa-card"><div class="aa-card-label">Total Wallets</div><div class="aa-card-value">' + allUsersSnap.size + '</div><div class="aa-card-sub">connected</div></div>' +
                     '<div class="aa-card"><div class="aa-card-label">Total Posts</div><div class="aa-card-value">' + allPostsSnap.size + '</div><div class="aa-card-sub">published</div></div>' +
-                    '<div class="aa-card"><div class="aa-card-label">Stars Gifted</div><div class="aa-card-value gold">' + totalStars.toFixed(0) + ' ★</div><div class="aa-card-sub">≈ ' + totalAptm + ' APTM</div></div>' +
+                    '<div class="aa-card"><div class="aa-card-label">Stars Gifted</div><div class="aa-card-value gold">' + totalStars.toFixed(0) + ' ★</div><div class="aa-card-sub">≈ $' + totalUsdt + ' USDT</div></div>' +
                     '<div class="aa-card"><div class="aa-card-label">Streams Completed</div><div class="aa-card-value teal">' + completedSnap.size + '</div><div class="aa-card-sub">recorded</div></div>' +
                 '</div>' +
                 '<div class="aa-section-title">🎤 Top Earners This Week</div>' +
                 earnRows;
 
-            if (subEl) subEl.textContent = 'Generated ' + nowStr + ' · APTM ≈ $' + (price || 0).toFixed(4);
+            if (subEl) subEl.textContent = 'Generated ' + nowStr + ' · 1 ★ = $0.01 USDT';
 
         } catch (err) {
             body.innerHTML = '<div class="aa-loading">❌ Failed to load: ' + (err.message || err) + '</div>';
