@@ -11753,9 +11753,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;
             }
 
-            // USDT has 6 decimals on BSC
-            const depositedHuman    = parseFloat(ethers.utils.formatUnits(balResult.deposited    || 0, 6)) || 0;
-            const withdrawableHuman = parseFloat(ethers.utils.formatUnits(balResult.withdrawable || 0, 6)) || 0;
+            // BSC USDT has 18 decimals
+            const depositedHuman    = parseFloat(ethers.utils.formatUnits(balResult.deposited    || 0, 18)) || 0;
+            const withdrawableHuman = parseFloat(ethers.utils.formatUnits(balResult.withdrawable || 0, 18)) || 0;
             const _spentStars       = window._totalSpentStars || 0;
 
             // Spendable = deposited minus already-spent stars (tracked in Firestore)
@@ -11803,8 +11803,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 const balResult = await _safeCall(() => _roC.getBalance(addr));
                 if (balResult === null) return;
 
-                const depHuman  = parseFloat(ethers.utils.formatUnits(balResult.deposited    || 0, 6)) || 0;
-                const earnHuman = parseFloat(ethers.utils.formatUnits(balResult.withdrawable || 0, 6)) || 0;
+                const depHuman  = parseFloat(ethers.utils.formatUnits(balResult.deposited    || 0, 18)) || 0;
+                const earnHuman = parseFloat(ethers.utils.formatUnits(balResult.withdrawable || 0, 18)) || 0;
                 const _spent    = window._totalSpentStars || 0;
 
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
@@ -12956,7 +12956,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     _usdtRo.balanceOf(CONFIG.CONTRACT_ADDRESS),
                     new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
                 ]);
-                contractBalUsdt = parseFloat(ethers.utils.formatUnits(_usdtRaw, 6));
+                contractBalUsdt = parseFloat(ethers.utils.formatUnits(_usdtRaw, 18));
             } catch (_e) {
                 if (bar) bar.className = 'mcd-solvency loading';
                 if (statusEl) statusEl.textContent = 'CHAIN READ PENDING';
@@ -14881,11 +14881,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
 
             const { depositAmount, earnedAmount, nonce, expiry, signature } = cfData;
-            const depWei  = ethers.utils.parseUnits(String(depositAmount),  18);
-            const earnWei = ethers.utils.parseUnits(String(earnedAmount),   18);
+            // depositAmount and earnedAmount are raw uint256 strings (6-decimal USDT)
+            // already settled on-chain by the CF — pass directly, no re-parsing
+            const depBN  = ethers.BigNumber.from(String(depositAmount  || '0'));
+            const earnBN = ethers.BigNumber.from(String(earnedAmount   || '0'));
 
             showToast('Submitting withdrawal to blockchain…');
-            const tx = await hubContract.withdrawAll(depWei, earnWei, nonce, expiry, signature, { gasLimit: 300000 });
+            const tx = await hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, { gasLimit: 300000 });
             const receipt = await tx.wait();
 
             if (!receipt || receipt.status !== 1) {
