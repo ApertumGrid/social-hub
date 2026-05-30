@@ -12238,9 +12238,71 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         });
     }
 
+    function _applyHeroBanner(url) {
+        const coverEl = document.getElementById('hero-cover');
+        if (!coverEl) return;
+        if (url) {
+            coverEl.style.backgroundImage    = 'url(' + url + ')';
+            coverEl.style.backgroundSize     = 'cover';
+            coverEl.style.backgroundPosition = 'center';
+        } else {
+            coverEl.style.backgroundImage    = '';
+            coverEl.style.backgroundSize     = '';
+            coverEl.style.backgroundPosition = '';
+        }
+    }
+
+    function _previewBannerUrl(url) {
+        const img  = document.getElementById('banner-preview-img');
+        const hint = document.getElementById('banner-preview-hint');
+        if (!img || !hint) return;
+        if (url && url.trim()) {
+            img.src = url.trim();
+            img.style.display = '';
+            hint.style.display = 'none';
+        } else {
+            img.src = '';
+            img.style.display = 'none';
+            hint.style.display = '';
+        }
+    }
+
+    function _clearBanner() {
+        const inp = document.getElementById('banner-input');
+        if (inp) inp.value = '';
+        _previewBannerUrl('');
+    }
+
+    async function _uploadBannerFile(inputEl) {
+        const file = inputEl && inputEl.files && inputEl.files[0];
+        if (!file) return;
+        if (!window.storage || !window.fsStorage) {
+            return alert('Firebase Storage not ready. Try again in a moment.');
+        }
+        const statusEl = document.getElementById('banner-upload-status');
+        if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Uploading…'; }
+        try {
+            const path      = 'banners/' + Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const storRef   = window.fsStorage.ref(window.storage, path);
+            const task      = window.fsStorage.uploadBytesResumable(storRef, file);
+            await new Promise((resolve, reject) => task.on('state_changed', null, reject, resolve));
+            const downloadURL = await window.fsStorage.getDownloadURL(task.snapshot.ref);
+            const bi = document.getElementById('banner-input');
+            if (bi) bi.value = downloadURL;
+            _previewBannerUrl(downloadURL);
+            if (statusEl) { statusEl.textContent = '✓ Uploaded'; setTimeout(() => { statusEl.style.display = 'none'; }, 2500); }
+        } catch(e) {
+            if (statusEl) statusEl.textContent = 'Upload failed — paste a URL instead';
+            console.warn('Banner upload:', e);
+        }
+        inputEl.value = '';
+    }
+
     async function saveProfile() {
-        const nameVal = document.getElementById('handle-input').value.trim();
-        const picVal  = document.getElementById('avatar-input').value.trim();
+        const nameVal   = document.getElementById('handle-input').value.trim();
+        const picVal    = document.getElementById('avatar-input').value.trim();
+        const bannerVal = (document.getElementById('banner-input') || {}).value || '';
+        const bannerUrl = bannerVal.trim();
         if (!nameVal) return alert("Please enter a display name.");
 
         // Always save to localStorage for immediate use
@@ -12248,15 +12310,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (picVal) localStorage.setItem('hub_userPic', picVal);
         userHandle = nameVal;
         if (picVal) userAvatar = picVal;
+        window.userBannerUrl = bannerUrl;
+        _applyHeroBanner(bannerUrl);
 
         // ── Persist to Firebase users collection keyed by walletAddress ──
-        // This lets the profile load automatically on reconnect from any device.
         if (window.db && userAddress) {
             try {
                 const userRef = window.fs.doc(window.db, "users", userAddress.toLowerCase());
                 await window.fs.setDoc(userRef, {
                     displayName:   nameVal,
                     avatarUrl:     picVal || userAvatar,
+                    bannerUrl:     bannerUrl,
                     walletAddress: userAddress.toLowerCase(),
                     updatedAt:     Date.now()
                 }, { merge: true });
@@ -12304,6 +12368,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (data.avatarUrl) {
                     userAvatar = data.avatarUrl;
                     localStorage.setItem('hub_userPic', data.avatarUrl);
+                }
+                if (data.bannerUrl !== undefined) {
+                    window.userBannerUrl = data.bannerUrl || '';
+                    const bannerInp = document.getElementById('banner-input');
+                    if (bannerInp) bannerInp.value = data.bannerUrl || '';
                 }
                 // Load mailbox status
                 userHasMailbox = !!(data.hasMailbox);
@@ -14041,11 +14110,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     function openHeroEditForm() {
         const overlay = document.getElementById('edit-identity-overlay');
         if (!overlay) return;
-        // Pre-fill fields with current values
         const hi = document.getElementById('handle-input');
         const ai = document.getElementById('avatar-input');
+        const bi = document.getElementById('banner-input');
         if (hi) hi.value = userHandle || '';
         if (ai) ai.value = userAvatar || '';
+        if (bi) bi.value = window.userBannerUrl || '';
+        _previewBannerUrl(window.userBannerUrl || '');
         overlay.style.display = 'flex';
         if (hi) setTimeout(() => hi.focus(), 60);
     }
@@ -16129,7 +16200,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const feedCol = document.getElementById('feed-col');
         if (feedCol) feedCol.classList.remove('wall-view');
 
-        // 4. Reset avatar glow, bio and name to defaults
+        // 4. Reset avatar glow, bio, name and banner to defaults
+        _applyHeroBanner('');
         const avatarEl = document.getElementById('hero-avatar');
         if (avatarEl) avatarEl.classList.remove('has-signal');
         const bioEl = document.getElementById('hero-bio');
@@ -16611,12 +16683,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             let resolvedName = wallName || (addrLower.slice(0,6) + '…' + addrLower.slice(-4));
             let avatarUrl    = `https://api.dicebear.com/7.x/identicon/svg?seed=${addrLower}`;
             let bioText      = '';
+            let bannerUrl    = '';
 
             if (metaSnap.exists()) {
                 const md = metaSnap.data();
                 if (md.displayName) resolvedName = md.displayName;
                 if (md.avatarUrl)   avatarUrl    = md.avatarUrl;
                 if (md.bio)         bioText      = md.bio;
+                if (md.bannerUrl)   bannerUrl    = md.bannerUrl;
+                // bannerUrl lives in 'users' collection — fetch it if not in metadata
+                if (!bannerUrl) {
+                    try {
+                        const uSnap2 = await window.fs.getDoc(window.fs.doc(window.db, 'users', addrLower));
+                        if (uSnap2.exists() && uSnap2.data().bannerUrl) bannerUrl = uSnap2.data().bannerUrl;
+                    } catch(_) {}
+                }
             } else {
                 try {
                     const uSnap = await window.fs.getDoc(window.fs.doc(window.db, 'users', addrLower));
@@ -16625,6 +16706,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         if (ud.displayName) resolvedName = ud.displayName;
                         if (ud.avatarUrl)   avatarUrl    = ud.avatarUrl;
                         if (ud.bio)         bioText      = ud.bio;
+                        if (ud.bannerUrl)   bannerUrl    = ud.bannerUrl;
                     }
                 } catch (_) {}
             }
@@ -16640,6 +16722,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (bioText) { bioEl2.textContent = bioText; bioEl2.classList.add('visible'); }
                 else          { bioEl2.textContent = '';      bioEl2.classList.remove('visible'); }
             }
+            _applyHeroBanner(bannerUrl);
         }, (_err) => { /* silently ignore — placeholder already shown */ });
 
         // ── Step 4: Aggregate stars (post hypes + signal hypes + gifts/streams via creatorStars) ───
@@ -22546,15 +22629,42 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 <!-- ════════════════════════════════════════════════════════════════
      EDIT IDENTITY MODAL — triggered from hero ✎ Edit Identity button
 ════════════════════════════════════════════════════════════════ -->
-<div id="edit-identity-overlay" style="display:none; position:fixed; inset:0; z-index:6000; background:rgba(0,0,0,0.55); align-items:center; justify-content:center;" onclick="if(event.target===this) closeHeroEditForm()">
-    <div style="background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius-lg); padding:24px; width:min(420px,90vw); box-shadow:0 8px 32px rgba(0,0,0,0.25); position:relative;">
+<div id="edit-identity-overlay" style="display:none; position:fixed; inset:0; z-index:6000; background:rgba(0,0,0,0.55); align-items:center; justify-content:center; overflow-y:auto; padding:16px 0;" onclick="if(event.target===this) closeHeroEditForm()">
+    <div style="background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius-lg); padding:24px; width:min(440px,92vw); box-shadow:0 8px 32px rgba(0,0,0,0.25); position:relative;">
         <button onclick="closeHeroEditForm()" style="position:absolute;top:14px;right:14px;background:none;border:none;font-size:1rem;color:var(--text-muted);cursor:pointer;" title="Close">✕</button>
         <div style="font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:4px;">✎ Edit Identity</div>
         <div id="edit-identity-gate-hint" style="display:none; font-size:0.72rem; color:var(--teal); background:var(--teal-dim); border:1px solid rgba(45,212,191,0.3); border-radius:8px; padding:8px 10px; margin-bottom:10px;">⚡ Set your display name &amp; avatar to start broadcasting.</div>
-        <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:16px;">Set your display name and avatar URL. Synced to Firebase.</div>
-        <input type="text" id="handle-input" class="field" placeholder="@Username" style="margin-top:0;">
-        <input type="text" id="avatar-input" class="field" placeholder="Avatar Image URL">
-        <button class="btn btn-purple" onclick="saveProfile()" style="margin-top:14px;">Sync Identity</button>
+        <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:16px;">Synced to Firebase — visible on your profile.</div>
+
+        <!-- Display name -->
+        <div style="font-size:0.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Display Name</div>
+        <input type="text" id="handle-input" class="field" placeholder="@Username" style="margin-top:0;margin-bottom:14px;">
+
+        <!-- Avatar -->
+        <div style="font-size:0.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Profile Picture</div>
+        <input type="text" id="avatar-input" class="field" placeholder="Paste image URL" style="margin-top:0;margin-bottom:14px;">
+
+        <!-- Banner -->
+        <div style="font-size:0.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Cover Banner <span style="font-weight:400;text-transform:none;color:var(--text-muted);letter-spacing:0;">(optional — shows behind your avatar)</span></div>
+        <div style="font-size:0.67rem;color:var(--text-muted);opacity:0.7;margin-bottom:8px;">Recommended size: 1500 × 500 px — wide landscape images work best.</div>
+
+        <!-- Banner live preview -->
+        <div id="banner-preview-wrap" style="width:100%;height:90px;border-radius:10px;overflow:hidden;margin-bottom:10px;background:linear-gradient(135deg,#0f0a2a,#1a0a3a);border:1px solid var(--border);position:relative;display:flex;align-items:center;justify-content:center;">
+            <img id="banner-preview-img" src="" alt="" style="width:100%;height:100%;object-fit:cover;display:none;" onerror="this.style.display='none'">
+            <span id="banner-preview-hint" style="font-size:0.7rem;color:var(--text-muted);position:absolute;">No banner set</span>
+        </div>
+
+        <!-- Banner upload button -->
+        <input type="file" id="banner-file-input" accept="image/*" style="display:none;" onchange="_uploadBannerFile(this)">
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <button onclick="document.getElementById('banner-file-input').click()" style="flex:1;padding:8px 0;border-radius:8px;border:1px dashed rgba(124,92,191,0.4);background:rgba(124,92,191,0.06);color:var(--purple-lt);font-size:0.75rem;font-weight:600;cursor:pointer;">📷 Upload Photo</button>
+            <button onclick="_clearBanner()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text-muted);font-size:0.75rem;cursor:pointer;" title="Remove banner">✕ Remove</button>
+        </div>
+        <input type="text" id="banner-input" class="field" placeholder="Or paste a banner image URL" style="margin-top:0;margin-bottom:0;" oninput="_previewBannerUrl(this.value)">
+
+        <div id="banner-upload-status" style="font-size:0.7rem;color:var(--teal);margin-top:6px;display:none;"></div>
+
+        <button class="btn btn-purple" onclick="saveProfile()" style="margin-top:18px;width:100%;">Save Profile</button>
     </div>
 </div>
 
