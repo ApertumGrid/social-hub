@@ -39,12 +39,12 @@
     <meta property="og:type"         content="website">
     <meta property="og:site_name"    content="SocialHub">
     <meta property="og:title"        content="SOCIALHUB — The Future of Social" id="og-title">
-    <meta property="og:description"  content="A decentralised social platform where every interaction has real value. Post, tip, follow — and earn." id="og-desc">
+    <meta property="og:description"  content="A Web3 social platform where your earnings are on-chain. Post, tip, follow — and earn real USDT." id="og-desc">
     <meta property="og:image"        content="https://i.postimg.cc/NM62Rv8R/Screenshot-2026-05-15-111751.png" id="og-image">
     <meta property="og:url"          content="https://socialhubglobal.com/" id="og-url">
     <meta name="twitter:card"        content="summary_large_image">
     <meta name="twitter:title"       content="SOCIALHUB — The Future of Social" id="tw-title">
-    <meta name="twitter:description" content="A decentralised social platform where every interaction has real value." id="tw-desc">
+    <meta name="twitter:description" content="A Web3 social platform where your earnings are on-chain. Post, earn real USDT, withdraw any time." id="tw-desc">
     <meta name="twitter:image"       content="https://i.postimg.cc/NM62Rv8R/Screenshot-2026-05-15-111751.png" id="tw-image">
     <link rel="canonical"            href="https://socialhubglobal.com/">
 
@@ -11536,11 +11536,50 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (typeof _ledgerUnsub === 'function')        { try { _ledgerUnsub(); } catch(_) {} }
         if (typeof _adminRevenueUnsub === 'function')  { try { _adminRevenueUnsub(); } catch(_) {} }
 
+        try { localStorage.removeItem('sh_wallet_type'); } catch(_) {}
         _setWalletDisconnectedUI();
         if (typeof updateUI === 'function') updateUI();
         showToast('Wallet disconnected.');
     }
     window.disconnectWallet = disconnectWallet;
+
+    // ── Silent auto-reconnect on page refresh ─────────────────────────────────
+    // Uses eth_accounts (no popup, no permission prompt) to check if the wallet
+    // is still authorized. If yes, calls _connectWithProvider which completes
+    // silently since MetaMask/XOVA won't re-prompt an already-approved site.
+    async function _silentAutoConnect() {
+        var savedType = '';
+        try { savedType = localStorage.getItem('sh_wallet_type') || ''; } catch(_) {}
+        if (!savedType || savedType === 'walletconnect') return;
+
+        try {
+            var eth = null;
+            if (savedType === 'xova') {
+                eth = (window.xova && window.xova.ethereum)
+                   || (window.xova && typeof window.xova.request === 'function' ? window.xova : null)
+                   || (window.ethereum && window.ethereum.isXova ? window.ethereum : null);
+            } else {
+                eth = window.ethereum;
+                if (eth && Array.isArray(eth.providers)) {
+                    eth = eth.providers.find(function(p) { return p.isMetaMask; }) || eth;
+                }
+            }
+            if (!eth || !eth.request) return;
+
+            // eth_accounts is silent — returns [] if not authorized, no popup ever
+            var accounts = await eth.request({ method: 'eth_accounts' });
+            if (!accounts || accounts.length === 0) {
+                try { localStorage.removeItem('sh_wallet_type'); } catch(_) {}
+                return;
+            }
+
+            // Wallet still authorized — reconnect without any UI prompt
+            await _connectWithProvider(savedType);
+        } catch(e) {
+            console.warn('[AutoConnect] silent reconnect failed:', e.message);
+        }
+    }
+    window._silentAutoConnect = _silentAutoConnect;
 
     // ── Chain enforcement — switches any EIP-1193 provider to BSC (56) ──
     async function _ensureApertumChain(eth) { return _ensureBSCChain(eth); } // legacy alias
@@ -11635,7 +11674,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     },
                     metadata: {
                         name:        'SocialHub',
-                        description: 'Decentralized Social Platform on BSC',
+                        description: 'Web3 Social Platform on BSC',
                         url:         'https://socialhubglobal.com',
                         icons:       ['https://socialhubglobal.com/favicon.ico']
                     }
@@ -11676,6 +11715,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Store wallet type and eth ref so we can auto-reconnect after sleep/wake
             window._shLastWalletType = walletType;
             window._shLastEth        = eth;
+
+            // Persist wallet type across page refreshes
+            try { localStorage.setItem('sh_wallet_type', walletType); } catch(_) {}
 
             // Listen for MetaMask/Xova account changes.
             // IMPORTANT: debounce with 1.5s before acting — sleep/wake triggers a
@@ -15784,10 +15826,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Fires as soon as Firebase module is ready (db set by module script)
             setTimeout(() => { subscribeAnchorCount(); }, 800);
 
-            // Auto-connect if wallet was previously connected
-            if (window.ethereum && window.ethereum.selectedAddress) {
-                await connectWallet();
-            }
+            // Silent auto-reconnect if wallet was connected before refresh
+            await _silentAutoConnect();
 
             // Start global feed
             setTimeout(() => { loadGlobalFeed(); }, 1500);
@@ -22384,7 +22424,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         </div>
         <div class="legal-section active" id="legal-whitepaper">
             <h2>Social Hub Ecosystem: The Sovereign Creator Protocol</h2>
-            <h3>Mission</h3><p>Returning financial sovereignty to creators. SocialHub is a decentralized social protocol built on the Apertum blockchain.</p>
+            <h3>Mission</h3><p>Returning financial sovereignty to creators. SocialHub is a Web3 social platform where creator earnings are settled on-chain via BSC smart contracts — verifiable by anyone, withdrawable any time.</p>
             <h3>The Star Economy</h3><ul><li><strong>80/20 Split:</strong> Creators keep 80% of all Hype revenue.</li><li><strong>90/10 Split:</strong> Users keep 90% of engagement revenue from comments and follows.</li><li><strong>Hub Landlord Model:</strong> Community Hub owners earn 40% of all guest post interaction revenue.</li></ul>
             <h3>Entry Filter</h3><p>Community Hub creation requires a one-time <strong>1,000 Star</strong> fee to ensure high-quality content.</p>
             <h3>Mailbox &amp; Communications</h3><p>A one-time <strong>25 Star</strong> activation fee unlocks private direct messaging between sovereign users.</p>
