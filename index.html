@@ -3853,6 +3853,11 @@
         .cmt-author { color: var(--gold); font-weight: 700; }
         .cmt-text   { color: var(--text-primary); white-space: pre-wrap; word-wrap: break-word; }
         .comment-list div, .comment-list p { white-space: pre-wrap; }
+        .post-hashtag {
+            color: #7c9eff; font-weight: 600; cursor: pointer;
+            transition: color 0.15s;
+        }
+        .post-hashtag:hover { color: #a8bfff; text-decoration: underline; }
         .post-body a, .cmt-text a {
             color: var(--teal);
             text-decoration: underline;
@@ -9168,6 +9173,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <div class="trending-hubs-row" id="trending-hubs-row"></div>
                 </div>
 
+                <div id="hashtag-filter-bar" style="display:none; align-items:center; gap:10px; padding:8px 14px; margin-bottom:10px; background:rgba(45,212,191,0.07); border:1px solid rgba(45,212,191,0.25); border-radius:12px;">
+                    <span style="font-size:0.78rem; font-weight:700; color:var(--teal);">🏷 <span id="hashtag-filter-label">#</span></span>
+                    <span style="font-size:0.72rem; color:var(--text-muted); flex:1;">— showing all posts with this tag</span>
+                    <button onclick="clearHashtagFilter()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.9rem;padding:2px 6px;" title="Clear filter">✕</button>
+                </div>
                 <div id="feed-items"></div>
                 <button id="load-more-btn" class="btn" onclick="showNextPage()">Load More Signals</button>
 
@@ -11138,6 +11148,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     const pageSize   = 10;
     let _wallFilter        = null;   // null = global feed; string = filter to this wallet address
     let _categoryFilter    = null;   // null = all categories; string = e.g. 'Crypto', 'Creative'…
+    let _hashtagFilter     = null;   // null = no hashtag filter; string = e.g. 'crypto'
     let isActionPending    = false;  // global transaction lock — prevents double-spend on any async action
     let _activeCommunity   = null;   // null = no community context; object = { id, name, ownerId, ... } of active Hub
     let _hubSubStatus      = 'none'; // viewer's subscription status for the active Hub: 'active' | 'expired' | 'none'
@@ -13846,18 +13857,33 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // ═══════════════════════════════════════════════════════════════════
     function linkify(text) {
         if (!text) return '';
-        // Escape any HTML special characters in the raw text first so
-        // user-supplied content cannot inject markup.
         const escaped = text
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
-        // Then replace URLs with anchor tags (URLs survive escaping intact).
-        return escaped.replace(
+        // URLs first
+        let out = escaped.replace(
             /(https?:\/\/[^\s<>"]+)/g,
             '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
         );
+        // Hashtags — only match #word at start of string or after whitespace/punctuation
+        out = out.replace(/((?:^|[\s.,!?()\[\]]))#([a-zA-Z0-9_]+)/g, function(match, pre, tag) {
+            return pre + '<span class="post-hashtag" onclick="filterByHashtag(\'' +
+                tag.toLowerCase().replace(/'/g, '') + '\')">#' + _esc(tag) + '</span>';
+        });
+        return out;
+    }
+
+    function _extractHashtags(text) {
+        const tags = [];
+        const re = /((?:^|[\s.,!?()\[\]]))#([a-zA-Z0-9_]+)/g;
+        let m;
+        while ((m = re.exec(text)) !== null) {
+            const t = m[2].toLowerCase();
+            if (!tags.includes(t)) tags.push(t);
+        }
+        return tags;
     }
 
     function getVimeoId(url) {
@@ -14026,8 +14052,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // is never a desync between the two systems.  jumpToPost() calls
     // _activateTab('home') directly so the full restore always runs.
     function _activateTab(tabName, desktopNavEl) {
-        // 1. Clear wall filter if one is active (e.g. from a "View Post" jump
-        //    that was preceded by a user-wall view).
+        // 1. Clear wall + hashtag filters if active
+        _hashtagFilter = null;
+        const _hfBar = document.getElementById('hashtag-filter-bar');
+        if (_hfBar) _hfBar.style.display = 'none';
         if (_wallFilter) {
             _wallFilter = null;
             visibleCount = 10;
@@ -15985,6 +16013,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 );
                 const passesCat     = !_categoryFilter || (post.category || 'Global') === _categoryFilter;
                 const passesVisible = post.isVisible !== false;
+                const passesHashtag = !_hashtagFilter ||
+                    (post.hashtags && post.hashtags.includes(_hashtagFilter)) ||
+                    !!(post.text && new RegExp('(?:^|[\\s])#' + _hashtagFilter + '(?:[\\s.,!?]|$)', 'i').test(post.text));
                 // ── Community isolation: non-community posts always pass.
                 // Community posts pass only when on a wall, or when the user follows that hub.
                 const passesGlobal = !post.communityId || !!_wallFilter ||
@@ -15994,7 +16025,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     !!_wallFilter ||
                     _followingSet.has((post.authorAddr  || '').toLowerCase()) ||
                     _followingSet.has((post.communityId || '').toLowerCase());
-                const passesFilter  = passesWall && passesCat && passesVisible && passesGlobal && passesFollowing;
+                const passesFilter  = passesWall && passesCat && passesVisible && passesHashtag && passesGlobal && passesFollowing;
 
                 // ── REMOVED or filtered out: delete the card if it exists ────────
                 if (change.type === 'removed' || !passesFilter) {
@@ -16327,6 +16358,33 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!window._deepLinkScrollPending) window.scrollTo({ top: 0, behavior: 'smooth' });
         if (feedCol && !window._deepLinkScrollPending) feedCol.scrollTop = 0;
     }
+
+    function filterByHashtag(tag) {
+        if (!tag) return;
+        _hashtagFilter = tag.toLowerCase();
+        _wallFilter    = null;
+        _categoryFilter = null;
+        const bar   = document.getElementById('hashtag-filter-bar');
+        const label = document.getElementById('hashtag-filter-label');
+        if (bar)   bar.style.display   = 'flex';
+        if (label) label.textContent   = '#' + _hashtagFilter;
+        // Reset hero if showing
+        const hero = document.getElementById('profile-hero');
+        if (hero) hero.classList.remove('visible');
+        const signalsBar = document.getElementById('signals-bar');
+        if (signalsBar) signalsBar.classList.remove('signals-hidden');
+        loadGlobalFeed();
+    }
+
+    function clearHashtagFilter() {
+        _hashtagFilter = null;
+        const bar = document.getElementById('hashtag-filter-bar');
+        if (bar) bar.style.display = 'none';
+        loadGlobalFeed();
+    }
+
+    window.filterByHashtag  = filterByHashtag;
+    window.clearHashtagFilter = clearHashtagFilter;
 
     // Expose for onclick attributes
     window.viewUserWall = viewUserWall;
@@ -17022,7 +17080,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             try {
                 await window.fs.updateDoc(
                     window.fs.doc(window.db, 'posts', targetId),
-                    { text: txt, isEdited: true, editedAt: Date.now() }
+                    { text: txt, hashtags: _extractHashtags(txt), isEdited: true, editedAt: Date.now() }
                 );
                 showToast('Post updated ✓');
             } catch (e) {
@@ -17247,6 +17305,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 feePaid:       feeAmount,
                 isBoosted:     false,
                 category:      postCategory,
+                hashtags:      _extractHashtags(txt),
                 communityId:   communityId,
                 communityName: communityName
             });
@@ -17490,6 +17549,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const confirmed = confirm(
             'Promote this post to the Daily Signals at the top? (Cost: 1 Star) \uD83D\uDCE1'
         );
+
         if (!confirmed) {
             isActionPending = false;
             if (feedEl) feedEl.style.pointerEvents = '';
