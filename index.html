@@ -18746,13 +18746,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     // ─── Icons and text templates per notification type ───────────────────────────
     var _NOTIF_META = {
-        hype:      { icon: '❤️', label: 'liked your post' },
-        comment:   { icon: '💬', label: 'commented on your post' },
-        follow:    { icon: '👥', label: 'followed your Hub' },
-        tip:       { icon: '💫', label: 'sent you a tip' },
-        subscribe: { icon: '🔒', label: 'subscribed to your Hub' },
-        rain:      { icon: '🌧️', label: 'rained stars on your post' },
-        dm:        { icon: '✉️', label: 'sent you a message' }
+        hype:        { icon: '❤️',  label: 'liked your post' },
+        comment:     { icon: '💬',  label: 'commented on your post' },
+        follow:      { icon: '👥',  label: 'followed your Hub' },
+        user_follow: { icon: '👤',  label: 'followed you' },
+        tip:         { icon: '💫',  label: 'sent you a gift' },
+        subscribe:   { icon: '🔒',  label: 'subscribed to your Hub' },
+        rain:        { icon: '🌧️', label: 'rained stars on your post' },
+        dm:          { icon: '✉️',  label: 'sent you a message' }
     };
 
     function _notifRelTime(ts) {
@@ -19435,6 +19436,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 _followingSet.add(recipientAddr);
                 if (followBtn) { followBtn.textContent = '✓ Following'; followBtn.classList.add('following'); }
                 showToast('Following! 0.9★ sent to creator.');
+                writeNotif(recipientAddr, 'user_follow', {});
                 if (typeof loadMyNetwork === 'function') loadMyNetwork();
             }
 
@@ -22411,6 +22413,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             updateUI();
             updateDrawerUI();
             showToast('\ud83c\udf27 Rained ' + amount + '\u2605! Creator receives ' + creatorCut.toFixed(1) + '\u2605');
+            writeNotif(recipient, 'rain', { postId: postId, amount: amount });
 
         } catch (e) {
             console.error('[sendRain]', e);
@@ -24818,6 +24821,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Update stream stars counter
             updateDoc(doc(window.db, LIVE_COL, sid), { starsEarned: increment(tier.cost), hypeCount: increment(1) }).catch(() => {});
             showToast(`${tier.icon} ${tier.name} sent to ${recipientHandle}!`);
+            writeNotif(recipientAddr.toLowerCase(), 'tip', { giftTier: tierKey, giftIcon: tier.icon, giftName: tier.name, cost: tier.cost, text: tier.icon + ' ' + tier.name + ' (' + tier.cost + '★)' });
         } catch(e) { showToast('Gift failed: ' + (e.message || String(e))); }
     };
 
@@ -24878,6 +24882,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (typeof updateUI === 'function') updateUI();
             const cut = data.creatorCut != null ? data.creatorCut : (tier.cost * 0.8);
             showToast(`${tier.icon} ${tier.name} sent! Creator gets ${cut.toFixed(1)} ★ instantly.`);
+            if (data.creatorAddress) writeNotif(data.creatorAddress, 'tip', { giftTier: tierKey, giftIcon: tier.icon, giftName: tier.name, cost: tier.cost, text: tier.icon + ' ' + tier.name + ' (' + tier.cost + '★)' });
 
         } catch(e) {
             console.warn('[Gift] Error:', e);
