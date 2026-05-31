@@ -5613,17 +5613,18 @@
         #flicks-feed {
             display: flex;
             flex-direction: column;
-            gap: 12px;
-            max-height: calc(100vh - 160px);
+            gap: 0;
             overflow-y: scroll;
             scroll-snap-type: y mandatory;
             scroll-behavior: smooth;
             border-radius: 16px;
+            /* height set dynamically by setFeedMode() to fill available feed-col space */
+            min-height: 300px;
         }
         #flicks-feed::-webkit-scrollbar { display: none; }
         .flick-card {
             position: relative;
-            height: calc(100vh - 160px);
+            /* height set dynamically in buildFlickCard() */
             min-height: 480px;
             scroll-snap-align: start;
             flex-shrink: 0;
@@ -20032,10 +20033,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (flicksFeed)    flicksFeed.style.display    = isFlicks ? 'flex' : 'none';
         if (flickComposer) flickComposer.style.display = isFlicks ? '' : 'none';
 
+        const feedCol = document.getElementById('feed-col');
+
         if (isFlicks) {
-            loadFlicksFeed();
+            // Stop #feed-col from capturing scroll — let #flicks-feed own it
+            if (feedCol) feedCol.style.overflowY = 'hidden';
+            // Measure available height after composer is rendered
+            setTimeout(() => {
+                if (!feedCol || !flicksFeed) return;
+                const composerH = (flickComposer && flickComposer.offsetHeight) ? flickComposer.offsetHeight + 14 : 0;
+                const availH    = feedCol.clientHeight - composerH - 40;
+                flicksFeed.style.height = Math.max(320, availH) + 'px';
+                loadFlicksFeed();
+            }, 50);
             return;
         }
+
+        // Restore outer scroll when leaving Flicks
+        if (feedCol)   feedCol.style.overflowY   = '';
+        if (flicksFeed) flicksFeed.style.height   = '';
 
         if (mode === 'following') {
             if (!userAddress) {
@@ -20110,6 +20126,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const card = document.createElement('div');
         card.className = 'flick-card';
         card.setAttribute('data-id', postId);
+        // Match card height to the scroll container so each card fills exactly one screen
+        const flicksContainer = document.getElementById('flicks-feed');
+        const cardH = (flicksContainer && flicksContainer.clientHeight > 100)
+            ? flicksContainer.clientHeight
+            : Math.round(window.innerHeight * 0.82);
+        card.style.height = cardH + 'px';
 
         card.innerHTML =
             '<video class="flick-video" src="' + post.media + '" autoplay muted loop playsinline crossorigin="anonymous"></video>' +
