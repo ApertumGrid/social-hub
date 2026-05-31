@@ -20223,8 +20223,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const displayName = post.author || 'Anonymous';
         const displayPic  = post.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + (post.authorAddr || 'anon'));
         const addrShort   = post.authorAddr ? post.authorAddr.slice(0,6) + '…' + post.authorAddr.slice(-4) : '';
-        // Linkify: hashtags become clickable, URLs get interstitial warning, 160 char limit
-        const caption     = post.text ? linkify(post.text.slice(0, 160)) : '';
+        // Linkify caption — hashtags + URLs active. Show 300 chars with expand if longer.
+        const _rawText    = post.text || '';
+        const _truncated  = _rawText.length > 300;
+        const _displayed  = _truncated ? _rawText.slice(0, 300) : _rawText;
+        const caption     = _rawText ? (linkify(_displayed) + (_truncated
+            ? '… <span onclick="this.parentElement.innerHTML=\'' +
+              linkify(_rawText).replace(/'/g, '&#39;').replace(/\n/g, ' ') +
+              '\'" style="color:#ff6b35;cursor:pointer;font-weight:600;">more</span>'
+            : '')) : '';
 
         const card = document.createElement('div');
         card.className = 'flick-card';
