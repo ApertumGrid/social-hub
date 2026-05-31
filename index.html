@@ -15064,12 +15064,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             deductSpendableStars._calledFromDeductStars = false;
         }
 
-        // Re-fetch star counts from Firebase to confirm atomic write landed
+        // Re-fetch star counts from Firebase to confirm atomic write landed.
+        // purchasedStars is DERIVED (depositedUsdt - spentStarsTotal), not stored
+        // directly — reading snap.data().stars would give 0 and wipe the display.
         try {
             const snap = await window.fs.getDoc(window.fs.doc(window.db, 'user_balances', userAddress.toLowerCase()));
             if (snap.exists()) {
-                purchasedStars  = snap.data().stars        || 0;
-                creatorEarnings = snap.data().creatorStars  || 0;
+                const d         = snap.data();
+                const deposited = parseFloat(d.depositedUsdt || d.depositedAptm || 0);
+                const spent     = parseFloat(d.spentStarsTotal || 0);
+                currentUsdtBalance = Math.max(0, deposited - (spent * CONFIG.STAR_USD));
+                currentAptmBalance = currentUsdtBalance;
+                purchasedStars     = Math.max(0, Math.floor(currentUsdtBalance / CONFIG.STAR_USD * 10) / 10);
+                creatorEarnings    = parseFloat(d.creatorStars || 0);
+                currentEarnedUsdt  = creatorEarnings * CONFIG.STAR_USD;
             }
         } catch (_) {}
         updateUI();   // final confirmed refresh — spend lock still active
@@ -17532,7 +17540,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
 
         if ((livePurchased + liveEarned) < SIGNAL_FEE) {
-
             isActionPending = false;
             if (feedEl) feedEl.style.pointerEvents = '';
             return showToast(`Need ${SIGNAL_FEE}★ to promote. Current: ${(livePurchased + liveEarned).toFixed(1)}★`);
