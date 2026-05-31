@@ -5760,6 +5760,50 @@
             text-align: center;
             padding: 20px;
         }
+
+        /* ── FLICK COMMENT SHEET ─────────────────────────────────────── */
+        #flick-comment-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 9991;
+            background: rgba(0,0,0,0.5);
+        }
+        #flick-comment-sheet {
+            display: none;
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            z-index: 9992;
+            background: var(--bg-panel);
+            border-radius: 20px 20px 0 0;
+            height: 62vh;
+            flex-direction: column;
+            box-shadow: 0 -4px 30px rgba(0,0,0,0.45);
+            border-top: 1px solid var(--border);
+        }
+        .flick-sheet-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px 12px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        #flick-comment-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 16px;
+        }
+        #flick-comment-list::-webkit-scrollbar { width: 3px; }
+        #flick-comment-list::-webkit-scrollbar-thumb { background: rgba(124,92,191,0.25); border-radius: 3px; }
+        .flick-sheet-input-row {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+            padding: 10px 14px 14px;
+            border-top: 1px solid var(--border);
+            flex-shrink: 0;
+        }
         /* Feed toggle help icon + tooltip */
         .feed-toggle-help {
             position: relative;
@@ -20179,7 +20223,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const displayName = post.author || 'Anonymous';
         const displayPic  = post.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + (post.authorAddr || 'anon'));
         const addrShort   = post.authorAddr ? post.authorAddr.slice(0,6) + '…' + post.authorAddr.slice(-4) : '';
-        const caption     = post.text ? escHtml(post.text).slice(0, 120) : '';
+        // Linkify: hashtags become clickable, URLs get interstitial warning, 160 char limit
+        const caption     = post.text ? linkify(post.text.slice(0, 160)) : '';
 
         const card = document.createElement('div');
         card.className = 'flick-card';
@@ -20206,14 +20251,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         '<div class="flick-author-addr">' + addrShort + '</div>' +
                     '</div>' +
                 '</div>' +
-                (caption ? '<div class="flick-caption">' + caption + '</div>' : '') +
+                (caption ? '<div class="flick-caption" onclick="flickCaptionClick(event)" style="cursor:default;">' + caption + '</div>' : '') +
             '</div>' +
             '<div class="flick-actions">' +
                 '<div class="flick-action-btn pact" id="flick-like-btn-' + postId + '" onclick="hypeElement(\'' + safeAddr + '\',\'hp-' + postId + '\')" title="Like (1★)">' +
                     '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' +
                     '<span id="hp-' + postId + '">' + (post.hypes || 0) + '</span>' +
                 '</div>' +
-                '<div class="flick-action-btn" onclick="openShareModal(\'' + postId + '\',event)" title="Share">' +
+                '<div class="flick-action-btn" onclick="openFlickComments(\'' + postId + '\',\'' + safeAddr + '\')" title="Comment (1★)">' +
+                    '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
+                    '<span id="cc-' + postId + '">0</span>' +
+                '</div>' +
+            '<div class="flick-action-btn" onclick="openShareModal(\'' + postId + '\',event)" title="Share">' +
                     '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
                     '<span>Share</span>' +
                 '</div>' +
@@ -20377,6 +20426,108 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
     }
     window.toggleFlickSound = toggleFlickSound;
+
+    // ── Flick caption click — interstitial for external links ─────────
+    function flickCaptionClick(e) {
+        const a = e.target.closest('a');
+        if (!a || !a.href) return;
+        const href = a.href;
+        if (href.startsWith('javascript:') || href.includes('socialhubglobal.com')) return;
+        e.preventDefault();
+        if (confirm(
+            'You are leaving SocialHub\n' +
+            '─────────────────────────────────\n' +
+            decodeURIComponent(href) + '\n\n' +
+            'External links are not verified by SocialHub.\n' +
+            'Proceed?'
+        )) {
+            window.open(href, '_blank', 'noopener,noreferrer');
+        }
+    }
+    window.flickCaptionClick = flickCaptionClick;
+
+    // ── Flick comment sheet ───────────────────────────────────────────
+    let _flickCommentPostId   = null;
+    let _flickCommentAuthor   = null;
+
+    function openFlickComments(postId, authorAddr) {
+        // Unsub any previous listener
+        if (_flickCommentPostId && _commentListeners[_flickCommentPostId]) {
+            try { _commentListeners[_flickCommentPostId](); } catch(_) {}
+            delete _commentListeners[_flickCommentPostId];
+            // Reset list ID back to generic
+            const oldList = document.getElementById('list-' + _flickCommentPostId);
+            if (oldList) oldList.id = 'flick-comment-list';
+        }
+
+        _flickCommentPostId = postId;
+        _flickCommentAuthor = authorAddr;
+
+        // Rename the list container so loadComments can find it
+        const list = document.getElementById('flick-comment-list');
+        if (list) list.id = 'list-' + postId;
+
+        // Show sheet + backdrop
+        const sheet    = document.getElementById('flick-comment-sheet');
+        const backdrop = document.getElementById('flick-comment-backdrop');
+        if (sheet)    sheet.style.display    = 'flex';
+        if (backdrop) backdrop.style.display = 'block';
+
+        // Load comments (live onSnapshot)
+        loadComments(postId);
+
+        // Focus input
+        setTimeout(() => {
+            const inp = document.getElementById('flick-comment-input');
+            if (inp) inp.focus();
+        }, 300);
+    }
+    window.openFlickComments = openFlickComments;
+
+    function closeFlickComments() {
+        // Unsub listener
+        if (_flickCommentPostId && _commentListeners[_flickCommentPostId]) {
+            try { _commentListeners[_flickCommentPostId](); } catch(_) {}
+            delete _commentListeners[_flickCommentPostId];
+        }
+        // Reset list ID
+        if (_flickCommentPostId) {
+            const list = document.getElementById('list-' + _flickCommentPostId);
+            if (list) { list.id = 'flick-comment-list'; list.innerHTML = ''; }
+        }
+        _flickCommentPostId = null;
+        _flickCommentAuthor = null;
+
+        const sheet    = document.getElementById('flick-comment-sheet');
+        const backdrop = document.getElementById('flick-comment-backdrop');
+        if (sheet)    sheet.style.display    = 'none';
+        if (backdrop) backdrop.style.display = 'none';
+
+        // Clear input
+        const inp = document.getElementById('flick-comment-input');
+        if (inp) { inp.value = ''; inp.style.height = ''; }
+    }
+    window.closeFlickComments = closeFlickComments;
+
+    async function submitFlickComment() {
+        if (!_flickCommentPostId || !_flickCommentAuthor) return;
+        const inp  = document.getElementById('flick-comment-input');
+        const text = (inp?.value || '').trim();
+        if (!text) return showToast('Type a comment first.');
+
+        // addComment() reads from #input-{postId} — inject a temp element
+        const temp = document.createElement('textarea');
+        temp.id    = 'input-' + _flickCommentPostId;
+        temp.value = text;
+        temp.style.display = 'none';
+        document.body.appendChild(temp);
+
+        await addComment(_flickCommentAuthor, _flickCommentPostId);
+
+        temp.remove();
+        if (inp) { inp.value = ''; inp.style.height = ''; }
+    }
+    window.submitFlickComment = submitFlickComment;
 
     // ═══════════════════════════════════════════════════════════════════
     // FEATURE 2 — PROFILE HEADER LIKE (90/10 split)
@@ -30163,6 +30314,28 @@ function _copyReplayLink(link) {
         </div>
     </div>
 </div>
+<!-- ══ FLICK COMMENT SHEET ═══════════════════════════════════════════ -->
+<div id="flick-comment-backdrop" onclick="closeFlickComments()"></div>
+<div id="flick-comment-sheet">
+    <div class="flick-sheet-header">
+        <span style="font-size:0.88rem;font-weight:700;color:var(--text-primary);">Comments</span>
+        <span style="font-size:0.68rem;color:var(--text-muted);font-family:var(--font-mono);">1★ · 80% to creator</span>
+        <button onclick="closeFlickComments()" style="background:none;border:none;color:var(--text-muted);font-size:1.1rem;cursor:pointer;padding:2px 6px;line-height:1;">✕</button>
+    </div>
+    <div id="flick-comment-list"></div>
+    <div class="flick-sheet-input-row">
+        <textarea id="flick-comment-input" class="field" rows="1"
+            placeholder="Add a comment (1★)…"
+            style="flex:1;resize:none;overflow:hidden;min-height:38px;max-height:100px;line-height:1.5;margin-top:0;"
+            oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px'"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitFlickComment();}"></textarea>
+        <button onclick="submitFlickComment()"
+            style="padding:8px 16px;border-radius:20px;border:1px solid var(--purple-lt);background:rgba(124,92,191,0.12);color:var(--purple-lt);font-size:0.78rem;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap;">
+            Send 1★
+        </button>
+    </div>
+</div>
+
 <!-- ══ FLICK COMPOSER MODAL ══════════════════════════════════════════ -->
 <div id="flick-composer-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.78);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px;">
     <div id="flick-composer" class="card" style="width:100%;max-width:500px;border-color:rgba(255,107,53,0.35);position:relative;">
