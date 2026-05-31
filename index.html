@@ -9113,6 +9113,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         </div>
                     </div>
                 </div>
+
+                <!-- Slim Flick header — replaces the full tab row when in Flicks mode -->
+                <div id="flick-header" style="display:none;align-items:center;justify-content:space-between;padding:0 0 8px;gap:10px;">
+                    <button onclick="setFeedMode('global')" style="padding:7px 14px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-size:0.72rem;font-weight:700;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;flex-shrink:0;">← Feed</button>
+                    <span style="font-size:0.72rem;font-weight:800;letter-spacing:1.8px;text-transform:uppercase;color:#ff6b35;">▶ FLICKS</span>
+                    <button onclick="openFlickComposer()" style="padding:7px 14px;border-radius:20px;border:1px solid rgba(255,107,53,0.5);background:rgba(255,107,53,0.1);color:#ff6b35;font-size:0.72rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;flex-shrink:0;">+ Post</button>
+                </div>
+
                 <div class="feed-heading">Signal Feed</div>
 
                 <!-- Compose -->
@@ -14321,6 +14329,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (loadMoreBtn)  loadMoreBtn.style.display  = '';
             const feedToggleRow = document.querySelector('.feed-toggle-row');
             if (feedToggleRow) feedToggleRow.style.display = '';
+            const _flickHdr = document.getElementById('flick-header');
+            if (_flickHdr) _flickHdr.style.display = 'none';
             // Restore signals + category bar on home — clear both class and inline style
             if (signalsBarEl)  { signalsBarEl.classList.remove('signals-hidden');  signalsBarEl.style.display  = ''; }
             if (categoryBarEl) { categoryBarEl.classList.remove('signals-hidden'); categoryBarEl.style.display = ''; }
@@ -14366,11 +14376,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 const _fc  = document.getElementById('feed-col');
                 const _ff  = document.getElementById('flicks-feed');
                 const _tc  = document.getElementById('trending-hubs-card');
-                const _ft  = document.getElementById('flick-post-trigger');
+                const _fh  = document.getElementById('flick-header');
+                const _tr  = document.querySelector('.feed-toggle-row');
                 if (_fc)  _fc.style.overflowY  = '';
                 if (_ff)  { _ff.style.display = 'none'; _ff.style.height = ''; }
                 if (_tc)  _tc.style.display   = '';
-                if (_ft)  _ft.style.display   = 'none';
+                if (_fh)  _fh.style.display   = 'none';
+                if (_tr)  _tr.style.display   = '';
                 if (signalsBarEl)  signalsBarEl.style.display  = '';
                 if (categoryBarEl) categoryBarEl.style.display = '';
                 const _gb = document.getElementById('feed-toggle-global');
@@ -14735,7 +14747,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     fromAddress:    senderAddr,
                     toAddress:      recipientNorm || CONFIG.ADMIN_ADDRESS,
                     address:        senderAddr,
-                    description:    isComment ? "Spent 1★ on Comment Hype" : "Spent 1★ on Post Hype",
+                    description:    isComment ? "Spent 1★ on Comment Hype" : (_followMode === 'flicks' ? "Spent 1★ on Flick Hype" : "Spent 1★ on Post Hype"),
                     postId:         isComment ? null : entityId,
                     timestamp:      Date.now(),
                     schema_version: 2
@@ -20046,12 +20058,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (loadMoreBtn) loadMoreBtn.style.display = isFlicks ? 'none' : '';
         if (feedHeading) feedHeading.style.display = isFlicks ? 'none' : '';
         if (hashtagBar && isFlicks) hashtagBar.style.display = 'none';
-        if (flicksFeed)  flicksFeed.style.display  = isFlicks ? 'flex' : 'none';
+        if (flicksFeed)    flicksFeed.style.display    = isFlicks ? 'flex' : 'none';
 
-        const flickTrigger = document.getElementById('flick-post-trigger');
-        if (flickTrigger)  flickTrigger.style.display = isFlicks ? '' : 'none';
+        const flickHeader  = document.getElementById('flick-header');
+        const toggleRow    = document.querySelector('.feed-toggle-row');
+        if (flickHeader)   flickHeader.style.display   = isFlicks ? 'flex' : 'none';
+        if (toggleRow)     toggleRow.style.display     = isFlicks ? 'none' : '';
 
-        // Elements that live above the Flicks feed and must be hidden in Flicks mode
+        // Elements above the Flicks feed hidden in Flicks mode
         const signalsBar   = document.getElementById('signals-bar');
         const categoryBar  = document.getElementById('category-bar');
         const trendingCard = document.getElementById('trending-hubs-card');
@@ -20063,10 +20077,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (feedCol) feedCol.style.overflowY = 'hidden';
             setTimeout(() => {
                 if (!feedCol || !flicksFeed) return;
-                const toggleRow  = document.querySelector('.feed-toggle-row');
-                const toggleH    = toggleRow    ? toggleRow.offsetHeight    + 8 : 0;
-                const triggerH   = flickTrigger ? flickTrigger.offsetHeight + 8 : 0;
-                const availH     = feedCol.clientHeight - toggleH - triggerH - 40;
+                const hdrH   = flickHeader ? flickHeader.offsetHeight + 8 : 0;
+                const availH = feedCol.clientHeight - hdrH - 40;
                 flicksFeed.style.height = Math.max(320, availH) + 'px';
                 loadFlicksFeed();
             }, 60);
@@ -20197,7 +20209,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 (caption ? '<div class="flick-caption">' + caption + '</div>' : '') +
             '</div>' +
             '<div class="flick-actions">' +
-                '<div class="flick-action-btn" id="flick-like-btn-' + postId + '" onclick="hypeElement(\'' + safeAddr + '\',\'hp-' + postId + '\')" title="Like (1★)">' +
+                '<div class="flick-action-btn pact" id="flick-like-btn-' + postId + '" onclick="hypeElement(\'' + safeAddr + '\',\'hp-' + postId + '\')" title="Like (1★)">' +
                     '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' +
                     '<span id="hp-' + postId + '">' + (post.hypes || 0) + '</span>' +
                 '</div>' +
