@@ -5638,7 +5638,8 @@
         .flick-video {
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;
+            background: #000;
         }
         .flick-overlay {
             position: absolute;
@@ -9356,27 +9357,27 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 </div>
                 <div id="feed-items"></div>
 
-                <!-- FLICK COMPOSER — only visible when Flicks tab is active -->
-                <div id="flick-composer" style="display:none;" class="card" style="margin-bottom:14px;border-color:rgba(255,107,53,0.3);">
-                    <div style="font-size:0.68rem;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#ff6b35;margin-bottom:12px;">▶ Post a Flick · 5★</div>
-                    <textarea id="flick-caption" class="field" rows="2" placeholder="Caption (optional)…" style="margin-bottom:10px;resize:none;overflow:hidden;min-height:52px;max-height:200px;line-height:1.6;" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,200)+'px'"></textarea>
-                    <div style="margin-bottom:10px;">
-                        <label for="flick-file-input" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border:1.5px dashed rgba(255,107,53,0.4);border-radius:10px;cursor:pointer;color:#ff6b35;font-size:0.8rem;font-weight:600;background:rgba(255,107,53,0.05);transition:background 0.2s;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-                            <span id="flick-file-label">Tap to choose video</span>
-                        </label>
-                        <input type="file" id="flick-file-input" accept="video/*" style="display:none;" onchange="handleFlickFileSelect(this)">
-                    </div>
-                    <div id="flick-preview-wrap" style="display:none;margin-bottom:10px;">
-                        <video id="flick-preview-vid" style="width:100%;max-height:220px;border-radius:10px;background:#000;" controls></video>
-                    </div>
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-                        <span style="font-size:0.68rem;color:var(--text-muted);font-family:var(--font-mono);">5★ ($0.05 USDT) · 100% platform</span>
-                        <button onclick="postFlick()" style="padding:8px 20px;border-radius:20px;border:1px solid #ff6b35;background:rgba(255,107,53,0.12);color:#ff6b35;font-size:0.78rem;font-weight:700;cursor:pointer;transition:all 0.15s;letter-spacing:0.3px;">▶ Post Flick</button>
+                <!-- Flicks scroll container — composer sits inside so it scrolls away naturally -->
+                <div id="flicks-feed" style="display:none;">
+                    <div id="flick-composer" class="card" style="flex-shrink:0;margin:0 0 0;border-color:rgba(255,107,53,0.3);">
+                        <div style="font-size:0.68rem;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#ff6b35;margin-bottom:12px;">▶ Post a Flick · 5★</div>
+                        <textarea id="flick-caption" class="field" rows="2" placeholder="Caption (optional)…" style="margin-bottom:10px;resize:none;overflow:hidden;min-height:52px;max-height:200px;line-height:1.6;" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,200)+'px'"></textarea>
+                        <div style="margin-bottom:10px;">
+                            <label for="flick-file-input" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border:1.5px dashed rgba(255,107,53,0.4);border-radius:10px;cursor:pointer;color:#ff6b35;font-size:0.8rem;font-weight:600;background:rgba(255,107,53,0.05);transition:background 0.2s;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                                <span id="flick-file-label">Tap to choose video</span>
+                            </label>
+                            <input type="file" id="flick-file-input" accept="video/*" style="display:none;" onchange="handleFlickFileSelect(this)">
+                        </div>
+                        <div id="flick-preview-wrap" style="display:none;margin-bottom:10px;">
+                            <video id="flick-preview-vid" style="width:100%;max-height:220px;border-radius:10px;background:#000;" controls></video>
+                        </div>
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                            <span style="font-size:0.68rem;color:var(--text-muted);font-family:var(--font-mono);">5★ ($0.05 USDT) · 100% platform</span>
+                            <button onclick="postFlick()" style="padding:8px 20px;border-radius:20px;border:1px solid #ff6b35;background:rgba(255,107,53,0.12);color:#ff6b35;font-size:0.78rem;font-weight:700;cursor:pointer;transition:all 0.15s;letter-spacing:0.3px;">▶ Post Flick</button>
+                        </div>
                     </div>
                 </div>
-
-                <div id="flicks-feed" style="display:none;"></div>
                 <button id="load-more-btn" class="btn" onclick="showNextPage()">Load More Signals</button>
 
             </div><!-- /page-home -->
@@ -20016,42 +20017,52 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (followingBtn) followingBtn.classList.toggle('active', mode === 'following');
         if (flicksBtn)    flicksBtn.classList.toggle('active',    mode === 'flicks');
 
-        const feedItems      = document.getElementById('feed-items');
-        const flicksFeed     = document.getElementById('flicks-feed');
-        const flickComposer  = document.getElementById('flick-composer');
-        const composer       = document.getElementById('composer-card');
-        const loadMoreBtn    = document.getElementById('load-more-btn');
-        const feedHeading    = document.querySelector('.feed-heading');
-        const hashtagBar     = document.getElementById('hashtag-filter-bar');
-        const isFlicks       = mode === 'flicks';
+        const feedItems   = document.getElementById('feed-items');
+        const flicksFeed  = document.getElementById('flicks-feed');
+        const composer    = document.getElementById('composer-card');
+        const loadMoreBtn = document.getElementById('load-more-btn');
+        const feedHeading = document.querySelector('.feed-heading');
+        const hashtagBar  = document.getElementById('hashtag-filter-bar');
+        const feedCol     = document.getElementById('feed-col');
+        const isFlicks    = mode === 'flicks';
 
-        if (feedItems)     feedItems.style.display     = isFlicks ? 'none' : '';
-        if (composer)      composer.style.display      = isFlicks ? 'none' : '';
-        if (loadMoreBtn)   loadMoreBtn.style.display   = isFlicks ? 'none' : '';
-        if (feedHeading)   feedHeading.style.display   = isFlicks ? 'none' : '';
+        if (feedItems)   feedItems.style.display   = isFlicks ? 'none' : '';
+        if (composer)    composer.style.display    = isFlicks ? 'none' : '';
+        if (loadMoreBtn) loadMoreBtn.style.display = isFlicks ? 'none' : '';
+        if (feedHeading) feedHeading.style.display = isFlicks ? 'none' : '';
         if (hashtagBar && isFlicks) hashtagBar.style.display = 'none';
-        if (flicksFeed)    flicksFeed.style.display    = isFlicks ? 'flex' : 'none';
-        if (flickComposer) flickComposer.style.display = isFlicks ? '' : 'none';
+        if (flicksFeed)  flicksFeed.style.display  = isFlicks ? 'flex' : 'none';
 
-        const feedCol = document.getElementById('feed-col');
+        // Elements that live above the Flicks feed and must be hidden in Flicks mode
+        const signalsBar   = document.getElementById('signals-bar');
+        const categoryBar  = document.getElementById('category-bar');
+        const trendingCard = document.getElementById('trending-hubs-card');
 
         if (isFlicks) {
-            // Stop #feed-col from capturing scroll — let #flicks-feed own it
+            // Hide everything above the Flick scroll container
+            if (signalsBar)   signalsBar.style.display   = 'none';
+            if (categoryBar)  categoryBar.style.display  = 'none';
+            if (trendingCard) trendingCard.style.display = 'none';
+            // Lock outer scroll so #flicks-feed owns all scroll events
             if (feedCol) feedCol.style.overflowY = 'hidden';
-            // Measure available height after composer is rendered
+            // Measure after DOM updates so we get accurate heights
             setTimeout(() => {
                 if (!feedCol || !flicksFeed) return;
-                const composerH = (flickComposer && flickComposer.offsetHeight) ? flickComposer.offsetHeight + 14 : 0;
-                const availH    = feedCol.clientHeight - composerH - 40;
+                const toggleRow = document.querySelector('.feed-toggle-row');
+                const toggleH   = toggleRow ? toggleRow.offsetHeight + 10 : 0;
+                const availH    = feedCol.clientHeight - toggleH - 40;
                 flicksFeed.style.height = Math.max(320, availH) + 'px';
                 loadFlicksFeed();
-            }, 50);
+            }, 60);
             return;
         }
 
-        // Restore outer scroll when leaving Flicks
-        if (feedCol)   feedCol.style.overflowY   = '';
-        if (flicksFeed) flicksFeed.style.height   = '';
+        // Restore everything when leaving Flicks
+        if (feedCol)    feedCol.style.overflowY  = '';
+        if (flicksFeed) flicksFeed.style.height  = '';
+        if (signalsBar)   signalsBar.style.display   = '';
+        if (categoryBar)  categoryBar.style.display  = '';
+        if (trendingCard) trendingCard.style.display = '';
 
         if (mode === 'following') {
             if (!userAddress) {
@@ -20083,7 +20094,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     async function loadFlicksFeed() {
         const container = document.getElementById('flicks-feed');
         if (!container) return;
-        container.innerHTML = '<div class="flick-empty"><div style="font-size:1.6rem">▶</div><div>Loading Flicks…</div></div>';
+
+        // Remove any previously loaded flick cards and status messages
+        // but keep #flick-composer which lives inside the container
+        Array.from(container.children).forEach(el => {
+            if (el.id !== 'flick-composer') el.remove();
+        });
+
+        const placeholder = document.createElement('div');
+        placeholder.className = 'flick-empty';
+        placeholder.innerHTML = '<div style="font-size:1.6rem">▶</div><div>Loading Flicks…</div>';
+        container.appendChild(placeholder);
+
         if (!window.db || !window.fs) return;
         try {
             const q = window.fs.query(
@@ -20093,16 +20115,19 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 window.fs.limit(20)
             );
             const snap = await window.fs.getDocs(q);
+            placeholder.remove();
+
             if (snap.empty) {
-                container.innerHTML =
-                    '<div class="flick-empty">' +
+                const empty = document.createElement('div');
+                empty.className = 'flick-empty';
+                empty.innerHTML =
                     '<div style="font-size:2.4rem">🎬</div>' +
                     '<div style="font-weight:700;font-size:0.95rem;color:var(--text-primary);">No Flicks yet</div>' +
-                    '<div>Upload a portrait video to post the first Flick (5★)</div>' +
-                    '</div>';
+                    '<div>Scroll up to post the first Flick (5★)</div>';
+                container.appendChild(empty);
                 return;
             }
-            container.innerHTML = '';
+
             snap.forEach(doc => {
                 if (doc.data().isVisible === false) return;
                 const card = buildFlickCard(doc.id, doc.data());
@@ -20110,7 +20135,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             });
         } catch (e) {
             console.error('[loadFlicksFeed]', e);
-            container.innerHTML = '<div class="flick-empty">Could not load Flicks. Try again.</div>';
+            placeholder.remove();
+            const err = document.createElement('div');
+            err.className = 'flick-empty';
+            err.textContent = 'Could not load Flicks. Try again.';
+            container.appendChild(err);
         }
     }
     window.loadFlicksFeed = loadFlicksFeed;
