@@ -20361,12 +20361,48 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         );
         if (!confirmed) return;
 
-        showToast('Uploading Flick…');
+        // Show progress bar, disable post button
+        const _fpBar   = document.getElementById('flick-upload-bar');
+        const _fpPct   = document.getElementById('flick-upload-pct');
+        const _fpLabel = document.getElementById('flick-upload-label');
+        const _fpWrap  = document.getElementById('flick-upload-progress');
+        const _fpBtn   = document.getElementById('flick-post-btn');
+        if (_fpWrap) _fpWrap.style.display = 'block';
+        if (_fpBtn)  { _fpBtn.disabled = true; _fpBtn.textContent = 'Uploading…'; }
+        if (_fpBar)  _fpBar.style.width = '5%';
+        if (_fpPct)  _fpPct.textContent = '5%';
+
+        // Hook into Firebase upload progress
         let mediaUrl = '';
         try {
-            mediaUrl = await uploadToFirebaseStorage(_flickSelectedFile);
+            mediaUrl = await new Promise((resolve, reject) => {
+                if (!window.storage || !window.fsStorage) return reject(new Error('Firebase Storage not ready.'));
+                const timestamp   = Date.now();
+                const safeName    = _flickSelectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+                const storagePath = 'media/' + timestamp + '_' + safeName;
+                const storageRef  = window.fsStorage.ref(window.storage, storagePath);
+                const uploadTask  = window.fsStorage.uploadBytesResumable(storageRef, _flickSelectedFile);
+                uploadTask.on('state_changed',
+                    (snap) => {
+                        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+                        if (_fpBar)  _fpBar.style.width  = pct + '%';
+                        if (_fpPct)  _fpPct.textContent  = pct + '%';
+                        if (_fpLabel) _fpLabel.textContent = 'Uploading… ' + (snap.bytesTransferred / 1048576).toFixed(1) + ' MB';
+                    },
+                    (err) => reject(err),
+                    async () => {
+                        const url = await window.fsStorage.getDownloadURL(uploadTask.snapshot.ref);
+                        resolve(url);
+                    }
+                );
+            });
+            if (_fpLabel) _fpLabel.textContent = 'Upload complete!';
+            if (_fpBar)   _fpBar.style.width   = '100%';
+            if (_fpPct)   _fpPct.textContent   = '100%';
             showToast('Upload complete! Posting…');
         } catch (e) {
+            if (_fpWrap) _fpWrap.style.display = 'none';
+            if (_fpBtn)  { _fpBtn.disabled = false; _fpBtn.textContent = '▶ Post Flick'; }
             return alert('Upload failed: ' + e.message);
         }
 
@@ -20412,6 +20448,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (fileInput) fileInput.value = '';
             if (prevWrap)  prevWrap.style.display = 'none';
             if (label)     label.textContent = 'Tap to choose video';
+            if (_fpWrap)   _fpWrap.style.display = 'none';
+            if (_fpBar)    _fpBar.style.width = '0%';
+            if (_fpBtn)    { _fpBtn.disabled = false; _fpBtn.textContent = '▶ Post Flick'; }
 
             closeFlickComposer();
             showToast('Flick posted! ▶');
@@ -30359,9 +30398,19 @@ function _copyReplayLink(link) {
         <div id="flick-preview-wrap" style="display:none;margin-bottom:10px;">
             <video id="flick-preview-vid" style="width:100%;max-height:220px;border-radius:10px;background:#000;" controls></video>
         </div>
+        <!-- Upload progress — shown during upload, hidden otherwise -->
+        <div id="flick-upload-progress" style="display:none;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);margin-bottom:6px;">
+                <span id="flick-upload-label">Uploading…</span>
+                <span id="flick-upload-pct">0%</span>
+            </div>
+            <div style="height:6px;border-radius:4px;background:rgba(255,107,53,0.15);overflow:hidden;">
+                <div id="flick-upload-bar" style="height:100%;width:0%;background:#ff6b35;border-radius:4px;transition:width 0.2s;"></div>
+            </div>
+        </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
             <span style="font-size:0.68rem;color:var(--text-muted);font-family:var(--font-mono);">5★ ($0.05 USDT) · 100% platform</span>
-            <button onclick="postFlick()" style="padding:9px 22px;border-radius:20px;border:1px solid #ff6b35;background:rgba(255,107,53,0.14);color:#ff6b35;font-size:0.8rem;font-weight:700;cursor:pointer;transition:all 0.15s;letter-spacing:0.3px;">▶ Post Flick</button>
+            <button id="flick-post-btn" onclick="postFlick()" style="padding:9px 22px;border-radius:20px;border:1px solid #ff6b35;background:rgba(255,107,53,0.14);color:#ff6b35;font-size:0.8rem;font-weight:700;cursor:pointer;transition:all 0.15s;letter-spacing:0.3px;">▶ Post Flick</button>
         </div>
     </div>
 </div>
