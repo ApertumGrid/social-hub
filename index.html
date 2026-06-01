@@ -12676,11 +12676,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
                 if (!spendLockActive) {
-                    currentUsdtBalance = Math.max(0, depHuman - (_spent * CONFIG.STAR_USD));
+                    // Firestore is the source of truth for deposited balance and star spends.
+                    // On-chain deposited can differ (e.g. after adminDeductDeposit for marketplace
+                    // fees) and must NOT override Firestore — doing so causes double-deduction flicker.
+                    const _fbDep = window._firestoreDepositedUsdt || 0;
+                    const _fbSpent = window._totalSpentStars || 0;
+                    const _grossFb = Math.round(_fbDep / CONFIG.STAR_USD * 10) / 10;
+                    purchasedStars     = Math.max(0, Math.floor((_grossFb - _fbSpent) * 10) / 10);
+                    currentUsdtBalance = Math.max(0, _fbDep - (_fbSpent * CONFIG.STAR_USD));
                     currentAptmBalance = currentUsdtBalance;
-                    const _grossChain  = Math.round(depHuman / CONFIG.STAR_USD * 10) / 10;
-                    purchasedStars     = Math.max(0, Math.floor((_grossChain - _spent) * 10) / 10);
-                    // Combine: Firestore unsettled earnings + on-chain settled (withdrawableUSDT)
+                    // Only update earnings from chain
                     creatorEarnings   = (window._firestoreCreatorStars || 0) + onChainEarned;
                     currentEarnedUsdt = creatorEarnings * CONFIG.STAR_USD;
                     updateUI();
@@ -13202,7 +13207,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 const _grossStars = Math.round(_depUsdt / CONFIG.STAR_USD * 10) / 10;
                 purchasedStars     = Math.max(0, Math.floor((_grossStars - _spent) * 10) / 10);
                 currentUsdtBalance = Math.max(0, _depUsdt - (_spent * CONFIG.STAR_USD));
-                window._totalSpentStars    = _spent;
+                window._totalSpentStars       = _spent;
+                window._firestoreDepositedUsdt = _depUsdt;
                 const _fbEarned            = Math.max(0, parseFloat(snap.data().creatorStars || 0));
                 window._firestoreCreatorStars = _fbEarned;
                 // Combine Firestore unsettled + on-chain settled (withdrawableUSDT)
