@@ -5921,6 +5921,75 @@
         }
         .mkt-row { display: flex; gap: 12px; }
         .mkt-row > * { flex: 1; }
+        .mkt-section-label {
+            font-size: 0.62rem; font-weight: 800; letter-spacing: 1.8px;
+            text-transform: uppercase; color: var(--purple-lt);
+            margin: 18px 0 12px; padding-bottom: 8px;
+            border-bottom: 1px solid rgba(124,92,191,0.15);
+        }
+        .mkt-gallery-grid {
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+        }
+        .mkt-gallery-slot {
+            aspect-ratio: 1; border: 1.5px dashed rgba(124,92,191,0.3);
+            border-radius: 10px; cursor: pointer; overflow: hidden;
+            position: relative; background: var(--bg-input);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.3rem; color: var(--text-muted); transition: border-color 0.15s;
+        }
+        .mkt-gallery-slot:hover { border-color: var(--purple-lt); }
+        .mkt-gallery-slot img { width:100%; height:100%; object-fit:cover; }
+        .mkt-gallery-slot .mkt-slot-remove {
+            position:absolute; top:3px; right:3px; background:rgba(0,0,0,0.6);
+            border:none; border-radius:50%; width:18px; height:18px;
+            color:#fff; font-size:0.6rem; cursor:pointer; display:none;
+            align-items:center; justify-content:center; line-height:1;
+        }
+        .mkt-gallery-slot:hover .mkt-slot-remove { display:flex; }
+        .mkt-upload-box {
+            border: 1.5px dashed rgba(124,92,191,0.3); border-radius:10px;
+            padding:14px; text-align:center; cursor:pointer;
+            background:rgba(124,92,191,0.04); transition:border-color 0.15s;
+            font-size:0.78rem; color:var(--text-muted);
+        }
+        .mkt-upload-box:hover { border-color:var(--purple-lt); color:var(--purple-lt); }
+        .mkt-upload-preview { width:100%; max-height:140px; object-fit:cover; border-radius:8px; margin-top:8px; }
+        .mkt-toggle-row { display:flex; gap:8px; }
+        .mkt-toggle-btn {
+            flex:1; padding:7px 10px; border-radius:10px;
+            border:1px solid var(--border); background:transparent;
+            color:var(--text-muted); font-size:0.75rem; font-weight:600;
+            cursor:pointer; transition:all 0.15s; text-align:center;
+        }
+        .mkt-toggle-btn.active {
+            border-color:var(--purple-lt); background:rgba(124,92,191,0.12);
+            color:var(--purple-lt);
+        }
+        /* Reviews */
+        .mkt-star { color: var(--gold); font-size: 0.9rem; }
+        .mkt-review-card {
+            padding:12px; border:1px solid var(--border); border-radius:12px;
+            margin-bottom:10px; background:var(--bg-input);
+        }
+        .mkt-review-header { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+        .mkt-review-stars { color:var(--gold); font-size:0.85rem; }
+        .mkt-review-author { font-size:0.72rem; color:var(--text-muted); font-family:var(--font-mono); }
+        .mkt-review-text { font-size:0.8rem; color:var(--text-secondary); line-height:1.5; }
+        /* Verified badge */
+        .mkt-verified { color:var(--gold); font-size:0.7rem; font-weight:700; }
+        /* Star rating buttons */
+        .mkt-star-btn { color: var(--text-muted) !important; }
+        .mkt-star-btn.active { color: var(--gold) !important; }
+        /* Availability dot */
+        .mkt-avail-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:4px; }
+        .mkt-avail-dot.available { background:#22c55e; box-shadow:0 0 6px rgba(34,197,94,0.5); }
+        .mkt-avail-dot.busy { background:#ef4444; }
+        /* Stock badge */
+        .mkt-stock-badge {
+            font-size:0.62rem; font-weight:700; padding:2px 8px; border-radius:10px;
+            background:rgba(240,180,41,0.12); border:1px solid rgba(240,180,41,0.3);
+            color:var(--gold);
+        }
 
         /* Feed toggle help icon + tooltip */
         .feed-toggle-help {
@@ -20754,7 +20823,81 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         writing:   '✍️ Writing',   custom:   '🎬 Custom Content'
     };
 
-    let _mktCurrentListing = null; // listing object open in detail modal
+    let _mktCurrentListing = null;
+    let _mktThumbFile      = null;
+    let _mktVideoFile      = null;
+    let _mktGalleryFiles   = [];
+    let _mktStockType      = 'unlimited';
+    let _mktAvailability   = 'available';
+
+    async function uploadMktFile(file, subfolder) {
+        if (!window.storage || !window.fsStorage) throw new Error('Firebase Storage not ready.');
+        const ext  = (file.name.split('.').pop() || 'bin').toLowerCase();
+        const path = 'marketplace/' + (userAddress || 'anon').toLowerCase() + '/' + subfolder + '/' + Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
+        const storageRef = window.fsStorage.ref(window.storage, path);
+        const task = window.fsStorage.uploadBytesResumable(storageRef, file);
+        await new Promise((resolve, reject) => task.on('state_changed', null, reject, resolve));
+        return window.fsStorage.getDownloadURL(task.snapshot.ref);
+    }
+
+    function handleMktThumbUpload(input) {
+        const file = input.files?.[0];
+        if (!file) return;
+        _mktThumbFile = file;
+        const preview = document.getElementById('mkt-thumb-preview');
+        if (preview) { preview.src = URL.createObjectURL(file); preview.style.display = 'block'; }
+        const box = document.getElementById('mkt-thumb-box');
+        if (box) { const d = box.querySelector('div'); if (d) d.textContent = '✅ ' + file.name.slice(0, 30); }
+    }
+    window.handleMktThumbUpload = handleMktThumbUpload;
+
+    function handleMktVideoUpload(input) {
+        const file = input.files?.[0];
+        if (!file) return;
+        _mktVideoFile = file;
+        const preview = document.getElementById('mkt-video-preview');
+        if (preview) { preview.src = URL.createObjectURL(file); preview.style.display = 'block'; }
+        const box = document.getElementById('mkt-video-box');
+        if (box) { const d = box.querySelector('div'); if (d) d.textContent = '✅ ' + file.name.slice(0, 30); }
+    }
+    window.handleMktVideoUpload = handleMktVideoUpload;
+
+    function handleMktGallery(input, index) {
+        const file = input.files?.[0];
+        if (!file) return;
+        _mktGalleryFiles[index] = file;
+        const slot = document.getElementById('mkt-slot-' + index);
+        if (!slot) return;
+        slot.innerHTML = '<img src="' + URL.createObjectURL(file) + '" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">' +
+            '<button class="mkt-slot-remove" onclick="event.stopPropagation();clearMktGallerySlot(' + index + ')">✕</button>';
+        slot.onclick = null;
+    }
+    window.handleMktGallery = handleMktGallery;
+
+    function clearMktGallerySlot(index) {
+        _mktGalleryFiles[index] = null;
+        const slot = document.getElementById('mkt-slot-' + index);
+        if (!slot) return;
+        slot.innerHTML = '+<input type="file" id="mkt-gallery-' + index + '" accept="image/*" style="display:none;" onchange="handleMktGallery(this,' + index + ')">';
+        slot.onclick = () => document.getElementById('mkt-gallery-' + index).click();
+    }
+    window.clearMktGallerySlot = clearMktGallerySlot;
+
+    function setStockType(type) {
+        _mktStockType = type;
+        document.getElementById('mkt-stock-unlimited')?.classList.toggle('active', type !== 'limited');
+        document.getElementById('mkt-stock-limited')?.classList.toggle('active', type === 'limited');
+        const cnt = document.getElementById('mkt-stock-count');
+        if (cnt) cnt.style.display = type === 'limited' ? '' : 'none';
+    }
+    window.setStockType = setStockType;
+
+    function setAvailability(status) {
+        _mktAvailability = status;
+        document.getElementById('mkt-avail-yes')?.classList.toggle('active', status === 'available');
+        document.getElementById('mkt-avail-no')?.classList.toggle('active', status !== 'available');
+    }
+    window.setAvailability = setAvailability;
 
     async function loadMarketplace(category, catEl) {
         // Update active category pill
@@ -20809,11 +20952,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const catLabel  = MKT_CATEGORIES[listing.category] || listing.category;
         const isInstant = listing.deliveryType === 'instant';
         const thumb     = listing.thumbnailUrl
-            ? `background-image:url('${listing.thumbnailUrl}');background-size:cover;background-position:center;`
+            ? 'background-image:url(\'' + listing.thumbnailUrl + '\');background-size:cover;background-position:center;'
             : 'background:linear-gradient(135deg,rgba(124,92,191,0.25),rgba(45,212,191,0.12));';
         const rating    = listing.avgRating ? '⭐ ' + parseFloat(listing.avgRating).toFixed(1) : '';
         const sold      = listing.soldCount  ? listing.soldCount + ' sold' : '';
         const stats     = [sold, rating].filter(Boolean).join(' · ');
+
+        const verified  = (listing.soldCount || 0) >= 10
+            ? '<span class="mkt-verified" title="Verified Seller — 10+ sales">✓</span> '
+            : '';
+        const availDot  = !isInstant && listing.availability
+            ? '<span class="mkt-avail-dot ' + listing.availability + '" title="' + listing.availability + '"></span>'
+            : '';
+        const stockLeft = listing.stockType === 'limited' && listing.stockCount !== null
+            ? '<span style="position:absolute;bottom:8px;right:8px;"><span class="mkt-stock-badge">' + listing.stockCount + ' left</span></span>'
+            : '';
 
         card.innerHTML =
             '<div class="mkt-card-thumb" style="' + thumb + '">' +
@@ -20821,10 +20974,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 '<span class="mkt-delivery-pill ' + (isInstant ? 'instant' : 'service') + '">' +
                     (isInstant ? '⚡ Instant' : '🤝 Service') +
                 '</span>' +
+                stockLeft +
             '</div>' +
             '<div class="mkt-card-body">' +
-                '<div class="mkt-card-title">' + escHtml(listing.title || '') + '</div>' +
-                '<div class="mkt-card-seller">by ' + escHtml(listing.sellerName || 'Creator') + '</div>' +
+                '<div class="mkt-card-title">' + availDot + escHtml(listing.title || '') + '</div>' +
+                '<div class="mkt-card-seller">' + verified + 'by ' + escHtml(listing.sellerName || 'Creator') + '</div>' +
                 '<div class="mkt-card-price">★ ' + (listing.priceStars || 0).toLocaleString() + '</div>' +
                 (stats ? '<div class="mkt-card-stats">' + stats + '</div>' : '') +
                 '<button class="mkt-buy-btn" onclick="event.stopPropagation();openListingDetail(\'' + id + '\',null)">View & Buy →</button>' +
@@ -20835,7 +20989,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     async function openListingDetail(id, listing) {
         if (!listing) {
-            // Fetch from Firestore if not passed
             try {
                 const snap = await window.fs.getDoc(window.fs.doc(window.db, 'marketplace_listings', id));
                 if (!snap.exists()) return showToast('Listing not found.');
@@ -20852,39 +21005,148 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const daysLeft  = listing.expiresAt
             ? Math.max(0, Math.ceil((listing.expiresAt - Date.now()) / 86400000))
             : null;
+        const verified  = (listing.soldCount || 0) >= 10
+            ? '<span class="mkt-verified">✓ Verified Seller</span>'
+            : '';
+
+        // Intro video section
+        const videoHtml = listing.introVideoUrl
+            ? '<video src="' + listing.introVideoUrl + '" style="width:100%;max-height:220px;border-radius:12px;background:#000;margin-bottom:14px;" controls preload="metadata"></video>'
+            : '';
+
+        // Hero image / thumbnail (only if no video or alongside)
+        const heroHtml = listing.thumbnailUrl && !listing.introVideoUrl
+            ? '<div style="width:100%;height:190px;border-radius:12px;background-image:url(\'' + escHtml(listing.thumbnailUrl) + '\');background-size:cover;background-position:center;margin-bottom:14px;"></div>'
+            : '';
+
+        // Gallery carousel
+        const galleries = Array.isArray(listing.galleryUrls) ? listing.galleryUrls.filter(Boolean) : [];
+        const galleryHtml = galleries.length > 0
+            ? '<div style="display:flex;gap:8px;overflow-x:auto;margin-bottom:16px;padding-bottom:4px;">' +
+                galleries.map(u => '<img src="' + escHtml(u) + '" style="height:90px;width:auto;min-width:80px;border-radius:8px;flex-shrink:0;object-fit:cover;cursor:pointer;" onclick="window.open(this.src,\'_blank\')">').join('') +
+              '</div>'
+            : '';
+
+        // What's included bullet list
+        const included = Array.isArray(listing.whatsIncluded) ? listing.whatsIncluded.filter(Boolean) : [];
+        const includedHtml = included.length > 0
+            ? '<div style="margin-bottom:14px;">' +
+                '<div style="font-size:0.68rem;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--purple-lt);margin-bottom:8px;">⭐ What\'s Included</div>' +
+                '<ul style="margin:0;padding-left:18px;">' +
+                    included.map(item => '<li style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:4px;">' + escHtml(item) + '</li>').join('') +
+                '</ul></div>'
+            : '';
+
+        // Meta details row
+        const metaItems = [];
+        if (listing.language) metaItems.push('🌍 ' + listing.language);
+        if (listing.revisions) metaItems.push('🔁 ' + listing.revisions + ' revision' + (listing.revisions === '1' ? '' : 's'));
+        if (listing.stockType === 'limited') {
+            metaItems.push('📦 ' + (listing.stockCount > 0 ? listing.stockCount + ' left' : 'Out of stock'));
+        }
+        if (!isInstant && listing.availability) {
+            metaItems.push(listing.availability === 'available'
+                ? '<span class="mkt-avail-dot available"></span>Available now'
+                : '<span class="mkt-avail-dot busy"></span>Currently busy');
+        }
+        const metaHtml = metaItems.length > 0
+            ? '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">' +
+                metaItems.map(m => '<span style="font-size:0.72rem;color:var(--text-muted);background:var(--bg-input);padding:4px 10px;border-radius:10px;">' + m + '</span>').join('') +
+              '</div>'
+            : '';
+
+        // Portfolio link
+        const portfolioHtml = listing.portfolioLink
+            ? '<div style="margin-bottom:14px;">' +
+                '<a href="' + escHtml(listing.portfolioLink) + '" target="_blank" rel="noopener noreferrer" style="font-size:0.75rem;color:var(--purple-lt);font-weight:600;">🏆 View Portfolio →</a>' +
+              '</div>'
+            : '';
+
+        // Refund policy
+        const refundHtml = listing.refundPolicy
+            ? '<div style="background:var(--bg-input);border-radius:10px;padding:10px 12px;margin-bottom:14px;">' +
+                '<div style="font-size:0.65rem;font-weight:700;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.8px;">💸 Refund Policy</div>' +
+                '<div style="font-size:0.75rem;color:var(--text-secondary);line-height:1.5;">' + escHtml(listing.refundPolicy) + '</div>' +
+              '</div>'
+            : '';
+
+        const outOfStock = listing.stockType === 'limited' && listing.stockCount <= 0;
+        const buyBtn = outOfStock
+            ? '<span style="font-size:0.8rem;color:#ef4444;font-weight:700;">Out of Stock</span>'
+            : (isSelf
+                ? '<span style="font-size:0.72rem;color:var(--text-muted);font-style:italic;">Your listing' + (daysLeft !== null ? ' · ' + daysLeft + 'd left' : '') + '</span>'
+                : '<button onclick="confirmPurchase()" style="padding:11px 24px;border-radius:20px;border:none;background:linear-gradient(135deg,#7c5cbf,#2dd4bf);color:#fff;font-size:0.85rem;font-weight:700;cursor:pointer;">Buy Now →</button>');
 
         document.getElementById('mkt-detail-content').innerHTML =
-            (listing.thumbnailUrl
-                ? '<div style="width:100%;height:180px;border-radius:12px;background-image:url(\'' + listing.thumbnailUrl + '\');background-size:cover;background-position:center;margin-bottom:16px;"></div>'
-                : '') +
-            '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">' +
+            videoHtml + heroHtml + galleryHtml +
+            '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">' +
                 '<span class="mkt-cat-badge" style="font-size:0.68rem;padding:4px 10px;background:rgba(124,92,191,0.15);color:var(--purple-lt);border-radius:10px;">' + catLabel + '</span>' +
                 '<span class="mkt-delivery-pill ' + (isInstant ? 'instant' : 'service') + '" style="font-size:0.68rem;">' +
-                    (isInstant ? '⚡ Instant delivery' : '🤝 Delivered in ' + (listing.turnaroundDays || 7) + ' days') +
+                    (isInstant ? '⚡ Instant delivery' : '🤝 ' + (listing.turnaroundDays || 7) + '-day delivery') +
                 '</span>' +
+                (verified ? verified : '') +
             '</div>' +
-            '<div style="font-size:1.1rem;font-weight:800;color:var(--text-primary);margin-bottom:6px;">' + escHtml(listing.title || '') + '</div>' +
-            '<div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:14px;">by ' + escHtml(listing.sellerName || 'Creator') + ' · ' + (listing.soldCount || 0) + ' sold</div>' +
-            '<div style="font-size:0.82rem;color:var(--text-secondary);line-height:1.65;margin-bottom:18px;white-space:pre-wrap;">' + escHtml(listing.description || '') + '</div>' +
-            '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--bg-input);border-radius:12px;margin-bottom:14px;">' +
+            '<div style="font-size:1.1rem;font-weight:800;color:var(--text-primary);margin-bottom:4px;">' + escHtml(listing.title || '') + '</div>' +
+            '<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:14px;">' +
+                'by ' + escHtml(listing.sellerName || 'Creator') +
+                (listing.soldCount ? ' · ' + listing.soldCount + ' sold' : '') +
+                (listing.avgRating ? ' · ⭐ ' + parseFloat(listing.avgRating).toFixed(1) + ' (' + (listing.reviewCount || 0) + ')' : '') +
+            '</div>' +
+            '<div style="font-size:0.82rem;color:var(--text-secondary);line-height:1.65;margin-bottom:14px;white-space:pre-wrap;">' + escHtml(listing.description || '') + '</div>' +
+            includedHtml + metaHtml + portfolioHtml + refundHtml +
+            '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--bg-input);border-radius:12px;margin-bottom:12px;">' +
                 '<div>' +
                     '<div style="font-size:1.4rem;font-weight:800;color:var(--gold);font-family:var(--font-mono);">★ ' + (listing.priceStars || 0).toLocaleString() + '</div>' +
-                    '<div style="font-size:0.68rem;color:var(--text-muted);">= $' + priceUsd + ' USDT · 90% to creator · escrow protected</div>' +
+                    '<div style="font-size:0.65rem;color:var(--text-muted);">= $' + priceUsd + ' USDT · 90% to creator · escrow</div>' +
                 '</div>' +
-                (isSelf
-                    ? '<span style="font-size:0.72rem;color:var(--text-muted);font-style:italic;">Your listing' + (daysLeft !== null ? ' · ' + daysLeft + 'd left' : '') + '</span>'
-                    : '<button onclick="confirmPurchase()" style="padding:11px 24px;border-radius:20px;border:none;background:linear-gradient(135deg,#7c5cbf,#2dd4bf);color:#fff;font-size:0.85rem;font-weight:700;cursor:pointer;">Buy Now →</button>'
-                ) +
+                buyBtn +
             '</div>' +
-            '<div style="font-size:0.68rem;color:var(--text-muted);line-height:1.6;">' +
-                '🔒 Payment is held in smart contract escrow until delivery is confirmed.' +
-                (isInstant ? ' Your download link is revealed instantly after payment.' : ' You have 7 days to confirm receipt. Auto-releases after that.') +
-            '</div>';
+            '<div style="font-size:0.65rem;color:var(--text-muted);line-height:1.6;margin-bottom:14px;">' +
+                '🔒 Payment held in smart contract escrow until delivery confirmed.' +
+                (isInstant ? ' Link revealed instantly after payment.' : ' You have 48h to raise a dispute. Auto-releases in 7 days.') +
+            '</div>' +
+            '<div id="mkt-reviews-section"></div>';
 
         const modal = document.getElementById('mkt-detail-modal');
         if (modal) modal.style.display = 'flex';
+
+        // Load reviews async
+        loadListingReviews(id);
     }
     window.openListingDetail = openListingDetail;
+
+    async function loadListingReviews(listingId) {
+        const section = document.getElementById('mkt-reviews-section');
+        if (!section) return;
+        try {
+            const q = window.fs.query(
+                window.fs.collection(window.db, 'marketplace_reviews'),
+                window.fs.where('listingId', '==', listingId),
+                window.fs.orderBy('createdAt', 'desc'),
+                window.fs.limit(10)
+            );
+            const snap = await window.fs.getDocs(q);
+            if (snap.empty) {
+                section.innerHTML = '<div style="font-size:0.72rem;color:var(--text-muted);padding:10px 0;">No reviews yet.</div>';
+                return;
+            }
+            const stars = n => '★'.repeat(n) + '☆'.repeat(5 - n);
+            let html = '<div style="font-size:0.68rem;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--purple-lt);margin-bottom:10px;">💬 Reviews</div>';
+            snap.forEach(doc => {
+                const d = doc.data();
+                html += '<div class="mkt-review-card">' +
+                    '<div class="mkt-review-header">' +
+                        '<span class="mkt-review-stars">' + stars(d.rating || 0) + '</span>' +
+                        '<span class="mkt-review-author">' + (d.buyerAddr || '').slice(0, 10) + '…</span>' +
+                    '</div>' +
+                    (d.review ? '<div class="mkt-review-text">' + escHtml(d.review) + '</div>' : '') +
+                '</div>';
+            });
+            section.innerHTML = html;
+        } catch (e) {
+            section.innerHTML = '';
+        }
+    }
 
     function closeListingDetail() {
         const modal = document.getElementById('mkt-detail-modal');
@@ -20979,7 +21241,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     function toggleTurnaround(val) {
         const wrap = document.getElementById('mkt-turnaround-wrap');
+        const availWrap = document.getElementById('mkt-availability-wrap');
         if (wrap) wrap.style.display = val === 'service' ? '' : 'none';
+        if (availWrap) availWrap.style.display = val === 'service' ? '' : 'none';
     }
     window.toggleTurnaround = toggleTurnaround;
 
@@ -20991,53 +21255,88 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const delivType   = document.getElementById('mkt-delivery-type')?.value || 'instant';
         const priceStars  = parseInt(document.getElementById('mkt-price')?.value || '0');
         const turnaround  = parseInt(document.getElementById('mkt-turnaround')?.value || '7');
-        const thumbnail   = (document.getElementById('mkt-thumbnail')?.value || '').trim();
+        const thumbUrlInput = (document.getElementById('mkt-thumbnail')?.value || '').trim();
         const delivUrl    = (document.getElementById('mkt-delivery-url')?.value || '').trim();
+        const includedRaw = (document.getElementById('mkt-included')?.value || '').trim();
+        const language    = document.getElementById('mkt-language')?.value || 'English';
+        const revisions   = document.getElementById('mkt-revisions')?.value || 'None';
+        const stockCount  = parseInt(document.getElementById('mkt-stock-count')?.value || '1');
+        const portfolioLink = (document.getElementById('mkt-portfolio')?.value || '').trim();
+        const refundPolicy = (document.getElementById('mkt-refund-policy')?.value || '').trim();
 
-        if (!title)         return showToast('Add a title.');
-        if (!desc)          return showToast('Add a description.');
+        if (!title)           return showToast('Add a title.');
+        if (!desc)            return showToast('Add a description.');
         if (priceStars < 100) return showToast('Minimum price is 100★ ($1.00).');
-        if (!delivUrl)      return showToast('Add a delivery link.');
+        if (!delivUrl)        return showToast('Add a delivery link.');
+        if (_mktStockType === 'limited' && (!stockCount || stockCount < 1)) return showToast('Enter a stock quantity.');
 
         const total = getTotalSpendableStars();
         if (total < 100) return alert('You need 100★ to pay the listing fee.\nAvailable: ' + total.toFixed(1) + '★');
 
         const ok = confirm(
-            'Create Listing\n' +
-            '─────────────────────────────\n' +
+            'Create Listing\n─────────────────────────────\n' +
             title + '\n' +
             'Price:  ' + priceStars + '★  ($' + (priceStars * CONFIG.STAR_USD).toFixed(2) + ' USDT)\n' +
             'Type:   ' + (delivType === 'instant' ? 'Instant delivery' : 'Service — ' + turnaround + ' days') + '\n' +
-            'Fee:    100★ ($1.00) — one-time, non-refundable\n' +
-            'Expiry: 6 months\n\n' +
-            'Proceed?'
+            'Fee:    100★ ($1.00) — one-time, non-refundable\nExpiry: 6 months\n\nProceed?'
         );
         if (!ok) return;
 
-        showToast('Creating listing…');
+        const btn = document.getElementById('mkt-submit-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
+        showToast('Uploading media…');
+
         try {
+            // Upload thumbnail (file overrides URL input)
+            let thumbUrl = thumbUrlInput;
+            if (_mktThumbFile) thumbUrl = await uploadMktFile(_mktThumbFile, 'thumbs');
+
+            // Upload intro video
+            let videoUrl = '';
+            if (_mktVideoFile) videoUrl = await uploadMktFile(_mktVideoFile, 'videos');
+
+            // Upload gallery images
+            const galleryUrls = [];
+            for (let i = 0; i < 5; i++) {
+                if (_mktGalleryFiles[i]) galleryUrls.push(await uploadMktFile(_mktGalleryFiles[i], 'gallery'));
+            }
+
+            const whatsIncluded = includedRaw
+                ? includedRaw.split('\n').map(l => l.trim()).filter(Boolean)
+                : [];
+
+            showToast('Creating listing…');
             const resp = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/createListing', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     sellerAddress: userAddress, title, description: desc,
                     category, deliveryType: delivType, priceStars,
-                    turnaroundDays: turnaround, thumbnailUrl: thumbnail,
-                    deliveryUrl
+                    turnaroundDays: turnaround, thumbnailUrl: thumbUrl,
+                    deliveryUrl, whatsIncluded, language, revisions,
+                    stockType: _mktStockType,
+                    stockCount: _mktStockType === 'limited' ? stockCount : null,
+                    availability: _mktAvailability,
+                    portfolioLink, refundPolicy,
+                    galleryUrls, introVideoUrl: videoUrl
                 })
             });
             const data = await resp.json();
             if (!resp.ok || !data.success) throw new Error(data.error || 'Failed to create listing.');
 
+            // Reset upload state
+            _mktThumbFile = null; _mktVideoFile = null; _mktGalleryFiles = [];
+            _mktStockType = 'unlimited'; _mktAvailability = 'available';
             closeCreateListing();
             showToast('Listing created! 🎉');
-            // Refresh marketplace if open
             if (document.getElementById('page-marketplace')?.classList.contains('active')) {
                 loadMarketplace('all', document.querySelector('#mkt-cat-row .mkt-cat'));
             }
         } catch (e) {
             console.error('[submitListing]', e);
             alert('Failed: ' + e.message);
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Submit Listing →'; }
         }
     }
     window.submitListing = submitListing;
@@ -21103,6 +21402,23 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 row.className = 'card';
                 row.style.cssText = 'margin-bottom:10px;padding:12px 14px;';
                 const statusColor = { complete:'var(--teal)', pending:'var(--gold)', refunded:'#ef4444' }[d.status] || 'var(--text-muted)';
+                const now2 = Date.now();
+                const inDisputeWindow = d.status === 'complete' && d.disputeWindowEnd && d.disputeWindowEnd > now2;
+                const hoursLeft = inDisputeWindow ? Math.ceil((d.disputeWindowEnd - now2) / 3600000) : 0;
+
+                let actionBtns = '';
+                if (d.status === 'pending' && d.deliveryUrl) {
+                    actionBtns = '<button onclick="confirmDelivery(\'' + doc.id + '\')" style="padding:6px 14px;border-radius:14px;border:1px solid rgba(45,212,191,0.4);background:rgba(45,212,191,0.08);color:var(--teal);font-size:0.72rem;font-weight:700;cursor:pointer;flex-shrink:0;">Confirm Received</button>';
+                } else if (d.status === 'complete') {
+                    if (!d.reviewed) {
+                        actionBtns += '<button onclick="openReviewModal(\'' + doc.id + '\',\'' + (d.listingId || '') + '\')" style="padding:5px 12px;border-radius:14px;border:1px solid rgba(240,180,41,0.4);background:rgba(240,180,41,0.08);color:var(--gold);font-size:0.7rem;font-weight:700;cursor:pointer;flex-shrink:0;margin-bottom:4px;">⭐ Leave Review</button>';
+                    }
+                    if (inDisputeWindow) {
+                        actionBtns += '<button onclick="raiseDisputeUI(\'' + doc.id + '\')" style="padding:5px 12px;border-radius:14px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);color:#ef4444;font-size:0.7rem;font-weight:600;cursor:pointer;flex-shrink:0;">⚠ Dispute (' + hoursLeft + 'h left)</button>';
+                    }
+                    if (actionBtns) actionBtns = '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">' + actionBtns + '</div>';
+                }
+
                 row.innerHTML =
                     '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">' +
                         '<div style="flex:1;">' +
@@ -21115,10 +21431,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                 : '<span style="font-size:0.72rem;color:var(--text-muted);">Awaiting delivery…</span>'
                             ) +
                         '</div>' +
-                        (d.status === 'pending' && d.deliveryUrl
-                            ? '<button onclick="confirmDelivery(\'' + doc.id + '\')" style="padding:6px 14px;border-radius:14px;border:1px solid rgba(45,212,191,0.4);background:rgba(45,212,191,0.08);color:var(--teal);font-size:0.72rem;font-weight:700;cursor:pointer;flex-shrink:0;">Confirm Received</button>'
-                            : ''
-                        ) +
+                        actionBtns +
                     '</div>';
                 list.appendChild(row);
             });
@@ -21142,6 +21455,78 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         } catch (e) { alert('Failed: ' + e.message); }
     }
     window.confirmDelivery = confirmDelivery;
+
+    function openReviewModal(purchaseId, listingId) {
+        const modal = document.getElementById('mkt-review-modal');
+        if (!modal) return;
+        document.getElementById('mkt-review-purchaseid').value  = purchaseId;
+        document.getElementById('mkt-review-listingid').value   = listingId;
+        document.getElementById('mkt-review-text').value        = '';
+        document.querySelectorAll('.mkt-star-btn').forEach(b => b.classList.remove('active'));
+        modal.style.display = 'flex';
+    }
+    window.openReviewModal = openReviewModal;
+
+    function closeReviewModal() {
+        const modal = document.getElementById('mkt-review-modal');
+        if (modal) modal.style.display = 'none';
+    }
+    window.closeReviewModal = closeReviewModal;
+
+    function setReviewStar(n) {
+        document.querySelectorAll('.mkt-star-btn').forEach((b, i) => {
+            b.classList.toggle('active', i < n);
+        });
+        document.getElementById('mkt-review-rating').value = n;
+    }
+    window.setReviewStar = setReviewStar;
+
+    async function submitReviewUI() {
+        const purchaseId = document.getElementById('mkt-review-purchaseid')?.value;
+        const rating     = parseInt(document.getElementById('mkt-review-rating')?.value || '0');
+        const review     = (document.getElementById('mkt-review-text')?.value || '').trim();
+        if (!rating) return showToast('Select a star rating.');
+        const btn = document.getElementById('mkt-review-submit-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+        try {
+            const resp = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/submitReview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ purchaseId, buyerAddress: userAddress, rating, review })
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.error || 'Failed to submit review.');
+            closeReviewModal();
+            showToast('Review submitted! ⭐');
+            loadMyPurchases();
+        } catch (e) {
+            alert('Failed: ' + e.message);
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Submit Review'; }
+        }
+    }
+    window.submitReviewUI = submitReviewUI;
+
+    async function raiseDisputeUI(purchaseId) {
+        const reason = prompt('Describe the issue with your purchase:\n(This will be sent to SocialHub for review)\n\nMax 500 characters:');
+        if (!reason) return;
+        if (!confirm('Submit this dispute?\n\nSocialHub will review within 24 hours. If your dispute is valid, a full refund will be issued.')) return;
+        try {
+            await window.fs.addDoc(window.fs.collection(window.db, 'marketplace_disputes'), {
+                purchaseId, buyerAddr: userAddress.toLowerCase(),
+                reason: reason.slice(0, 500), status: 'open', createdAt: Date.now()
+            });
+            // Notify admin
+            await window.fs.addDoc(window.fs.collection(window.db, 'notifications', '0x0364130308213db84f7e0b96c56a82fcdfb350c1', 'items'), {
+                type: 'marketplace_dispute', fromAddr: userAddress.toLowerCase(),
+                text: 'Dispute raised on purchase ' + purchaseId, purchaseId, timestamp: Date.now()
+            });
+            showToast('Dispute submitted. We\'ll review within 24 hours.');
+        } catch (e) {
+            alert('Failed to submit dispute: ' + e.message);
+        }
+    }
+    window.raiseDisputeUI = raiseDisputeUI;
 
     async function renewListing(listingId) {
         const total = getTotalSpendableStars();
@@ -31056,17 +31441,20 @@ function _copyReplayLink(link) {
 
 <!-- Create Listing Modal -->
 <div id="mkt-create-modal" style="display:none;position:fixed;inset:0;z-index:9995;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px;overflow-y:auto;">
-    <div id="mkt-create-form" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:20px;padding:24px;width:100%;max-width:560px;position:relative;max-height:90vh;overflow-y:auto;">
+    <div id="mkt-create-form" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:20px;padding:24px;width:100%;max-width:600px;position:relative;max-height:92vh;overflow-y:auto;">
         <button class="mkt-modal-close" onclick="closeCreateListing()">✕</button>
-        <div style="font-size:0.7rem;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);margin-bottom:16px;">New Listing · 100★ fee</div>
+        <div style="font-size:0.7rem;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);margin-bottom:4px;">New Listing · 100★ fee</div>
+        <div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:18px;">90% of every sale goes to you · On-chain escrow · 6 months active</div>
 
+        <!-- SECTION 1: BASICS -->
+        <div class="mkt-section-label">① Basics</div>
         <div class="mkt-form-group">
             <label class="mkt-form-label">Product Title</label>
             <input id="mkt-title" class="field" type="text" placeholder="e.g. A-Z Crypto Trading Masterclass" style="margin-top:0;">
         </div>
         <div class="mkt-form-group">
             <label class="mkt-form-label">Description</label>
-            <textarea id="mkt-desc" class="field" rows="4" placeholder="What does the buyer get? Be specific." style="margin-top:0;resize:none;"></textarea>
+            <textarea id="mkt-desc" class="field" rows="4" placeholder="Describe your product or service in detail." style="margin-top:0;resize:none;"></textarea>
         </div>
         <div class="mkt-row">
             <div class="mkt-form-group">
@@ -31108,17 +31496,106 @@ function _copyReplayLink(link) {
             </div>
         </div>
         <div class="mkt-form-group">
-            <label class="mkt-form-label">Thumbnail URL (optional)</label>
-            <input id="mkt-thumbnail" class="field" type="text" placeholder="https://... (image shown on listing card)" style="margin-top:0;">
+            <label class="mkt-form-label">Delivery Link <span style="color:var(--teal);">(hidden until purchase)</span></label>
+            <input id="mkt-delivery-url" class="field" type="text" placeholder="Google Drive, Dropbox, Notion, Gumroad, Calendly…" style="margin-top:0;">
+            <div style="font-size:0.65rem;color:var(--text-muted);margin-top:4px;">Only revealed after on-chain payment confirmation.</div>
+        </div>
+
+        <!-- SECTION 2: MEDIA -->
+        <div class="mkt-section-label">② Media</div>
+        <div class="mkt-form-group">
+            <label class="mkt-form-label">📸 Thumbnail</label>
+            <div class="mkt-upload-box" onclick="document.getElementById('mkt-thumb-file').click()" id="mkt-thumb-box">
+                <div>📸 Upload thumbnail image</div>
+                <div style="font-size:0.65rem;margin-top:3px;">or paste URL below</div>
+            </div>
+            <input type="file" id="mkt-thumb-file" accept="image/*" style="display:none;" onchange="handleMktThumbUpload(this)">
+            <img id="mkt-thumb-preview" class="mkt-upload-preview" style="display:none;">
+            <input id="mkt-thumbnail" class="field" type="text" placeholder="https://… (optional URL alternative)" style="margin-top:8px;">
         </div>
         <div class="mkt-form-group">
-            <label class="mkt-form-label">Delivery Link <span style="color:var(--teal);">(hidden from buyers until purchase)</span></label>
-            <input id="mkt-delivery-url" class="field" type="text" placeholder="Google Drive, Dropbox, Notion, Gumroad, Calendly link…" style="margin-top:0;">
-            <div style="font-size:0.65rem;color:var(--text-muted);margin-top:4px;">This URL is stored encrypted and only revealed after payment is confirmed on-chain.</div>
+            <label class="mkt-form-label">🎬 Intro Video <span style="color:var(--text-muted);font-weight:400;">(optional · max 60s preview)</span></label>
+            <div class="mkt-upload-box" onclick="document.getElementById('mkt-video-file').click()" id="mkt-video-box">
+                <div>🎬 Upload preview video</div>
+                <div style="font-size:0.65rem;margin-top:3px;">Buyers see this before purchasing</div>
+            </div>
+            <input type="file" id="mkt-video-file" accept="video/*" style="display:none;" onchange="handleMktVideoUpload(this)">
+            <video id="mkt-video-preview" style="display:none;width:100%;max-height:160px;border-radius:8px;margin-top:8px;background:#000;" controls></video>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;flex-wrap:wrap;gap:10px;">
-            <span style="font-size:0.68rem;color:var(--text-muted);font-family:var(--font-mono);">100★ listing fee · 90% of sales to you · 6-month listing</span>
-            <button onclick="submitListing()" style="padding:10px 24px;border-radius:20px;border:1px solid rgba(240,180,41,0.5);background:rgba(240,180,41,0.12);color:var(--gold);font-size:0.82rem;font-weight:700;cursor:pointer;">Submit Listing →</button>
+        <div class="mkt-form-group">
+            <label class="mkt-form-label">🖼️ Gallery <span style="color:var(--text-muted);font-weight:400;">(up to 5 images)</span></label>
+            <div class="mkt-gallery-grid" id="mkt-gallery-grid">
+                <div class="mkt-gallery-slot" onclick="document.getElementById('mkt-gallery-0').click()" id="mkt-slot-0">+<input type="file" id="mkt-gallery-0" accept="image/*" style="display:none;" onchange="handleMktGallery(this,0)"></div>
+                <div class="mkt-gallery-slot" onclick="document.getElementById('mkt-gallery-1').click()" id="mkt-slot-1">+<input type="file" id="mkt-gallery-1" accept="image/*" style="display:none;" onchange="handleMktGallery(this,1)"></div>
+                <div class="mkt-gallery-slot" onclick="document.getElementById('mkt-gallery-2').click()" id="mkt-slot-2">+<input type="file" id="mkt-gallery-2" accept="image/*" style="display:none;" onchange="handleMktGallery(this,2)"></div>
+                <div class="mkt-gallery-slot" onclick="document.getElementById('mkt-gallery-3').click()" id="mkt-slot-3">+<input type="file" id="mkt-gallery-3" accept="image/*" style="display:none;" onchange="handleMktGallery(this,3)"></div>
+                <div class="mkt-gallery-slot" onclick="document.getElementById('mkt-gallery-4').click()" id="mkt-slot-4">+<input type="file" id="mkt-gallery-4" accept="image/*" style="display:none;" onchange="handleMktGallery(this,4)"></div>
+            </div>
+        </div>
+
+        <!-- SECTION 3: PRODUCT DETAILS -->
+        <div class="mkt-section-label">③ Product Details</div>
+        <div class="mkt-form-group">
+            <label class="mkt-form-label">⭐ What's Included <span style="color:var(--text-muted);font-weight:400;">(one item per line)</span></label>
+            <textarea id="mkt-included" class="field" rows="4" placeholder="✓ Full HD video course (6 hours)&#10;✓ Downloadable workbook PDF&#10;✓ Access to private Discord&#10;✓ Lifetime updates" style="margin-top:0;resize:none;font-size:0.8rem;"></textarea>
+        </div>
+        <div class="mkt-row">
+            <div class="mkt-form-group">
+                <label class="mkt-form-label">🌍 Language</label>
+                <select id="mkt-language" class="mkt-select">
+                    <option value="English">English</option>
+                    <option value="Spanish">Spanish</option>
+                    <option value="French">French</option>
+                    <option value="Arabic">Arabic</option>
+                    <option value="Portuguese">Portuguese</option>
+                    <option value="Mandarin">Mandarin</option>
+                    <option value="German">German</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="mkt-form-group">
+                <label class="mkt-form-label">🔁 Revisions Included</label>
+                <select id="mkt-revisions" class="mkt-select">
+                    <option value="None">No revisions</option>
+                    <option value="1">1 revision</option>
+                    <option value="2">2 revisions</option>
+                    <option value="3">3 revisions</option>
+                    <option value="Unlimited">Unlimited revisions</option>
+                </select>
+            </div>
+        </div>
+        <div class="mkt-row">
+            <div class="mkt-form-group">
+                <label class="mkt-form-label">📦 Stock / Quantity</label>
+                <div class="mkt-toggle-row" style="margin-bottom:8px;">
+                    <button class="mkt-toggle-btn active" id="mkt-stock-unlimited" onclick="setStockType('unlimited')">Unlimited</button>
+                    <button class="mkt-toggle-btn" id="mkt-stock-limited" onclick="setStockType('limited')">Limited</button>
+                </div>
+                <input id="mkt-stock-count" class="field" type="number" min="1" placeholder="e.g. 50" style="display:none;margin-top:0;">
+            </div>
+            <div class="mkt-form-group" id="mkt-availability-wrap" style="display:none;">
+                <label class="mkt-form-label">📅 Availability</label>
+                <div class="mkt-toggle-row">
+                    <button class="mkt-toggle-btn active" id="mkt-avail-yes" onclick="setAvailability('available')">✅ Available</button>
+                    <button class="mkt-toggle-btn" id="mkt-avail-no" onclick="setAvailability('busy')">🔴 Busy</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 4: SELLER INFO -->
+        <div class="mkt-section-label">④ Seller Info</div>
+        <div class="mkt-form-group">
+            <label class="mkt-form-label">🏆 Portfolio Link <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
+            <input id="mkt-portfolio" class="field" type="text" placeholder="Link to previous work, website, or social profile" style="margin-top:0;">
+        </div>
+        <div class="mkt-form-group">
+            <label class="mkt-form-label">💸 Refund Policy</label>
+            <textarea id="mkt-refund-policy" class="field" rows="2" placeholder="e.g. No refunds after delivery. Refund available within 48h if product not as described." style="margin-top:0;resize:none;font-size:0.8rem;"></textarea>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px;flex-wrap:wrap;gap:10px;padding-top:16px;border-top:1px solid var(--border);">
+            <span style="font-size:0.68rem;color:var(--text-muted);font-family:var(--font-mono);">100★ listing fee · 90% sales to you · 6 months</span>
+            <button id="mkt-submit-btn" onclick="submitListing()" style="padding:10px 24px;border-radius:20px;border:1px solid rgba(240,180,41,0.5);background:rgba(240,180,41,0.12);color:var(--gold);font-size:0.82rem;font-weight:700;cursor:pointer;">Submit Listing →</button>
         </div>
     </div>
 </div>
@@ -31128,6 +31605,29 @@ function _copyReplayLink(link) {
     <div id="mkt-detail-inner" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:20px;padding:24px;width:100%;max-width:580px;position:relative;max-height:90vh;overflow-y:auto;">
         <button class="mkt-modal-close" onclick="closeListingDetail()">✕</button>
         <div id="mkt-detail-content"></div>
+    </div>
+</div>
+
+<!-- Review Modal -->
+<div id="mkt-review-modal" style="display:none;position:fixed;inset:0;z-index:9996;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:20px;padding:24px;width:100%;max-width:420px;position:relative;">
+        <button class="mkt-modal-close" onclick="closeReviewModal()">✕</button>
+        <input type="hidden" id="mkt-review-purchaseid">
+        <input type="hidden" id="mkt-review-listingid">
+        <input type="hidden" id="mkt-review-rating" value="0">
+        <div style="font-size:0.7rem;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);margin-bottom:14px;">Leave a Review</div>
+        <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px;">How was your experience?</div>
+        <div style="display:flex;gap:6px;margin-bottom:16px;">
+            <button class="mkt-star-btn" onclick="setReviewStar(1)" style="background:none;border:none;font-size:1.8rem;cursor:pointer;color:var(--text-muted);padding:0;transition:color 0.1s;">★</button>
+            <button class="mkt-star-btn" onclick="setReviewStar(2)" style="background:none;border:none;font-size:1.8rem;cursor:pointer;color:var(--text-muted);padding:0;transition:color 0.1s;">★</button>
+            <button class="mkt-star-btn" onclick="setReviewStar(3)" style="background:none;border:none;font-size:1.8rem;cursor:pointer;color:var(--text-muted);padding:0;transition:color 0.1s;">★</button>
+            <button class="mkt-star-btn" onclick="setReviewStar(4)" style="background:none;border:none;font-size:1.8rem;cursor:pointer;color:var(--text-muted);padding:0;transition:color 0.1s;">★</button>
+            <button class="mkt-star-btn" onclick="setReviewStar(5)" style="background:none;border:none;font-size:1.8rem;cursor:pointer;color:var(--text-muted);padding:0;transition:color 0.1s;">★</button>
+        </div>
+        <textarea id="mkt-review-text" class="field" rows="3" placeholder="Share your experience with other buyers… (optional)" style="resize:none;font-size:0.8rem;margin-bottom:14px;"></textarea>
+        <div style="display:flex;justify-content:flex-end;">
+            <button id="mkt-review-submit-btn" onclick="submitReviewUI()" style="padding:10px 24px;border-radius:20px;border:1px solid rgba(240,180,41,0.5);background:rgba(240,180,41,0.12);color:var(--gold);font-size:0.82rem;font-weight:700;cursor:pointer;">Submit Review</button>
+        </div>
     </div>
 </div>
 
