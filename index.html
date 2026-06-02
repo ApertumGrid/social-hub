@@ -5726,10 +5726,13 @@
             font-size: 0.8rem;
             color: rgba(255,255,255,0.88);
             line-height: 1.45;
-            max-height: 72px;
-            overflow: hidden;
+            max-height: 160px;
+            overflow-y: auto;
+            pointer-events: auto;
+            -webkit-overflow-scrolling: touch;
             text-shadow: 0 1px 3px rgba(0,0,0,0.65);
         }
+        .flick-caption::-webkit-scrollbar { width: 0; height: 0; }
         .flick-actions {
             position: absolute;
             bottom: 20px;
@@ -5770,6 +5773,53 @@
             gap: 14px;
             text-align: center;
             padding: 20px;
+        }
+
+        /* ── FLICKS — TRUE FULL-SCREEN IMMERSIVE ON MOBILE ───────────────
+           body.flicks-active is toggled by setFeedMode(). On phones the whole
+           feed becomes a fixed 100dvh vertical pager and every card fills exactly
+           one screen — no chrome, no black gaps, no inner scroll. */
+        @media (max-width: 768px) {
+            body.flicks-active #topnav,
+            body.flicks-active #mobile-dashboard,
+            body.flicks-active #bottom-nav,
+            body.flicks-active #cmd-orb { display: none !important; }
+
+            body.flicks-active #feed-col { padding: 0 !important; overflow: hidden !important; }
+
+            body.flicks-active #flicks-feed {
+                position: fixed !important;
+                top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                height: 100dvh !important;     /* dynamic vh — accounts for mobile browser bars */
+                max-height: none !important;
+                min-height: 0 !important;
+                margin: 0 !important;
+                border-radius: 0 !important;
+                background: #000 !important;
+                z-index: 1500 !important;
+            }
+            body.flicks-active .flick-card {
+                height: 100vh !important;
+                height: 100dvh !important;
+                min-height: 0 !important;
+                border-radius: 0 !important;
+            }
+            /* Slim floating ← Feed header over the top of the video */
+            body.flicks-active #flick-header {
+                position: fixed !important;
+                top: 0 !important; left: 0 !important; right: 0 !important;
+                z-index: 1600 !important;
+                margin: 0 !important;
+                padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 14px !important;
+                background: linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 100%) !important;
+            }
+            /* Keep overlays clear of the notch / home indicator */
+            body.flicks-active .flick-actions,
+            body.flicks-active .flick-info {
+                bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+            }
         }
 
         /* ── FLICK COMMENT SHEET ─────────────────────────────────────── */
@@ -14856,6 +14906,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // is never a desync between the two systems.  jumpToPost() calls
     // _activateTab('home') directly so the full restore always runs.
     function _activateTab(tabName, desktopNavEl) {
+        // Leaving the Flicks immersive pager whenever we switch pages — restores chrome.
+        document.body.classList.remove('flicks-active');
         // 1. Clear wall + hashtag filters if active
         _hashtagFilter = null;
         const _hfBar = document.getElementById('hashtag-filter-bar');
@@ -20772,12 +20824,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const trendingCard = document.getElementById('trending-hubs-card');
 
         if (isFlicks) {
+            // Immersive full-screen Flicks (CSS targets body.flicks-active on mobile)
+            document.body.classList.add('flicks-active');
             if (signalsBar)   signalsBar.style.display   = 'none';
             if (categoryBar)  categoryBar.style.display  = 'none';
             if (trendingCard) trendingCard.style.display = 'none';
             if (feedCol) feedCol.style.overflowY = 'hidden';
             setTimeout(() => {
                 if (!feedCol || !flicksFeed) return;
+                // Desktop sizes the feed to fill the feed column; on mobile the CSS
+                // (body.flicks-active) forces a fixed 100dvh pager and this inline
+                // height is overridden, so the math here only matters on desktop.
                 const hdrH   = flickHeader ? flickHeader.offsetHeight + 8 : 0;
                 const availH = feedCol.clientHeight - hdrH - 40;
                 flicksFeed.style.height = Math.max(320, availH) + 'px';
@@ -20787,6 +20844,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
 
         // Restore everything when leaving Flicks
+        document.body.classList.remove('flicks-active');
         if (feedCol)    feedCol.style.overflowY  = '';
         if (flicksFeed) flicksFeed.style.height  = '';
         if (signalsBar)   signalsBar.style.display   = '';
