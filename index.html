@@ -17040,7 +17040,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         visibleCount     = 10;
 
         // 2. Tear down the live identity listener (INDEX 27)
-        if (_heroUnsub) { try { _heroUnsub(); } catch(_) {} _heroUnsub = null; }
+        if (_heroUnsub)    { try { _heroUnsub();    } catch(_) {} _heroUnsub    = null; }
+        if (_heroBalUnsub) { try { _heroBalUnsub(); } catch(_) {} _heroBalUnsub = null; }
 
         // 3. Hide Profile Hero; remove wall-view mobile padding class
         const hero = document.getElementById('profile-hero');
@@ -17136,6 +17137,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     let _signalAutoCloseTimer = null; // 15s auto-close timer (INDEX 26)
     let _signalUnsub = null;          // live feed unsubscribe
     let _heroUnsub         = null;    // INDEX 27: live profile hero identity listener
+    let _heroBalUnsub      = null;    // live user_balances listener for Stars Earned refresh
     let _heroCoverGradient = '';      // cached per-wallet gradient so banner can be cleared cleanly
 
     // ─── Toggle Signal Mode in composer ─────────────────────────────────────────
@@ -17440,7 +17442,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const addrLower = targetAddr.toLowerCase();
 
         // ── Teardown any previous hero listener ───────────────────────────────────
-        if (_heroUnsub) { try { _heroUnsub(); } catch(_) {} _heroUnsub = null; }
+        if (_heroUnsub)    { try { _heroUnsub();    } catch(_) {} _heroUnsub    = null; }
+        if (_heroBalUnsub) { try { _heroBalUnsub(); } catch(_) {} _heroBalUnsub = null; }
 
         // ── Step 1: Render immediately with placeholders (prevents blank flash) ───
         document.getElementById('hero-name').textContent  = wallName || (addrLower.slice(0,6) + '…' + addrLower.slice(-4));
@@ -17678,6 +17681,58 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
             }
         } catch (e) { console.warn('Hero stats failed:', e); }
+
+        // ── Live Stars Earned refresh — re-fires when rain/gifts/hypes credit lands ──
+        // The Step 4 getDocs above runs once on load. This listener keeps the
+        // display live without reloading the whole profile.
+        if (_heroBalUnsub) { try { _heroBalUnsub(); } catch(_) {} _heroBalUnsub = null; }
+        _heroBalUnsub = window.fs.onSnapshot(
+            window.fs.doc(window.db, 'user_balances', addrLower),
+            async (balSnap) => {
+                if (!balSnap.exists()) return;
+                const creatorStars = Math.max(0, parseFloat(balSnap.data().creatorStars || 0));
+                // Re-sum post hypes + signal hypes, then add fresh creatorStars
+                try {
+                    let reHypes = 0, reCount = 0;
+                    const addrs2 = [...new Set([targetAddr, addrLower])];
+                    for (const a of addrs2) {
+                        const ps = await window.fs.getDocs(window.fs.query(
+                            window.fs.collection(window.db, 'posts'),
+                            window.fs.where('authorAddr', '==', a)
+                        ));
+                        ps.forEach(d => { reHypes += (d.data().hypes || 0); reCount++; });
+                        const ss = await window.fs.getDocs(window.fs.query(
+                            window.fs.collection(window.db, 'signals'),
+                            window.fs.where('authorAddr', '==', a)
+                        ));
+                        ss.forEach(d => { reHypes += (d.data().hypes || 0); });
+                    }
+                    const newTotal = reHypes + creatorStars;
+                    if (ownWall) {
+                        const hEl = document.getElementById('hero-hype-total');
+                        const pEl = document.getElementById('hero-post-count');
+                        const uEl = document.getElementById('hero-usdt-estimate');
+                        if (hEl) hEl.textContent = Math.round(newTotal) + ' ★';
+                        if (pEl) pEl.textContent = reCount;
+                        if (uEl) { uEl.textContent = 'Est. Value: $' + (newTotal * 0.01).toFixed(2) + ' USDT'; uEl.classList.add('visible'); }
+                    } else {
+                        const pElO = document.getElementById('hero-post-count-other');
+                        if (pElO) pElO.textContent = reCount;
+                    }
+                    // Refresh tier badge
+                    const tEl = document.getElementById('hero-tier-badge');
+                    if (tEl) {
+                        let tLabel = '', tCls = '';
+                        if      (newTotal >= 10000) { tLabel = '💎 Diamond'; tCls = 'tier-diamond'; }
+                        else if (newTotal >= 2000)  { tLabel = '🥇 Gold';    tCls = 'tier-gold'; }
+                        else if (newTotal >= 500)   { tLabel = '🥈 Silver';  tCls = 'tier-silver'; }
+                        else if (newTotal >= 100)   { tLabel = '🥉 Bronze';  tCls = 'tier-bronze'; }
+                        if (tLabel) { tEl.textContent = tLabel; tEl.className = 'hero-tier-badge ' + tCls; tEl.style.display = ''; }
+                        else tEl.style.display = 'none';
+                    }
+                } catch(_) {}
+            }
+        );
 
         // ── Marketplace badges ─────────────────────────────────────────────────────
         try {
