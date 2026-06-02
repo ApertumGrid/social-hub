@@ -7999,6 +7999,35 @@ html body #profile-hero #hero-avatar {
 html body #profile-hero .hero-tier-wrap {
     padding-bottom:10px !important; display:flex !important; align-items:center !important;
 }
+/* Marketplace seller / buyer badges on profile */
+html body #profile-hero #hero-mkt-badges {
+    display:none;
+    flex-wrap:wrap !important;
+    gap:6px !important;
+    margin-top:8px !important;
+}
+html body #profile-hero .hero-mkt-badge {
+    display:inline-flex !important;
+    align-items:center !important;
+    gap:4px !important;
+    padding:3px 11px !important;
+    border-radius:50px !important;
+    font-size:0.6rem !important;
+    font-weight:700 !important;
+    letter-spacing:0.3px !important;
+    white-space:nowrap !important;
+}
+html body #profile-hero .hero-mkt-badge.mkt-seller {
+    background:rgba(45,212,191,0.10) !important;
+    border:1px solid rgba(45,212,191,0.38) !important;
+    color:var(--teal) !important;
+}
+html body #profile-hero .hero-mkt-badge.mkt-buyer {
+    background:rgba(124,92,191,0.10) !important;
+    border:1px solid rgba(124,92,191,0.38) !important;
+    color:var(--purple-lt) !important;
+}
+
 html body #profile-hero .hero-tier-badge {
     display:none !important;
     align-items:center !important; gap:5px !important;
@@ -9526,6 +9555,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                       <div id="hero-addr"></div>
                       <div id="hero-bio"></div>
                       <div id="hero-links"></div>
+                      <div id="hero-mkt-badges" style="display:none;"></div>
                     </div>
 
                     <!-- Stat tiles -->
@@ -17631,6 +17661,37 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
             }
         } catch (e) { console.warn('Hero stats failed:', e); }
+
+        // ── Marketplace badges ─────────────────────────────────────────────────────
+        try {
+            const mktEl = document.getElementById('hero-mkt-badges');
+            if (mktEl) {
+                const [listSnap, buySnap] = await Promise.all([
+                    window.fs.getDocs(window.fs.query(
+                        window.fs.collection(window.db, 'marketplace_listings'),
+                        window.fs.where('sellerAddr', '==', addrLower),
+                        window.fs.limit(1)
+                    )),
+                    window.fs.getDocs(window.fs.query(
+                        window.fs.collection(window.db, 'marketplace_purchases'),
+                        window.fs.where('buyerAddr', '==', addrLower),
+                        window.fs.where('status', '==', 'complete'),
+                        window.fs.limit(1)
+                    ))
+                ]);
+                const isSeller = !listSnap.empty;
+                const isBuyer  = !buySnap.empty;
+                if (isSeller || isBuyer) {
+                    mktEl.innerHTML =
+                        (isSeller ? '<span class="hero-mkt-badge mkt-seller">🛍️ Marketplace Seller</span>' : '') +
+                        (isBuyer  ? '<span class="hero-mkt-badge mkt-buyer">🛒 Marketplace Buyer</span>' : '');
+                    mktEl.style.display = 'flex';
+                } else {
+                    mktEl.style.display = 'none';
+                    mktEl.innerHTML = '';
+                }
+            }
+        } catch(e) { console.warn('Marketplace badges failed:', e); }
 
         // ── Step 5: Active signals → hero row + teal avatar glow ─────────────────
         const cutoff = Date.now() - 24 * 60 * 60 * 1000;
