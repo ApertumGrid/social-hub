@@ -12882,19 +12882,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     let _anchorsUnsub = null;
     function subscribeAnchorCount() {
         if (_anchorsUnsub || !window.db) return;
-        // Load trending hubs for the right panel on first run
+        _anchorsUnsub = true; // mark as started so we don't double-init
         setTimeout(function() { if (typeof loadRpTrendingHubs === 'function') loadRpTrendingHubs(); }, 1500);
-        const col = window.fs.collection(window.db, "user_balances");
-        _anchorsUnsub = window.fs.onSnapshot(col, (snap) => {
-            const count = snap.size;
-            const formatted = count.toLocaleString();   // adds comma: 1,200
-            const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-            s('total-anchors-display', formatted);
-            s('rp-anchors',            formatted);
-            totalAnchors = count;   // keep global in sync for other callers
-        }, (err) => {
-            console.warn("Anchor count listener error:", err.message);
-        });
+        // Periodic getDocs — wallet count only needs to update every 10 minutes,
+        // not on every balance change. onSnapshot on the whole collection fired
+        // on every hype/gift/spend and re-read all user docs each time.
+        async function refreshCount() {
+            if (!window.db || !window.fs) return;
+            try {
+                const snap = await window.fs.getDocs(window.fs.collection(window.db, 'user_balances'));
+                const count = snap.size;
+                const formatted = count.toLocaleString();
+                const s = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+                s('total-anchors-display', formatted);
+                s('rp-anchors', formatted);
+                totalAnchors = count;
+            } catch(e) { console.warn('Anchor count refresh error:', e.message); }
+        }
+        refreshCount();
+        setInterval(refreshCount, 10 * 60 * 1000);
     }
 
     function _applyHeroBanner(url) {
@@ -13608,10 +13614,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 ? window.fs.query(
                     window.fs.collection(window.db, 'user_transactions'),
                     window.fs.where('address', '==', addr),
-                    window.fs.orderBy('timestamp', 'desc'))
+                    window.fs.orderBy('timestamp', 'desc'),
+                    window.fs.limit(50))
                 : window.fs.query(
                     window.fs.collection(window.db, 'user_transactions'),
-                    window.fs.where('address', '==', addr));
+                    window.fs.where('address', '==', addr),
+                    window.fs.limit(50));
             _unsub1 = window.fs.onSnapshot(q1, _mergeFire, function(e) {
                 console.warn('[Ledger Q1] failed:', e.message);
             });
@@ -13619,7 +13627,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Q2: fromAddress (new schema — sender side)
             const q2 = window.fs.query(
                 window.fs.collection(window.db, 'user_transactions'),
-                window.fs.where('fromAddress', '==', addr));
+                window.fs.where('fromAddress', '==', addr),
+                window.fs.limit(50));
             _unsub2 = window.fs.onSnapshot(q2, _mergeFire, function(e) {
                 console.warn('[Ledger Q2] failed:', e.message);
             });
@@ -13627,7 +13636,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Q3: toAddress (new schema — receiver side)
             const q3 = window.fs.query(
                 window.fs.collection(window.db, 'user_transactions'),
-                window.fs.where('toAddress', '==', addr));
+                window.fs.where('toAddress', '==', addr),
+                window.fs.limit(50));
             _unsub3 = window.fs.onSnapshot(q3, _mergeFire, function(e) {
                 console.warn('[Ledger Q3] failed:', e.message);
             });
@@ -13883,7 +13893,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         function _subscribeBalMetrics() {
             if (_balUnsub) { try { _balUnsub(); } catch (_) {} }
             _balUnsub = window.fs.onSnapshot(
-                window.fs.collection(window.db, 'user_balances'),
+                window.fs.query(
+                    window.fs.collection(window.db, 'user_balances'),
+                    window.fs.limit(5000)
+                ),
                 function(snap) {
                     let totalPurchased    = 0;
                     let totalEarned       = 0;
@@ -14565,27 +14578,32 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // Read from platform_revenue collection — the append-only all-time log.
         // This never resets (unlike admin_revenue/global which zeroes on withdrawal),
         // so the ticker always shows the true cumulative community economy figure.
-        const q = window.fs.query(
-            window.fs.collection(window.db, 'platform_revenue')
-        );
-        window.fs.onSnapshot(q, (snap) => {
-            let allTimeTotal = 0;
-            snap.forEach(d => { allTimeTotal += (d.data().amount || 0); });
-            // platform_revenue holds the platform's 20% cut of all activity.
-            // Divide by 0.2 to recover the full economy value that generated it.
-            const totalStars = Math.round(allTimeTotal / 0.2);
-            const display = totalStars > 0
-                ? totalStars.toLocaleString()
-                : '…';
-            const primaryEl = document.getElementById('ticker-stars');
-            if (primaryEl) primaryEl.textContent = display;
-            document.querySelectorAll('.ticker-stars-clone').forEach(el => {
-                el.textContent = display;
-            });
-        }, (_err) => {
-            const primaryEl = document.getElementById('ticker-stars');
-            if (primaryEl) primaryEl.textContent = '∞';
-        });
+        // Periodic getDocs with limit — ticker updates every 5 minutes.
+        // Previously an onSnapshot on the whole platform_revenue collection,
+        // which re-read every revenue doc on every new transaction.
+        async function refreshTicker() {
+            if (!window.db || !window.fs) return;
+            try {
+                const snap = await window.fs.getDocs(
+                    window.fs.query(
+                        window.fs.collection(window.db, 'platform_revenue'),
+                        window.fs.limit(5000)
+                    )
+                );
+                let allTimeTotal = 0;
+                snap.forEach(d => { allTimeTotal += (d.data().amount || 0); });
+                const totalStars = Math.round(allTimeTotal / 0.2);
+                const display = totalStars > 0 ? totalStars.toLocaleString() : '…';
+                const primaryEl = document.getElementById('ticker-stars');
+                if (primaryEl) primaryEl.textContent = display;
+                document.querySelectorAll('.ticker-stars-clone').forEach(el => { el.textContent = display; });
+            } catch(_err) {
+                const primaryEl = document.getElementById('ticker-stars');
+                if (primaryEl) primaryEl.textContent = '∞';
+            }
+        }
+        refreshTicker();
+        setInterval(refreshTicker, 5 * 60 * 1000);
     }
 
     // ─── INDEX 28: Global Activity Pulse — real-time hype/signal listener ─────────
@@ -16471,7 +16489,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // isVisible:false (via the Hide button) are excluded.
         const q = window.fs.query(
             window.fs.collection(window.db, 'posts'),
-            window.fs.orderBy('timestamp', 'desc')
+            window.fs.orderBy('timestamp', 'desc'),
+            window.fs.limit(75)
         );
 
         // ── Priority sort key ─────────────────────────────────────────────────────
@@ -18613,7 +18632,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         try {
             const q = window.fs.query(
                 window.fs.collection(window.db, 'communities'),
-                window.fs.orderBy('createdAt', 'desc')
+                window.fs.orderBy('createdAt', 'desc'),
+                window.fs.limit(100)
             );
             // onSnapshot keeps the grid live — any postCount change (increment on broadcast,
             // decrement on hide) is reflected immediately without a page refresh.
@@ -29492,7 +29512,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const { collection, query, orderBy, onSnapshot } = window.fs;
         const subStart = Date.now();
         const myAddr = (window._liveUserAddress || '').toLowerCase();
-        const q = query(collection(window.db, REACTIONS_COL, streamId, 'events'), orderBy('ts', 'asc'));
+        const q = query(collection(window.db, REACTIONS_COL, streamId, 'events'), orderBy('ts', 'asc'), window.fs.limitToLast(100));
         onSnapshot(q, snap => {
             snap.docChanges().forEach(change => {
                 if (change.type !== 'added') return;
@@ -31361,9 +31381,9 @@ function _copyReplayLink(link) {
                 allUsersSnap, allPostsSnap, completedSnap,
                 weekTxSnap, allTxSpendSnap, weekEarnSnap
             ] = await Promise.all([
-                fs.getDocs(fs.collection(db, 'users')),
-                fs.getDocs(fs.collection(db, 'posts')),
-                fs.getDocs(fs.collection(db, 'completed_streams')),
+                fs.getDocs(fs.query(fs.collection(db, 'users'),            fs.limit(10000))),
+                fs.getDocs(fs.query(fs.collection(db, 'posts'),            fs.limit(10000))),
+                fs.getDocs(fs.query(fs.collection(db, 'completed_streams'),fs.limit(10000))),
                 fs.getDocs(fs.query(fs.collection(db, 'user_transactions'),
                     fs.where('timestamp', '>=', weekAgo))),
                 fs.getDocs(fs.query(fs.collection(db, 'user_transactions'),
