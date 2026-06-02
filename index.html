@@ -32004,6 +32004,167 @@ function _copyReplayLink(link) {
         </div>
     </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     COMMAND ORB — mobile-only floating quick-nav (AssistiveTouch-style)
+     • Long-press the orb to pick it up and drag it anywhere; releases snaps to
+       the nearest edge and remembers position. • Tap the orb to bloom a radial
+       Command Wheel of navigation actions. Mobile only; hidden in cinema/live.
+═══════════════════════════════════════════════════════════════════════════ -->
+<style>
+#cmd-scrim{ position:fixed; inset:0; z-index:4400; background:radial-gradient(ellipse at center, rgba(8,6,20,0.30), rgba(5,4,14,0.60)); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); opacity:0; visibility:hidden; transition:opacity .22s ease, visibility .22s; }
+#cmd-scrim.open{ opacity:1; visibility:visible; }
+#cmd-wheel{ position:fixed; inset:0; z-index:4450; pointer-events:none; }
+.cmd-slice{ position:fixed; transform:translate(-50%,-50%) scale(0.2); transform-origin:center; display:flex; flex-direction:column; align-items:center; gap:3px; opacity:0; pointer-events:none; cursor:pointer; border:none; background:none; padding:0; -webkit-tap-highlight-color:transparent; transition:transform .3s cubic-bezier(.34,1.56,.64,1), opacity .2s ease; }
+#cmd-wheel.open .cmd-slice{ opacity:1; transform:translate(-50%,-50%) scale(1); pointer-events:auto; }
+.cmd-slice .cmd-ic{ width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.22rem; line-height:1; color:#fff; background:radial-gradient(ellipse 60% 50% at 30% 24%, rgba(255,255,255,0.16), transparent 60%), linear-gradient(160deg,#1b1730,#100c1e); border:1.5px solid var(--cmd-accent,#7c5cbf); box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 15px -3px var(--cmd-accent,#7c5cbf), 0 6px 18px rgba(0,0,0,0.6); transition:transform .12s ease; }
+.cmd-slice:active .cmd-ic{ transform:scale(0.88); }
+.cmd-slice .cmd-lb{ font-size:0.52rem; font-weight:800; letter-spacing:0.4px; text-transform:uppercase; color:rgba(236,231,255,0.95); text-shadow:0 1px 3px rgba(0,0,0,0.95); white-space:nowrap; }
+#cmd-orb{ position:fixed; z-index:4500; width:56px; height:56px; border-radius:50%; right:12px; top:62%; display:flex; align-items:center; justify-content:center; cursor:pointer; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; color:#fff; font-size:1.4rem; background:radial-gradient(ellipse 60% 50% at 30% 22%, rgba(185,145,255,0.5), transparent 60%), conic-gradient(from 135deg at 50% 45%, #2a1e6a, #4a30a0, #1e1650, #3a2580, #2a1e6a); border:1.5px solid rgba(172,132,255,0.55); box-shadow:0 0 0 1px rgba(0,0,0,0.45), 0 0 18px -2px rgba(124,92,191,0.7), 0 8px 22px rgba(0,0,0,0.6); transition:opacity .3s ease, transform .18s ease, top .26s cubic-bezier(.4,1.3,.5,1), left .26s cubic-bezier(.4,1.3,.5,1), right .26s cubic-bezier(.4,1.3,.5,1); }
+#cmd-orb .cmd-orb-ic{ transition:transform .26s cubic-bezier(.34,1.56,.64,1); filter:drop-shadow(0 1px 4px rgba(0,0,0,0.85)); }
+#cmd-orb.active{ transform:scale(1.06); }
+#cmd-orb.active .cmd-orb-ic{ transform:rotate(135deg); }
+#cmd-orb.moving{ transform:scale(1.2); box-shadow:0 0 0 1px rgba(0,0,0,0.45), 0 0 28px 3px rgba(124,92,191,0.95), 0 12px 28px rgba(0,0,0,0.7); }
+#cmd-orb.idle{ opacity:0.4; }
+@media (min-width:769px){ #cmd-orb,#cmd-wheel,#cmd-scrim{ display:none!important; } }
+body.cinema-mode #cmd-orb, body.cinema-mode #cmd-wheel, body.cinema-mode #cmd-scrim,
+body.is-hosting #cmd-orb, body.is-hosting #cmd-wheel, body.is-hosting #cmd-scrim{ display:none!important; }
+</style>
+
+<div id="cmd-scrim"></div>
+<div id="cmd-wheel" aria-hidden="true">
+  <button class="cmd-slice" data-act="feed"    style="--cmd-accent:#6a8cff"><span class="cmd-ic">🏠</span><span class="cmd-lb">Feed</span></button>
+  <button class="cmd-slice" data-act="profile" style="--cmd-accent:#3b82f6"><span class="cmd-ic">👤</span><span class="cmd-lb">Profile</span></button>
+  <button class="cmd-slice" data-act="flicks"  style="--cmd-accent:#ff6b35"><span class="cmd-ic">▶</span><span class="cmd-lb">Flicks</span></button>
+  <button class="cmd-slice" data-act="studio"  style="--cmd-accent:#f0b829"><span class="cmd-ic">★</span><span class="cmd-lb">Studio</span></button>
+  <button class="cmd-slice" data-act="search"  style="--cmd-accent:#2dd4bf"><span class="cmd-ic">🔍</span><span class="cmd-lb">Search</span></button>
+  <button class="cmd-slice" data-act="market"  style="--cmd-accent:#22c55e"><span class="cmd-ic">🛍️</span><span class="cmd-lb">Market</span></button>
+  <button class="cmd-slice" data-act="comm"     style="--cmd-accent:#a855f7"><span class="cmd-ic">⬡</span><span class="cmd-lb">Hub</span></button>
+</div>
+<div id="cmd-orb" role="button" aria-label="Quick navigation"><span class="cmd-orb-ic">✦</span></div>
+
+<script>
+(function(){
+  var orb   = document.getElementById('cmd-orb');
+  var wheel = document.getElementById('cmd-wheel');
+  var scrim = document.getElementById('cmd-scrim');
+  if(!orb || !wheel || !scrim) return;
+  var slices = Array.prototype.slice.call(wheel.querySelectorAll('.cmd-slice'));
+  var R = 116, M = 14, ORB = 56;
+  var moveMode=false, wheelOpen=false, dragging=false, moved=false;
+  var startX=0, startY=0, lpTimer=null, idleTimer=null;
+  var pos = loadPos();
+
+  function loadPos(){
+    try{ var p=JSON.parse(localStorage.getItem('sh_cmd_orb')); if(p && (p.side==='left'||p.side==='right')) return p; }catch(_){}
+    return { side:'right', top: Math.round(window.innerHeight*0.62) };
+  }
+  function savePos(){ try{ localStorage.setItem('sh_cmd_orb', JSON.stringify(pos)); }catch(_){} }
+
+  // Keep orb vertically within bounds so the radial wheel always fits on screen.
+  function clampTop(top){
+    var H=window.innerHeight, cy=top+ORB/2;
+    var cyMin=R+M, cyMax=H-R-M;
+    if(cyMax<cyMin){ cyMin=cyMax=H/2; }      // tiny screens fallback
+    cy=Math.max(cyMin, Math.min(cyMax, cy));
+    var t=cy-ORB/2;
+    return Math.max(8, Math.min(H-ORB-8, t));
+  }
+  function applyPos(){
+    orb.style.top = clampTop(pos.top)+'px';
+    if(pos.side==='left'){ orb.style.left='12px'; orb.style.right='auto'; }
+    else { orb.style.left='auto'; orb.style.right='12px'; }
+  }
+  applyPos();
+
+  function poke(){ orb.classList.remove('idle'); clearTimeout(idleTimer); idleTimer=setTimeout(function(){ if(!wheelOpen) orb.classList.add('idle'); }, 3500); }
+  poke();
+
+  // ── Radial wheel ──
+  function layout(){
+    var r=orb.getBoundingClientRect();
+    var cx=r.left+r.width/2, cy=r.top+r.height/2;
+    var right = cx > window.innerWidth/2;
+    var n=slices.length, step=180/(n-1);
+    for(var i=0;i<n;i++){
+      var deg = right ? (270 - i*step) : (-90 + i*step);  // index 0 = top
+      var a=deg*Math.PI/180;
+      slices[i].style.left=(cx + R*Math.cos(a))+'px';
+      slices[i].style.top =(cy + R*Math.sin(a))+'px';
+      slices[i].style.transitionDelay=(i*0.025)+'s';
+    }
+  }
+  function openWheel(){ layout(); scrim.classList.add('open'); wheel.classList.add('open'); orb.classList.add('active'); orb.classList.remove('idle'); wheelOpen=true; }
+  function closeWheel(){ scrim.classList.remove('open'); wheel.classList.remove('open'); orb.classList.remove('active'); wheelOpen=false; poke(); }
+
+  // ── Pointer: long-press = move, tap = open ──
+  orb.addEventListener('pointerdown', function(e){
+    e.preventDefault(); poke();
+    dragging=true; moved=false; startX=e.clientX; startY=e.clientY;
+    try{ orb.setPointerCapture(e.pointerId); }catch(_){}
+    lpTimer=setTimeout(function(){
+      moveMode=true; orb.classList.add('moving');
+      if(wheelOpen) closeWheel();
+      if(navigator.vibrate){ try{ navigator.vibrate(15); }catch(_){} }
+    }, 380);
+  });
+  orb.addEventListener('pointermove', function(e){
+    if(!dragging) return;
+    var dx=e.clientX-startX, dy=e.clientY-startY;
+    if(!moved && (Math.abs(dx)>10 || Math.abs(dy)>10)){ moved=true; if(!moveMode) clearTimeout(lpTimer); }
+    if(moveMode){
+      e.preventDefault();
+      var nx=e.clientX-ORB/2, ny=e.clientY-ORB/2;
+      nx=Math.max(8, Math.min(window.innerWidth-ORB-8, nx));
+      ny=Math.max(8, Math.min(window.innerHeight-ORB-8, ny));
+      orb.style.left=nx+'px'; orb.style.right='auto'; orb.style.top=ny+'px';
+    }
+  });
+  function endPointer(){
+    if(!dragging) return; dragging=false; clearTimeout(lpTimer);
+    if(moveMode){
+      moveMode=false; orb.classList.remove('moving');
+      var r=orb.getBoundingClientRect();
+      pos.side = (r.left+r.width/2) > window.innerWidth/2 ? 'right' : 'left';
+      pos.top  = clampTop(r.top);
+      applyPos(); savePos(); poke();
+    } else if(!moved){
+      wheelOpen ? closeWheel() : openWheel();
+    }
+  }
+  orb.addEventListener('pointerup', endPointer);
+  orb.addEventListener('pointercancel', endPointer);
+
+  scrim.addEventListener('pointerdown', function(e){ e.preventDefault(); closeWheel(); });
+  window.addEventListener('resize', function(){ applyPos(); if(wheelOpen) layout(); });
+  window.addEventListener('scroll', function(){ if(wheelOpen) closeWheel(); }, true);
+
+  // ── Actions ──
+  function el(id){ return document.getElementById(id)||null; }
+  function go(page, navId, bnavKey){
+    try{ if(window.switchPage) window.switchPage(page, el(navId)); }catch(_){}
+    if(bnavKey){ try{ if(window.setBnav) window.setBnav(bnavKey); }catch(_){} }
+  }
+  var ACTIONS = {
+    feed:    function(){ go('home','nav-home','home'); },
+    profile: function(){ go('profile','nav-profile',null); },
+    flicks:  function(){ go('home','nav-home','home'); setTimeout(function(){ if(window.setFeedMode) window.setFeedMode('flicks'); }, 90); },
+    studio:  function(){ go('earnings','nav-earnings','studio'); },
+    search:  function(){ if(window.openMobSearch) window.openMobSearch(); },
+    market:  function(){ go('marketplace','nav-marketplace','marketplace'); },
+    comm:    function(){ go('communities','nav-communities','communities'); }
+  };
+  slices.forEach(function(s){
+    s.addEventListener('click', function(ev){
+      ev.preventDefault();
+      var act=s.getAttribute('data-act');
+      closeWheel();
+      var fn=ACTIONS[act];
+      if(fn) setTimeout(fn, 60);
+    });
+  });
+})();
+</script>
 </body>
 </html>
 
