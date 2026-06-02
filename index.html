@@ -9117,6 +9117,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     width: 100% !important;
     box-sizing: border-box !important;
 }
+/* THE ROOT-CAUSE FIX: in cinema mode the action row is moved into
+   #cinema-controls-btns (itself a 4-column grid), so without this it sits in a
+   single 1/4-width column and its four buttons get crammed into tiny ovals.
+   Spanning all columns (exactly like .live-stats-row does) gives it full width
+   so the internal 4-column tile grid above renders the buttons full-size. */
+#cinema-controls-btns .live-action-row { grid-column: 1 / -1 !important; }
 /* Hide the (unused) creator-stars pill so the grid stays a clean 4 columns */
 #live-player-wrap .live-action-row .live-stars-pill,
 #cinema-controls-btns .live-action-row .live-stars-pill { display: none !important; }
@@ -26694,7 +26700,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         // Reset co-host request button
         const cohostBtn = $('viewer-cohost-btn');
-        if (cohostBtn) { cohostBtn.textContent = '🎤 Join Stage'; cohostBtn.style.opacity = ''; cohostBtn.style.pointerEvents = ''; cohostBtn.classList.remove('active'); }
+        if (cohostBtn) { cohostBtn.innerHTML = '<span class="studio-btn-icon">🎤</span><span>Join Stage</span>'; cohostBtn.style.opacity = ''; cohostBtn.style.pointerEvents = ''; cohostBtn.classList.remove('active'); }
 
         // Reset video container layout classes
         var rvContainer = document.getElementById('live-remote-video-container');
@@ -28466,7 +28472,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 status: 'pending',
                 ts:     serverTimestamp()
             });
-            if (btn) { btn.textContent = '⏳ Waiting…'; btn.style.opacity = '0.6'; btn.style.pointerEvents = 'none'; }
+            if (btn) { btn.innerHTML = '<span class="studio-btn-icon">⏳</span><span>Waiting…</span>'; btn.style.opacity = '0.6'; btn.style.pointerEvents = 'none'; }
             showToast('✋ Stage request sent — waiting for host approval.');
 
             // Watch for approval — also handle the case where snap doesn't exist yet
@@ -28478,7 +28484,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     await _promoteToCoHost();
                 } else if (data.status === 'rejected') {
                     unsub();
-                    if (btn) { btn.textContent = '🎤 Join Stage'; btn.style.opacity = ''; btn.style.pointerEvents = ''; btn.classList.remove('active'); }
+                    if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🎤</span><span>Join Stage</span>'; btn.style.opacity = ''; btn.style.pointerEvents = ''; btn.classList.remove('active'); }
                     showToast('Host declined your stage request.');
                 }
             });
@@ -28693,7 +28699,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (stageWrap) stageWrap.style.display = 'block';
 
             var btn = $('viewer-cohost-btn');
-            if (btn) { btn.textContent = '🎤 Leave Stage'; btn.style.opacity = ''; btn.style.pointerEvents = ''; btn.classList.add('active'); }
+            if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🎤</span><span>Leave Stage</span>'; btn.style.opacity = ''; btn.style.pointerEvents = ''; btn.classList.add('active'); }
             isCoHost = true;
             document.body.classList.add('is-cohost');
             // Explicitly hide End Stream in both normal and cinema panel — CSS !important
@@ -28760,7 +28766,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             document.body.classList.remove('is-cohost');
             var btn = $('viewer-cohost-btn');
             if (btn) {
-                btn.textContent = '🎤 Join Stage';
+                btn.innerHTML = '<span class="studio-btn-icon">🎤</span><span>Join Stage</span>';
                 btn.style.opacity = '';
                 btn.style.pointerEvents = '';
                 btn.classList.remove('active');
@@ -29660,7 +29666,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const btn = $('viewer-raise-hand-btn');
         handRaised = !handRaised;
         if (btn) {
-            btn.textContent = handRaised ? '✋ Hand Raised!' : '✋ Raise Hand';
+            btn.innerHTML = handRaised
+                ? '<span class="studio-btn-icon">✋</span><span>Hand Raised!</span>'
+                : '<span class="studio-btn-icon">✋</span><span>Raise Hand</span>';
             btn.classList.toggle('raised', handRaised);
         }
         const { doc, updateDoc, arrayUnion, getDoc } = window.fs;
