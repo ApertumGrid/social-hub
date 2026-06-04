@@ -1583,17 +1583,24 @@
         .layout-preview-pip-bottom { display:flex; flex-direction:column; gap:2px; padding:3px; }
         .layout-preview-grid4 { display:grid; grid-template-columns:1fr 1fr; gap:2px; padding:3px; }
 
-        /* â”€â”€ Split-screen video area layouts â”€â”€â”€ applied to #live-broadcaster-video-container */
-        #live-broadcaster-video-container.layout-split2 #live-broadcaster-video,
+        /* ── Split-screen video area layouts ─── applied to #live-broadcaster-video-container */
+        /* All host-side layouts use position:absolute (like pip-bottom) — avoids flex/grid
+           fighting mobile display:block !important override and Agora video context issues. */
+
+        /* split2: host left half, co-host right half */
+        #live-broadcaster-video-container.layout-split2 #live-broadcaster-video {
+            position:absolute !important; top:0 !important; left:0 !important;
+            width:50% !important; height:100% !important;
+            border-radius:0 !important;
+        }
         #live-broadcaster-video-container.layout-split2 #cohost-pip-host {
-            position:relative !important; inset:auto !important;
+            position:absolute !important; top:0 !important; right:0 !important;
+            left:auto !important; bottom:auto !important;
             width:50% !important; height:100% !important;
             border-radius:0 !important; border:none !important;
+            border-left:2px solid var(--purple) !important;
         }
-        #live-broadcaster-video-container.layout-split2 {
-            display:flex !important; flex-direction:row !important;
-            gap:2px !important;
-        }
+        /* pip-bottom: top half host, bottom half co-host */
         #live-broadcaster-video-container.layout-pip-bottom #live-broadcaster-video {
             position:absolute !important; top:0 !important; left:0 !important;
             width:100% !important; height:50% !important;
@@ -1604,23 +1611,17 @@
             border-radius:0 !important; border:none !important;
             border-top:2px solid var(--purple) !important;
         }
-        #live-broadcaster-video-container.layout-grid4 {
-            display:grid !important;
-            grid-template-columns:1fr 1fr !important;
-            grid-template-rows:1fr 1fr !important;
-            gap:2px !important;
-        }
+        /* grid4: host left column (full height), co-host top-right */
         #live-broadcaster-video-container.layout-grid4 #live-broadcaster-video {
-            position:relative !important; inset:auto !important;
-            width:100% !important; height:100% !important;
-            grid-column:1; grid-row:1;
+            position:absolute !important; top:0 !important; left:0 !important;
+            width:50% !important; height:100% !important;
             border-radius:0 !important;
         }
         #live-broadcaster-video-container.layout-grid4 #cohost-pip-host {
-            position:relative !important; inset:auto !important;
-            width:100% !important; height:100% !important;
+            position:absolute !important; top:0 !important; right:0 !important;
+            left:auto !important; bottom:auto !important;
+            width:50% !important; height:50% !important;
             border-radius:0 !important; border:none !important;
-            grid-column:2; grid-row:1;
         }
         /* Overlay elements should stay on top in any layout */
         #live-broadcaster-video-container .live-stream-overlay-top,
@@ -8723,6 +8724,16 @@ body.cinema-mode #btn-end-stream-toolbar { display:none!important; }
         top: 0 !important; left: 0 !important;
         width: 100% !important; height: 100% !important;
         min-height: 200px !important;
+    }
+    /* In split/grid layouts, override the full-width forced style above */
+    body.is-hosting #live-broadcaster-video-container.layout-split2 #live-broadcaster-video,
+    body.is-hosting #live-broadcaster-video-container.layout-grid4 #live-broadcaster-video {
+        width: 50% !important; height: 100% !important;
+        top: 0 !important; left: 0 !important;
+    }
+    body.is-hosting #live-broadcaster-video-container.layout-pip-bottom #live-broadcaster-video {
+        width: 100% !important; height: 50% !important;
+        top: 0 !important; left: 0 !important;
     }
     /* Stats row: hidden on mobile */
     body.is-hosting #bc-live-stats-row { display: none !important; }
@@ -17515,6 +17526,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // Pause the countdown
             if (_signalAutoCloseTimer) { clearTimeout(_signalAutoCloseTimer); _signalAutoCloseTimer = null; }
+
         };
 
         const resumeHandler = () => {
@@ -30848,18 +30860,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (bcVid) bcVid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
             if (pip)   pip.style.cssText   = 'position:absolute;bottom:50px;right:10px;width:140px;height:90px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
         } else if (mode === 'split2') {
-            // Mirror the proven viewer-side split2 (`_applyViewerLayout`): set the
-            // container + children fully inline with flex:1 + min-width:0 + overflow:hidden.
-            // The old version used width:50% with no min-width:0 and gave the pip z-index:1
-            // (below #live-broadcaster-video's z-index:2), so the host's own video covered
-            // the co-host — co-host vanished on the HOST side only.
+            // Use absolute positioning (same pattern as pip-bottom which works reliably).
+            // Flex/grid on the container fights the mobile display:block !important override
+            // and causes Agora to lose video when pip switches from absolute→relative position.
             container.classList.add('layout-split2');
-            container.style.display       = 'flex';
-            container.style.flexDirection = 'row';
-            container.style.gap           = '2px';
-            container.style.overflow      = 'hidden';
-            if (bcVid) bcVid.style.cssText = 'flex:1;height:100%;position:relative;min-width:0;overflow:hidden;';
-            if (pip)   pip.style.cssText   = 'flex:1;height:100%;position:relative;min-width:0;overflow:hidden;border-radius:0;border:none;border-left:2px solid var(--purple);z-index:20;background:#000;';
+            if (bcVid) bcVid.style.cssText = 'position:absolute;top:0;left:0;width:50%;height:100%;';
+            if (pip)   pip.style.cssText   = 'position:absolute;top:0;right:0;left:auto;bottom:auto;width:50%;height:100%;border-radius:0;border:none;border-left:2px solid var(--purple);z-index:20;background:#000;overflow:hidden;';
             if (!pip)  showToast('ℹ️ Co-host slot ready — approve a viewer from Stage Requests to fill it.');
         } else if (mode === 'pip-bottom') {
             container.classList.add('layout-pip-bottom');
@@ -30867,17 +30873,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (pip)   pip.style.cssText   = 'position:absolute;bottom:0;left:0;width:100%;height:50%;border-radius:0;border:none;border-top:2px solid var(--purple);z-index:20;background:#000;overflow:hidden;';
             if (!pip)  showToast('ℹ️ Co-host strip ready — approve a viewer from Stage Requests.');
         } else if (mode === 'grid4') {
-            // Mirror the proven viewer-side grid4: host spans the full left column,
-            // co-host top-right, with min-*:0 + overflow:hidden so cells size correctly.
-            // z-index:20 keeps the co-host above #live-broadcaster-video (z-index:2).
+            // Host left column (full height), co-host top-right — both absolute.
             container.classList.add('layout-grid4');
-            container.style.display             = 'grid';
-            container.style.gridTemplateColumns = '1fr 1fr';
-            container.style.gridTemplateRows    = '1fr 1fr';
-            container.style.gap                 = '2px';
-            container.style.overflow            = 'hidden';
-            if (bcVid) bcVid.style.cssText = 'grid-column:1/2;grid-row:1/3;position:relative;min-width:0;min-height:0;overflow:hidden;';
-            if (pip)   pip.style.cssText   = 'grid-column:2/3;grid-row:1/2;position:relative;min-width:0;min-height:0;overflow:hidden;border-radius:0;border:none;z-index:20;background:#000;';
+            if (bcVid) bcVid.style.cssText = 'position:absolute;top:0;left:0;width:50%;height:100%;';
+            if (pip)   pip.style.cssText   = 'position:absolute;top:0;right:0;left:auto;bottom:auto;width:50%;height:50%;border-radius:0;border:none;z-index:20;background:#000;overflow:hidden;';
             if (!pip)  showToast('ℹ️ Grid ready — up to 3 co-hosts can join. Approve from Stage Requests.');
         }
 
