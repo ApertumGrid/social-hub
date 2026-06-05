@@ -5784,7 +5784,8 @@
             body.flicks-active #topnav,
             body.flicks-active #mobile-dashboard,
             body.flicks-active #bottom-nav,
-            body.flicks-active #cmd-orb { display: none !important; }
+            body.flicks-active #cmd-orb,
+            body.flicks-active #hype-ticker { display: none !important; }
 
             body.flicks-active #feed-col { padding: 0 !important; overflow: hidden !important; }
 
@@ -10151,9 +10152,31 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             <div id="page-marketplace" class="page">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:10px;">
                     <div class="page-heading" style="margin:0;">Market<span>place</span></div>
-                    <button onclick="openCreateListing()" style="padding:9px 20px;border-radius:20px;border:1px solid rgba(240,180,41,0.5);background:rgba(240,180,41,0.1);color:var(--gold);font-size:0.78rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;">+ List a Product · 100★</button>
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+                        <button onclick="openCreateListing()" style="padding:9px 20px;border-radius:20px;border:1px solid rgba(240,180,41,0.5);background:rgba(240,180,41,0.1);color:var(--gold);font-size:0.78rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;">+ List a Product</button>
+                        <span style="font-size:0.62rem;color:var(--text-muted);">100★ listing fee · active for 6 months</span>
+                    </div>
                 </div>
-                <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:16px;">Digital products · On-chain escrow · Trustless settlement</div>
+                <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:16px;">Buy and sell digital products. Payment held securely until delivery.</div>
+
+                <!-- How it Works — hidden when a category filter or search is active -->
+                <div id="mkt-how-it-works" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px;">
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:12px 10px;text-align:center;">
+                        <div style="font-size:1.2rem;margin-bottom:5px;">🛍️</div>
+                        <div style="font-size:0.72rem;font-weight:700;color:var(--text-primary);margin-bottom:3px;">Browse &amp; Buy</div>
+                        <div style="font-size:0.65rem;color:var(--text-muted);line-height:1.5;">Find what you need and pay with Stars — your on-chain balance.</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:12px 10px;text-align:center;">
+                        <div style="font-size:1.2rem;margin-bottom:5px;">🔒</div>
+                        <div style="font-size:0.72rem;font-weight:700;color:var(--text-primary);margin-bottom:3px;">Escrow Holds Payment</div>
+                        <div style="font-size:0.65rem;color:var(--text-muted);line-height:1.5;">Funds lock on-chain instantly. Neither party can touch them until delivery.</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:12px 10px;text-align:center;">
+                        <div style="font-size:1.2rem;margin-bottom:5px;">✅</div>
+                        <div style="font-size:0.72rem;font-weight:700;color:var(--text-primary);margin-bottom:3px;">Confirm &amp; Release</div>
+                        <div style="font-size:0.65rem;color:var(--text-muted);line-height:1.5;">Confirm you received it. Payment goes to the seller. Simple.</div>
+                    </div>
+                </div>
 
                 <!-- Category filter -->
                 <div class="mkt-cat-row" id="mkt-cat-row">
@@ -17526,7 +17549,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // Pause the countdown
             if (_signalAutoCloseTimer) { clearTimeout(_signalAutoCloseTimer); _signalAutoCloseTimer = null; }
-
         };
 
         const resumeHandler = () => {
@@ -21298,6 +21320,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // Update active category pill
         document.querySelectorAll('.mkt-cat').forEach(c => c.classList.remove('active'));
         if (catEl) catEl.classList.add('active');
+
+        // Show How it Works only on the default unfiltered view
+        const howEl = document.getElementById('mkt-how-it-works');
+        if (howEl) howEl.style.display = (category === 'all') ? 'grid' : 'none';
 
         const grid = document.getElementById('mkt-listings-grid');
         if (!grid) return;
