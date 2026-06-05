@@ -21801,8 +21801,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 const inDisputeWindow = d.status === 'complete' && d.disputeWindowEnd && d.disputeWindowEnd > now2;
                 const hoursLeft = inDisputeWindow ? Math.ceil((d.disputeWindowEnd - now2) / 3600000) : 0;
 
+                // Escrow expired and admin hasn't acted — buyer can self-rescue via EscrowEscape
+                const isExpiredEscrow = d.status === 'pending' && d.escrowId && d.escrowExpiry && d.escrowExpiry < now2;
+
                 let actionBtns = '';
-                if (d.status === 'pending' && d.deliveryUrl) {
+                if (isExpiredEscrow) {
+                    actionBtns = '<button onclick="claimExpiredEscrowUI(\'' + doc.id + '\',\'' + d.escrowId + '\',' + (d.priceUsdt || 0) + ')" style="padding:6px 14px;border-radius:14px;border:1px solid rgba(239,68,68,0.45);background:rgba(239,68,68,0.08);color:#ef4444;font-size:0.72rem;font-weight:700;cursor:pointer;flex-shrink:0;">🔓 Claim Refund</button>';
+                } else if (d.status === 'pending' && d.deliveryUrl) {
                     actionBtns = '<button onclick="confirmDelivery(\'' + doc.id + '\')" style="padding:6px 14px;border-radius:14px;border:1px solid rgba(45,212,191,0.4);background:rgba(45,212,191,0.08);color:var(--teal);font-size:0.72rem;font-weight:700;cursor:pointer;flex-shrink:0;">Confirm Received</button>';
                 } else if (d.status === 'complete') {
                     if (!d.reviewed) {
@@ -21850,6 +21855,52 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         } catch (e) { alert('Failed: ' + e.message); }
     }
     window.confirmDelivery = confirmDelivery;
+
+    // ── EscrowEscape — buyer self-rescue for expired escrows ───────────────────
+    async function claimExpiredEscrowUI(purchaseId, escrowId, priceUsdt) {
+        if (!signer) { showToast('Connect your wallet first.'); return; }
+        if (!confirm(
+            'This escrow has expired and admin has not acted.\n\n' +
+            'You can claim your refund directly on-chain — no admin needed.\n\n' +
+            'Your USDT will be returned to your SocialHub deposit balance.\n\n' +
+            'Proceed?'
+        )) return;
+
+        const ESCROW_ESCAPE_ADDRESS = '0x06f530939c29a8E7B0bFfe7767Eb47285eB5d31b';
+        const ESCROW_ESCAPE_ABI = [
+            'function claimExpiredEscrow(bytes32 id) external'
+        ];
+
+        showToast('Sending claim transaction…');
+        try {
+            const escapeContract = new ethers.Contract(ESCROW_ESCAPE_ADDRESS, ESCROW_ESCAPE_ABI, signer);
+            const tx = await escapeContract.claimExpiredEscrow(escrowId, { gasLimit: 120000 });
+            showToast('Transaction sent — waiting for confirmation…');
+            await tx.wait();
+
+            // Update Firestore: mark purchase refunded + restore buyer's Firestore deposit balance
+            const purchaseUpdate = window.fs.updateDoc(
+                window.fs.doc(window.db, 'marketplace_purchases', purchaseId),
+                { status: 'refunded', refundedAt: Date.now(), refundTx: tx.hash }
+            );
+            const balanceUpdate = priceUsdt > 0
+                ? window.fs.updateDoc(
+                    window.fs.doc(window.db, 'user_balances', userAddress.toLowerCase()),
+                    { depositedUsdt: window.fs.increment(priceUsdt) }
+                )
+                : Promise.resolve();
+
+            await Promise.allSettled([purchaseUpdate, balanceUpdate]);
+
+            showToast('Refund claimed! Your deposit balance has been restored.');
+            loadMyPurchases();
+        } catch (e) {
+            console.error('[EscrowEscape] claim failed:', e);
+            const msg = e?.reason || e?.data?.message || e?.message || 'Transaction failed.';
+            alert('Claim failed: ' + msg);
+        }
+    }
+    window.claimExpiredEscrowUI = claimExpiredEscrowUI;
 
     function openReviewModal(purchaseId, listingId) {
         const modal = document.getElementById('mkt-review-modal');
