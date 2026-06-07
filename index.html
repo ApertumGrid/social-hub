@@ -27,7 +27,7 @@
     <link rel="manifest" href="/manifest.json">
 
     <!-- QR Code generation (client-side, no server needed) -->
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
 
     <!-- PWA: Service Worker Registration -->
     <script>
@@ -17461,12 +17461,34 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.clearWall    = clearWall;
 
     // ════════════════════════════════════════════════════════════════
-    //  QR CODE SYSTEM
+    //  QR CODE SYSTEM  (uses QRious v4.0.2 — renders to existing canvas)
     // ════════════════════════════════════════════════════════════════
 
     var _qrProfileAddr   = '';
     var _qrProfileName   = '';
     var _qrProfileAvatar = '';
+
+    // Rounded-rect helper with fallback for older browsers
+    function _qrRRect(ctx, x, y, w, h, r) {
+        if (ctx.roundRect) {
+            ctx.beginPath(); ctx.roundRect(x, y, w, h, r);
+        } else {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+            ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+            ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+            ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x+r, y);
+            ctx.closePath();
+        }
+    }
+
+    function _makeQR(canvas, value, size) {
+        if (typeof QRious === 'undefined') return;
+        new QRious({ element: canvas, value: value, size: size,
+            background: '#ffffff', foreground: '#1a1535',
+            backgroundAlpha: 1, foregroundAlpha: 1, level: 'M', padding: Math.round(size * 0.05) });
+    }
 
     // ── Platform QR ─────────────────────────────────────────────────
 
@@ -17474,13 +17496,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var modal = document.getElementById('platform-qr-modal');
         if (!modal) return;
         modal.style.display = 'flex';
-        var canvas = document.getElementById('platform-qr-canvas');
-        if (canvas && typeof QRCode !== 'undefined') {
-            QRCode.toCanvas(canvas, 'https://socialhubglobal.com/', {
-                width: 200, margin: 1,
-                color: { dark: '#1a1535', light: '#ffffff' }
-            }, function(){});
-        }
+        setTimeout(function() {
+            var canvas = document.getElementById('platform-qr-canvas');
+            if (canvas) _makeQR(canvas, 'https://socialhubglobal.com/', 200);
+        }, 30);
     }
     window.openPlatformQR = openPlatformQR;
 
@@ -17491,45 +17510,49 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.closePlatformQR = closePlatformQR;
 
     async function downloadPlatformQR() {
-        if (typeof QRCode === 'undefined') { showToast('QR library loading…'); return; }
+        if (typeof QRious === 'undefined') { showToast('QR library loading…'); return; }
         try {
-            var qrDataUrl = await QRCode.toDataURL('https://socialhubglobal.com/', {
-                width: 320, margin: 2, color: { dark: '#1a1535', light: '#ffffff' }
-            });
+            var qrTmp = document.createElement('canvas');
+            _makeQR(qrTmp, 'https://socialhubglobal.com/', 300);
+
             var W = 480, H = 580;
             var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
             var cx = cv.getContext('2d');
+
             var bg = cx.createLinearGradient(0, 0, 0, H);
             bg.addColorStop(0, '#0d0d1a'); bg.addColorStop(1, '#1a1535');
             cx.fillStyle = bg; cx.fillRect(0, 0, W, H);
+
             cx.strokeStyle = 'rgba(124,92,191,0.55)'; cx.lineWidth = 2.5;
-            cx.beginPath(); cx.roundRect(8, 8, W-16, H-16, 20); cx.stroke();
+            _qrRRect(cx, 8, 8, W-16, H-16, 20); cx.stroke();
+
             cx.textAlign = 'center';
-            cx.font = 'bold 34px sans-serif'; cx.fillStyle = '#ffffff';
+            cx.font = 'bold 34px system-ui,sans-serif'; cx.fillStyle = '#ffffff';
             cx.fillText('SocialHub', W/2, 64);
-            cx.font = '14px sans-serif'; cx.fillStyle = 'rgba(45,212,191,0.85)';
+            cx.font = '14px system-ui,sans-serif'; cx.fillStyle = 'rgba(45,212,191,0.85)';
             cx.fillText('The Future of Social', W/2, 90);
-            cx.fillStyle = '#ffffff';
-            cx.beginPath(); cx.roundRect(90, 118, 300, 300, 14); cx.fill();
-            var qi = new Image();
-            await new Promise(function(r){ qi.onload=r; qi.onerror=r; qi.src=qrDataUrl; });
-            cx.drawImage(qi, 98, 126, 284, 284);
+
+            cx.fillStyle = '#ffffff'; cx.fillRect(90, 118, 300, 300);
+            cx.drawImage(qrTmp, 90, 118, 300, 300);
+
             cx.fillStyle = 'rgba(124,92,191,0.3)';
             [[52,108],[W-52,108],[52,H-90],[W-52,H-90]].forEach(function(p){
                 cx.beginPath(); cx.arc(p[0],p[1],5,0,Math.PI*2); cx.fill();
             });
-            cx.font = 'italic 14px sans-serif'; cx.fillStyle = 'rgba(255,255,255,0.6)';
+
+            cx.font = 'italic 14px system-ui,sans-serif'; cx.fillStyle = 'rgba(255,255,255,0.6)';
             cx.fillText('"Where every interaction earns"', W/2, 462);
-            cx.font = 'bold 15px sans-serif'; cx.fillStyle = 'rgba(124,92,191,0.9)';
+            cx.font = 'bold 15px system-ui,sans-serif'; cx.fillStyle = 'rgba(124,92,191,0.9)';
             cx.fillText('socialhubglobal.com', W/2, 500);
             cx.font = '11px monospace'; cx.fillStyle = 'rgba(255,255,255,0.25)';
             cx.fillText('Powered by BNB Smart Chain · USDT on-chain', W/2, 548);
+
             var a = document.createElement('a');
             a.download = 'socialhub-platform-qr.png';
             a.href = cv.toDataURL('image/png');
-            a.click();
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
             showToast('Platform QR saved!');
-        } catch(e) { console.error('[QR]', e); showToast('Download failed.'); }
+        } catch(e) { console.error('[QR]', e); showToast('Download failed: ' + e.message); }
     }
     window.downloadPlatformQR = downloadPlatformQR;
 
@@ -17544,15 +17567,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var tray    = document.getElementById('hero-qr-share-tray');
         if (!section || !canvas) return;
         if (!addr) { section.style.display = 'none'; return; }
-        var profileUrl = 'https://socialhubglobal.com/?profile=' + addr.toLowerCase();
-        if (typeof QRCode !== 'undefined') {
-            QRCode.toCanvas(canvas, profileUrl, {
-                width: 108, margin: 1,
-                color: { dark: '#1a1535', light: '#ffffff' }
-            }, function(){});
-        }
+
+        section.style.display = 'block'; // explicitly show — CSS default is display:none
         if (tray) tray.style.display = 'none';
-        section.style.display = '';
+
+        setTimeout(function() {
+            _makeQR(canvas, 'https://socialhubglobal.com/?profile=' + addr.toLowerCase(), 108);
+        }, 30);
     }
     window.renderProfileQR = renderProfileQR;
 
@@ -17579,32 +17600,32 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.qrShareTo = qrShareTo;
 
     async function downloadProfileQR() {
-        if (typeof QRCode === 'undefined') { showToast('QR library loading…'); return; }
+        if (typeof QRious === 'undefined') { showToast('QR library loading…'); return; }
         if (!_qrProfileAddr) { showToast('No profile loaded.'); return; }
         try {
             var profileUrl = 'https://socialhubglobal.com/?profile=' + _qrProfileAddr.toLowerCase();
-            var qrDataUrl  = await QRCode.toDataURL(profileUrl, {
-                width: 320, margin: 2, color: { dark: '#1a1535', light: '#ffffff' }
-            });
+            var qrTmp = document.createElement('canvas');
+            _makeQR(qrTmp, profileUrl, 320);
+
             var W = 540, H = 740;
             var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
             var cx = cv.getContext('2d');
-            // Background
+
             var bg = cx.createLinearGradient(0, 0, 0, H);
             bg.addColorStop(0, '#0d0d1a'); bg.addColorStop(1, '#1a1535');
             cx.fillStyle = bg; cx.fillRect(0, 0, W, H);
-            // Border
+
             cx.strokeStyle = 'rgba(124,92,191,0.55)'; cx.lineWidth = 2.5;
-            cx.beginPath(); cx.roundRect(8, 8, W-16, H-16, 22); cx.stroke();
-            // Logo
+            _qrRRect(cx, 8, 8, W-16, H-16, 22); cx.stroke();
+
             cx.textAlign = 'center';
-            cx.font = 'bold 26px sans-serif'; cx.fillStyle = '#ffffff';
+            cx.font = 'bold 26px system-ui,sans-serif'; cx.fillStyle = '#ffffff';
             cx.fillText('SocialHub', W/2, 52);
-            cx.font = '12px sans-serif'; cx.fillStyle = 'rgba(45,212,191,0.75)';
+            cx.font = '12px system-ui,sans-serif'; cx.fillStyle = 'rgba(45,212,191,0.75)';
             cx.fillText('The Future of Social', W/2, 72);
-            // Divider
             cx.strokeStyle = 'rgba(255,255,255,0.07)'; cx.lineWidth = 1;
             cx.beginPath(); cx.moveTo(60, 86); cx.lineTo(W-60, 86); cx.stroke();
+
             // Avatar
             var avatarLoaded = false;
             if (_qrProfileAvatar) {
@@ -17623,46 +17644,37 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (!avatarLoaded) {
                 cx.fillStyle='rgba(124,92,191,0.25)';
                 cx.beginPath(); cx.arc(W/2,148,52,0,Math.PI*2); cx.fill();
-                cx.font='30px sans-serif'; cx.fillStyle='rgba(255,255,255,0.5)';
-                cx.fillText('👤', W/2, 162);
             }
-            // Name + address
-            cx.font = 'bold 22px sans-serif'; cx.fillStyle = '#ffffff';
+
+            cx.font = 'bold 22px system-ui,sans-serif'; cx.fillStyle = '#ffffff';
             cx.fillText(_qrProfileName, W/2, 228);
             cx.font = '11px monospace'; cx.fillStyle = 'rgba(255,255,255,0.35)';
             cx.fillText(_qrProfileAddr.slice(0,8) + '…' + _qrProfileAddr.slice(-6), W/2, 248);
-            // QR white card
-            cx.fillStyle = '#ffffff';
-            cx.beginPath(); cx.roundRect(110, 268, 320, 320, 16); cx.fill();
-            // Corner accents
-            [[110,268],[430,268],[110,588],[430,588]].forEach(function(p){
-                cx.strokeStyle='rgba(124,92,191,0.45)'; cx.lineWidth=2.5;
-                cx.beginPath(); cx.roundRect(p[0]-2,p[1]-2,22,22,5); cx.stroke();
-            });
-            var qi = new Image();
-            await new Promise(function(r){ qi.onload=r; qi.onerror=r; qi.src=qrDataUrl; });
-            cx.drawImage(qi, 118, 276, 304, 304);
-            // Tagline
-            cx.font = 'italic 13px sans-serif'; cx.fillStyle = 'rgba(255,255,255,0.6)';
+
+            // QR card
+            cx.fillStyle = '#ffffff'; cx.fillRect(110, 268, 320, 320);
+            cx.drawImage(qrTmp, 110, 268, 320, 320);
+
+            cx.font = 'italic 13px system-ui,sans-serif'; cx.fillStyle = 'rgba(255,255,255,0.6)';
             cx.fillText('"Join me on SocialHub — where every interaction earns"', W/2, 626);
-            // URL pill
-            cx.fillStyle = 'rgba(124,92,191,0.12)';
-            cx.beginPath(); cx.roundRect(W/2-130, 642, 260, 30, 15); cx.fill();
+
+            cx.fillStyle = 'rgba(124,92,191,0.15)';
+            _qrRRect(cx, W/2-130, 642, 260, 30, 15); cx.fill();
             cx.strokeStyle = 'rgba(124,92,191,0.4)'; cx.lineWidth = 1;
-            cx.beginPath(); cx.roundRect(W/2-130, 642, 260, 30, 15); cx.stroke();
-            cx.font = 'bold 13px sans-serif'; cx.fillStyle = 'rgba(124,92,191,0.95)';
+            _qrRRect(cx, W/2-130, 642, 260, 30, 15); cx.stroke();
+            cx.font = 'bold 13px system-ui,sans-serif'; cx.fillStyle = 'rgba(124,92,191,0.95)';
             cx.fillText('socialhubglobal.com', W/2, 662);
-            // Footer
+
             cx.font = '10px monospace'; cx.fillStyle = 'rgba(255,255,255,0.2)';
             cx.fillText('Scan to view profile · Powered by BNB Smart Chain', W/2, 714);
-            // Download
+
             var safeName = (_qrProfileName || _qrProfileAddr).replace(/[^a-z0-9]/gi, '-').toLowerCase().slice(0,40);
             var a = document.createElement('a');
             a.download = 'socialhub-' + safeName + '-profile.png';
             a.href = cv.toDataURL('image/png');
-            a.click();
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
             showToast('Profile QR saved!');
-        } catch(e) { console.error('[ProfileQR]', e); showToast('Download failed.'); }
+        } catch(e) { console.error('[ProfileQR]', e); showToast('Download failed: ' + e.message); }
     }
     window.downloadProfileQR = downloadProfileQR;
 
