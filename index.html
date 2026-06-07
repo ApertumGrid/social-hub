@@ -26,6 +26,9 @@
     <meta name="theme-color" content="#7c5cbf">
     <link rel="manifest" href="/manifest.json">
 
+    <!-- QR Code generation (client-side, no server needed) -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+
     <!-- PWA: Service Worker Registration -->
     <script>
       if ('serviceWorker' in navigator) {
@@ -5895,6 +5898,64 @@
             background: rgba(124,92,191,0.15);
             border-color: var(--purple-lt); color: var(--purple-lt);
         }
+        /* ── QR Code system ─────────────────────────────────────── */
+        #platform-qr-modal {
+            display:none; position:fixed; inset:0; z-index:99990;
+            background:rgba(0,0,0,0.78); backdrop-filter:blur(8px);
+            align-items:center; justify-content:center; padding:20px;
+        }
+        #platform-qr-inner {
+            background:var(--bg-panel); border:1px solid rgba(124,92,191,0.4);
+            border-radius:22px; padding:28px 24px; width:100%; max-width:340px;
+            position:relative; text-align:center;
+            box-shadow:0 0 60px rgba(124,92,191,0.2);
+        }
+        #hero-qr-section {
+            display:none; margin-top:14px; padding-top:12px;
+            border-top:1px solid rgba(255,255,255,0.07);
+        }
+        .hero-qr-label {
+            font-size:0.65rem; font-weight:700; letter-spacing:0.8px;
+            text-transform:uppercase; color:var(--text-muted); margin-bottom:8px;
+        }
+        .hero-qr-row {
+            display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+        }
+        .hero-qr-canvas-wrap {
+            background:#fff; border-radius:10px; padding:6px;
+            flex-shrink:0; line-height:0;
+        }
+        .hero-qr-btns {
+            display:flex; flex-direction:column; gap:6px;
+        }
+        .hero-qr-btn {
+            padding:7px 14px; border-radius:14px; border:1px solid var(--border);
+            background:var(--bg-hover); color:var(--text-primary);
+            font-size:0.7rem; font-weight:700; cursor:pointer;
+            transition:all 0.15s; white-space:nowrap;
+        }
+        .hero-qr-btn:hover { border-color:var(--purple-lt); color:var(--purple-lt); }
+        .hero-qr-btn.primary { border-color:rgba(124,92,191,0.5); background:rgba(124,92,191,0.1); color:var(--purple-lt); }
+        #hero-qr-share-tray {
+            display:none; margin-top:8px;
+            background:var(--bg-hover); border:1px solid var(--border);
+            border-radius:12px; padding:8px; gap:6px; flex-wrap:wrap;
+        }
+        .qr-share-chip {
+            padding:6px 12px; border-radius:20px; border:1px solid var(--border);
+            background:transparent; color:var(--text-secondary);
+            font-size:0.68rem; font-weight:600; cursor:pointer; transition:all 0.15s;
+        }
+        .qr-share-chip:hover { border-color:var(--purple-lt); color:var(--purple-lt); background:rgba(124,92,191,0.08); }
+        #platform-qr-btn {
+            background:none; border:1px solid rgba(255,255,255,0.12);
+            color:var(--text-muted); border-radius:10px;
+            padding:5px 9px; font-size:1rem; cursor:pointer;
+            transition:all 0.15s; line-height:1;
+        }
+        #platform-qr-btn:hover { border-color:var(--purple-lt); color:var(--purple-lt); }
+        @media (max-width:768px) { #platform-qr-btn { display:none !important; } }
+
         .mkt-cat:hover:not(.active) { background: var(--bg-hover); color: var(--text-primary); }
         .mkt-cat.main-active {
             background: rgba(124,92,191,0.2);
@@ -9431,6 +9492,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 <span style="width:8px;height:8px;border-radius:50%;background:#e03e3e;box-shadow:0 0 6px #e03e3e;animation:vaultPulse 1.8s ease infinite;flex-shrink:0;"></span>
                 Live Stream
             </button>
+            <button id="platform-qr-btn" onclick="openPlatformQR()" title="Share SocialHub — scan to visit">📲</button>
             <button id="theme-toggle" onclick="toggleTheme()" title="Toggle dark / light mode">🌙</button>
             <div id="notif-wrap" style="position:relative;">
                 <button class="notif-bell-btn" id="notif-bell-btn" onclick="toggleNotifPanel()" title="Notifications">
@@ -9803,6 +9865,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                       <div id="hero-bio"></div>
                       <div id="hero-links"></div>
                       <div id="hero-mkt-badges" style="display:none;"></div>
+
+                      <!-- Profile QR — own wall only -->
+                      <div id="hero-qr-section">
+                        <div class="hero-qr-label">📲 My Profile QR</div>
+                        <div class="hero-qr-row">
+                          <div class="hero-qr-canvas-wrap">
+                            <canvas id="hero-qr-canvas" width="108" height="108"></canvas>
+                          </div>
+                          <div class="hero-qr-btns">
+                            <button class="hero-qr-btn primary" onclick="toggleProfileQRShare()">↗ Share</button>
+                            <button class="hero-qr-btn" onclick="downloadProfileQR()">⬇ Save PNG</button>
+                          </div>
+                        </div>
+                        <div id="hero-qr-share-tray">
+                          <button class="qr-share-chip" onclick="qrShareTo('whatsapp')">📱 WhatsApp</button>
+                          <button class="qr-share-chip" onclick="qrShareTo('telegram')">✈️ Telegram</button>
+                          <button class="qr-share-chip" onclick="qrShareTo('copy')">🔗 Copy Link</button>
+                        </div>
+                      </div>
                     </div>
 
                     <!-- Stat tiles -->
@@ -17379,6 +17460,212 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.viewUserWall = viewUserWall;
     window.clearWall    = clearWall;
 
+    // ════════════════════════════════════════════════════════════════
+    //  QR CODE SYSTEM
+    // ════════════════════════════════════════════════════════════════
+
+    var _qrProfileAddr   = '';
+    var _qrProfileName   = '';
+    var _qrProfileAvatar = '';
+
+    // ── Platform QR ─────────────────────────────────────────────────
+
+    function openPlatformQR() {
+        var modal = document.getElementById('platform-qr-modal');
+        if (!modal) return;
+        modal.style.display = 'flex';
+        var canvas = document.getElementById('platform-qr-canvas');
+        if (canvas && typeof QRCode !== 'undefined') {
+            QRCode.toCanvas(canvas, 'https://socialhubglobal.com/', {
+                width: 200, margin: 1,
+                color: { dark: '#1a1535', light: '#ffffff' }
+            }, function(){});
+        }
+    }
+    window.openPlatformQR = openPlatformQR;
+
+    function closePlatformQR() {
+        var modal = document.getElementById('platform-qr-modal');
+        if (modal) modal.style.display = 'none';
+    }
+    window.closePlatformQR = closePlatformQR;
+
+    async function downloadPlatformQR() {
+        if (typeof QRCode === 'undefined') { showToast('QR library loading…'); return; }
+        try {
+            var qrDataUrl = await QRCode.toDataURL('https://socialhubglobal.com/', {
+                width: 320, margin: 2, color: { dark: '#1a1535', light: '#ffffff' }
+            });
+            var W = 480, H = 580;
+            var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+            var cx = cv.getContext('2d');
+            var bg = cx.createLinearGradient(0, 0, 0, H);
+            bg.addColorStop(0, '#0d0d1a'); bg.addColorStop(1, '#1a1535');
+            cx.fillStyle = bg; cx.fillRect(0, 0, W, H);
+            cx.strokeStyle = 'rgba(124,92,191,0.55)'; cx.lineWidth = 2.5;
+            cx.beginPath(); cx.roundRect(8, 8, W-16, H-16, 20); cx.stroke();
+            cx.textAlign = 'center';
+            cx.font = 'bold 34px sans-serif'; cx.fillStyle = '#ffffff';
+            cx.fillText('SocialHub', W/2, 64);
+            cx.font = '14px sans-serif'; cx.fillStyle = 'rgba(45,212,191,0.85)';
+            cx.fillText('The Future of Social', W/2, 90);
+            cx.fillStyle = '#ffffff';
+            cx.beginPath(); cx.roundRect(90, 118, 300, 300, 14); cx.fill();
+            var qi = new Image();
+            await new Promise(function(r){ qi.onload=r; qi.onerror=r; qi.src=qrDataUrl; });
+            cx.drawImage(qi, 98, 126, 284, 284);
+            cx.fillStyle = 'rgba(124,92,191,0.3)';
+            [[52,108],[W-52,108],[52,H-90],[W-52,H-90]].forEach(function(p){
+                cx.beginPath(); cx.arc(p[0],p[1],5,0,Math.PI*2); cx.fill();
+            });
+            cx.font = 'italic 14px sans-serif'; cx.fillStyle = 'rgba(255,255,255,0.6)';
+            cx.fillText('"Where every interaction earns"', W/2, 462);
+            cx.font = 'bold 15px sans-serif'; cx.fillStyle = 'rgba(124,92,191,0.9)';
+            cx.fillText('socialhubglobal.com', W/2, 500);
+            cx.font = '11px monospace'; cx.fillStyle = 'rgba(255,255,255,0.25)';
+            cx.fillText('Powered by BNB Smart Chain · USDT on-chain', W/2, 548);
+            var a = document.createElement('a');
+            a.download = 'socialhub-platform-qr.png';
+            a.href = cv.toDataURL('image/png');
+            a.click();
+            showToast('Platform QR saved!');
+        } catch(e) { console.error('[QR]', e); showToast('Download failed.'); }
+    }
+    window.downloadPlatformQR = downloadPlatformQR;
+
+    // ── Profile QR ──────────────────────────────────────────────────
+
+    function renderProfileQR(addr, name, avatarUrl) {
+        _qrProfileAddr   = addr || '';
+        _qrProfileName   = name || (addr ? addr.slice(0,6)+'…'+addr.slice(-4) : '');
+        _qrProfileAvatar = avatarUrl || '';
+        var section = document.getElementById('hero-qr-section');
+        var canvas  = document.getElementById('hero-qr-canvas');
+        var tray    = document.getElementById('hero-qr-share-tray');
+        if (!section || !canvas) return;
+        if (!addr) { section.style.display = 'none'; return; }
+        var profileUrl = 'https://socialhubglobal.com/?profile=' + addr.toLowerCase();
+        if (typeof QRCode !== 'undefined') {
+            QRCode.toCanvas(canvas, profileUrl, {
+                width: 108, margin: 1,
+                color: { dark: '#1a1535', light: '#ffffff' }
+            }, function(){});
+        }
+        if (tray) tray.style.display = 'none';
+        section.style.display = '';
+    }
+    window.renderProfileQR = renderProfileQR;
+
+    function toggleProfileQRShare() {
+        var tray = document.getElementById('hero-qr-share-tray');
+        if (!tray) return;
+        tray.style.display = (tray.style.display === 'flex') ? 'none' : 'flex';
+    }
+    window.toggleProfileQRShare = toggleProfileQRShare;
+
+    function qrShareTo(target) {
+        var url  = 'https://socialhubglobal.com/?profile=' + _qrProfileAddr.toLowerCase();
+        var text = 'Check out ' + _qrProfileName + ' on SocialHub — where every interaction earns!';
+        if (target === 'whatsapp') {
+            window.open('https://wa.me/?text=' + encodeURIComponent(text + '\n' + url), '_blank');
+        } else if (target === 'telegram') {
+            window.open('https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(text), '_blank');
+        } else if (target === 'copy') {
+            navigator.clipboard.writeText(url).then(function(){ showToast('Profile link copied!'); });
+            var tray = document.getElementById('hero-qr-share-tray');
+            if (tray) tray.style.display = 'none';
+        }
+    }
+    window.qrShareTo = qrShareTo;
+
+    async function downloadProfileQR() {
+        if (typeof QRCode === 'undefined') { showToast('QR library loading…'); return; }
+        if (!_qrProfileAddr) { showToast('No profile loaded.'); return; }
+        try {
+            var profileUrl = 'https://socialhubglobal.com/?profile=' + _qrProfileAddr.toLowerCase();
+            var qrDataUrl  = await QRCode.toDataURL(profileUrl, {
+                width: 320, margin: 2, color: { dark: '#1a1535', light: '#ffffff' }
+            });
+            var W = 540, H = 740;
+            var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+            var cx = cv.getContext('2d');
+            // Background
+            var bg = cx.createLinearGradient(0, 0, 0, H);
+            bg.addColorStop(0, '#0d0d1a'); bg.addColorStop(1, '#1a1535');
+            cx.fillStyle = bg; cx.fillRect(0, 0, W, H);
+            // Border
+            cx.strokeStyle = 'rgba(124,92,191,0.55)'; cx.lineWidth = 2.5;
+            cx.beginPath(); cx.roundRect(8, 8, W-16, H-16, 22); cx.stroke();
+            // Logo
+            cx.textAlign = 'center';
+            cx.font = 'bold 26px sans-serif'; cx.fillStyle = '#ffffff';
+            cx.fillText('SocialHub', W/2, 52);
+            cx.font = '12px sans-serif'; cx.fillStyle = 'rgba(45,212,191,0.75)';
+            cx.fillText('The Future of Social', W/2, 72);
+            // Divider
+            cx.strokeStyle = 'rgba(255,255,255,0.07)'; cx.lineWidth = 1;
+            cx.beginPath(); cx.moveTo(60, 86); cx.lineTo(W-60, 86); cx.stroke();
+            // Avatar
+            var avatarLoaded = false;
+            if (_qrProfileAvatar) {
+                try {
+                    var av = new Image(); av.crossOrigin = 'anonymous';
+                    await new Promise(function(res,rej){ av.onload=res; av.onerror=rej; av.src=_qrProfileAvatar; });
+                    cx.save();
+                    cx.beginPath(); cx.arc(W/2, 148, 52, 0, Math.PI*2); cx.clip();
+                    cx.drawImage(av, W/2-52, 96, 104, 104);
+                    cx.restore();
+                    cx.strokeStyle='rgba(124,92,191,0.8)'; cx.lineWidth=3;
+                    cx.beginPath(); cx.arc(W/2, 148, 54, 0, Math.PI*2); cx.stroke();
+                    avatarLoaded = true;
+                } catch(_) {}
+            }
+            if (!avatarLoaded) {
+                cx.fillStyle='rgba(124,92,191,0.25)';
+                cx.beginPath(); cx.arc(W/2,148,52,0,Math.PI*2); cx.fill();
+                cx.font='30px sans-serif'; cx.fillStyle='rgba(255,255,255,0.5)';
+                cx.fillText('👤', W/2, 162);
+            }
+            // Name + address
+            cx.font = 'bold 22px sans-serif'; cx.fillStyle = '#ffffff';
+            cx.fillText(_qrProfileName, W/2, 228);
+            cx.font = '11px monospace'; cx.fillStyle = 'rgba(255,255,255,0.35)';
+            cx.fillText(_qrProfileAddr.slice(0,8) + '…' + _qrProfileAddr.slice(-6), W/2, 248);
+            // QR white card
+            cx.fillStyle = '#ffffff';
+            cx.beginPath(); cx.roundRect(110, 268, 320, 320, 16); cx.fill();
+            // Corner accents
+            [[110,268],[430,268],[110,588],[430,588]].forEach(function(p){
+                cx.strokeStyle='rgba(124,92,191,0.45)'; cx.lineWidth=2.5;
+                cx.beginPath(); cx.roundRect(p[0]-2,p[1]-2,22,22,5); cx.stroke();
+            });
+            var qi = new Image();
+            await new Promise(function(r){ qi.onload=r; qi.onerror=r; qi.src=qrDataUrl; });
+            cx.drawImage(qi, 118, 276, 304, 304);
+            // Tagline
+            cx.font = 'italic 13px sans-serif'; cx.fillStyle = 'rgba(255,255,255,0.6)';
+            cx.fillText('"Join me on SocialHub — where every interaction earns"', W/2, 626);
+            // URL pill
+            cx.fillStyle = 'rgba(124,92,191,0.12)';
+            cx.beginPath(); cx.roundRect(W/2-130, 642, 260, 30, 15); cx.fill();
+            cx.strokeStyle = 'rgba(124,92,191,0.4)'; cx.lineWidth = 1;
+            cx.beginPath(); cx.roundRect(W/2-130, 642, 260, 30, 15); cx.stroke();
+            cx.font = 'bold 13px sans-serif'; cx.fillStyle = 'rgba(124,92,191,0.95)';
+            cx.fillText('socialhubglobal.com', W/2, 662);
+            // Footer
+            cx.font = '10px monospace'; cx.fillStyle = 'rgba(255,255,255,0.2)';
+            cx.fillText('Scan to view profile · Powered by BNB Smart Chain', W/2, 714);
+            // Download
+            var safeName = (_qrProfileName || _qrProfileAddr).replace(/[^a-z0-9]/gi, '-').toLowerCase().slice(0,40);
+            var a = document.createElement('a');
+            a.download = 'socialhub-' + safeName + '-profile.png';
+            a.href = cv.toDataURL('image/png');
+            a.click();
+            showToast('Profile QR saved!');
+        } catch(e) { console.error('[ProfileQR]', e); showToast('Download failed.'); }
+    }
+    window.downloadProfileQR = downloadProfileQR;
+
     runPriceHeartbeat();                          // immediate on script load
     setInterval(runPriceHeartbeat, 30000);       // every 30 seconds unconditionally
 
@@ -18086,6 +18373,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     if (section)  section.style.display = 'none';
                 }
             } catch (_) {}
+        }
+
+        // ── Profile QR — only on own wall ────────────────────────────────────────
+        var qrSection = document.getElementById('hero-qr-section');
+        if (qrSection) qrSection.style.display = 'none'; // reset before deciding
+        if (ownWall) {
+            var avatarSrc = document.getElementById('hero-avatar')?.src || '';
+            var nameText  = document.getElementById('hero-name')?.textContent || wallName;
+            renderProfileQR(addrLower, nameText, avatarSrc);
         }
     }
 
@@ -32022,6 +32318,23 @@ function _copyReplayLink(link) {
     window.openAdminAnalytics = loadAdminAnalytics;
 })();
 </script>
+
+<!-- ── Platform QR Code Modal ──────────────────────────────────────── -->
+<div id="platform-qr-modal" onclick="if(event.target===this)closePlatformQR()">
+    <div id="platform-qr-inner">
+        <button onclick="closePlatformQR()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-muted);font-size:1.1rem;cursor:pointer;line-height:1;">✕</button>
+        <div style="font-size:1.2rem;font-weight:800;letter-spacing:1px;color:#fff;margin-bottom:2px;">SocialHub</div>
+        <div style="font-size:0.68rem;color:var(--teal);margin-bottom:16px;font-weight:600;letter-spacing:0.4px;">THE FUTURE OF SOCIAL</div>
+        <div style="background:#fff;border-radius:14px;padding:10px;display:inline-block;margin-bottom:14px;line-height:0;box-shadow:0 0 30px rgba(124,92,191,0.25);">
+            <canvas id="platform-qr-canvas" width="200" height="200"></canvas>
+        </div>
+        <div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px;">Scan to visit</div>
+        <div style="font-size:0.72rem;font-weight:700;color:var(--purple-lt);margin-bottom:16px;">socialhubglobal.com</div>
+        <div style="display:flex;gap:8px;justify-content:center;">
+            <button onclick="downloadPlatformQR()" style="padding:9px 20px;border-radius:20px;border:1px solid rgba(124,92,191,0.5);background:rgba(124,92,191,0.12);color:var(--purple-lt);font-size:0.75rem;font-weight:700;cursor:pointer;">⬇ Download PNG</button>
+        </div>
+    </div>
+</div>
 
 <!-- ── VOD Replay Modal ─────────────────────────────────────────────── -->
 <div id="replay-modal" onclick="if(event.target===this)closeReplay()">
