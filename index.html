@@ -16135,6 +16135,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                     const row = document.createElement('div');
                     row.className = "cmt-row" + (depth > 0 ? " nested" : "");
+                    // Long-press on mobile to open reply box
+                    let _lpt;
+                    row.addEventListener('touchstart', () => {
+                        _lpt = setTimeout(() => {
+                            toggleReplyInput(cId);
+                            if (navigator.vibrate) navigator.vibrate(40);
+                        }, 500);
+                    }, { passive: true });
+                    row.addEventListener('touchend',  () => clearTimeout(_lpt));
+                    row.addEventListener('touchmove', () => clearTimeout(_lpt));
                     if (depth > 1) {
                         row.style.marginLeft = (18 + (depth - 1) * 14) + "px";
                         row.style.borderLeft = "2px solid rgba(124,92,191," + Math.min(0.25 + depth * 0.08, 0.55) + ")";
@@ -27013,6 +27023,26 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             });
             const data = await res.json();
             if (data.error) { showToast(data.error); return; }
+            // Write ledger entries client-side — same path as follow/comment/reply (reliable)
+            const _VR_TIERS = {
+                spark:   { icon:'⚡', name:'Spark',   cost:1  },
+                fire:    { icon:'🔥', name:'Fire',    cost:5  },
+                diamond: { icon:'💎', name:'Diamond', cost:20 },
+                rocket:  { icon:'🚀', name:'Rocket',  cost:50 }
+            };
+            const _t = _VR_TIERS[tierKey];
+            if (_t && window.logTransaction && _vrGiftTarget) {
+                const _recip = (_vrGiftTarget.addr || '').toLowerCase();
+                const _cut   = Math.round(_t.cost * 0.8 * 10) / 10;
+                window.logTransaction('spend', _t.cost, {
+                    from: userAddress, to: _recip,
+                    description: `${_t.icon} ${_t.name} Gift sent in Voice Room (-${_t.cost}★)`
+                });
+                window.logTransaction('earn', _cut, {
+                    from: userAddress, to: _recip,
+                    description: `${_t.icon} ${_t.name} Gift received in Voice Room (+${_cut.toFixed(1)}★)`
+                });
+            }
             showToast('Gift sent to ' + _vrGiftTarget.name + '!');
             _vrGiftTarget = null;
             const lbl = document.getElementById('vr-gift-to-lbl');
