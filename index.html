@@ -26451,6 +26451,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     let _vrMuted       = false;
     let _vrRoomUnsub   = null;
     let _vrChatUnsub   = null;
+    let _vrQueueUnsub  = null;
     let _vrGiftOpen    = false;
 
     function openStartRoomModal() {
@@ -26562,6 +26563,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             await _vrConnectAgora(roomId, token, uid, _vrIsHost);
             _vrSubscribeRoom(roomId);
             _vrSubscribeChat(roomId);
+            if (_vrIsHost) _vrSubscribeQueue(roomId);
             if (window.db && window.fs) {
                 window.fs.setDoc(
                     window.fs.doc(window.db, VR_LISTEN, roomId, 'presence', userAddress.toLowerCase()),
@@ -26665,7 +26667,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             _vrRenderSpeakers(r);
             _vrRenderListeners(roomId, r);
-            if (_vrIsHost) _vrRenderQueue(roomId);
         });
     }
 
@@ -26730,33 +26731,37 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }).catch(() => {});
     }
 
-    function _vrRenderQueue(roomId) {
+    function _vrSubscribeQueue(roomId) {
+        if (_vrQueueUnsub) { try { _vrQueueUnsub(); } catch(_) {} _vrQueueUnsub = null; }
         if (!window.db || !window.fs) return;
-        const strip = document.getElementById('vr-queue-strip');
-        const qRow  = document.getElementById('vr-queue-row');
-        if (!strip || !qRow) return;
-        window.fs.getDocs(window.fs.query(
+        _vrQueueUnsub = window.fs.onSnapshot(
             window.fs.collection(window.db, VR_QUEUE, roomId, 'requests'),
-            window.fs.where('status', '==', 'pending'),
-            window.fs.orderBy('bidStars', 'desc')
-        )).then(snap => {
-            if (snap.empty) { strip.style.display = 'none'; return; }
-            strip.style.display = 'block';
-            qRow.innerHTML = '';
-            snap.forEach(doc => {
-                const q = doc.data();
-                qRow.insertAdjacentHTML('beforeend', `
-                    <div class="vr-q-item">
-                        <img class="vr-q-av" src="${escHtml(q.avatar||'')}" title="${escHtml(q.name||'')}">
-                        <div class="vr-q-bid">${q.bidStars}★</div>
-                        <div class="vr-q-name">${escHtml(q.name||'')}</div>
-                        <div class="vr-q-btns">
-                            <button class="vr-admit-btn" onclick="vrAdmitSpeaker('${roomId}','${doc.id}')">✓</button>
-                            <button class="vr-deny-btn"  onclick="vrDenySpeaker('${roomId}','${doc.id}')">✕</button>
-                        </div>
-                    </div>`);
-            });
-        }).catch(() => {});
+            snap => {
+                const strip = document.getElementById('vr-queue-strip');
+                const qRow  = document.getElementById('vr-queue-row');
+                if (!strip || !qRow) return;
+                // Filter pending + sort by bid desc — client-side, no composite index needed
+                const pending = [];
+                snap.forEach(doc => { const q = doc.data(); if (q.status === 'pending') pending.push({ id: doc.id, ...q }); });
+                pending.sort((a, b) => (b.bidStars || 0) - (a.bidStars || 0));
+                if (pending.length === 0) { strip.style.display = 'none'; return; }
+                strip.style.display = 'block';
+                qRow.innerHTML = '';
+                pending.forEach(q => {
+                    qRow.insertAdjacentHTML('beforeend', `
+                        <div class="vr-q-item">
+                            <img class="vr-q-av" src="${escHtml(q.avatar||'')}" onerror="this.src='https://placehold.co/38/1a1535/fff?text=?'" title="${escHtml(q.name||'')}">
+                            <div class="vr-q-bid">${q.bidStars}★</div>
+                            <div class="vr-q-name">${escHtml(q.name||'')}</div>
+                            <div class="vr-q-btns">
+                                <button class="vr-admit-btn" onclick="vrAdmitSpeaker('${roomId}','${q.id}')">✓ Let in</button>
+                                <button class="vr-deny-btn"  onclick="vrDenySpeaker('${roomId}','${q.id}')">✕</button>
+                            </div>
+                        </div>`);
+                });
+            },
+            err => console.error('[vrQueue]', err.code)
+        );
     }
 
     function _vrSubscribeChat(roomId) {
@@ -26998,8 +27003,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     function _vrLeaveCleanup() {
         if (_vrAudioTrack) { try { _vrAudioTrack.stop(); _vrAudioTrack.close(); } catch(_) {} _vrAudioTrack = null; }
         if (_vrAgoraClient) { try { _vrAgoraClient.leave(); } catch(_) {} _vrAgoraClient = null; }
-        if (_vrRoomUnsub) { try { _vrRoomUnsub(); } catch(_) {} _vrRoomUnsub = null; }
-        if (_vrChatUnsub) { try { _vrChatUnsub(); } catch(_) {} _vrChatUnsub = null; }
+        if (_vrRoomUnsub)  { try { _vrRoomUnsub();  } catch(_) {} _vrRoomUnsub  = null; }
+        if (_vrChatUnsub)  { try { _vrChatUnsub();  } catch(_) {} _vrChatUnsub  = null; }
+        if (_vrQueueUnsub) { try { _vrQueueUnsub(); } catch(_) {} _vrQueueUnsub = null; }
         if (userAddress && _vrRoomId && window.db && window.fs) {
             window.fs.deleteDoc(window.fs.doc(window.db, VR_LISTEN, _vrRoomId, 'presence', userAddress.toLowerCase())).catch(() => {});
         }
