@@ -26523,10 +26523,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     window.joinVoiceRoom = async function(roomId, isHost, preToken, preUid) {
         if (!userAddress) { showToast('Connect wallet first'); return; }
-        _vrRoomId    = roomId;
-        _vrIsHost    = !!isHost;
-        _vrIsSpeaker = !!isHost;
+        _vrRoomId = roomId;
         try {
+            // Always verify host status from room doc — don't trust the isHost param
+            const roomDocSnap = await window.fs.getDoc(window.fs.doc(window.db, VR_COL, roomId)).catch(() => null);
+            if (!roomDocSnap || !roomDocSnap.exists()) { showToast('Room not found'); return; }
+            const roomData = roomDocSnap.data();
+            _vrIsHost    = userAddress.toLowerCase() === (roomData.hostAddr || '').toLowerCase();
+            _vrIsSpeaker = _vrIsHost || (roomData.currentSpeakers || []).some(s => s.addr === userAddress.toLowerCase());
+
             let token = preToken, uid = preUid;
             if (!token) {
                 const ch  = 'vr_' + roomId;
@@ -26536,10 +26541,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 token = d.token; uid = d.uid;
             }
             _vrShowOverlay();
-            await _vrConnectAgora(roomId, token, uid, isHost);
+            await _vrConnectAgora(roomId, token, uid, _vrIsHost);
             _vrSubscribeRoom(roomId);
             _vrSubscribeChat(roomId);
-            // Write presence
             if (window.db && window.fs) {
                 window.fs.setDoc(
                     window.fs.doc(window.db, VR_LISTEN, roomId, 'presence', userAddress.toLowerCase()),
@@ -26558,8 +26562,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         _vrAgoraClient = window.AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
         await _vrAgoraClient.join(AGORA_APP_ID_VR, ch, token, uid);
         if (isHost) {
-            _vrAudioTrack = await window.AgoraRTC.createMicrophoneAudioTrack();
-            await _vrAgoraClient.publish([_vrAudioTrack]);
+            try {
+                _vrAudioTrack = await window.AgoraRTC.createMicrophoneAudioTrack();
+                await _vrAgoraClient.publish([_vrAudioTrack]);
+            } catch(micErr) {
+                console.warn('[VR] Mic unavailable:', micErr.message);
+                showToast('Microphone not available — you\'re muted');
+            }
         }
         _vrAgoraClient.on('user-published', async (user, mediaType) => {
             if (mediaType === 'audio') {
@@ -26615,28 +26624,37 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         });
     }
 
+    function _vrUidFromAddr(addr) {
+        return (parseInt((addr||'0x00000000').toLowerCase().slice(2,10), 16) % 1000000) + 10000;
+    }
+
     function _vrRenderSpeakers(r) {
         const row = document.getElementById('vr-speakers-row');
         if (!row) return;
         row.innerHTML = '';
-        const hav = escHtml(r.hostAvatar || '');
-        const hn  = escHtml(r.hostName || 'Host');
+        const hav    = escHtml(r.hostAvatar || '');
+        const hn     = escHtml(r.hostName || 'Host');
+        const hAddr  = escHtml(r.hostAddr || '');
+        const hUid   = _vrUidFromAddr(r.hostAddr);
         row.insertAdjacentHTML('beforeend', `
-            <div class="vr-orb-wrap">
-                <div class="vr-orb vr-orb-host">
-                    <img src="${hav}" onerror="this.src='https://placehold.co/72/f0b441/000?text=H'">
+            <div class="vr-orb-wrap" onclick="vrSelectGiftOrb('${hAddr}','${hn}')" title="Tap to gift ${hn}">
+                <div class="vr-orb vr-orb-host" data-uid="${hUid}">
+                    <img src="${hav}" onerror="this.src='https://placehold.co/80/f0b441/000?text=H'">
                     <div class="vr-orb-ring"></div>
                 </div>
                 <div class="vr-orb-name host-lbl">${hn}</div>
             </div>`);
         (r.currentSpeakers || []).forEach(sp => {
+            const sUid  = _vrUidFromAddr(sp.addr);
+            const sAddr = escHtml(sp.addr || '');
+            const sName = escHtml(sp.name || 'Speaker');
             row.insertAdjacentHTML('beforeend', `
-                <div class="vr-orb-wrap">
-                    <div class="vr-orb vr-orb-speaker">
-                        <img src="${escHtml(sp.avatar||'')}" onerror="this.src='https://placehold.co/58/7c5cbf/fff?text=S'">
+                <div class="vr-orb-wrap" onclick="vrSelectGiftOrb('${sAddr}','${sName}')" title="Tap to gift ${sName}">
+                    <div class="vr-orb vr-orb-speaker" data-uid="${sUid}">
+                        <img src="${escHtml(sp.avatar||'')}" onerror="this.src='https://placehold.co/64/7c5cbf/fff?text=S'">
                         <div class="vr-orb-ring spk"></div>
                     </div>
-                    <div class="vr-orb-name">${escHtml(sp.name||'Speaker')}</div>
+                    <div class="vr-orb-name">${sName}</div>
                 </div>`);
         });
     }
@@ -26717,7 +26735,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     feed.insertAdjacentHTML('beforeend', `<div class="${cls}">${html}</div>`);
                     feed.scrollTop = feed.scrollHeight;
                 });
-            }
+            },
+            err => console.error('[vrChat]', err.code, err.message)
         );
     }
 
@@ -26789,34 +26808,56 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (lb) lb.textContent = _vrMuted ? 'Unmute' : 'Mute';
     };
 
-    window.vrToggleGiftPicker = function() {
+    let _vrGiftTarget = null; // { addr, name } — null = host
+
+    window.vrSelectGiftOrb = function(addr, name) {
+        _vrGiftTarget = { addr, name };
+        const lbl = document.getElementById('vr-gift-to-lbl');
+        if (lbl) lbl.textContent = '→ ' + name;
+        _vrGiftOpen = true;
+        const picker = document.getElementById('vr-gift-picker');
+        if (picker) picker.classList.add('open');
+    };
+
+    window.vrToggleGiftPicker = async function() {
+        if (!_vrGiftOpen) {
+            // Default to host if no orb was tapped
+            if (!_vrGiftTarget && _vrRoomId && window.db && window.fs) {
+                const snap = await window.fs.getDoc(window.fs.doc(window.db, VR_COL, _vrRoomId)).catch(() => null);
+                if (snap && snap.exists()) {
+                    const r = snap.data();
+                    _vrGiftTarget = { addr: r.hostAddr, name: r.hostName || 'Host' };
+                    const lbl = document.getElementById('vr-gift-to-lbl');
+                    if (lbl) lbl.textContent = '→ ' + (_vrGiftTarget.name);
+                }
+            }
+        }
         _vrGiftOpen = !_vrGiftOpen;
         const picker = document.getElementById('vr-gift-picker');
         if (picker) picker.classList.toggle('open', _vrGiftOpen);
     };
 
-    window.vrSendGift = async function(tierName) {
+    window.vrSendGift = async function(tierKey) {
         _vrGiftOpen = false;
         const picker = document.getElementById('vr-gift-picker');
         if (picker) picker.classList.remove('open');
-        if (!_vrRoomId || !userAddress || !window.db || !window.fs) return;
-        const roomSnap = await window.fs.getDoc(window.fs.doc(window.db, VR_COL, _vrRoomId)).catch(() => null);
-        if (!roomSnap || !roomSnap.exists()) return;
-        const hostAddr = roomSnap.data().hostAddr;
-        // Reuse existing sendGift CF
+        if (!_vrRoomId || !userAddress) return;
+        if (!_vrGiftTarget) { showToast('Tap a speaker to gift them'); return; }
         try {
-            const res = await fetch(VR_CF_BASE + 'sendGift', {
+            const res = await fetch(VR_CF_BASE + 'sendVoiceRoomGift', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ senderAddr: userAddress, recipientAddr: hostAddr, tier: tierName, streamId: _vrRoomId })
+                body: JSON.stringify({
+                    senderAddr: userAddress, senderHandle: userHandle || 'Anonymous', senderAvatar: userAvatar || '',
+                    recipientAddr: _vrGiftTarget.addr, tierKey, roomId: _vrRoomId
+                })
             });
             const data = await res.json();
             if (data.error) { showToast(data.error); return; }
-            const TIERS = { spark:'Spark 1★', fire:'Fire 5★', diamond:'Diamond 20★', rocket:'Rocket 50★' };
-            window.fs.addDoc(window.fs.collection(window.db, VR_CHAT, _vrRoomId, 'messages'), {
-                type: 'gift', text: `💝 ${userHandle||'Someone'} sent ${TIERS[tierName]||tierName}!`, ts: Date.now()
-            }).catch(() => {});
-            showToast('Gift sent!');
-        } catch(e) { showToast('Gift failed'); }
+            showToast('Gift sent to ' + _vrGiftTarget.name + '!');
+            _vrGiftTarget = null;
+            const lbl = document.getElementById('vr-gift-to-lbl');
+            if (lbl) lbl.textContent = '';
+        } catch(e) { showToast('Gift failed'); console.error('[vrSendGift]', e); }
     };
 
     window.vrLeave = async function() {
@@ -33625,7 +33666,8 @@ function _copyReplayLink(link) {
 
     <!-- Gift picker (floats above controls) -->
     <div id="vr-gift-picker">
-        <div class="vr-gift-tile" onclick="vrSendGift('spark')"><span class="gi">✨</span><span>Spark</span><span style="color:var(--gold);">1★</span></div>
+        <div id="vr-gift-to-lbl" style="font-size:0.62rem;color:var(--gold);font-weight:700;text-align:center;margin-bottom:8px;min-height:14px;"></div>
+        <div class="vr-gift-tile" onclick="vrSendGift('spark')"><span class="gi">⚡</span><span>Spark</span><span style="color:var(--gold);">1★</span></div>
         <div class="vr-gift-tile" onclick="vrSendGift('fire')"><span class="gi">🔥</span><span>Fire</span><span style="color:var(--gold);">5★</span></div>
         <div class="vr-gift-tile" onclick="vrSendGift('diamond')"><span class="gi">💎</span><span>Diamond</span><span style="color:var(--gold);">20★</span></div>
         <div class="vr-gift-tile" onclick="vrSendGift('rocket')"><span class="gi">🚀</span><span>Rocket</span><span style="color:var(--gold);">50★</span></div>
