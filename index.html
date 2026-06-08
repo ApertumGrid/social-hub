@@ -938,6 +938,10 @@
         .vr-popup-btn.gift { background:rgba(240,180,41,0.12); border:1px solid rgba(240,180,41,0.35); color:var(--gold); }
         .vr-popup-btn.gift:hover { background:rgba(240,180,41,0.22); }
         .vr-popup-close { position:absolute; top:10px; right:10px; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.12); color:var(--text-muted); width:26px; height:26px; border-radius:50%; cursor:pointer; font-size:0.9rem; display:flex; align-items:center; justify-content:center; }
+        .vr-popup-btn.mod-mute { background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#ef4444; }
+        .vr-popup-btn.mod-mute:hover { background:rgba(239,68,68,0.2); }
+        .vr-popup-btn.mod-remove { background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#ef4444; }
+        .vr-popup-btn.mod-remove:hover { background:rgba(239,68,68,0.2); }
         /* Start Room Modal */
         #vr-start-modal { position:fixed; inset:0; z-index:2200; background:rgba(0,0,0,0.75); display:none; align-items:center; justify-content:center; padding:20px; }
         #vr-start-modal.open { display:flex; }
@@ -11031,7 +11035,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 <div class="live-tabs" id="live-tabs">
                     <button class="live-tab active" id="ltab-watch" onclick="setLiveTab('watch')">📺 Watch Streams</button>
                     <button class="live-tab" id="ltab-broadcast" onclick="setLiveTab('broadcast')">🎙 Go Live</button>
-                    <button class="live-tab" id="ltab-rooms" onclick="setLiveTab('rooms')" style="display:none;">🎧 Rooms</button>
+                    <button class="live-tab" id="ltab-rooms" onclick="setLiveTab('rooms')">🎧 Rooms</button>
                 </div>
 
                 <!-- ── WATCH TAB ── -->
@@ -13402,9 +13406,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             window._liveAvailableStars = availStars;
             window._liveTotalSpendable = availStars; // same formula
 
-            // Rooms tab — OWNER ONLY until public launch
-            const roomsTab = document.getElementById('ltab-rooms');
-            if (roomsTab) roomsTab.style.display = (userAddress && userAddress.toLowerCase() === CONFIG.OWNER_ADDRESS.toLowerCase()) ? '' : 'none';
+            // Rooms tab — visible to all (no guard)
 
             // Admin panel — OWNER ONLY. !important prevents any stylesheet override.
             const isAdmin = userAddress && userAddress.toLowerCase() === CONFIG.OWNER_ADDRESS.toLowerCase();
@@ -26634,6 +26636,33 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (sc) sc.textContent = '⭐ ' + parseFloat(r.starsEarned || 0).toFixed(1) + '★';
             const th = document.getElementById('vr-room-title-hd');
             if (th) th.textContent = r.title || 'Voice Room';
+
+            // React to host mute/remove if we're a non-host speaker
+            if (!_vrIsHost && userAddress) {
+                const myAddr  = userAddress.toLowerCase();
+                const myEntry = (r.currentSpeakers || []).find(s => s.addr === myAddr);
+                if (_vrIsSpeaker && !myEntry) {
+                    // We were removed from the stage
+                    _vrIsSpeaker = false;
+                    if (_vrAudioTrack) { try { _vrAgoraClient.unpublish([_vrAudioTrack]); _vrAudioTrack.stop(); _vrAudioTrack.close(); } catch(_) {} _vrAudioTrack = null; }
+                    showToast('You were removed from the stage');
+                } else if (myEntry && myEntry.hostMuted && _vrAudioTrack && !_vrMuted) {
+                    // Host muted us
+                    _vrMuted = true;
+                    _vrAudioTrack.setMuted(true).catch(() => {});
+                    showToast('You were muted by the host');
+                    const btn = document.getElementById('vr-ctrl-mute');
+                    if (btn) btn.classList.add('muted');
+                } else if (myEntry && !myEntry.hostMuted && _vrAudioTrack && _vrMuted) {
+                    // Host unmuted us
+                    _vrMuted = false;
+                    _vrAudioTrack.setMuted(false).catch(() => {});
+                    showToast('You were unmuted by the host');
+                    const btn = document.getElementById('vr-ctrl-mute');
+                    if (btn) btn.classList.remove('muted');
+                }
+            }
+
             _vrRenderSpeakers(r);
             _vrRenderListeners(roomId, r);
             if (_vrIsHost) _vrRenderQueue(roomId);
@@ -26836,6 +26865,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (av) { av.src = avatar || ''; av.onerror = () => { av.src = 'https://placehold.co/60/7c5cbf/fff?text=' + encodeURIComponent((name||'?')[0]); }; }
         const nm = document.getElementById('vr-popup-name');
         if (nm) nm.textContent = name || 'Speaker';
+        // Show host-only controls when host taps a speaker (not themselves)
+        const modRow = document.getElementById('vr-popup-mod-row');
+        if (modRow) modRow.style.display = (_vrIsHost && addr.toLowerCase() !== userAddress.toLowerCase()) ? 'flex' : 'none';
         popup.classList.add('open');
     };
 
@@ -26880,6 +26912,36 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         _vrGiftOpen = false;
         const picker = document.getElementById('vr-gift-picker');
         if (picker) picker.classList.remove('open');
+    };
+
+    window.vrHostMuteSpeaker = async function() {
+        if (!_vrIsHost || !_vrOrbTarget || !_vrRoomId || !window.db || !window.fs) return;
+        const targetAddr = _vrOrbTarget.addr.toLowerCase();
+        vrCloseOrbPopup();
+        const roomRef  = window.fs.doc(window.db, VR_COL, _vrRoomId);
+        const roomSnap = await window.fs.getDoc(roomRef).catch(() => null);
+        if (!roomSnap || !roomSnap.exists()) return;
+        const speakers = (roomSnap.data().currentSpeakers || []).map(sp => {
+            if (sp.addr === targetAddr) return { ...sp, hostMuted: !sp.hostMuted };
+            return sp;
+        });
+        await window.fs.updateDoc(roomRef, { currentSpeakers: speakers }).catch(() => {});
+        showToast('Speaker mute toggled');
+    };
+
+    window.vrRemoveSpeaker = async function() {
+        if (!_vrIsHost || !_vrOrbTarget || !_vrRoomId || !window.db || !window.fs) return;
+        const targetAddr = _vrOrbTarget.addr.toLowerCase();
+        vrCloseOrbPopup();
+        const roomRef  = window.fs.doc(window.db, VR_COL, _vrRoomId);
+        const roomSnap = await window.fs.getDoc(roomRef).catch(() => null);
+        if (!roomSnap || !roomSnap.exists()) return;
+        const speakers = (roomSnap.data().currentSpeakers || []).filter(sp => sp.addr !== targetAddr);
+        await window.fs.updateDoc(roomRef, { currentSpeakers: speakers }).catch(() => {});
+        // Log to chat
+        window.fs.addDoc(window.fs.collection(window.db, VR_CHAT, _vrRoomId, 'messages'), {
+            type: 'event', text: '🎤 A speaker was removed from the stage.', ts: Date.now()
+        }).catch(() => {});
     };
 
     window.vrToggleGiftPicker = async function() {
@@ -33743,7 +33805,7 @@ function _copyReplayLink(link) {
         </div>
     </div>
 
-    <!-- Orb tap popup: follow + gift -->
+    <!-- Orb tap popup: follow + gift + host controls -->
     <div id="vr-orb-popup">
         <button class="vr-popup-close" onclick="vrCloseOrbPopup()">×</button>
         <img id="vr-popup-av" class="vr-popup-av" src="" alt="">
@@ -33751,6 +33813,10 @@ function _copyReplayLink(link) {
         <div class="vr-popup-actions">
             <button class="vr-popup-btn follow" onclick="vrPopupFollow()">+ Follow</button>
             <button class="vr-popup-btn gift" onclick="vrPopupGift()">🎁 Gift</button>
+        </div>
+        <div id="vr-popup-mod-row" style="display:none;gap:8px;width:100%;">
+            <button class="vr-popup-btn mod-mute" onclick="vrHostMuteSpeaker()">🔇 Mute</button>
+            <button class="vr-popup-btn mod-remove" onclick="vrRemoveSpeaker()">⬇ Remove</button>
         </div>
     </div>
 
