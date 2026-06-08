@@ -8264,6 +8264,15 @@ html body #profile-hero .hero-cover {
     border-radius:24px 24px 0 0 !important; overflow:hidden !important;
     background:linear-gradient(135deg,#0f0a2a 0%,#1a0a3a 50%,#0a1428 100%) !important;
     flex-shrink:0 !important;
+    -webkit-transform:translateZ(0) !important; transform:translateZ(0) !important;
+}
+/* Banner image — explicit top/left/right/bottom for cross-browser safety; top-anchored crop */
+#hero-banner-img {
+    display:none;
+    position:absolute; top:0; left:0; right:0; bottom:0;
+    width:100%; height:100%;
+    object-fit:cover; object-position:top center;
+    z-index:0;
 }
 html body #profile-hero .hero-cover::after {
     content:'' !important; position:absolute !important; inset:0 !important;
@@ -8427,7 +8436,7 @@ html body #profile-hero .hero-action-btn.btn-follow {
 
 /* MOBILE */
 @media (max-width:768px) {
-    html body #profile-hero .hero-cover { height:120px !important; border-radius:0 !important; }
+    html body #profile-hero .hero-cover { height:120px !important; border-radius:0 !important; -webkit-transform:translateZ(0) !important; transform:translateZ(0) !important; }
     html body #profile-hero .hero-avatar-wrap { margin-top:-46px !important; gap:12px !important; }
     html body #profile-hero .hero-avatar-frame { width:88px !important; height:88px !important; }
     html body #profile-hero #hero-avatar { width:74px !important; height:74px !important; }
@@ -10002,7 +10011,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                   <!-- ── COVER BANNER ──────────────────────────────────────────── -->
                   <div class="hero-cover" id="hero-cover">
-                    <img id="hero-banner-img" src="" alt="" style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;">
+                    <img id="hero-banner-img" src="" alt="">
                     <div class="hero-btn-row">
                       <button id="hero-edit-identity-btn" style="display:none;" onclick="openHeroEditForm()" title="Edit Profile"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
                       <button id="hero-network-btn" style="display:none;" onclick="toggleNetworkDrawer()">🌐 My Network</button>
@@ -13459,7 +13468,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!bannerImg) return;
         if (url) {
             bannerImg.src           = url;
-            bannerImg.style.display = '';
+            bannerImg.style.display = 'block';
         } else {
             bannerImg.style.display = 'none';
             bannerImg.src           = '';
@@ -14246,7 +14255,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return 'pool-4040';
             if (t === 'mailbox_activation')
                 return 'mail';
-            if (t === 'live_hype' || t === 'live_gift')
+            if (t === 'live_hype' || t === 'live_gift' || t === 'vr_gift')
                 return 'live-stream';
             // Everything else: hype_post, hype_comment, like_comment, comment,
             // follow_fee, profile_like, profile_tip
@@ -14291,6 +14300,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 mailbox_activation:   'Mailbox activation fee (100%)',
                 live_hype:            'Live Stream Hype cut (20%)',
                 live_gift:            'Live Stream Gift cut (20%)',
+                vr_gift:              'Voice Room Gift cut (20%)',
             };
             return map[actionType] || actionType;
         }
@@ -26662,6 +26672,22 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     showToast('You were unmuted by the host');
                     const btn = document.getElementById('vr-ctrl-mute');
                     if (btn) btn.classList.remove('muted');
+                } else if (myEntry && !_vrIsSpeaker) {
+                    // Newly admitted to stage — start publishing mic
+                    _vrIsSpeaker = true;
+                    (async () => {
+                        try {
+                            _vrAudioTrack = await window.AgoraRTC.createMicrophoneAudioTrack();
+                            await _vrAgoraClient.publish([_vrAudioTrack]);
+                            showToast('You\'re on stage! 🎤');
+                        } catch(micErr) {
+                            showToast('Mic unavailable — you\'re muted on stage');
+                        }
+                        const muteBtn = document.getElementById('vr-ctrl-mute');
+                        const handBtn = document.getElementById('vr-ctrl-hand');
+                        if (muteBtn) muteBtn.style.display = 'flex';
+                        if (handBtn) handBtn.style.display = 'none';
+                    })();
                 }
             }
 
@@ -26708,25 +26734,29 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     function _vrRenderListeners(roomId, r) {
         if (!window.db || !window.fs) return;
+        // Build set of on-stage addresses so they're excluded from the listener grid
+        const stageAddrs = new Set([(r.hostAddr || '').toLowerCase()]);
+        (r.currentSpeakers || []).forEach(s => stageAddrs.add((s.addr || '').toLowerCase()));
         window.fs.getDocs(window.fs.collection(window.db, VR_LISTEN, roomId, 'presence')).then(snap => {
             const grid = document.getElementById('vr-listener-grid');
             const lbl  = document.getElementById('vr-listener-label');
             if (!grid) return;
             grid.innerHTML = '';
             const MAX = 24;
-            let shown = 0;
+            let shown = 0, listenerCount = 0;
             snap.forEach(doc => {
-                if (shown >= MAX) return;
                 const l = doc.data();
+                if (stageAddrs.has((l.addr || '').toLowerCase())) return; // skip host + speakers
+                listenerCount++;
+                if (shown >= MAX) return;
                 grid.insertAdjacentHTML('beforeend', `<img class="vr-l-av" src="${escHtml(l.avatar||'')}" title="${escHtml(l.name||'')}" onerror="this.src='https://placehold.co/32/1a1535/fff?text=?'">`);
                 shown++;
             });
-            const extra = snap.size - shown;
+            const extra = listenerCount - shown;
             if (extra > 0) grid.insertAdjacentHTML('beforeend', `<div class="vr-l-more">+${extra}</div>`);
-            if (lbl) lbl.textContent = `Listening (${snap.size})`;
-            // Update Firestore listener count
+            if (lbl) lbl.textContent = `Listening (${listenerCount})`;
             if (_vrIsHost && window.db && window.fs) {
-                window.fs.updateDoc(window.fs.doc(window.db, VR_COL, roomId), { listenerCount: snap.size }).catch(() => {});
+                window.fs.updateDoc(window.fs.doc(window.db, VR_COL, roomId), { listenerCount }).catch(() => {});
             }
         }).catch(() => {});
     }
