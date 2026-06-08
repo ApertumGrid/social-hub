@@ -917,11 +917,27 @@
         .vr-ctrl.end .vr-ctrl-lbl { color:#ef4444; }
         .vr-ctrl.muted .vr-ctrl-icon { background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.5); }
         /* Gift picker */
-        #vr-gift-picker { display:none; position:absolute; bottom:70px; left:14px; right:14px; background:var(--bg-panel); border:1px solid var(--border); border-radius:14px; padding:12px; z-index:10; }
-        #vr-gift-picker.open { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+        #vr-gift-picker { display:none; position:absolute; bottom:88px; left:14px; right:14px; background:rgba(14,11,30,0.97); border:1px solid rgba(124,92,191,0.35); border-radius:16px; padding:12px 12px 10px; z-index:100; backdrop-filter:blur(12px); }
+        #vr-gift-picker.open { display:block; }
+        .vr-gift-picker-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+        .vr-gift-to-row { font-size:0.65rem; color:var(--gold); font-weight:700; }
+        .vr-gift-close-btn { background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.12); color:var(--text-muted); width:24px; height:24px; border-radius:50%; cursor:pointer; font-size:0.85rem; display:flex; align-items:center; justify-content:center; }
+        .vr-gift-tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
         .vr-gift-tile { display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:10px; border:1px solid var(--border); cursor:pointer; background:rgba(255,255,255,0.03); transition:all 0.15s; font-size:0.6rem; color:var(--text-muted); }
         .vr-gift-tile:hover { border-color:rgba(240,180,41,0.5); background:rgba(240,180,41,0.08); color:var(--gold); }
         .vr-gift-tile .gi { font-size:1.4rem; }
+        /* Orb popup */
+        #vr-orb-popup { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(14,11,30,0.97); border:1px solid rgba(124,92,191,0.4); border-radius:18px; padding:20px 18px 16px; z-index:200; display:none; flex-direction:column; align-items:center; gap:10px; min-width:170px; box-shadow:0 8px 40px rgba(0,0,0,0.7); backdrop-filter:blur(16px); }
+        #vr-orb-popup.open { display:flex; }
+        .vr-popup-av { width:60px; height:60px; border-radius:50%; object-fit:cover; border:2.5px solid rgba(124,92,191,0.5); }
+        .vr-popup-name { font-size:0.85rem; font-weight:700; color:var(--text-primary); text-align:center; }
+        .vr-popup-actions { display:flex; gap:8px; width:100%; }
+        .vr-popup-btn { flex:1; padding:8px 0; border-radius:10px; font-size:0.68rem; font-weight:700; cursor:pointer; border:none; transition:all 0.15s; }
+        .vr-popup-btn.follow { background:rgba(124,92,191,0.18); border:1px solid rgba(124,92,191,0.4); color:var(--purple-lt); }
+        .vr-popup-btn.follow:hover { background:rgba(124,92,191,0.3); }
+        .vr-popup-btn.gift { background:rgba(240,180,41,0.12); border:1px solid rgba(240,180,41,0.35); color:var(--gold); }
+        .vr-popup-btn.gift:hover { background:rgba(240,180,41,0.22); }
+        .vr-popup-close { position:absolute; top:10px; right:10px; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.12); color:var(--text-muted); width:26px; height:26px; border-radius:50%; cursor:pointer; font-size:0.9rem; display:flex; align-items:center; justify-content:center; }
         /* Start Room Modal */
         #vr-start-modal { position:fixed; inset:0; z-index:2200; background:rgba(0,0,0,0.75); display:none; align-items:center; justify-content:center; padding:20px; }
         #vr-start-modal.open { display:flex; }
@@ -26637,7 +26653,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const hAddr  = escHtml(r.hostAddr || '');
         const hUid   = _vrUidFromAddr(r.hostAddr);
         row.insertAdjacentHTML('beforeend', `
-            <div class="vr-orb-wrap" onclick="vrSelectGiftOrb('${hAddr}','${hn}')" title="Tap to gift ${hn}">
+            <div class="vr-orb-wrap" onclick="vrOpenOrbPopup('${hAddr}','${hn}','${hav}')" style="cursor:pointer;">
                 <div class="vr-orb vr-orb-host" data-uid="${hUid}">
                     <img src="${hav}" onerror="this.src='https://placehold.co/80/f0b441/000?text=H'">
                     <div class="vr-orb-ring"></div>
@@ -26648,10 +26664,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const sUid  = _vrUidFromAddr(sp.addr);
             const sAddr = escHtml(sp.addr || '');
             const sName = escHtml(sp.name || 'Speaker');
+            const sAv   = escHtml(sp.avatar || '');
             row.insertAdjacentHTML('beforeend', `
-                <div class="vr-orb-wrap" onclick="vrSelectGiftOrb('${sAddr}','${sName}')" title="Tap to gift ${sName}">
+                <div class="vr-orb-wrap" onclick="vrOpenOrbPopup('${sAddr}','${sName}','${sAv}')" style="cursor:pointer;">
                     <div class="vr-orb vr-orb-speaker" data-uid="${sUid}">
-                        <img src="${escHtml(sp.avatar||'')}" onerror="this.src='https://placehold.co/64/7c5cbf/fff?text=S'">
+                        <img src="${sAv}" onerror="this.src='https://placehold.co/64/7c5cbf/fff?text=S'">
                         <div class="vr-orb-ring spk"></div>
                     </div>
                     <div class="vr-orb-name">${sName}</div>
@@ -26808,15 +26825,61 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (lb) lb.textContent = _vrMuted ? 'Unmute' : 'Mute';
     };
 
-    let _vrGiftTarget = null; // { addr, name } — null = host
+    let _vrGiftTarget  = null; // { addr, name } — null means gift picker will remind to tap an orb
+    let _vrOrbTarget   = null; // { addr, name, avatar } — current orb popup target
 
-    window.vrSelectGiftOrb = function(addr, name) {
-        _vrGiftTarget = { addr, name };
+    window.vrOpenOrbPopup = function(addr, name, avatar) {
+        _vrOrbTarget = { addr, name, avatar };
+        const popup = document.getElementById('vr-orb-popup');
+        if (!popup) return;
+        const av = document.getElementById('vr-popup-av');
+        if (av) { av.src = avatar || ''; av.onerror = () => { av.src = 'https://placehold.co/60/7c5cbf/fff?text=' + encodeURIComponent((name||'?')[0]); }; }
+        const nm = document.getElementById('vr-popup-name');
+        if (nm) nm.textContent = name || 'Speaker';
+        popup.classList.add('open');
+    };
+
+    window.vrCloseOrbPopup = function() {
+        _vrOrbTarget = null;
+        const popup = document.getElementById('vr-orb-popup');
+        if (popup) popup.classList.remove('open');
+    };
+
+    window.vrPopupGift = function() {
+        if (!_vrOrbTarget) return;
+        _vrGiftTarget = { addr: _vrOrbTarget.addr, name: _vrOrbTarget.name };
         const lbl = document.getElementById('vr-gift-to-lbl');
-        if (lbl) lbl.textContent = '→ ' + name;
+        if (lbl) lbl.textContent = _vrGiftTarget.name;
+        vrCloseOrbPopup();
         _vrGiftOpen = true;
         const picker = document.getElementById('vr-gift-picker');
         if (picker) picker.classList.add('open');
+    };
+
+    window.vrPopupFollow = async function() {
+        if (!_vrOrbTarget || !userAddress) { showToast('Connect wallet first'); return; }
+        const them = _vrOrbTarget.addr.toLowerCase();
+        const me   = userAddress.toLowerCase();
+        if (them === me) { showToast("You can't follow yourself"); return; }
+        const name = _vrOrbTarget.name;
+        vrCloseOrbPopup();
+        // Reuse heroFollow — set the target addr it reads from
+        if (typeof _heroTargetAddr !== 'undefined') {
+            _heroTargetAddr = them;
+            if (typeof heroFollow === 'function') { await heroFollow(); return; }
+        }
+        // Fallback: direct write if heroFollow not in scope
+        try {
+            const docId  = me + '_' + them;
+            await window.fs.setDoc(window.fs.doc(window.db, 'social_graph', docId), { follower: me, following: them, followedAt: Date.now() });
+            showToast('Following ' + name + '!');
+        } catch(e) { showToast('Could not follow'); }
+    };
+
+    window.vrCloseGiftPicker = function() {
+        _vrGiftOpen = false;
+        const picker = document.getElementById('vr-gift-picker');
+        if (picker) picker.classList.remove('open');
     };
 
     window.vrToggleGiftPicker = async function() {
@@ -26878,7 +26941,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (userAddress && _vrRoomId && window.db && window.fs) {
             window.fs.deleteDoc(window.fs.doc(window.db, VR_LISTEN, _vrRoomId, 'presence', userAddress.toLowerCase())).catch(() => {});
         }
-        _vrRoomId = null; _vrIsHost = false; _vrIsSpeaker = false; _vrMuted = false; _vrGiftOpen = false;
+        _vrRoomId = null; _vrIsHost = false; _vrIsSpeaker = false; _vrMuted = false; _vrGiftOpen = false; _vrGiftTarget = null; _vrOrbTarget = null;
+        const popup = document.getElementById('vr-orb-popup');
+        if (popup) popup.classList.remove('open');
         const ov = document.getElementById('vr-room-overlay');
         if (ov) ov.style.display = 'none';
     }
@@ -33666,11 +33731,27 @@ function _copyReplayLink(link) {
 
     <!-- Gift picker (floats above controls) -->
     <div id="vr-gift-picker">
-        <div id="vr-gift-to-lbl" style="font-size:0.62rem;color:var(--gold);font-weight:700;text-align:center;margin-bottom:8px;min-height:14px;"></div>
-        <div class="vr-gift-tile" onclick="vrSendGift('spark')"><span class="gi">⚡</span><span>Spark</span><span style="color:var(--gold);">1★</span></div>
-        <div class="vr-gift-tile" onclick="vrSendGift('fire')"><span class="gi">🔥</span><span>Fire</span><span style="color:var(--gold);">5★</span></div>
-        <div class="vr-gift-tile" onclick="vrSendGift('diamond')"><span class="gi">💎</span><span>Diamond</span><span style="color:var(--gold);">20★</span></div>
-        <div class="vr-gift-tile" onclick="vrSendGift('rocket')"><span class="gi">🚀</span><span>Rocket</span><span style="color:var(--gold);">50★</span></div>
+        <div class="vr-gift-picker-header">
+            <div class="vr-gift-to-row">🎁 <span id="vr-gift-to-lbl">Select a speaker</span></div>
+            <button class="vr-gift-close-btn" onclick="vrCloseGiftPicker()">×</button>
+        </div>
+        <div class="vr-gift-tiles">
+            <div class="vr-gift-tile" onclick="vrSendGift('spark')"><span class="gi">⚡</span><span>Spark</span><span style="color:var(--gold);">1★</span></div>
+            <div class="vr-gift-tile" onclick="vrSendGift('fire')"><span class="gi">🔥</span><span>Fire</span><span style="color:var(--gold);">5★</span></div>
+            <div class="vr-gift-tile" onclick="vrSendGift('diamond')"><span class="gi">💎</span><span>Diamond</span><span style="color:var(--gold);">20★</span></div>
+            <div class="vr-gift-tile" onclick="vrSendGift('rocket')"><span class="gi">🚀</span><span>Rocket</span><span style="color:var(--gold);">50★</span></div>
+        </div>
+    </div>
+
+    <!-- Orb tap popup: follow + gift -->
+    <div id="vr-orb-popup">
+        <button class="vr-popup-close" onclick="vrCloseOrbPopup()">×</button>
+        <img id="vr-popup-av" class="vr-popup-av" src="" alt="">
+        <div id="vr-popup-name" class="vr-popup-name"></div>
+        <div class="vr-popup-actions">
+            <button class="vr-popup-btn follow" onclick="vrPopupFollow()">+ Follow</button>
+            <button class="vr-popup-btn gift" onclick="vrPopupGift()">🎁 Gift</button>
+        </div>
     </div>
 
     <!-- Controls bar -->
