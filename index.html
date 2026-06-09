@@ -850,6 +850,8 @@
         .vr-empty { text-align:center; padding:40px 20px; color:var(--text-muted); font-size:0.8rem; line-height:1.9; }
         /* Voice Room Overlay */
         #vr-room-overlay { position:fixed; inset:0; z-index:6000; background:linear-gradient(160deg,#07051a 0%,#0b0819 60%,#050810 100%); display:flex; flex-direction:column; font-family:var(--font-body); overflow:hidden; }
+        #vr-room-overlay::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse 70% 50% at 15% 20%, rgba(124,92,191,0.08) 0%, transparent 60%), radial-gradient(ellipse 60% 50% at 85% 80%, rgba(45,212,191,0.05) 0%, transparent 60%); animation:vr-bg-drift 9s ease-in-out infinite alternate; pointer-events:none; z-index:0; }
+        @keyframes vr-bg-drift { 0%{ opacity:0.4; } 100%{ opacity:1; } }
         #vr-overlay-header { display:flex; align-items:center; justify-content:space-between; padding:16px 18px 12px; border-bottom:1px solid rgba(255,255,255,0.07); flex-shrink:0; }
         .vr-live-dot { width:7px; height:7px; border-radius:50%; background:#ef4444; box-shadow:0 0 6px rgba(239,68,68,0.7); animation:vr-dot-pulse 1.4s ease-in-out infinite; flex-shrink:0; }
         @keyframes vr-dot-pulse { 0%,100%{opacity:1}50%{opacity:0.3} }
@@ -869,10 +871,15 @@
         .vr-orb img { width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; }
         .vr-orb-ring { position:absolute; inset:-5px; border-radius:50%; border:2.5px solid rgba(240,180,41,0.55); pointer-events:none; transition:border-color 0.2s, box-shadow 0.2s; }
         .vr-orb-ring.spk { border-color:rgba(124,92,191,0.6); }
+        .vr-orb-host .vr-orb-ring { border-color:rgba(240,180,41,0.75); box-shadow:0 0 14px rgba(240,180,41,0.22); }
         .vr-orb.speaking .vr-orb-ring { border-color:#22c55e; animation:vr-speak 0.85s ease-in-out infinite; }
-        @keyframes vr-speak { 0%,100%{ box-shadow:0 0 0 0 rgba(34,197,94,0.5); } 50%{ box-shadow:0 0 0 10px rgba(34,197,94,0); } }
+        @keyframes vr-speak { 0%,100%{ box-shadow:0 0 0 0 rgba(34,197,94,0.7), 0 0 6px rgba(34,197,94,0.2); } 50%{ box-shadow:0 0 0 14px rgba(34,197,94,0), 0 0 28px rgba(34,197,94,0.45); } }
         .vr-orb-name { font-size:0.62rem; color:var(--text-secondary); max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; letter-spacing:0.01em; }
         .vr-orb-name.host-lbl { color:var(--gold); font-weight:700; }
+        .vr-orb-balance { font-family:var(--font-mono); font-size:0.56rem; color:var(--gold); font-weight:700; background:rgba(240,180,41,0.12); border:1px solid rgba(240,180,41,0.22); border-radius:20px; padding:1px 8px; }
+        .vr-role-badge { font-size:0.46rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; padding:1px 6px; border-radius:4px; }
+        .vr-role-badge.host { background:rgba(240,180,41,0.14); color:var(--gold); border:1px solid rgba(240,180,41,0.28); }
+        .vr-role-badge.speaker { background:rgba(124,92,191,0.14); color:var(--purple-lt); border:1px solid rgba(124,92,191,0.28); }
         /* Queue */
         #vr-queue-strip { margin:8px 14px 0; padding:8px 12px; background:rgba(124,92,191,0.06); border:1px solid rgba(124,92,191,0.15); border-radius:12px; flex-shrink:0; }
         .vr-q-label { font-size:0.58rem; color:var(--purple-lt); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:8px; }
@@ -14046,7 +14053,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!panel) return;
         var isOpen = panel.style.display !== 'none';
         panel.style.display = isOpen ? 'none' : 'block';
-        if (btn) btn.textContent = isOpen ? '&#x1F517; Referral' : '✕ Referral';
+        if (btn) btn.innerHTML = isOpen ? '🔗 Referral' : '✕ Referral';
         // Close network drawer when opening referral panel
         if (!isOpen) {
             var nd = document.getElementById('network-drawer');
@@ -26636,6 +26643,28 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     let _vrChatUnsub   = null;
     let _vrQueueUnsub  = null;
     let _vrGiftOpen    = false;
+    let _vrPrevQueueSize = 0;
+
+    function _vrDoorbellSound() {
+        try {
+            var ctx = new (window.AudioContext || window.webkitAudioContext)();
+            function playTone(freq, startTime, duration) {
+                var osc  = ctx.createOscillator();
+                var gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, startTime);
+                gain.gain.setValueAtTime(0, startTime);
+                gain.gain.linearRampToValueAtTime(0.35, startTime + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+                osc.start(startTime);
+                osc.stop(startTime + duration);
+            }
+            playTone(587, ctx.currentTime, 0.35);        // D5 — "ding"
+            playTone(440, ctx.currentTime + 0.38, 0.55); // A4 — "dong"
+        } catch(e) {}
+    }
 
     function openStartRoomModal() {
         const m = document.getElementById('vr-start-modal');
@@ -26818,7 +26847,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const r = snap.data();
             if (!r.active) { _vrLeaveCleanup(); showToast('Room ended'); return; }
             const sc = document.getElementById('vr-stars-counter');
-            if (sc) sc.textContent = '⭐ ' + parseFloat(r.starsEarned || 0).toFixed(1) + '★';
+            const _myVrBal = parseFloat(purchasedStars || 0) + parseFloat(creatorEarnings || 0);
+            if (sc) sc.textContent = '★ ' + _myVrBal.toFixed(1);
             const th = document.getElementById('vr-room-title-hd');
             if (th) th.textContent = r.title || 'Voice Room';
 
@@ -26881,6 +26911,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const hn     = escHtml(r.hostName || 'Host');
         const hAddr  = escHtml(r.hostAddr || '');
         const hUid   = _vrUidFromAddr(r.hostAddr);
+        const myAddr = (userAddress || '').toLowerCase();
+        const _myBal = (parseFloat(purchasedStars || 0) + parseFloat(creatorEarnings || 0)).toFixed(1);
+        const isHostMe    = myAddr && (r.hostAddr || '').toLowerCase() === myAddr;
+        const hostBalHtml = isHostMe ? `<div class="vr-orb-balance">` + '★ ' + `${_myBal}</div>` : '';
         row.insertAdjacentHTML('beforeend', `
             <div class="vr-orb-wrap" onclick="vrOpenOrbPopup('${hAddr}','${hn}','${hav}')" style="cursor:pointer;">
                 <div class="vr-orb vr-orb-host" data-uid="${hUid}">
@@ -26888,12 +26922,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <div class="vr-orb-ring"></div>
                 </div>
                 <div class="vr-orb-name host-lbl">${hn}</div>
+                <div class="vr-role-badge host">HOST</div>
+                ${hostBalHtml}
             </div>`);
         (r.currentSpeakers || []).forEach(sp => {
             const sUid  = _vrUidFromAddr(sp.addr);
             const sAddr = escHtml(sp.addr || '');
             const sName = escHtml(sp.name || 'Speaker');
             const sAv   = escHtml(sp.avatar || '');
+            const isSpeakerMe = myAddr && (sp.addr || '').toLowerCase() === myAddr;
+            const spkBalHtml  = isSpeakerMe ? `<div class="vr-orb-balance">` + '★ ' + `${_myBal}</div>` : '';
             row.insertAdjacentHTML('beforeend', `
                 <div class="vr-orb-wrap" onclick="vrOpenOrbPopup('${sAddr}','${sName}','${sAv}')" style="cursor:pointer;">
                     <div class="vr-orb vr-orb-speaker" data-uid="${sUid}">
@@ -26901,10 +26939,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div class="vr-orb-ring spk"></div>
                     </div>
                     <div class="vr-orb-name">${sName}</div>
+                    <div class="vr-role-badge speaker">ON STAGE</div>
+                    ${spkBalHtml}
                 </div>`);
         });
     }
-
     function _vrRenderListeners(roomId, r) {
         if (!window.db || !window.fs) return;
         // Build set of on-stage addresses so they're excluded from the listener grid
@@ -26947,7 +26986,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 const pending = [];
                 snap.forEach(doc => { const q = doc.data(); if (q.status === 'pending') pending.push({ id: doc.id, ...q }); });
                 pending.sort((a, b) => (b.bidStars || 0) - (a.bidStars || 0));
-                if (pending.length === 0) { strip.style.display = 'none'; return; }
+                if (pending.length === 0) { _vrPrevQueueSize = 0; strip.style.display = 'none'; return; }
+                // Play doorbell when a new hand raise arrives
+                if (pending.length > _vrPrevQueueSize) _vrDoorbellSound();
+                _vrPrevQueueSize = pending.length;
                 strip.style.display = 'block';
                 qRow.innerHTML = '';
                 pending.forEach(q => {
