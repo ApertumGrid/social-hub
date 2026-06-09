@@ -10234,6 +10234,28 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <div id="ledger-list"><div class="ledger-empty">Connect wallet to view history.</div></div>
                 </div>
 
+                <!-- REFERRAL PROGRAM CARD -->
+                <div class="card" id="referral-card">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
+                        <div style="font-size:1.2rem;">&#x1F517;</div>
+                        <div style="font-size:0.88rem; font-weight:700; color:var(--text-primary);">Referral Program</div>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+                        <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px; text-align:center;">
+                            <div style="font-size:0.55rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:6px;">People Referred</div>
+                            <div style="font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--teal);" id="ref-count">--</div>
+                        </div>
+                        <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px; text-align:center;">
+                            <div style="font-size:0.55rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:6px;">Stars Earned</div>
+                            <div style="font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--gold);" id="ref-earned">--</div>
+                        </div>
+                    </div>
+                    <div class="info-box" style="margin-bottom:14px;">
+                        Share your referral link. When someone joins through it and spends Stars on the platform, you earn automatically.<br><br>
+                        <strong>500&#x2605; spent &rarr; +15&#x2605; &nbsp;&middot;&nbsp; 2,000&#x2605; spent &rarr; +50&#x2605; &nbsp;&middot;&nbsp; 10,000&#x2605; spent &rarr; +180&#x2605;</strong>
+                    </div>
+                    <button class="btn btn-teal" style="width:auto; padding:10px 24px;" onclick="copyReferralLink()">&#x1F517; Copy My Referral Link</button>
+                </div>
                 <!-- ADMIN PANEL — visible only to admin wallet -->
                 <div class="card" id="admin-revenue-panel" style="border-color:rgba(240,180,41,0.25); padding:18px;">
 
@@ -13164,6 +13186,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             subscribeAdminRevenue(userAddress);
             startChainRefresh();
             await loadProfileFromFirebase(userAddress, walletType);
+            _writeReferredBy(userAddress);
+            loadReferralStats(userAddress);
             if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
             if (typeof loadFollowingSet === 'function') loadFollowingSet();
 
@@ -13900,6 +13924,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         } catch (syncErr) {
             console.error('[logTransaction] sync error:', syncErr);
         }
+
+        // -- Referral milestone check on every spend --
+        if (type === 'spend' && fromAddress && fromAddress !== '0x_unknown' && fromAddress !== 'platform') {
+            setTimeout(function() { _checkReferralMilestones(fromAddress, finalRecord.amount); }, 0);
+        }
     }
 
     // 100% of post fees + 20% of interactions → admin_revenue
@@ -13919,6 +13948,83 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }).catch(e => console.warn("logAdminRevenue global:", e));
     }
     window.logAdminRevenue = logAdminRevenue;  // expose so live stream IIFE can call it
+
+    // ═══════════════════════════════════════════════════════════════════
+    // REFERRAL PROGRAM
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Write referredBy to user doc once on first connect (never overwritten)
+    async function _writeReferredBy(addr) {
+        if (!window.db || !window.fs || !addr) return;
+        var storedRef = localStorage.getItem('sh_ref');
+        if (!storedRef || storedRef === addr.toLowerCase()) return;
+        try {
+            var uRef = window.fs.doc(window.db, 'users', addr.toLowerCase());
+            var uSnap = await window.fs.getDoc(uRef);
+            if (uSnap.exists() && uSnap.data().referredBy) { localStorage.removeItem('sh_ref'); return; }
+            await window.fs.updateDoc(uRef, { referredBy: storedRef });
+            localStorage.removeItem('sh_ref');
+            // Increment referrer's totalReferred count
+            window.fs.setDoc(window.fs.doc(window.db, 'referral_stats', storedRef), { totalReferred: window.fs.increment(1) }, { merge: true }).catch(function(){});
+        } catch(e) { console.warn('[referral] writeReferredBy:', e); }
+    }
+
+    // Increment referralSpendTotal and trigger milestone check when user spends
+    async function _checkReferralMilestones(spenderAddr, amount) {
+        if (!window.db || !window.fs || !spenderAddr) return;
+        var MILESTONES = [500, 2000, 10000];
+        try {
+            var uRef = window.fs.doc(window.db, 'users', spenderAddr);
+            await window.fs.updateDoc(uRef, {
+                referralSpendTotal: window.fs.increment(amount)
+            });
+            var uSnap = await window.fs.getDoc(uRef);
+            if (!uSnap.exists()) return;
+            var d = uSnap.data();
+            if (!d.referredBy) return;
+            var total   = d.referralSpendTotal || 0;
+            var awarded = d.referralMilestonesAwarded || [];
+            var next = MILESTONES.find(function(m) { return total >= m && awarded.indexOf(m) === -1; });
+            if (!next) return;
+            fetch('https://us-central1-socialhub-33014.cloudfunctions.net/awardReferralMilestone', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ spenderAddr: spenderAddr, milestone: next })
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                if (data.success) {
+                    showToast('Referral reward unlocked! +' + (next === 500 ? 15 : next === 2000 ? 50 : 180) + '★ earned by your referrer');
+                    loadReferralStats(spenderAddr);
+                }
+            }).catch(function(e) { console.warn('[referral] milestone CF:', e); });
+        } catch(e) { console.warn('[referral] checkMilestones:', e); }
+    }
+
+    // Load referral stats and update the Creator Studio card
+    async function loadReferralStats(addr) {
+        if (!window.db || !window.fs || !addr) return;
+        try {
+            var snap = await window.fs.getDoc(window.fs.doc(window.db, 'referral_stats', addr.toLowerCase()));
+            var data = snap.exists() ? snap.data() : {};
+            var countEl  = document.getElementById('ref-count');
+            var earnedEl = document.getElementById('ref-earned');
+            if (countEl)  countEl.textContent  = (data.totalReferred || 0);
+            if (earnedEl) earnedEl.textContent  = (data.totalEarned  || 0) + '★';
+        } catch(e) {}
+    }
+    window.loadReferralStats = loadReferralStats;
+
+    // Copy referral link to clipboard
+    function copyReferralLink() {
+        var addr = (typeof userAddress !== 'undefined') ? userAddress : window.userAddress;
+        if (!addr) { showToast('Connect your wallet first'); return; }
+        var link = 'https://socialhubglobal.com?ref=' + addr.toLowerCase();
+        navigator.clipboard.writeText(link).then(function() {
+            showToast('Referral link copied!');
+        }).catch(function() {
+            showToast('Copy failed — copy manually: ' + link);
+        });
+    }
+    window.copyReferralLink = copyReferralLink;
 
     // ═══════════════════════════════════════════════════════════════════
     // TRANSACTION LEDGER — V19 PRIVATE
@@ -17372,6 +17478,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             console.warn('[loadGlobalFeed] snapshot error:', err.message);
         });
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // REFERRAL PARAM — capture ?ref= before anything else runs
+    // ═══════════════════════════════════════════════════════════════════
+    (function() {
+        try {
+            var _rp = new URLSearchParams(location.search).get('ref');
+            if (_rp && _rp.length > 5) localStorage.setItem('sh_ref', _rp.toLowerCase());
+        } catch(_) {}
+    })();
 
     // ═══════════════════════════════════════════════════════════════════
     // DEPOSIT ESTIMATE LIVE UPDATE (drawer)
