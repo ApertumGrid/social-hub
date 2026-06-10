@@ -922,6 +922,8 @@
         .vr-ctrl.leave .vr-ctrl-lbl { color:#ef4444; }
         .vr-ctrl.end .vr-ctrl-icon { background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.5); }
         .vr-ctrl.end .vr-ctrl-lbl { color:#ef4444; }
+        .vr-ctrl.req-off .vr-ctrl-icon { background:rgba(239,68,68,0.12); border-color:rgba(239,68,68,0.35); }
+        .vr-ctrl.req-off .vr-ctrl-lbl { color:#ef4444; }
         .vr-ctrl.muted .vr-ctrl-icon { background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.5); }
         /* Gift picker */
         #vr-gift-picker { display:none; position:absolute; bottom:88px; left:14px; right:14px; background:rgba(14,11,30,0.97); border:1px solid rgba(124,92,191,0.35); border-radius:16px; padding:12px 12px 10px; z-index:100; backdrop-filter:blur(12px); }
@@ -26833,8 +26835,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const endBtn  = document.getElementById('vr-ctrl-end');
         const handBtn = document.getElementById('vr-ctrl-hand');
         const leaveBtn= document.getElementById('vr-ctrl-leave');
+        const reqBtn  = document.getElementById('vr-ctrl-requests');
         if (muteBtn)  muteBtn.style.display  = _vrIsHost ? 'flex' : 'none';
         if (endBtn)   endBtn.style.display   = _vrIsHost ? 'flex' : 'none';
+        if (reqBtn)   reqBtn.style.display   = _vrIsHost ? 'flex' : 'none';
         if (handBtn)  handBtn.style.display  = _vrIsHost ? 'none' : 'flex';
         if (leaveBtn) leaveBtn.style.display = _vrIsHost ? 'none' : 'flex';
     }
@@ -26851,6 +26855,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (sc) sc.textContent = '★ ' + _myVrBal.toFixed(1);
             const th = document.getElementById('vr-room-title-hd');
             if (th) th.textContent = r.title || 'Voice Room';
+            // Sync stage requests toggle state
+            const reqsOpen = r.stageRequestsOpen !== false;
+            const _reqBtn  = document.getElementById('vr-ctrl-requests');
+            const _reqLbl  = document.getElementById('vr-requests-lbl');
+            if (_reqBtn) { _reqBtn.classList.toggle('req-on', reqsOpen); _reqBtn.classList.toggle('req-off', !reqsOpen); }
+            if (_reqLbl) _reqLbl.textContent = reqsOpen ? 'Requests' : 'Requests ✗';
+            if (!_vrIsHost) {
+                const _hBtn = document.getElementById('vr-ctrl-hand');
+                if (_hBtn) { _hBtn.style.opacity = reqsOpen ? '' : '0.35'; _hBtn.style.pointerEvents = reqsOpen ? '' : 'none'; }
+            }
 
             // React to host mute/remove if we're a non-host speaker
             if (!_vrIsHost && userAddress) {
@@ -27054,7 +27068,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!window.db || !window.fs) return;
         const roomSnap = await window.fs.getDoc(window.fs.doc(window.db, VR_COL, _vrRoomId)).catch(() => null);
         if (!roomSnap || !roomSnap.exists()) return;
-        const price = parseFloat(roomSnap.data().handRaisePrice || 1);
+        const _rdVR  = roomSnap.data();
+        if (_rdVR.stageRequestsOpen === false) { showToast('Host has closed stage requests'); return; }
+        const price = parseFloat(_rdVR.handRaisePrice || 1);
         if (parseFloat(window._liveAvailableStars || 0) < price) { showToast('Not enough Stars'); return; }
         try {
             const res  = await fetch(VR_CF_BASE + 'raiseHandVR', {
@@ -27070,19 +27086,27 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     };
 
     window.vrAdmitSpeaker = async function(roomId, reqAddr) {
-        if (!_vrIsHost || !window.db || !window.fs) return;
-        const reqRef  = window.fs.doc(window.db, VR_QUEUE, roomId, 'requests', reqAddr);
-        const reqSnap = await window.fs.getDoc(reqRef).catch(() => null);
-        if (!reqSnap || !reqSnap.exists()) return;
-        const req = reqSnap.data();
-        await window.fs.updateDoc(reqRef, { status: 'admitted' }).catch(() => {});
-        await window.fs.updateDoc(window.fs.doc(window.db, VR_COL, roomId), {
-            currentSpeakers: window.fs.arrayUnion({ addr: req.addr, name: req.name, avatar: req.avatar || '' })
-        }).catch(() => {});
-        window.fs.addDoc(window.fs.collection(window.db, VR_CHAT, roomId, 'messages'), {
-            type: 'event', text: `✅ ${req.name} is now speaking`, ts: Date.now()
-        }).catch(() => {});
-        showToast(`${req.name} admitted`);
+        if (!_vrIsHost || !userAddress) return;
+        showToast('Admitting…');
+        try {
+            const res  = await fetch(VR_CF_BASE + 'admitSpeakerVR', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roomId, hostAddr: userAddress, reqAddr })
+            });
+            const data = await res.json();
+            if (data.error) { showToast(data.error); return; }
+            showToast('Speaker admitted');
+        } catch(e) { showToast('Could not admit speaker'); }
+    };
+
+    window.vrToggleRequests = async function() {
+        if (!_vrIsHost || !_vrRoomId || !window.db || !window.fs) return;
+        const roomRef  = window.fs.doc(window.db, VR_COL, _vrRoomId);
+        const roomSnap = await window.fs.getDoc(roomRef).catch(() => null);
+        if (!roomSnap || !roomSnap.exists()) return;
+        const cur = roomSnap.data().stageRequestsOpen !== false;
+        await window.fs.updateDoc(roomRef, { stageRequestsOpen: !cur }).catch(() => {});
+        showToast(!cur ? 'Stage requests opened' : 'Stage requests closed');
     };
 
     window.vrDenySpeaker = async function(roomId, reqAddr) {
@@ -34107,6 +34131,11 @@ function _copyReplayLink(link) {
         <button class="vr-ctrl" id="vr-ctrl-gift" onclick="vrToggleGiftPicker()">
             <span class="vr-ctrl-icon"><span class="vci">🎁</span></span>
             <span class="vr-ctrl-lbl">Gift</span>
+        </button>
+        <!-- Host-only: stage requests toggle -->
+        <button class="vr-ctrl req-on" id="vr-ctrl-requests" onclick="vrToggleRequests()" style="display:none;">
+            <span class="vr-ctrl-icon"><span class="vci">🙋</span></span>
+            <span class="vr-ctrl-lbl" id="vr-requests-lbl">Requests</span>
         </button>
         <!-- Host-only: end room -->
         <button class="vr-ctrl end" id="vr-ctrl-end" onclick="vrLeave()" style="display:none;">
