@@ -34574,6 +34574,12 @@ body.is-hosting #cmd-orb, body.is-hosting #cmd-wheel, body.is-hosting #cmd-scrim
 #battle-confetti{position:fixed;inset:0;pointer-events:none;z-index:9499;display:none}
 .b-tie-icon{font-size:3rem;display:block;margin-bottom:8px}
 .b-tie-title{font-size:1.4rem;font-weight:900;color:#fff;margin-bottom:6px}
+/* Battle split screen: host left half, opponent right half */
+#live-broadcaster-video-container.layout-battle #live-broadcaster-video{position:absolute!important;top:0!important;left:0!important;width:50%!important;height:100%!important;border-radius:0!important;}
+#live-broadcaster-video-container.layout-battle #battle-opponent-pip{position:absolute!important;top:0!important;right:0!important;left:auto!important;bottom:auto!important;width:50%!important;height:100%!important;background:#000;overflow:hidden;z-index:5;border-left:2px solid rgba(255,200,0,.45)!important;border-radius:0!important;}
+#battle-opponent-pip .bop-label{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.65);color:#fff;font-size:.6rem;font-weight:700;padding:2px 8px;border-radius:10px;z-index:3;pointer-events:none;}
+#battle-opponent-pip .bop-wait{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(255,255,255,.4);font-size:.75rem;text-align:center;pointer-events:none;line-height:1.6;}
+body.is-hosting #live-broadcaster-video-container.layout-battle #live-broadcaster-video{width:50%!important;height:100%!important;top:0!important;left:0!important;}
 </style>
 
 <!-- Battle: Challenge Modal -->
@@ -34630,6 +34636,7 @@ const CF = 'https://us-central1-socialhub-33014.cloudfunctions.net';
 // ── State ─────────────────────────────────────────────────
 var _bid = null, _bdata = null, _bUnsub = null, _bReqUnsub = null;
 var _bTimer = null, _bRole = null, _lastHostSid = null, _lastViewSid = null;
+var _bViewerClient = null, _bOpponentTrack = null;
 var _pendingBid = null, _selTarget = null, _selDur = 180;
 
 // ── Detect stream start/stop via polling ──────────────────
@@ -34704,6 +34711,11 @@ function _activate(bid, bdata){
     document.getElementById('battle-bar').style.display='block';
     _startBListener(bid);
     _startTimer(bdata.endsAt);
+    if(_bRole==='challenger'||_bRole==='challengee'){
+        var oppSid=_bRole==='challenger'?bdata.challengeeStreamId:bdata.challengerStreamId;
+        console.log('[Battle] activated via _activate, role=',_bRole,'oppSid=',oppSid);
+        _joinBattleOpponent(oppSid);
+    }
 }
 
 // ── Render battle bar ─────────────────────────────────────
@@ -34779,6 +34791,11 @@ function _startBListener(bid){
                 _renderBar(d);
                 if(bar) bar.style.display='block';
                 _startTimer(d.endsAt);
+                console.log('[Battle] activated via listener, role=',_bRole,'challengerSid=',d.challengerStreamId,'challengeeSid=',d.challengeeStreamId);
+                if(_bRole==='challenger'||_bRole==='challengee'){
+                    var oppSid=_bRole==='challenger'?d.challengeeStreamId:d.challengerStreamId;
+                    _joinBattleOpponent(oppSid);
+                }
                 return;
             }
         }
@@ -34882,6 +34899,84 @@ function _deactivate(){
     if(_bUnsub){try{_bUnsub();}catch(_){} _bUnsub=null;}
     _bid=null; _bdata=null; _bRole=null;
     var bar=document.getElementById('battle-bar'); if(bar) bar.style.display='none';
+    _clearBattleSplit();
+}
+
+// ── Split screen: join opponent's Agora channel ───────────
+async function _joinBattleOpponent(oppSid){
+    console.log('[Battle] _joinBattleOpponent oppSid=',oppSid,'AgoraRTC=',!!window.AgoraRTC,'client=',!!_bViewerClient);
+    if(_bViewerClient||!window.AgoraRTC) return;
+    try{
+        var oppChannel='socialhub_live_'+oppSid;
+        console.log('[Battle] fetching token for',oppChannel);
+        var walletParam=window.userAddress?'&walletAddress='+encodeURIComponent(window.userAddress):'';
+        var tokenRes=await fetch(CF+'/getAgoraToken?channel='+encodeURIComponent(oppChannel)+walletParam);
+        var tokenData=await tokenRes.json();
+        if(!tokenData.token) throw new Error('No token returned');
+        console.log('[Battle] token ok, uid=',tokenData.uid);
+
+        _bViewerClient=window.AgoraRTC.createClient({mode:'live',codec:'h264'});
+        // level:1 = low-latency audience (matches existing viewer join)
+        await _bViewerClient.setClientRole('audience',{level:1});
+
+        _bViewerClient.on('user-published',async function(remoteUser,mediaType){
+            console.log('[Battle] opponent published mediaType=',mediaType,'uid=',remoteUser.uid);
+            try{
+                await _bViewerClient.subscribe(remoteUser,mediaType);
+                if(mediaType==='video'){
+                    _bOpponentTrack=remoteUser.videoTrack;
+                    var pip=document.getElementById('battle-opponent-pip');
+                    if(pip){
+                        pip.innerHTML='<div class="bop-label">⚔️ Opponent</div>';
+                        var w=pip.offsetWidth, h=pip.offsetHeight;
+                        console.log('[Battle] pip dims',w,'x',h);
+                        if(w>0&&h>0){
+                            remoteUser.videoTrack.play(pip);
+                        } else {
+                            setTimeout(function(){
+                                var p2=document.getElementById('battle-opponent-pip');
+                                if(p2) remoteUser.videoTrack.play(p2);
+                            },300);
+                        }
+                    }
+                }
+                if(mediaType==='audio'&&remoteUser.audioTrack) remoteUser.audioTrack.play();
+            }catch(e){ console.error('[Battle] subscribe error:',e); }
+        });
+        _bViewerClient.on('user-left',function(){
+            var pip=document.getElementById('battle-opponent-pip');
+            if(pip) pip.innerHTML='<div class="bop-label">⚔️ Opponent</div><div class="bop-wait">📡<br>Reconnecting…</div>';
+        });
+
+        await _bViewerClient.join('e26e79a0f99446f991beb0d6c68271a3',oppChannel,tokenData.token,tokenData.uid||null);
+        console.log('[Battle] joined opponent channel');
+        _showBattleSplit();
+    }catch(e){
+        console.warn('[Battle] Split screen unavailable:',e.message,e);
+    }
+}
+
+function _showBattleSplit(){
+    if(!document.body.classList.contains('is-hosting')) return;
+    var container=document.getElementById('live-broadcaster-video-container');
+    if(!container||document.getElementById('battle-opponent-pip')) return;
+    var pip=document.createElement('div');
+    pip.id='battle-opponent-pip';
+    pip.innerHTML='<div class="bop-label">⚔️ Opponent</div><div class="bop-wait">⚔️<br>Connecting…</div>';
+    container.appendChild(pip);
+    container.classList.add('layout-battle');
+}
+
+function _clearBattleSplit(){
+    var pip=document.getElementById('battle-opponent-pip');
+    if(pip) pip.remove();
+    var container=document.getElementById('live-broadcaster-video-container');
+    if(container) container.classList.remove('layout-battle');
+    if(_bViewerClient){
+        var c=_bViewerClient; _bViewerClient=null;
+        c.leave().catch(function(){});
+    }
+    _bOpponentTrack=null;
 }
 
 // ── Gift score attribution ─────────────────────────────────
