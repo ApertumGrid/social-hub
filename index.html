@@ -34684,12 +34684,14 @@ function _stopReqListener(){
 // ── Load and activate ─────────────────────────────────────
 async function _loadAndActivate(bid){
     if(_bid===bid||!window.db||!window.fs) return;
+    _bid=bid; // Guard immediately — prevents duplicate calls while awaiting getDoc
     try{
         var snap = await window.fs.getDoc(window.fs.doc(window.db,'live_battles',bid));
-        if(!snap.exists()) return;
+        if(!snap.exists()){ _bid=null; return; }
         var d = snap.data();
         if(d.status==='active') _activate(bid, d);
-    }catch(e){}
+        else _bid=null;
+    }catch(e){ _bid=null; }
 }
 
 function _activate(bid, bdata){
@@ -34764,6 +34766,22 @@ function _startBListener(bid){
     _bUnsub = window.fs.onSnapshot(window.fs.doc(window.db,'live_battles',bid), function(snap){
         if(!snap.exists()) return;
         var d = snap.data(); _bdata=d;
+        // Activate battle UI when opponent accepts (handles challenger side stuck on "sending")
+        if(d.status==='active'){
+            var bar=document.getElementById('battle-bar');
+            if(!bar||bar.style.display==='none'){
+                var my=(window.userAddress||'').toLowerCase();
+                if(!_bRole){
+                    if(my===d.challengerAddr) _bRole='challenger';
+                    else if(my===d.challengeeAddr) _bRole='challengee';
+                    else _bRole=(_lastViewSid===d.challengerStreamId)?'viewer-a':'viewer-b';
+                }
+                _renderBar(d);
+                if(bar) bar.style.display='block';
+                _startTimer(d.endsAt);
+                return;
+            }
+        }
         var sa=document.getElementById('b-score-a'), sb=document.getElementById('b-score-b');
         if(sa) sa.textContent=(d.scoreChallenger||0)+'★';
         if(sb) sb.textContent=(d.scoreChallengee||0)+'★';
@@ -34970,8 +34988,8 @@ window.sendBattleChallenge=async function(){
         var r=await fetch(CF+'/sendBattleChallenge',{method:'POST',headers:{'Content-Type':'application/json'},
             body:JSON.stringify({
                 challengerAddr:window.userAddress||'',
-                challengerName:localStorage.getItem('hub_userName')||window.userHandle||(window.userAddress||'').slice(0,8),
-                challengerAvatar:localStorage.getItem('hub_userPic')||window.userAvatar||'',
+                challengerName:localStorage.getItem('hub_userName')||window._liveUserHandle||(window.userAddress||'').slice(0,8),
+                challengerAvatar:localStorage.getItem('hub_userPic')||window._liveUserAvatar||'',
                 challengerStreamId:window._currentStreamId,
                 challengeeAddr:_selTarget.addr,
                 challengeeName:_selTarget.name,
