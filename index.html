@@ -1192,6 +1192,13 @@
         @keyframes live-dot-blink {
             0%,100% { opacity: 0.9; } 50% { opacity: 0.25; }
         }
+        /* Host LIVE indicator — just a small pulsing red dot */
+        .live-badge-pill.live-dot-only {
+            width:12px; height:12px; min-width:0;
+            padding:0; border-radius:50%;
+            display:inline-block; flex-shrink:0;
+        }
+        .live-badge-pill.live-dot-only::before { display:none; }
         .live-viewer-chip {
             background:rgba(0,0,0,0.62);
             color:rgba(255,255,255,0.92);
@@ -11140,7 +11147,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div class="live-stream-box" id="live-remote-video-container">
                             <div class="live-stream-overlay-top">
                                 <span class="live-badge-pill" id="live-stream-badge-watch">🔴 LIVE</span>
-                                <span class="live-viewer-chip" id="live-watch-viewers">👁 0 watching</span>
+                                <span class="live-viewer-chip" id="live-watch-viewers">👁 0</span>
                             </div>
                             <div id="live-remote-video" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
                             <!-- Waiting room placeholder — hidden once stream connects -->
@@ -11527,12 +11534,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div class="live-stream-box" id="live-broadcaster-video-container" style="height:clamp(300px, 40vh, 520px);">
                             <!-- Top bar: LIVE badge + health + viewers -->
                             <div class="live-stream-overlay-top">
-                                <span class="live-badge-pill">🔴 YOU ARE LIVE</span>
-                                <div id="stream-health">
+                                <span class="live-badge-pill live-dot-only"></span>
+                                <div id="stream-health" style="display:none">
                                     <div class="health-dot good" id="health-dot"></div>
                                     <span id="health-label">Good</span>
                                 </div>
-                                <span class="live-viewer-chip" id="live-broadcast-viewers">👁 0 watching</span>
+                                <span class="live-viewer-chip" id="live-broadcast-viewers">👁 0</span>
                             </div>
 
                             <!-- Screen share label -->
@@ -12943,6 +12950,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         window.userAddress = '';
         userHandle = '';
         userAvatar = '';
+        localStorage.removeItem('hub_userName');
+        localStorage.removeItem('hub_userPic');
         // Clear nav identity immediately on disconnect
         const _nvAv = document.getElementById('nav-avatar'); if (_nvAv) _nvAv.src = '';
         const _nvH  = document.getElementById('nav-handle'); if (_nvH)  _nvH.textContent = 'Connect Wallet';
@@ -27635,7 +27644,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             <div class="live-stream-card" onclick="joinLiveStream('${s.id}')">
                 <div class="live-stream-thumb">
                     <span class="live-badge-pill" style="position:relative;">🔴 LIVE</span>
-                    <span class="live-viewer-chip" style="position:absolute;top:10px;right:12px;">👁 ${s.viewers || 0} watching</span>
+                    <span class="live-viewer-chip" style="position:absolute;top:10px;right:12px;">👁 ${s.viewers || 0}</span>
                     ${s.isPaid ? '<span class="paid-badge" style="position:absolute;bottom:10px;left:12px;">⭐ ' + s.entryFee + '★ entry</span>' : ''}
                 </div>
                 <div class="live-stream-card-body">
@@ -29640,7 +29649,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
 
             // Viewer side
-            setText('live-watch-viewers',       '👁 ' + (d.viewers || 0) + ((d.viewers === 1) ? ' person watching' : ' watching'));
+            setText('live-watch-viewers',       '👁 ' + (d.viewers || 0));
             setText('live-creator-stars-watch',  (d.starsEarned || 0).toFixed(1));
             setText('live-hype-count',           '(' + (d.hypeCount || 0) + ')');
 
@@ -29651,7 +29660,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             setText('live-stat-stars',   liveStarsEarned.toFixed(1) + ' ★');
             setText('live-stat-hypes',   String(liveHypeCount));
             setText('live-stat-viewers', String(liveViewerCount));
-            setText('live-broadcast-viewers', '👁 ' + liveViewerCount + (liveViewerCount === 1 ? ' person watching' : ' watching'));
+            setText('live-broadcast-viewers', '👁 ' + liveViewerCount);
             // Update host goal bar in real-time as stars come in
             if (isHosting && starGoalTarget > 0) _updateGoalBar(liveStarsEarned);
 
@@ -32028,7 +32037,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (!snap.exists()) return;
             const d = snap.data();
 
-            setText('live-watch-viewers',       '👁 ' + (d.viewers || 0) + ((d.viewers === 1) ? ' person watching' : ' watching'));
+            setText('live-watch-viewers',       '👁 ' + (d.viewers || 0));
             setText('live-creator-stars-watch',  (d.starsEarned || 0).toFixed(1));
             setText('live-hype-count',           '(' + (d.hypeCount || 0) + ')');
 
@@ -34580,6 +34589,21 @@ body.is-hosting #cmd-orb, body.is-hosting #cmd-wheel, body.is-hosting #cmd-scrim
 /* Battle bar inside video container — absolute positioned, centered at bottom */
 #live-broadcaster-video-container #battle-bar,
 #live-remote-video-container #battle-bar{position:absolute!important;bottom:10px!important;top:auto!important;left:50%!important;transform:translateX(-50%)!important;animation:none!important;z-index:20!important}
+/* Floating rematch pill after Keep Talking */
+#battle-rematch-pill{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#dc2626,#7c3aed);color:#fff;border:none;border-radius:20px;padding:8px 22px;font-size:.82rem;font-weight:800;cursor:pointer;z-index:20;letter-spacing:.5px;box-shadow:0 4px 16px rgba(220,38,38,.4);animation:bBarIn .3s ease;white-space:nowrap}
+#battle-rematch-pill:hover{transform:translateX(-50%) scale(1.06)}
+/* Compact battle bar on mobile */
+@media(max-width:480px){
+#battle-bar{padding:6px 8px 5px!important;border-radius:12px!important;width:min(320px,96vw)!important}
+.b-row{gap:4px!important;margin-bottom:5px!important}
+.b-side{gap:4px!important}
+.b-av{width:26px!important;height:26px!important}
+.b-name{font-size:.6rem!important}
+.b-score{font-size:.75rem!important}
+#battle-timer{font-size:.82rem!important;min-width:34px!important}
+.b-vs{font-size:.82rem!important}
+.b-tug{height:5px!important}
+.battle-streak-badge{display:none!important}}
 .bw-close:hover{background:rgba(255,255,255,.14)}
 #battle-confetti{position:fixed;inset:0;pointer-events:none;z-index:9499;display:none}
 .b-tie-icon{font-size:3rem;display:block;margin-bottom:8px}
@@ -34915,12 +34939,26 @@ function _showWinner(b){
     setTimeout(function(){ ov.classList.add('active'); }, 40);
 }
 
-// Keep Talking — dismiss overlay, split screen stays alive
+// Keep Talking — dismiss overlay, show floating rematch pill so either host can rematch anytime
 window._closeBattleWinner = function(){
     var ov=document.getElementById('battle-winner-overlay');
     if(ov){ ov.classList.remove('active'); setTimeout(function(){ov.style.display='none';},300); }
-    // Split screen + viewer client stay active for continued conversation
+    _showRematchPill();
 };
+
+function _showRematchPill(){
+    if(!document.body.classList.contains('is-hosting')) return;
+    var container=document.getElementById('live-broadcaster-video-container');
+    if(!container||document.getElementById('battle-rematch-pill')) return;
+    var pill=document.createElement('button');
+    pill.id='battle-rematch-pill';
+    pill.innerHTML='⚔️ Rematch';
+    pill.onclick=function(){ _clearRematchPill(); window._rematchBattle(); };
+    container.appendChild(pill);
+}
+function _clearRematchPill(){
+    var p=document.getElementById('battle-rematch-pill'); if(p) p.remove();
+}
 
 // End — full cleanup
 window._endBattleSession = function(){
@@ -34941,6 +34979,7 @@ window._rematchBattle = async function(){
         name:isC?(d.challengeeName||'Host B'):(d.challengerName||'Host A'),
         avatar:isC?(d.challengeeAvatar||''):(d.challengerAvatar||'')};
     var rDur=d.durationSeconds||180;
+    _clearRematchPill(); // remove pill since we're opening the modal
     // Split screen stays — do NOT call _clearBattleSplit
     if(typeof window.openBattleModal==='function'){
         await window.openBattleModal(); // openBattleModal resets _selTarget/_selDur; restore after hosts load
@@ -35068,6 +35107,7 @@ function _showBattleSplit(){
 function _clearBattleSplit(){
     var pip=document.getElementById('battle-opponent-pip');
     if(pip) pip.remove();
+    _clearRematchPill();
     var container=document.getElementById('live-broadcaster-video-container');
     if(container) container.classList.remove('layout-battle');
     // Restore bar to body-level fixed positioning
@@ -35184,8 +35224,8 @@ window.sendBattleChallenge=async function(){
         var r=await fetch(CF+'/sendBattleChallenge',{method:'POST',headers:{'Content-Type':'application/json'},
             body:JSON.stringify({
                 challengerAddr:window.userAddress||'',
-                challengerName:localStorage.getItem('hub_userName')||window._liveUserHandle||(window.userAddress||'').slice(0,8),
-                challengerAvatar:localStorage.getItem('hub_userPic')||window._liveUserAvatar||'',
+                challengerName:window._liveUserHandle||localStorage.getItem('hub_userName')||(window.userAddress||'').slice(0,8),
+                challengerAvatar:window._liveUserAvatar||localStorage.getItem('hub_userPic')||'',
                 challengerStreamId:window._currentStreamId,
                 challengeeAddr:_selTarget.addr,
                 challengeeName:_selTarget.name,
