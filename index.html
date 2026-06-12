@@ -1231,6 +1231,7 @@
             border:1px solid rgba(255,255,255,.07);
             border-bottom:none;
             border-radius:12px 12px 0 0;
+            position:sticky;top:0;z-index:40;
         }
         .lsib-left{display:flex;align-items:center;gap:8px;min-width:0;flex:1;}
         .lsib-av{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid rgba(124,92,191,.5);flex-shrink:0;background:#1a1535;}
@@ -28622,6 +28623,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             hide('live-stream-browser');
             hide('live-tabs');
             show('live-player-wrap');
+            // Scroll to top so the info bar is visible (page may have been scrolled from a previous section)
+            try { window.scrollTo({top:0,behavior:'instant'}); } catch(_) { window.scrollTo(0,0); }
+            var _pw = document.getElementById('live-player-wrap');
+            if (_pw) _pw.scrollTop = 0;
             // Reset waiting room so it shows while video connects (fixes subsequent joins
             // where the waiting room was left hidden from a previous session)
             var _wrEl = document.getElementById('live-waiting-room');
@@ -30724,8 +30729,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 pipCamBtn.onclick = function() { window.toggleCoHostCam && window.toggleCoHostCam(); };
                 pipCamBtn.style.cssText = 'background:rgba(0,0,0,0.75);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;padding:2px 7px;font-size:0.58rem;font-weight:600;cursor:pointer;white-space:nowrap;';
 
+                var pipLeaveBtn = document.createElement('button');
+                pipLeaveBtn.textContent = '✕ Leave';
+                pipLeaveBtn.onclick = function() { window.leaveCoHost && window.leaveCoHost(); };
+                pipLeaveBtn.style.cssText = 'background:rgba(220,38,38,0.75);border:1px solid rgba(220,38,38,0.8);color:#fff;border-radius:20px;padding:2px 7px;font-size:0.58rem;font-weight:600;cursor:pointer;white-space:nowrap;';
+
                 selfControls.appendChild(pipMicBtn);
                 selfControls.appendChild(pipCamBtn);
+                selfControls.appendChild(pipLeaveBtn);
                 selfPip.appendChild(selfControls);
             }
 
@@ -34771,6 +34782,11 @@ body.has-battle .live-stream-overlay-top{display:none!important}
 /* ── Viewer mobile overhaul ── */
 @media(max-width:700px){
   #live-player-wrap #live-remote-video-container{height:62vh!important;min-height:240px!important;max-height:none!important;flex-shrink:0!important;}
+  /* Hide the page heading when actively watching or hosting — info bar replaces it */
+  body.is-watching #page-live>.page-heading,
+  body.is-hosting  #page-live>.page-heading{display:none!important}
+  /* Hide the old cohost-stage-wrap on mobile when viewer is on stage — self-pip handles it */
+  body.is-watching.is-cohost #cohost-stage-wrap{display:none!important}
 }
 /* Viewer icon strip */
 #viewer-icon-strip{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:10px;z-index:30}
