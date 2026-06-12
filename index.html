@@ -34777,9 +34777,29 @@ function _updateStageBadge(n){
     badge.classList.toggle('vis', n>0);
 }
 
+// Expose to global scope so onclick attributes can call them
+window._hostStripMute   = _hostStripMute;
+window._hostStripCam    = _hostStripCam;
+window._openHostDrawer  = _openHostDrawer;
+window._closeHostDrawer = _closeHostDrawer;
+
 // ── Detect stream start/stop via polling ──────────────────
+var _tbWasMobile = false;
 setInterval(function(){
     var isHosting = document.body.classList.contains('is-hosting');
+    // JS toolbar hide — beats any CSS specificity or inline-style conflicts
+    if(window.innerWidth <= 700){
+        var _tb = document.querySelector('.studio-toolbar');
+        if(_tb){
+            if(isHosting && _tb.style.display !== 'none'){
+                _tb.style.setProperty('display','none','important');
+                _tbWasMobile = true;
+            } else if(!isHosting && _tbWasMobile){
+                _tb.style.display = '';
+                _tbWasMobile = false;
+            }
+        }
+    }
     var hSid = window._currentStreamId  || null;
     var vSid = window._watchingStreamId || null;
 
