@@ -1112,7 +1112,7 @@
         .live-stream-box {
             position:relative;
             width:100%;
-            height:420px;
+            height:378px;
             background:#0d1117;
             border-radius:var(--radius-md);
             overflow:hidden;
@@ -1121,10 +1121,10 @@
         }
         /* Keep broadcaster preview slightly shorter */
         #live-local-preview {
-            height:260px !important;
+            height:234px !important;
         }
         @media (max-width:768px) {
-            .live-stream-box { height:56vw; min-height:220px; }
+            .live-stream-box { height:50vw; min-height:200px; }
         }
         /* ── Mobile: stack setup panel to single column ─────────────── */
         @media (max-width:768px) {
@@ -23531,6 +23531,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.triggerStarShower = triggerStarShower;
     window.heroFollow        = heroFollow;
     window.showFollowList    = showFollowList;
+    window._isFollowing      = function(addr){ return _followingSet.has((addr||'').toLowerCase()); };
+    window._battleFollow     = async function(addr){ _heroTargetAddr=(addr||'').toLowerCase(); await heroFollow(); };
 
     // ═══════════════════════════════════════════════════════════════════
     // MY NETWORK — Dual-tab directory of followed Creators and Hubs
@@ -34634,10 +34636,20 @@ body.is-hosting #live-broadcaster-video-container.layout-battle #live-broadcaste
 #battle-opponent-pip .bop-label{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.65);color:#fff;font-size:.6rem;font-weight:700;padding:2px 8px;border-radius:10px;z-index:3;pointer-events:none;}
 #battle-opponent-pip .bop-wait{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(255,255,255,.4);font-size:.75rem;text-align:center;pointer-events:none;line-height:1.6;}
 body.is-hosting #live-broadcaster-video-container.layout-battle #live-broadcaster-video{width:50%!important;height:calc(100% - 58px)!important;top:58px!important;left:0!important;}
+/* Battle split screen: viewer side — mirrors host layout using #live-remote-video-container */
+#live-remote-video-container.layout-battle{position:relative!important;overflow:hidden!important;}
+#live-remote-video-container.layout-battle #live-remote-video{position:absolute!important;top:58px!important;left:0!important;width:50%!important;height:calc(100% - 58px)!important;border-radius:0!important;}
+#live-remote-video-container.layout-battle #battle-opponent-pip{position:absolute!important;top:58px!important;right:0!important;left:auto!important;bottom:auto!important;width:50%!important;height:calc(100% - 58px)!important;background:#000;overflow:hidden;z-index:5;border-left:2px solid rgba(255,255,255,.12)!important;border-radius:0!important;}
+@media(max-width:480px){
+#live-remote-video-container.layout-battle #live-remote-video{top:52px!important;height:calc(100% - 52px)!important;}
+#live-remote-video-container.layout-battle #battle-opponent-pip{top:52px!important;height:calc(100% - 52px)!important;}
+}
 /* ── Host icon strip (TikTok-style right-side controls) ── */
 #host-icon-strip{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:10px;z-index:30}
 @media(max-width:700px){body.is-hosting #host-icon-strip{display:flex}}
-body.has-battle #host-icon-strip{display:none!important}
+/* During battle: keep strip visible but shift it inside host's left-half video; hide ⚔️ (battle already running) */
+body.has-battle #his-battle{display:none!important}
+@media(max-width:700px){body.has-battle.is-hosting #host-icon-strip{right:calc(50% + 8px)!important}}
 .his-btn{width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.52);border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:1.25rem;cursor:pointer;position:relative;transition:transform .12s,background .12s;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);color:#fff}
 .his-btn:active{transform:scale(.88)}
 .his-btn.his-active{background:rgba(124,92,191,.6);border-color:rgba(124,92,191,.85)}
@@ -34659,6 +34671,21 @@ body.has-battle #host-icon-strip{display:none!important}
 .hmd-end-btn:active{background:rgba(224,62,62,.32)}
 /* During battle the score strip owns the top — hide the live dot + viewer chip so they don't overlap */
 body.has-battle .live-stream-overlay-top{display:none!important}
+/* Clickable host names in battle bar */
+.bbar-name-link{cursor:pointer;border-bottom:1px dotted rgba(255,255,255,.4);transition:color .12s}
+.bbar-name-link:hover,.bbar-name-link:active{color:#fff!important;border-bottom-color:#fff}
+/* Battle host tap popup */
+#b-host-popup{position:fixed;z-index:9600;background:rgba(10,8,24,.97);border:1px solid rgba(124,92,191,.45);border-radius:18px;padding:20px 18px 16px;min-width:190px;display:none;flex-direction:column;align-items:center;gap:10px;box-shadow:0 8px 40px rgba(0,0,0,.75);backdrop-filter:blur(18px);top:50%;left:50%;transform:translate(-50%,-50%)}
+#b-host-popup.open{display:flex}
+#b-host-popup-close{position:absolute;top:9px;right:9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.45);width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;line-height:1}
+.bhp-av{width:60px;height:60px;border-radius:50%;object-fit:cover;border:2.5px solid rgba(124,92,191,.5);background:#1a1535}
+.bhp-name{font-size:.88rem;font-weight:700;color:#fff;text-align:center;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bhp-btn{width:100%;padding:10px;border-radius:11px;font-size:.75rem;font-weight:800;cursor:pointer;border:none;transition:background .15s;font-family:inherit;letter-spacing:.3px}
+.bhp-follow{background:rgba(124,92,191,.2);border:1px solid rgba(124,92,191,.5)!important;color:#c4b5fd}
+.bhp-follow:hover{background:rgba(124,92,191,.35)}
+.bhp-follow.following{background:rgba(124,92,191,.08);color:rgba(196,181,253,.45);cursor:default}
+.bhp-watch{background:rgba(224,62,62,.18);border:1px solid rgba(224,62,62,.45)!important;color:#f87171}
+.bhp-watch:hover{background:rgba(224,62,62,.3)}
 /* ── Viewer mobile overhaul ── */
 @media(max-width:700px){
   #live-player-wrap #live-remote-video-container{height:62vh!important;min-height:240px!important;max-height:none!important;flex-shrink:0!important;}
@@ -34765,6 +34792,16 @@ body.is-watching #viewer-icon-strip{display:flex}
 
 <!-- Battle: Live Bar -->
 <div id="battle-bar" style="display:none;"></div>
+
+<!-- Battle: Host Tap Popup -->
+<div id="b-host-popup-scrim" onclick="window._bhpClose()" style="display:none;position:fixed;inset:0;z-index:9599;"></div>
+<div id="b-host-popup">
+  <button id="b-host-popup-close" onclick="window._bhpClose()">✕</button>
+  <img id="bhp-av" class="bhp-av" src="" onerror="this.style.opacity='.3'">
+  <div id="bhp-name" class="bhp-name"></div>
+  <button id="bhp-follow" class="bhp-btn bhp-follow" onclick="window._bhpFollow()">+ Follow (1★)</button>
+  <button id="bhp-watch" class="bhp-btn bhp-watch" onclick="window._bhpWatch()" style="display:none">▶ Watch Live</button>
+</div>
 
 <!-- Battle: Winner Overlay + Confetti -->
 <canvas id="battle-confetti"></canvas>
@@ -34963,13 +35000,17 @@ function _activate(bid, bdata){
         if(document.body.classList.contains('is-hosting')){
             var _aVc=document.getElementById('live-broadcaster-video-container');
             if(_aVc && _aBar.parentNode!==_aVc) _aVc.appendChild(_aBar);
+        } else {
+            var _rVc=document.getElementById('live-remote-video-container');
+            if(_rVc && _aBar.parentNode!==_rVc) _rVc.appendChild(_aBar);
         }
         _aBar.style.display='flex';
     }
     _startBListener(bid);
     _startTimer(bdata.endsAt);
-    if(_bRole==='challenger'||_bRole==='challengee'){
-        var oppSid=_bRole==='challenger'?bdata.challengeeStreamId:bdata.challengerStreamId;
+    var oppSid=(_bRole==='challenger'||_bRole==='viewer-a')?bdata.challengeeStreamId
+              :(_bRole==='challengee'||_bRole==='viewer-b')?bdata.challengerStreamId:null;
+    if(oppSid){
         console.log('[Battle] activated via _activate, role=',_bRole,'oppSid=',oppSid);
         _joinBattleOpponent(oppSid);
     }
@@ -34985,21 +35026,27 @@ function _renderBar(b){
     if(b.challengeeAddr && _me===(b.challengeeAddr||'').toLowerCase()) flip=true;
     else if(b.challengerAddr && _me===(b.challengerAddr||'').toLowerCase()) flip=false;
     else flip=(_bRole==='viewer-b');
-    var lName = flip ? (b.challengeeName||'Host B') : (b.challengerName||'Host A');
-    var lId   = flip ? 'b-score-b' : 'b-score-a';
-    var lScore= flip ? (b.scoreChallengee||0) : (b.scoreChallenger||0);
-    var rName = flip ? (b.challengerName||'Host A') : (b.challengeeName||'Host B');
-    var rId   = flip ? 'b-score-a' : 'b-score-b';
-    var rScore= flip ? (b.scoreChallenger||0) : (b.scoreChallengee||0);
+    var lName   = flip ? (b.challengeeName||'Host B')   : (b.challengerName||'Host A');
+    var lId     = flip ? 'b-score-b' : 'b-score-a';
+    var lScore  = flip ? (b.scoreChallengee||0) : (b.scoreChallenger||0);
+    var lAddr   = flip ? (b.challengeeAddr||'')         : (b.challengerAddr||'');
+    var lSid    = flip ? (b.challengeeStreamId||'')     : (b.challengerStreamId||'');
+    var lAvatar = flip ? (b.challengeeAvatar||'')       : (b.challengerAvatar||'');
+    var rName   = flip ? (b.challengerName||'Host A')   : (b.challengeeName||'Host B');
+    var rId     = flip ? 'b-score-a' : 'b-score-b';
+    var rScore  = flip ? (b.scoreChallenger||0) : (b.scoreChallengee||0);
+    var rAddr   = flip ? (b.challengerAddr||'')         : (b.challengeeAddr||'');
+    var rSid    = flip ? (b.challengerStreamId||'')     : (b.challengeeStreamId||'');
+    var rAvatar = flip ? (b.challengerAvatar||'')       : (b.challengeeAvatar||'');
     bar.innerHTML =
         '<div class="bbar-head">' +
             '<div class="bbar-side bbar-left">' +
                 '<span class="bbar-score sl" id="'+lId+'">'+lScore+'</span>' +
-                '<span class="bbar-name" id="b-sname-left">'+_esc(lName)+'</span>' +
+                '<span class="bbar-name bbar-name-link" id="b-sname-left" data-addr="'+_esc(lAddr)+'" data-sid="'+_esc(lSid)+'" data-avatar="'+_esc(lAvatar)+'" onclick="window._bNameTap(this)">'+_esc(lName)+'</span>' +
             '</div>' +
             '<div class="bbar-timer-wrap"><div id="battle-timer">--:--</div></div>' +
             '<div class="bbar-side bbar-right">' +
-                '<span class="bbar-name" id="b-sname-right">'+_esc(rName)+'</span>' +
+                '<span class="bbar-name bbar-name-link" id="b-sname-right" data-addr="'+_esc(rAddr)+'" data-sid="'+_esc(rSid)+'" data-avatar="'+_esc(rAvatar)+'" onclick="window._bNameTap(this)">'+_esc(rName)+'</span>' +
                 '<span class="bbar-score sr" id="'+rId+'">'+rScore+'</span>' +
             '</div>' +
         '</div>' +
@@ -35081,15 +35128,17 @@ function _startBListener(bid){
                     if(document.body.classList.contains('is-hosting')){
                         var _lVc=document.getElementById('live-broadcaster-video-container');
                         if(_lVc && bar.parentNode!==_lVc) _lVc.appendChild(bar);
+                    } else {
+                        var _lRVc=document.getElementById('live-remote-video-container');
+                        if(_lRVc && bar.parentNode!==_lRVc) _lRVc.appendChild(bar);
                     }
                     bar.style.display='flex';
                 }
                 _startTimer(d.endsAt);
                 console.log('[Battle] activated via listener, role=',_bRole,'challengerSid=',d.challengerStreamId,'challengeeSid=',d.challengeeStreamId);
-                if(_bRole==='challenger'||_bRole==='challengee'){
-                    var oppSid=_bRole==='challenger'?d.challengeeStreamId:d.challengerStreamId;
-                    _joinBattleOpponent(oppSid);
-                }
+                var oppSid=(_bRole==='challenger'||_bRole==='viewer-a')?d.challengeeStreamId
+                          :(_bRole==='challengee'||_bRole==='viewer-b')?d.challengerStreamId:null;
+                if(oppSid) _joinBattleOpponent(oppSid);
                 return;
             }
         }
@@ -35326,8 +35375,8 @@ async function _joinBattleOpponent(oppSid){
 }
 
 function _showBattleSplit(){
-    if(!document.body.classList.contains('is-hosting')) return;
-    var container=document.getElementById('live-broadcaster-video-container');
+    var isHost=document.body.classList.contains('is-hosting');
+    var container=document.getElementById(isHost?'live-broadcaster-video-container':'live-remote-video-container');
     if(!container||document.getElementById('battle-opponent-pip')) return;
     var pip=document.createElement('div');
     pip.id='battle-opponent-pip';
@@ -35340,8 +35389,10 @@ function _clearBattleSplit(){
     var pip=document.getElementById('battle-opponent-pip');
     if(pip) pip.remove();
     _clearRematchPill();
-    var container=document.getElementById('live-broadcaster-video-container');
-    if(container) container.classList.remove('layout-battle');
+    var bc=document.getElementById('live-broadcaster-video-container');
+    if(bc) bc.classList.remove('layout-battle');
+    var rc=document.getElementById('live-remote-video-container');
+    if(rc) rc.classList.remove('layout-battle');
     // Restore bar to body-level fixed positioning
     var bar=document.getElementById('battle-bar');
     if(bar && bar.parentNode!==document.body) document.body.appendChild(bar);
@@ -35351,6 +35402,52 @@ function _clearBattleSplit(){
     }
     _bOpponentTrack=null;
 }
+
+// ── Battle host tap popup ─────────────────────────────────
+var _bhpAddr=null, _bhpSid=null;
+window._bNameTap=function(el){
+    var addr=el.getAttribute('data-addr');
+    var sid=el.getAttribute('data-sid');
+    var avatar=el.getAttribute('data-avatar')||'';
+    var name=el.textContent.replace(/\s*🏆\d+/,'').trim();
+    if(!addr) return;
+    _bhpAddr=addr; _bhpSid=sid;
+    var pop=document.getElementById('b-host-popup');
+    var scrim=document.getElementById('b-host-popup-scrim');
+    if(!pop) return;
+    var avEl=document.getElementById('bhp-av');
+    if(avEl){avEl.src=avatar;avEl.style.opacity='';}
+    var nm=document.getElementById('bhp-name'); if(nm) nm.textContent=name;
+    var isF=typeof window._isFollowing==='function'?window._isFollowing(addr):false;
+    var fb=document.getElementById('bhp-follow');
+    if(fb){fb.textContent='+ Follow (1★)';fb.style.display=isF?'none':'';}
+    var wb=document.getElementById('bhp-watch');
+    if(wb){
+        var canWatch=!document.body.classList.contains('is-hosting')&&!!sid&&sid!==(window._watchingStreamId||'');
+        wb.style.display=canWatch?'':'none';
+    }
+    if(scrim) scrim.style.display='';
+    pop.classList.add('open');
+};
+window._bhpClose=function(){
+    var pop=document.getElementById('b-host-popup');
+    var scrim=document.getElementById('b-host-popup-scrim');
+    if(pop) pop.classList.remove('open');
+    if(scrim) scrim.style.display='none';
+};
+window._bhpFollow=async function(){
+    if(!_bhpAddr) return;
+    var fb=document.getElementById('bhp-follow');
+    if(fb) fb.disabled=true;
+    if(typeof window._battleFollow==='function') await window._battleFollow(_bhpAddr);
+    // heroFollow handles: 1★ deduct, 90/10 split, social_graph write, follower count update, notification
+    if(fb) fb.style.display='none';
+};
+window._bhpWatch=function(){
+    if(!_bhpSid) return;
+    window._bhpClose();
+    if(typeof window.joinLiveStream==='function') window.joinLiveStream(_bhpSid);
+};
 
 // ── Gift score attribution ─────────────────────────────────
 var _origSendGiftBattle = window.sendGift;
