@@ -1223,6 +1223,24 @@
             0%,100% { transform: translateY(0); opacity: 0.4; }
             50%      { transform: translateY(-4px); opacity: 1; }
         }
+        /* ── Stream info bar (above video, outside the box) ── */
+        #live-stream-info-bar,#live-broadcast-info-bar{
+            display:none;align-items:center;justify-content:space-between;
+            padding:8px 12px;gap:10px;
+            background:var(--bg-panel,#0f0f1a);
+            border:1px solid rgba(255,255,255,.07);
+            border-bottom:none;
+            border-radius:12px 12px 0 0;
+        }
+        .lsib-left{display:flex;align-items:center;gap:8px;min-width:0;flex:1;}
+        .lsib-av{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid rgba(124,92,191,.5);flex-shrink:0;background:#1a1535;}
+        .lsib-name{font-size:.9rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;}
+        .lsib-live{background:#e03e3e;color:#fff;font-size:.52rem;font-weight:900;padding:2px 7px;border-radius:6px;letter-spacing:.8px;text-transform:uppercase;flex-shrink:0;}
+        .lsib-right{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+        .lsib-follow-btn{background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;font-size:.72rem;font-weight:800;padding:6px 14px;border-radius:20px;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(124,58,237,.35);font-family:inherit;}
+        .lsib-follow-btn:active{transform:scale(.95);}
+        .lsib-viewers{font-size:.75rem;color:rgba(255,255,255,.55);white-space:nowrap;}
+
         .live-stream-meta {
             position:absolute; bottom:12px; left:14px; right:70px;
             z-index:10;
@@ -11144,10 +11162,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                 <button onclick="toggleCoHostCam()" style="background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;padding:3px 10px;font-size:0.65rem;font-weight:600;cursor:pointer;">📷 Cam Off</button>
                             </div>
                         </div>
+                        <!-- Stream info bar — outside the video box -->
+                        <div id="live-stream-info-bar">
+                            <div class="lsib-left">
+                                <img id="lsib-av" class="lsib-av" src="" onerror="this.style.opacity='.2'">
+                                <span id="lsib-name" class="lsib-name"></span>
+                                <span class="lsib-live">LIVE</span>
+                            </div>
+                            <div class="lsib-right">
+                                <button id="lsib-follow" class="lsib-follow-btn" onclick="window._lsibFollow()" style="display:none">+ Follow</button>
+                                <span id="lsib-viewers" class="lsib-viewers">👁 0</span>
+                            </div>
+                        </div>
                         <div class="live-stream-box" id="live-remote-video-container">
-                            <div class="live-stream-overlay-top">
-                                <span class="live-badge-pill" id="live-stream-badge-watch">🔴 LIVE</span>
-                                <span class="live-viewer-chip" id="live-watch-viewers">👁 0</span>
+                            <div class="live-stream-overlay-top" id="viewer-overlay-top" style="justify-content:flex-end;">
+                                <span class="live-viewer-chip" id="live-watch-viewers" style="display:none;">👁 0</span>
                             </div>
                             <div id="live-remote-video" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
                             <!-- Waiting room placeholder — hidden once stream connects -->
@@ -11176,7 +11205,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                 <button class="btn btn-outline btn-sm" onclick="leaveLiveStream()">← Leave</button>
                             </div>
                             <div class="live-stream-meta" id="live-stream-meta">
-                                <div class="live-stream-host" id="live-stream-host-name">Loading…</div><span id="stream-host-streak-badge" class="battle-streak-badge" style="display:none;"></span>
+                                <div class="live-stream-host" id="live-stream-host-name" style="display:none;"></div><span id="stream-host-streak-badge" class="battle-streak-badge" style="display:none;"></span>
                                 <div class="live-stream-title-sm" id="live-stream-title-sm"></div>
                             </div>
 
@@ -11538,16 +11567,26 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <!-- Active broadcast dashboard (hidden until live) -->
                     <div id="live-active-panel" style="display:none;">
 
+                        <!-- Broadcast info bar — outside the video box -->
+                        <div id="live-broadcast-info-bar">
+                            <div class="lsib-left">
+                                <img id="lbib-av" class="lsib-av" src="" onerror="this.style.opacity='.2'">
+                                <span id="lbib-name" class="lsib-name"></span>
+                                <span class="lsib-live">LIVE</span>
+                            </div>
+                            <div class="lsib-right">
+                                <span id="lbib-viewers" class="lsib-viewers">👁 0</span>
+                            </div>
+                        </div>
                         <!-- Video box with overlays -->
                         <div class="live-stream-box" id="live-broadcaster-video-container" style="height:clamp(300px, 40vh, 520px);">
-                            <!-- Top bar: LIVE badge + health + viewers -->
-                            <div class="live-stream-overlay-top">
-                                <span class="live-badge-pill live-dot-only"></span>
+                            <!-- Top bar: health indicator only (name/viewers moved to info bar above) -->
+                            <div class="live-stream-overlay-top" style="justify-content:flex-end;">
                                 <div id="stream-health" style="display:none">
                                     <div class="health-dot good" id="health-dot"></div>
                                     <span id="health-label">Good</span>
                                 </div>
-                                <span class="live-viewer-chip" id="live-broadcast-viewers">👁 0</span>
+                                <span class="live-viewer-chip" id="live-broadcast-viewers" style="display:none;">👁 0</span>
                             </div>
 
                             <!-- Screen share label -->
@@ -28058,6 +28097,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             show('live-active-panel');
             _showBcFloatingChat();
             setText('live-broadcast-title-display', title + (streamEntryFee > 0 ? ' <span class="paid-badge">⭐ ' + streamEntryFee + '★ entry</span>' : ''));
+            // Populate broadcaster info bar
+            (function(){
+                var bar=document.getElementById('live-broadcast-info-bar');
+                if(!bar) return;
+                var av=document.getElementById('lbib-av'); if(av) av.src=window._liveUserAvatar||'';
+                var nm=document.getElementById('lbib-name'); if(nm) nm.textContent=window._liveUserHandle||userAddress.slice(0,8);
+                bar.style.display='flex';
+            })();
 
             // Update tab buttons
             const watchBtn = $('ltab-watch');
@@ -28585,6 +28632,24 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             setText('live-stream-host-name', streamData.hostName || 'Creator');
             setText('live-stream-title-sm',  streamData.title    || '');
             setText('live-creator-stars-watch', (streamData.starsEarned || 0).toFixed(1));
+            // Populate info bar above video
+            (function(){
+                var bar=document.getElementById('live-stream-info-bar');
+                if(!bar) return;
+                var av=document.getElementById('lsib-av'); if(av) av.src=streamData.hostAvatar||'';
+                var nm=document.getElementById('lsib-name'); if(nm) nm.textContent=streamData.hostName||'Creator';
+                var vc=document.getElementById('lsib-viewers'); if(vc) vc.textContent='👁 '+(streamData.viewers||0);
+                var fb=document.getElementById('lsib-follow');
+                if(fb){
+                    var myA=(window.userAddress||'').toLowerCase();
+                    var hostA=(streamData.hostAddr||'').toLowerCase();
+                    window._lsibHostAddr=hostA;
+                    var isOwn=myA&&myA===hostA;
+                    var isF=typeof window._isFollowing==='function'?window._isFollowing(hostA):false;
+                    fb.style.display=(!isOwn&&!isF)?'':'none';
+                }
+                bar.style.display='flex';
+            })();
 
             // ── Paid admission gate check ─────────────────────────────
             const fee = _toPositiveNumber(streamData.entryFee, 0);
@@ -28723,10 +28788,24 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             rvContainer.style.cssText = '';
         }
 
+        // Hide stream info bar
+        var sib = document.getElementById('live-stream-info-bar');
+        if(sib) sib.style.display='none';
+
         hide('live-player-wrap');
         show('live-stream-browser');
         show('live-tabs');
         window.loadStreamBrowser();
+    };
+
+    // ── Info bar follow button ────────────────────────────────────
+    window._lsibHostAddr = null;
+    window._lsibFollow = async function(){
+        if(!window._lsibHostAddr) return;
+        var fb = document.getElementById('lsib-follow');
+        if(fb) fb.disabled = true;
+        if(typeof window._battleFollow === 'function') await window._battleFollow(window._lsibHostAddr);
+        if(fb) fb.style.display = 'none';
     };
 
     // ── Hype button ───────────────────────────────────────────────
@@ -29671,6 +29750,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             setText('live-watch-viewers',       '👁 ' + (d.viewers || 0));
             setText('live-creator-stars-watch',  (d.starsEarned || 0).toFixed(1));
             setText('live-hype-count',           '(' + (d.hypeCount || 0) + ')');
+            // Info bars (viewer + broadcaster)
+            setText('lsib-viewers',  '👁 ' + (d.viewers || 0));
+            setText('lbib-viewers',  '👁 ' + (d.viewers || 0));
 
             // Broadcaster side
             liveStarsEarned  = d.starsEarned || 0;
