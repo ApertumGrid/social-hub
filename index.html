@@ -34520,18 +34520,28 @@ body.is-hosting #cmd-orb, body.is-hosting #cmd-wheel, body.is-hosting #cmd-scrim
      LIVE BATTLE SYSTEM
 ═══════════════════════════════════════════════════════════ -->
 <style>
-/* ── TikTok-style battle score strip ── */
-#battle-bar{position:fixed;top:64px;left:50%;transform:translateX(-50%);width:min(520px,100vw);height:48px;background:linear-gradient(90deg,#f91880 50%,#00c3e3 50%);transition:background .7s cubic-bezier(.22,1,.36,1);z-index:5000;display:flex;align-items:stretch;padding:0;border-radius:0;border:none;box-shadow:0 3px 20px rgba(0,0,0,.45);overflow:visible;animation:bBarIn .35s ease}
-@keyframes bBarIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
-.b-strip-left{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:0 12px;min-width:0;overflow:hidden}
-.b-strip-right{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:0 12px;min-width:0;overflow:hidden}
-.b-strip-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;pointer-events:none}
-.b-strip-score{font-size:1.35rem;font-weight:900;color:#fff;line-height:1;text-shadow:0 1px 6px rgba(0,0,0,.35);font-variant-numeric:tabular-nums}
-.b-strip-name{font-size:.6rem;font-weight:700;color:rgba(255,255,255,.88);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;letter-spacing:.2px;margin-top:2px}
-#battle-timer{font-size:.82rem;font-weight:900;color:#fff;letter-spacing:1.2px;font-variant-numeric:tabular-nums;background:rgba(0,0,0,.62);border-radius:14px;padding:4px 11px;backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.18);white-space:nowrap}
+/* ── Clash Bar — segmented gaming-style battle UI ── */
+#battle-bar{position:fixed;top:64px;left:50%;transform:translateX(-50%);width:min(520px,100vw);height:58px;background:#060610;border:none;box-shadow:0 4px 28px rgba(0,0,0,.7);z-index:5000;display:flex;flex-direction:column;padding:0;border-radius:0;overflow:hidden;animation:bBarIn .35s ease}
+@keyframes bBarIn{from{opacity:0;transform:translateX(-50%) translateY(-12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+/* Head row */
+.bbar-head{display:flex;align-items:center;flex:1;padding:0 10px;gap:4px;min-height:0;overflow:hidden}
+.bbar-side{flex:1;display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden}
+.bbar-left{justify-content:flex-start}
+.bbar-right{justify-content:flex-end}
+.bbar-score{font-size:1.25rem;font-weight:900;line-height:1;font-variant-numeric:tabular-nums;flex-shrink:0;letter-spacing:-.5px}
+.bbar-score.sl{color:#c084fc;text-shadow:0 0 12px rgba(192,132,252,.7)}
+.bbar-score.sr{color:#7dd3fc;text-shadow:0 0 12px rgba(125,211,252,.7)}
+.bbar-name{font-size:.58rem;font-weight:700;color:rgba(255,255,255,.75);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;letter-spacing:.15px}
+.bbar-timer-wrap{flex-shrink:0}
+#battle-timer{font-size:.78rem;font-weight:900;color:#fff;letter-spacing:1.2px;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.1);border-radius:12px;padding:3px 10px;white-space:nowrap;border:1px solid rgba(255,255,255,.12)}
+/* Cell row */
+.bbar-cells{display:flex;gap:2px;padding:0 8px 7px;flex-shrink:0}
+.bcell{flex:1;height:9px;border-radius:3px;background:rgba(255,255,255,.07);transition:background .4s ease,box-shadow .4s ease}
+.bcell.bl{background:linear-gradient(90deg,#6d28d9,#a78bfa);box-shadow:0 0 4px rgba(124,92,191,.55)}
+.bcell.br{background:linear-gradient(90deg,#38bdf8,#0ea5e9);box-shadow:0 0 4px rgba(14,165,233,.55)}
+.bcell.bclash{animation:clashPulse .65s ease-in-out infinite alternate}
+@keyframes clashPulse{from{box-shadow:0 0 4px rgba(255,255,255,.3);filter:brightness(1)}to{box-shadow:0 0 14px rgba(255,255,255,.9),0 0 28px rgba(255,255,255,.35);filter:brightness(1.6)}}
 #battle-timer.urgent{color:#ffee55;animation:tPulse .5s ease-in-out infinite alternate}
-@keyframes tPulse{from{transform:scale(1)}to{transform:scale(1.12)}}
-.b-tug-indicator{position:absolute;top:0;bottom:0;width:3px;background:rgba(255,255,255,.7);transform:translateX(-50%);transition:left .7s cubic-bezier(.22,1,.36,1);box-shadow:0 0 8px rgba(255,255,255,.5);z-index:4;left:50%}
 #battle-modal{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9100;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px)}
 .bm-card{background:linear-gradient(160deg,#0f0c1e,#0a0c18);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:24px;width:min(420px,94vw);max-height:86vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.7)}
 .bm-title{font-size:1.1rem;font-weight:800;color:#fff;margin-bottom:3px;display:flex;align-items:center;gap:8px}
@@ -34588,33 +34598,34 @@ body.is-hosting #cmd-orb, body.is-hosting #cmd-wheel, body.is-hosting #cmd-scrim
 .bw-btn-talk:hover{background:rgba(255,255,255,.14)}
 .bw-btn-end{width:100%;padding:9px 16px;background:transparent;border:1px solid rgba(255,255,255,.08);color:rgba(255,255,255,.35);border-radius:10px;font-weight:600;font-size:.75rem;cursor:pointer;transition:all .15s}
 .bw-btn-end:hover{background:rgba(255,255,255,.07);color:rgba(255,255,255,.6)}
-/* Battle score strip inside video container — full-width strip at TOP */
+/* Clash bar inside video container — full-width at TOP */
 #live-broadcaster-video-container #battle-bar,
-#live-remote-video-container #battle-bar{position:absolute!important;top:0!important;bottom:auto!important;left:0!important;right:0!important;width:100%!important;max-width:none!important;transform:none!important;border-radius:0!important;animation:none!important;z-index:20!important;height:48px!important}
+#live-remote-video-container #battle-bar{position:absolute!important;top:0!important;bottom:auto!important;left:0!important;right:0!important;width:100%!important;max-width:none!important;transform:none!important;border-radius:0!important;animation:none!important;z-index:20!important;height:58px!important}
 /* Floating rematch pill */
 #battle-rematch-pill{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#dc2626,#7c3aed);color:#fff;border:none;border-radius:20px;padding:9px 24px;font-size:.84rem;font-weight:800;cursor:pointer;z-index:21;letter-spacing:.5px;box-shadow:0 4px 16px rgba(220,38,38,.4);animation:bBarIn .3s ease;white-space:nowrap}
 #battle-rematch-pill:hover{transform:translateX(-50%) scale(1.06)}
-/* Mobile: score strip slightly smaller */
+/* Mobile: clash bar slightly smaller */
 @media(max-width:480px){
-#battle-bar{height:42px!important}
-#live-broadcaster-video-container #battle-bar,#live-remote-video-container #battle-bar{height:42px!important}
-#live-broadcaster-video-container.layout-battle #live-broadcaster-video{top:42px!important;height:calc(100% - 42px)!important}
-#live-broadcaster-video-container.layout-battle #battle-opponent-pip{top:42px!important;height:calc(100% - 42px)!important}
-body.is-hosting #live-broadcaster-video-container.layout-battle #live-broadcaster-video{top:42px!important;height:calc(100% - 42px)!important}
-.b-strip-score{font-size:1.15rem!important}
-.b-strip-name{font-size:.55rem!important}
-#battle-timer{font-size:.72rem!important;padding:3px 9px!important}
-.b-strip-left,.b-strip-right{padding:0 8px!important}}
+#battle-bar{height:52px!important}
+#live-broadcaster-video-container #battle-bar,#live-remote-video-container #battle-bar{height:52px!important}
+#live-broadcaster-video-container.layout-battle #live-broadcaster-video{top:52px!important;height:calc(100% - 52px)!important}
+#live-broadcaster-video-container.layout-battle #battle-opponent-pip{top:52px!important;height:calc(100% - 52px)!important}
+body.is-hosting #live-broadcaster-video-container.layout-battle #live-broadcaster-video{top:52px!important;height:calc(100% - 52px)!important}
+.bbar-score{font-size:1.05rem!important}
+.bbar-name{font-size:.52rem!important}
+#battle-timer{font-size:.7rem!important;padding:2px 8px!important}
+.bcell{height:7px!important}
+.bbar-cells{padding-bottom:5px!important}}
 .bw-close:hover{background:rgba(255,255,255,.14)}
 #battle-confetti{position:fixed;inset:0;pointer-events:none;z-index:9499;display:none}
 .b-tie-icon{font-size:3rem;display:block;margin-bottom:8px}
 .b-tie-title{font-size:1.4rem;font-weight:900;color:#fff;margin-bottom:6px}
-/* Battle split screen: host left half, opponent right half — start below the 48px score strip */
-#live-broadcaster-video-container.layout-battle #live-broadcaster-video{position:absolute!important;top:48px!important;left:0!important;width:50%!important;height:calc(100% - 48px)!important;border-radius:0!important;}
-#live-broadcaster-video-container.layout-battle #battle-opponent-pip{position:absolute!important;top:48px!important;right:0!important;left:auto!important;bottom:auto!important;width:50%!important;height:calc(100% - 48px)!important;background:#000;overflow:hidden;z-index:5;border-left:2px solid rgba(255,255,255,.12)!important;border-radius:0!important;}
+/* Battle split screen: host left half, opponent right half — start below the 58px clash bar */
+#live-broadcaster-video-container.layout-battle #live-broadcaster-video{position:absolute!important;top:58px!important;left:0!important;width:50%!important;height:calc(100% - 58px)!important;border-radius:0!important;}
+#live-broadcaster-video-container.layout-battle #battle-opponent-pip{position:absolute!important;top:58px!important;right:0!important;left:auto!important;bottom:auto!important;width:50%!important;height:calc(100% - 58px)!important;background:#000;overflow:hidden;z-index:5;border-left:2px solid rgba(255,255,255,.12)!important;border-radius:0!important;}
 #battle-opponent-pip .bop-label{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.65);color:#fff;font-size:.6rem;font-weight:700;padding:2px 8px;border-radius:10px;z-index:3;pointer-events:none;}
 #battle-opponent-pip .bop-wait{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(255,255,255,.4);font-size:.75rem;text-align:center;pointer-events:none;line-height:1.6;}
-body.is-hosting #live-broadcaster-video-container.layout-battle #live-broadcaster-video{width:50%!important;height:calc(100% - 48px)!important;top:48px!important;left:0!important;}
+body.is-hosting #live-broadcaster-video-container.layout-battle #live-broadcaster-video{width:50%!important;height:calc(100% - 58px)!important;top:58px!important;left:0!important;}
 /* ── Host icon strip (TikTok-style right-side controls) ── */
 #host-icon-strip{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:10px;z-index:30}
 @media(max-width:700px){body.is-hosting #host-icon-strip{display:flex}}
@@ -34845,7 +34856,7 @@ function _activate(bid, bdata){
             var _aVc=document.getElementById('live-broadcaster-video-container');
             if(_aVc && _aBar.parentNode!==_aVc) _aVc.appendChild(_aBar);
         }
-        _aBar.style.display='block';
+        _aBar.style.display='flex';
     }
     _startBListener(bid);
     _startTimer(bdata.endsAt);
@@ -34873,16 +34884,18 @@ function _renderBar(b){
     var rId   = flip ? 'b-score-a' : 'b-score-b';
     var rScore= flip ? (b.scoreChallenger||0) : (b.scoreChallengee||0);
     bar.innerHTML =
-        '<div class="b-strip-left">' +
-            '<div class="b-strip-score" id="'+lId+'">'+lScore+'</div>' +
-            '<div class="b-strip-name" id="b-sname-left">'+_esc(lName)+'</div>' +
+        '<div class="bbar-head">' +
+            '<div class="bbar-side bbar-left">' +
+                '<span class="bbar-score sl" id="'+lId+'">'+lScore+'</span>' +
+                '<span class="bbar-name" id="b-sname-left">'+_esc(lName)+'</span>' +
+            '</div>' +
+            '<div class="bbar-timer-wrap"><div id="battle-timer">--:--</div></div>' +
+            '<div class="bbar-side bbar-right">' +
+                '<span class="bbar-name" id="b-sname-right">'+_esc(rName)+'</span>' +
+                '<span class="bbar-score sr" id="'+rId+'">'+rScore+'</span>' +
+            '</div>' +
         '</div>' +
-        '<div class="b-tug-indicator" id="b-tug-indicator"></div>' +
-        '<div class="b-strip-center"><div id="battle-timer">--:--</div></div>' +
-        '<div class="b-strip-right">' +
-            '<div class="b-strip-score" id="'+rId+'">'+rScore+'</div>' +
-            '<div class="b-strip-name" id="b-sname-right">'+_esc(rName)+'</div>' +
-        '</div>';
+        '<div class="bbar-cells" id="bbar-cells"></div>';
     _updateTug(b.scoreChallenger||0, b.scoreChallengee||0, flip);
     _loadBarStreaks(b.challengerAddr, b.challengeeAddr);
 }
@@ -34907,15 +34920,35 @@ function _loadBarStreaks(aAddr, bAddr){
 }
 
 function _updateTug(sA, sB, flip){
-    var tot = sA+sB;
-    // pLeft = percentage the LEFT side owns (hot pink)
-    var pLeft = tot>0 ? ((flip ? sB : sA)/tot*100) : 50;
-    var bar = document.getElementById('battle-bar');
-    var ind = document.getElementById('b-tug-indicator');
-    if(bar){
-        bar.style.background='linear-gradient(90deg,#f91880 '+pLeft+'%,#00c3e3 '+pLeft+'%)';
+    var tot = sA + sB;
+    var pLeft = tot > 0 ? ((flip ? sB : sA) / tot * 100) : 50;
+    var CELLS = 20;
+    var leftCount = Math.round(pLeft / 100 * CELLS);
+    if(leftCount < 1) leftCount = 1;
+    if(leftCount > CELLS - 1) leftCount = CELLS - 1;
+    var container = document.getElementById('bbar-cells');
+    if(!container) return;
+    // Build cells if not already built
+    if(container.children.length !== CELLS){
+        container.innerHTML = '';
+        for(var i = 0; i < CELLS; i++){
+            var c = document.createElement('div');
+            c.className = 'bcell';
+            container.appendChild(c);
+        }
     }
-    if(ind) ind.style.left=pLeft+'%';
+    var cells = container.children;
+    for(var i = 0; i < CELLS; i++){
+        var cl = 'bcell';
+        if(i < leftCount){
+            cl += ' bl';
+            if(i === leftCount - 1) cl += ' bclash';
+        } else {
+            cl += ' br';
+            if(i === leftCount) cl += ' bclash';
+        }
+        cells[i].className = cl;
+    }
 }
 
 // ── Real-time battle listener ─────────────────────────────
@@ -34941,7 +34974,7 @@ function _startBListener(bid){
                         var _lVc=document.getElementById('live-broadcaster-video-container');
                         if(_lVc && bar.parentNode!==_lVc) _lVc.appendChild(bar);
                     }
-                    bar.style.display='block';
+                    bar.style.display='flex';
                 }
                 _startTimer(d.endsAt);
                 console.log('[Battle] activated via listener, role=',_bRole,'challengerSid=',d.challengerStreamId,'challengeeSid=',d.challengeeStreamId);
