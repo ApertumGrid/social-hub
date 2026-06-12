@@ -11646,6 +11646,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                     <button onclick="toggleWhiteboard()" style="background:none;border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:rgba(255,255,255,0.65);padding:3px 8px;font-size:0.62rem;cursor:pointer;flex-shrink:0;">✕ Close</button>
                                 </div>
                             </div>
+
+                            <!-- Host icon strip (TikTok-style) -->
+                            <div id="host-icon-strip">
+                                <button class="his-btn" id="his-battle" onclick="openBattleModal()" title="Battle">⚔️</button>
+                                <button class="his-btn" id="his-stage" onclick="toggleCohostPanel()" title="Stage Requests">🎤<span class="his-badge" id="his-stage-badge">0</span></button>
+                                <button class="his-btn" id="his-mute" onclick="_hostStripMute()" title="Mute / Unmute">🎙</button>
+                                <button class="his-btn" id="his-cam" onclick="_hostStripCam()" title="Camera On / Off">📷</button>
+                                <button class="his-btn" id="his-more" onclick="_openHostDrawer()" title="More options">···</button>
+                            </div>
                         </div>
 
                         <!-- Studio Toolbar -->
@@ -30311,6 +30320,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const docs = [];
             snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
             const pending = docs.filter(d => d.status === 'pending');
+            if(typeof _updateStageBadge==='function') _updateStageBadge(pending.length);
             // Notify streamer when a new stage request arrives
             if (pending.length > _prevPendingCount) {
                 const newest = pending[pending.length - 1];
@@ -32046,7 +32056,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             liveViewerCount  = d.viewers     || 0;
             setText('live-stat-stars',   liveStarsEarned.toFixed(1) + ' ★');
             setText('live-stat-hypes',   String(liveHypeCount));
-            setText('live-broadcast-viewers', '👁 ' + liveViewerCount + ((liveViewerCount === 1) ? ' person watching' : ' watching'));
+            setText('live-broadcast-viewers', '👁 ' + liveViewerCount);
 
             // Update goal bar on broadcaster side
             if (starGoalTarget > 0) _updateGoalBar(liveStarsEarned);
@@ -34605,7 +34615,55 @@ body.is-hosting #live-broadcaster-video-container.layout-battle #live-broadcaste
 #battle-opponent-pip .bop-label{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.65);color:#fff;font-size:.6rem;font-weight:700;padding:2px 8px;border-radius:10px;z-index:3;pointer-events:none;}
 #battle-opponent-pip .bop-wait{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(255,255,255,.4);font-size:.75rem;text-align:center;pointer-events:none;line-height:1.6;}
 body.is-hosting #live-broadcaster-video-container.layout-battle #live-broadcaster-video{width:50%!important;height:calc(100% - 48px)!important;top:48px!important;left:0!important;}
+/* ── Host icon strip (TikTok-style right-side controls) ── */
+#host-icon-strip{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:10px;z-index:30}
+@media(max-width:700px){body.is-hosting #host-icon-strip{display:flex}}
+body.has-battle #host-icon-strip{display:none!important}
+.his-btn{width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.52);border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:1.25rem;cursor:pointer;position:relative;transition:transform .12s,background .12s;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);color:#fff}
+.his-btn:active{transform:scale(.88)}
+.his-btn.his-active{background:rgba(124,92,191,.6);border-color:rgba(124,92,191,.85)}
+.his-badge{position:absolute;top:-2px;right:-2px;background:#e03e3e;color:#fff;font-size:.5rem;font-weight:900;min-width:16px;height:16px;border-radius:8px;padding:0 3px;display:none;align-items:center;justify-content:center;line-height:1;pointer-events:none;box-sizing:border-box}
+.his-badge.vis{display:flex}
+/* More drawer */
+#host-more-backdrop{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.45);display:none}
+#host-more-backdrop.open{display:block}
+#host-more-drawer{position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#0f0f1a;border-top:1px solid rgba(255,255,255,.1);border-radius:20px 20px 0 0;padding:10px 0 28px;transform:translateY(100%);transition:transform .32s cubic-bezier(.22,1,.36,1);max-height:72vh;overflow-y:auto}
+#host-more-drawer.open{transform:translateY(0)}
+.hmd-drag{width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,.18);margin:0 auto 12px}
+.hmd-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0;padding:0 4px}
+.hmd-item{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 4px;border-radius:12px;cursor:pointer;background:none;border:none;color:rgba(255,255,255,.88);font-size:.6rem;font-weight:600;letter-spacing:.2px;transition:background .12s;font-family:inherit}
+.hmd-item:active{background:rgba(255,255,255,.09)}
+.hmd-icon{font-size:1.45rem;line-height:1}
+.hmd-item.hmd-on{color:#a78bfa}
+.hmd-divider{height:1px;background:rgba(255,255,255,.07);margin:6px 16px}
+.hmd-end-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:calc(100% - 32px);margin:6px 16px 0;padding:14px;border-radius:12px;background:rgba(224,62,62,.18);border:1px solid rgba(224,62,62,.45);color:#e03e3e;font-weight:800;font-size:.88rem;cursor:pointer;font-family:inherit;transition:background .12s}
+.hmd-end-btn:active{background:rgba(224,62,62,.32)}
+/* Hide studio toolbar on mobile — replaced by icon strip */
+@media(max-width:700px){body.is-hosting .studio-toolbar{display:none!important}}
+/* During battle the score strip owns the top — hide the live dot + viewer chip so they don't overlap */
+body.has-battle .live-stream-overlay-top{display:none!important}
 </style>
+
+<!-- Host more drawer (mobile icon strip) -->
+<div id="host-more-backdrop" onclick="_closeHostDrawer()"></div>
+<div id="host-more-drawer">
+  <div class="hmd-drag"></div>
+  <div class="hmd-grid">
+    <button class="hmd-item" id="hmd-record"     onclick="toggleRecording();_closeHostDrawer()"><span class="hmd-icon">⏺</span>Record</button>
+    <button class="hmd-item" id="hmd-label"      onclick="toggleLowerThird();_closeHostDrawer()"><span class="hmd-icon">📺</span>Label</button>
+    <button class="hmd-item" id="hmd-poll"       onclick="togglePollCreator();_closeHostDrawer()"><span class="hmd-icon">📊</span>Poll</button>
+    <button class="hmd-item" id="hmd-goal"       onclick="toggleGoalSetter();_closeHostDrawer()"><span class="hmd-icon">🎯</span>Goal</button>
+    <button class="hmd-item" id="hmd-layout"     onclick="toggleLayoutPicker();_closeHostDrawer()"><span class="hmd-icon">⊞</span>Layout</button>
+    <button class="hmd-item" id="hmd-bg"         onclick="toggleVBGPicker();_closeHostDrawer()"><span class="hmd-icon">🌅</span>Background</button>
+    <button class="hmd-item" id="hmd-screen"     onclick="toggleScreenShare();_closeHostDrawer()"><span class="hmd-icon">🖥</span>Screen</button>
+    <button class="hmd-item" id="hmd-whiteboard" onclick="toggleWhiteboard();_closeHostDrawer()"><span class="hmd-icon">🖊️</span>Whiteboard</button>
+    <button class="hmd-item" id="hmd-comments"   onclick="toggleLiveChat();_closeHostDrawer()"><span class="hmd-icon">💬</span>Comments</button>
+    <button class="hmd-item" id="hmd-noise"      onclick="toggleNoiseSuppression();_closeHostDrawer()"><span class="hmd-icon">🎙</span>Noise Cancel</button>
+    <button class="hmd-item" id="hmd-flip"       onclick="flipCamera();_closeHostDrawer()"><span class="hmd-icon">🔄</span>Flip Cam</button>
+  </div>
+  <div class="hmd-divider"></div>
+  <button class="hmd-end-btn" onclick="_closeHostDrawer();if(typeof endLiveStream==='function')endLiveStream()">⏹ End Stream</button>
+</div>
 
 <!-- Battle: Challenge Modal -->
 <div id="battle-modal" style="display:none;" onclick="if(event.target===this)window.closeBattleModal()">
@@ -34664,6 +34722,51 @@ var _bTimer = null, _bRole = null, _lastHostSid = null, _lastViewSid = null;
 var _bViewerClient = null, _bOpponentTrack = null;
 var _pendingBid = null, _selTarget = null, _selDur = 180;
 var _lastBattleData = null, _battleEnded = false;
+
+// ── Host icon strip ───────────────────────────────────────
+function _syncHostStrip(){
+    var muteBtn=document.getElementById('his-mute');
+    var origMute=document.getElementById('btn-mute-mic');
+    if(muteBtn&&origMute){
+        var muted=origMute.classList.contains('active');
+        muteBtn.textContent=muted?'🔇':'🎙';
+        muteBtn.classList.toggle('his-active',muted);
+    }
+    var camBtn=document.getElementById('his-cam');
+    var origCam=document.getElementById('btn-cam-off');
+    if(camBtn&&origCam){
+        var camOff=origCam.classList.contains('active');
+        camBtn.textContent=camOff?'🚫':'📷';
+        camBtn.classList.toggle('his-active',camOff);
+    }
+    var hmdRec=document.getElementById('hmd-record');
+    var origRec=document.getElementById('btn-recording');
+    if(hmdRec&&origRec) hmdRec.classList.toggle('hmd-on',origRec.classList.contains('active'));
+    var hmdNoise=document.getElementById('hmd-noise');
+    var origNoise=document.getElementById('btn-noise-suppress');
+    if(hmdNoise&&origNoise) hmdNoise.classList.toggle('hmd-on',origNoise.classList.contains('active'));
+}
+function _hostStripMute(){ if(typeof toggleMic==='function'){ var p=toggleMic(); if(p&&p.then)p.then(_syncHostStrip);else _syncHostStrip(); } }
+function _hostStripCam(){  if(typeof toggleCamera==='function'){ var p=toggleCamera(); if(p&&p.then)p.then(_syncHostStrip);else _syncHostStrip(); } }
+function _openHostDrawer(){
+    _syncHostStrip();
+    var d=document.getElementById('host-more-drawer');
+    var b=document.getElementById('host-more-backdrop');
+    if(d) d.classList.add('open');
+    if(b) b.classList.add('open');
+}
+function _closeHostDrawer(){
+    var d=document.getElementById('host-more-drawer');
+    var b=document.getElementById('host-more-backdrop');
+    if(d) d.classList.remove('open');
+    if(b) b.classList.remove('open');
+}
+function _updateStageBadge(n){
+    var badge=document.getElementById('his-stage-badge');
+    if(!badge) return;
+    badge.textContent=n>9?'9+':n;
+    badge.classList.toggle('vis', n>0);
+}
 
 // ── Detect stream start/stop via polling ──────────────────
 setInterval(function(){
@@ -34729,6 +34832,7 @@ async function _loadAndActivate(bid){
 
 function _activate(bid, bdata){
     _bid=bid; _bdata=bdata;
+    document.body.classList.add('has-battle');
     var my = (window.userAddress||'').toLowerCase();
     if(my===bdata.challengerAddr) _bRole='challenger';
     else if(my===bdata.challengeeAddr) _bRole='challengee';
@@ -34928,6 +35032,7 @@ function _showWinner(b){
 window._closeBattleWinner = function(){
     var ov=document.getElementById('battle-winner-overlay');
     if(ov){ ov.classList.remove('active'); setTimeout(function(){ov.style.display='none';},300); }
+    document.body.classList.remove('has-battle');
     _showRematchPill();
 };
 
@@ -35018,6 +35123,7 @@ function _launchConfetti(){
 // ── Deactivate ────────────────────────────────────────────
 function _deactivate(){
     _clearTimer();
+    document.body.classList.remove('has-battle');
     if(_bUnsub){try{_bUnsub();}catch(_){} _bUnsub=null;}
     _bid=null; _bdata=null; _bRole=null; _battleEnded=false;
     var bar=document.getElementById('battle-bar'); if(bar) bar.style.display='none';
