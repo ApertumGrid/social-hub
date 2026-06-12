@@ -11206,6 +11206,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div class="stream-floating-chat" id="viewer-floating-chat" style="display:none;">
                                 <div class="sfc-feed" id="viewer-sfc-feed"></div>
                             </div>
+
+                            <!-- Viewer icon strip — mirrors host strip -->
+                            <div id="viewer-icon-strip">
+                                <button class="his-btn" onclick="_openViewerGiftDrawer()" title="Send a Gift">🎁</button>
+                                <button class="his-btn" onclick="sendLiveHype()" title="Hype">⚡</button>
+                                <button class="his-btn" id="vis-stage-btn" onclick="requestCoHost()" title="Join Stage">🎤</button>
+                                <button class="his-btn" onclick="leaveLiveStream()" title="Leave" style="background:rgba(220,38,38,.35);border-color:rgba(220,38,38,.6);">✕</button>
+                            </div>
                         </div>
 
                         <!-- Hype + Stars row -->
@@ -34651,6 +34659,32 @@ body.has-battle #host-icon-strip{display:none!important}
 .hmd-end-btn:active{background:rgba(224,62,62,.32)}
 /* During battle the score strip owns the top — hide the live dot + viewer chip so they don't overlap */
 body.has-battle .live-stream-overlay-top{display:none!important}
+/* ── Viewer mobile overhaul ── */
+@media(max-width:700px){
+  #live-player-wrap #live-remote-video-container{height:62vh!important;min-height:240px!important;max-height:none!important;flex-shrink:0!important;}
+}
+/* Viewer icon strip */
+#viewer-icon-strip{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:10px;z-index:30}
+body.is-watching #viewer-icon-strip{display:flex}
+/* Viewer gift drawer */
+#viewer-gift-backdrop{position:fixed;inset:0;z-index:9997;background:rgba(0,0,0,.45);display:none}
+#viewer-gift-backdrop.open{display:block}
+#viewer-gift-drawer{position:fixed;bottom:0;left:0;right:0;z-index:9998;background:#0f0f1a;border-top:1px solid rgba(255,255,255,.1);border-radius:20px 20px 0 0;padding:10px 0 28px;transform:translateY(100%);transition:transform .32s cubic-bezier(.22,1,.36,1);max-height:65vh;overflow-y:auto}
+#viewer-gift-drawer.open{transform:translateY(0)}
+.vgd-head{font-size:.62rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;padding:0 16px;margin-bottom:12px}
+.vgd-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 12px}
+.vgd-gift{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 4px;border-radius:14px;cursor:pointer;border:none;font-family:inherit;transition:transform .12s}
+.vgd-gift:active{transform:scale(.88)}
+.vgd-icon{font-size:1.6rem;line-height:1}
+.vgd-name{font-size:.58rem;font-weight:700;color:#fff}
+.vgd-cost{font-size:.55rem;font-weight:600;color:rgba(255,255,255,.6)}
+.vgd-gift.spark{background:rgba(99,102,241,.25);border:1px solid rgba(99,102,241,.4)}
+.vgd-gift.fire{background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.4)}
+.vgd-gift.diamond{background:rgba(14,165,233,.2);border:1px solid rgba(14,165,233,.4)}
+.vgd-gift.rocket{background:rgba(168,85,247,.2);border:1px solid rgba(168,85,247,.4)}
+.vgd-reactions{display:flex;gap:6px;padding:8px 12px 0;flex-wrap:wrap;justify-content:center}
+.vgd-reaction{font-size:1.5rem;background:none;border:none;cursor:pointer;padding:5px 8px;border-radius:8px;transition:transform .1s}
+.vgd-reaction:active{transform:scale(.75)}
 </style>
 
 <!-- Host more drawer (mobile icon strip) -->
@@ -34672,6 +34706,28 @@ body.has-battle .live-stream-overlay-top{display:none!important}
   </div>
   <div class="hmd-divider"></div>
   <button class="hmd-end-btn" onclick="_closeHostDrawer();if(typeof endLiveStream==='function')endLiveStream()">⏹ End Stream</button>
+</div>
+
+<!-- Viewer gift drawer (mobile icon strip) -->
+<div id="viewer-gift-backdrop" onclick="_closeViewerGiftDrawer()"></div>
+<div id="viewer-gift-drawer">
+  <div class="hmd-drag"></div>
+  <div class="vgd-head">🎁 Send a Gift <span style="font-size:.55rem;color:var(--text-muted);text-transform:none;font-weight:400;letter-spacing:0;">80% to creator</span></div>
+  <div class="vgd-grid">
+    <button class="vgd-gift spark"   onclick="sendGift('spark');_closeViewerGiftDrawer()"><span class="vgd-icon">⚡</span><span class="vgd-name">Spark</span><span class="vgd-cost">1 ★</span></button>
+    <button class="vgd-gift fire"    onclick="sendGift('fire');_closeViewerGiftDrawer()"><span class="vgd-icon">🔥</span><span class="vgd-name">Fire</span><span class="vgd-cost">5 ★</span></button>
+    <button class="vgd-gift diamond" onclick="sendGift('diamond');_closeViewerGiftDrawer()"><span class="vgd-icon">💎</span><span class="vgd-name">Diamond</span><span class="vgd-cost">20 ★</span></button>
+    <button class="vgd-gift rocket"  onclick="sendGift('rocket');_closeViewerGiftDrawer()"><span class="vgd-icon">🚀</span><span class="vgd-name">Rocket</span><span class="vgd-cost">50 ★</span></button>
+  </div>
+  <div class="hmd-divider"></div>
+  <div class="vgd-reactions">
+    <button class="vgd-reaction" onclick="sendReaction('❤️')">❤️</button>
+    <button class="vgd-reaction" onclick="sendReaction('🔥')">🔥</button>
+    <button class="vgd-reaction" onclick="sendReaction('😂')">😂</button>
+    <button class="vgd-reaction" onclick="sendReaction('🚀')">🚀</button>
+    <button class="vgd-reaction" onclick="sendReaction('💎')">💎</button>
+    <button class="vgd-reaction" onclick="sendReaction('👏')">👏</button>
+  </div>
 </div>
 
 <!-- Battle: Challenge Modal -->
@@ -34783,6 +34839,19 @@ window._hostStripCam    = _hostStripCam;
 window._openHostDrawer  = _openHostDrawer;
 window._closeHostDrawer = _closeHostDrawer;
 
+window._openViewerGiftDrawer = function(){
+    var d=document.getElementById('viewer-gift-drawer');
+    var b=document.getElementById('viewer-gift-backdrop');
+    if(d) d.classList.add('open');
+    if(b) b.classList.add('open');
+};
+window._closeViewerGiftDrawer = function(){
+    var d=document.getElementById('viewer-gift-drawer');
+    var b=document.getElementById('viewer-gift-backdrop');
+    if(d) d.classList.remove('open');
+    if(b) b.classList.remove('open');
+};
+
 // ── Detect stream start/stop via polling ──────────────────
 var _tbWasMobile = false;
 setInterval(function(){
@@ -34802,6 +34871,27 @@ setInterval(function(){
     }
     var hSid = window._currentStreamId  || null;
     var vSid = window._watchingStreamId || null;
+
+    // Viewer: sync is-watching class + hide old tile buttons on mobile
+    var isWatching = !!vSid;
+    if(isWatching !== document.body.classList.contains('is-watching')){
+        if(isWatching) document.body.classList.add('is-watching');
+        else document.body.classList.remove('is-watching');
+    }
+    if(window.innerWidth <= 700){
+        var _vAR = document.querySelector('#live-player-wrap .live-action-row');
+        var _vRB = document.getElementById('viewer-reactions-bar');
+        var _vGP = document.getElementById('viewer-gift-panel');
+        if(isWatching){
+            if(_vAR && _vAR.style.display !== 'none') _vAR.style.setProperty('display','none','important');
+            if(_vRB && _vRB.style.display !== 'none') _vRB.style.setProperty('display','none','important');
+            if(_vGP && _vGP.style.display !== 'none') _vGP.style.setProperty('display','none','important');
+        } else {
+            if(_vAR) _vAR.style.display = '';
+            if(_vRB) _vRB.style.display = '';
+            if(_vGP) _vGP.style.display = '';
+        }
+    }
 
     if(isHosting && hSid && hSid !== _lastHostSid){
         _lastHostSid = hSid; _lastViewSid = null;
