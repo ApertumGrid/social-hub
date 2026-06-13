@@ -28650,12 +28650,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             try { window.scrollTo({top:0,behavior:'instant'}); } catch(_) { window.scrollTo(0,0); }
             var _pw = document.getElementById('live-player-wrap');
             if (_pw) _pw.scrollTop = 0;
-            // Force full-screen on mobile — position:fixed via setProperty (inline !important beats all stylesheet rules)
+            // Full-screen on mobile: move to <body> so no ancestor transform can break position:fixed
             if (window.innerWidth <= 700) {
                 var _fsLp  = document.getElementById('live-player-wrap');
                 var _fsRvc = document.getElementById('live-remote-video-container');
                 var _fsVcc = document.getElementById('viewer-panel-chat-card');
                 if (_fsLp) {
+                    window._fsOrigParent  = _fsLp.parentNode;
+                    window._fsOrigSibling = _fsLp.nextSibling;
+                    document.body.appendChild(_fsLp);
                     _fsLp.style.setProperty('position','fixed','important');
                     _fsLp.style.setProperty('top','0','important');
                     _fsLp.style.setProperty('left','0','important');
@@ -28663,7 +28666,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     _fsLp.style.setProperty('bottom','0','important');
                     _fsLp.style.setProperty('width','100%','important');
                     _fsLp.style.setProperty('height','100%','important');
-                    _fsLp.style.setProperty('z-index','1000','important');
+                    _fsLp.style.setProperty('z-index','9999','important');
                     _fsLp.style.setProperty('overflow','hidden','important');
                     _fsLp.style.setProperty('background','#000','important');
                 }
@@ -28866,12 +28869,22 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         document.body.classList.remove('is-watching');
         window._prevLiveStarsEarned = 0;
-        // Clean up mobile full-screen inline styles so the element resets cleanly
+        // Restore mobile full-screen: move element back to original DOM position
         if (window.innerWidth <= 700) {
             var _fsClLp  = document.getElementById('live-player-wrap');
             var _fsClVcc = document.getElementById('viewer-panel-chat-card');
-            if (_fsClLp)  _fsClLp.style.cssText  = '';
-            if (_fsClVcc) _fsClVcc.style.cssText  = '';
+            if (_fsClLp) {
+                if (window._fsOrigParent) {
+                    if (window._fsOrigSibling && window._fsOrigSibling.parentNode === window._fsOrigParent) {
+                        window._fsOrigParent.insertBefore(_fsClLp, window._fsOrigSibling);
+                    } else {
+                        window._fsOrigParent.appendChild(_fsClLp);
+                    }
+                    window._fsOrigParent = null; window._fsOrigSibling = null;
+                }
+                _fsClLp.style.cssText = '';
+            }
+            if (_fsClVcc) _fsClVcc.style.cssText = '';
             document.body.style.removeProperty('overflow');
         }
         hide('live-player-wrap');
