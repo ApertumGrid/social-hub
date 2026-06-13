@@ -28455,6 +28455,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                     remoteEl.style.width  = container.offsetWidth  + 'px';
                                     remoteEl.style.height = container.offsetHeight + 'px';
                                     remoteUser.videoTrack.play(remoteEl);
+                                    // On mobile full-screen the container is fixed to 100vh.
+                                    // After play() we reset to 100% so the video fills the full
+                                    // viewport regardless of what offsetHeight measured above.
+                                    if (window.innerWidth <= 700 && document.body.classList.contains('is-watching')) {
+                                        remoteEl.style.position = 'absolute';
+                                        remoteEl.style.top      = '0';
+                                        remoteEl.style.left     = '0';
+                                        remoteEl.style.width    = '100%';
+                                        remoteEl.style.height   = '100%';
+                                    }
                                     // Hide waiting room — _wrTimer only fires once at page load;
                                     // subsequent joins need explicit hide here.
                                     var _wr = document.getElementById('live-waiting-room');
@@ -28650,15 +28660,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             try { window.scrollTo({top:0,behavior:'instant'}); } catch(_) { window.scrollTo(0,0); }
             var _pw = document.getElementById('live-player-wrap');
             if (_pw) _pw.scrollTop = 0;
-            // Full-screen on mobile: move to <body> so no ancestor transform can break position:fixed
+            // Full-screen on mobile: position:fixed anchors to viewport. No DOM move needed.
             if (window.innerWidth <= 700) {
                 var _fsLp  = document.getElementById('live-player-wrap');
                 var _fsRvc = document.getElementById('live-remote-video-container');
                 var _fsVcc = document.getElementById('viewer-panel-chat-card');
                 if (_fsLp) {
-                    window._fsOrigParent  = _fsLp.parentNode;
-                    window._fsOrigSibling = _fsLp.nextSibling;
-                    document.body.appendChild(_fsLp);
                     _fsLp.style.setProperty('position','fixed','important');
                     _fsLp.style.setProperty('top','0','important');
                     _fsLp.style.setProperty('left','0','important');
@@ -28666,6 +28673,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     _fsLp.style.setProperty('bottom','0','important');
                     _fsLp.style.setProperty('width','100%','important');
                     _fsLp.style.setProperty('height','100%','important');
+                    _fsLp.style.setProperty('max-height','none','important');
                     _fsLp.style.setProperty('z-index','9999','important');
                     _fsLp.style.setProperty('overflow','hidden','important');
                     _fsLp.style.setProperty('background','#000','important');
@@ -28869,21 +28877,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         document.body.classList.remove('is-watching');
         window._prevLiveStarsEarned = 0;
-        // Restore mobile full-screen: move element back to original DOM position
+        // Clear mobile full-screen inline styles (no DOM move needed — just clear styles)
         if (window.innerWidth <= 700) {
             var _fsClLp  = document.getElementById('live-player-wrap');
             var _fsClVcc = document.getElementById('viewer-panel-chat-card');
-            if (_fsClLp) {
-                if (window._fsOrigParent) {
-                    if (window._fsOrigSibling && window._fsOrigSibling.parentNode === window._fsOrigParent) {
-                        window._fsOrigParent.insertBefore(_fsClLp, window._fsOrigSibling);
-                    } else {
-                        window._fsOrigParent.appendChild(_fsClLp);
-                    }
-                    window._fsOrigParent = null; window._fsOrigSibling = null;
-                }
-                _fsClLp.style.cssText = '';
-            }
+            if (_fsClLp) _fsClLp.style.cssText = '';
             if (_fsClVcc) _fsClVcc.style.cssText = '';
             document.body.style.removeProperty('overflow');
         }
