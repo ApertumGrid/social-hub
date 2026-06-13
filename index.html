@@ -28650,17 +28650,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             try { window.scrollTo({top:0,behavior:'instant'}); } catch(_) { window.scrollTo(0,0); }
             var _pw = document.getElementById('live-player-wrap');
             if (_pw) _pw.scrollTop = 0;
-            // Force full-screen on mobile — inline setProperty beats all CSS competing rules
+            // Force full-screen on mobile — position:fixed via setProperty (inline !important beats all stylesheet rules)
             if (window.innerWidth <= 700) {
                 var _fsLp  = document.getElementById('live-player-wrap');
                 var _fsRvc = document.getElementById('live-remote-video-container');
                 var _fsVcc = document.getElementById('viewer-panel-chat-card');
-                var _fsH   = window.innerHeight;
                 if (_fsLp) {
-                    _fsLp.style.setProperty('position','relative','important');
-                    _fsLp.style.setProperty('height',_fsH+'px','important');
-                    _fsLp.style.setProperty('min-height',_fsH+'px','important');
-                    _fsLp.style.setProperty('max-height',_fsH+'px','important');
+                    _fsLp.style.setProperty('position','fixed','important');
+                    _fsLp.style.setProperty('top','0','important');
+                    _fsLp.style.setProperty('left','0','important');
+                    _fsLp.style.setProperty('right','0','important');
+                    _fsLp.style.setProperty('bottom','0','important');
+                    _fsLp.style.setProperty('width','100%','important');
+                    _fsLp.style.setProperty('height','100%','important');
+                    _fsLp.style.setProperty('z-index','1000','important');
                     _fsLp.style.setProperty('overflow','hidden','important');
                     _fsLp.style.setProperty('background','#000','important');
                 }
@@ -30107,9 +30110,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
             if (localAudioTrack) {
                 try {
-                    var _mstA = localAudioTrack.getMediaStreamTrack ? localAudioTrack.getMediaStreamTrack() : null;
-                    if (_mstA) _mstA.stop();
-                    localAudioTrack.stop();
+                    // Guard against operating on a track Agora already closed (e.g. from an outer endLiveStream wrapper)
+                    var _atClosed = localAudioTrack._isClosed || localAudioTrack.isPlaying === undefined;
+                    if (!_atClosed) {
+                        var _mstA = localAudioTrack.getMediaStreamTrack ? localAudioTrack.getMediaStreamTrack() : null;
+                        if (_mstA) _mstA.stop();
+                        localAudioTrack.stop();
+                    }
                     localAudioTrack.close();
                 } catch(_) {}
                 localAudioTrack = null; window._localAudioTrack_ref = null;
@@ -35491,6 +35498,7 @@ function _startBListener(bid){
         if(d.status==='active'){
             var bar=document.getElementById('battle-bar');
             if(!bar||bar.style.display==='none'){
+                document.body.classList.add('has-battle'); // required for battle CSS (was missing in listener path)
                 var my=(window.userAddress||'').toLowerCase();
                 // Always recalculate — stale _bRole from previous battle causes wrong flip on rematch
                 if(my===d.challengerAddr) _bRole='challenger';
@@ -35744,7 +35752,8 @@ async function _joinBattleOpponent(oppSid){
         console.log('[Battle] joined opponent channel');
         _showBattleSplit();
     }catch(e){
-        console.warn('[Battle] Split screen unavailable:',e.message,e);
+        console.error('[Battle] _joinBattleOpponent failed:',e.message,e);
+        if(typeof showToast==='function') showToast('⚠️ Battle stream error: '+e.message);
     }
 }
 
@@ -35861,7 +35870,6 @@ async function _loadHostStreakBadge(sid){
         var snap=await window.fs.getDoc(window.fs.doc(window.db,'live_streams',sid));
         if(!snap.exists()) return;
         var hostAddr=(snap.data().hostAddr||'').toLowerCase();
-
         if(!hostAddr) return;
         var usnap=await window.fs.getDoc(window.fs.doc(window.db,'users',hostAddr));
         var streak=usnap.exists()?(usnap.data().battleWinStreak||0):0;
