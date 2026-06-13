@@ -28650,6 +28650,43 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             try { window.scrollTo({top:0,behavior:'instant'}); } catch(_) { window.scrollTo(0,0); }
             var _pw = document.getElementById('live-player-wrap');
             if (_pw) _pw.scrollTop = 0;
+            // Force full-screen on mobile — inline setProperty beats all CSS competing rules
+            if (window.innerWidth <= 700) {
+                var _fsLp  = document.getElementById('live-player-wrap');
+                var _fsRvc = document.getElementById('live-remote-video-container');
+                var _fsVcc = document.getElementById('viewer-panel-chat-card');
+                var _fsH   = window.innerHeight;
+                if (_fsLp) {
+                    _fsLp.style.setProperty('position','relative','important');
+                    _fsLp.style.setProperty('height',_fsH+'px','important');
+                    _fsLp.style.setProperty('min-height',_fsH+'px','important');
+                    _fsLp.style.setProperty('max-height',_fsH+'px','important');
+                    _fsLp.style.setProperty('overflow','hidden','important');
+                    _fsLp.style.setProperty('background','#000','important');
+                }
+                if (_fsRvc) {
+                    _fsRvc.style.setProperty('position','absolute','important');
+                    _fsRvc.style.setProperty('top','0','important');
+                    _fsRvc.style.setProperty('left','0','important');
+                    _fsRvc.style.setProperty('right','0','important');
+                    _fsRvc.style.setProperty('bottom','0','important');
+                    _fsRvc.style.setProperty('width','100%','important');
+                    _fsRvc.style.setProperty('height','100%','important');
+                    _fsRvc.style.setProperty('max-height','none','important');
+                }
+                if (_fsVcc) {
+                    _fsVcc.style.setProperty('position','absolute','important');
+                    _fsVcc.style.setProperty('bottom','0','important');
+                    _fsVcc.style.setProperty('left','0','important');
+                    _fsVcc.style.setProperty('right','0','important');
+                    _fsVcc.style.setProperty('z-index','25','important');
+                    _fsVcc.style.setProperty('background','transparent','important');
+                    _fsVcc.style.setProperty('border','none','important');
+                    _fsVcc.style.setProperty('box-shadow','none','important');
+                    _fsVcc.style.setProperty('padding','0','important');
+                }
+                document.body.style.setProperty('overflow','hidden','important');
+            }
             // Reset waiting room so it shows while video connects (fixes subsequent joins
             // where the waiting room was left hidden from a previous session)
             var _wrEl = document.getElementById('live-waiting-room');
@@ -28826,6 +28863,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         document.body.classList.remove('is-watching');
         window._prevLiveStarsEarned = 0;
+        // Clean up mobile full-screen inline styles so the element resets cleanly
+        if (window.innerWidth <= 700) {
+            var _fsClLp  = document.getElementById('live-player-wrap');
+            var _fsClVcc = document.getElementById('viewer-panel-chat-card');
+            if (_fsClLp)  _fsClLp.style.cssText  = '';
+            if (_fsClVcc) _fsClVcc.style.cssText  = '';
+            document.body.style.removeProperty('overflow');
+        }
         hide('live-player-wrap');
         show('live-stream-browser');
         show('live-tabs');
@@ -35002,19 +35047,24 @@ body.is-watching #viewer-icon-strip{display:flex}
     }
 }
 
-/* ── HOST MOBILE: video fills the panel, chat strip at bottom ── */
+/* ── HOST MOBILE: video fills the panel, floating chat overlay for messages ── */
 @media(max-width:700px){
     body.is-hosting #live-active-panel #live-broadcaster-video-container{
         flex:1 1 0!important;
         height:auto!important;min-height:180px!important;max-height:none!important;
     }
-    body.is-hosting #live-active-panel #bc-panel-chat-card{
-        flex:0 0 auto!important;min-height:0!important;max-height:130px!important;
-        overflow:hidden!important;
+    /* Show floating chat overlay on mobile host — higher specificity beats line 9226 display:none */
+    body.is-hosting #live-broadcaster-video-container .stream-floating-chat{
+        display:flex!important;
     }
+    /* Hide panel chat feed — messages now appear in floating overlay */
     body.is-hosting #live-active-panel #live-broadcast-chat-feed{
-        max-height:68px!important;
-        min-height:0!important;
+        display:none!important;
+    }
+    /* Shrink chat card to just the input row (~65px) */
+    body.is-hosting #live-active-panel #bc-panel-chat-card{
+        flex:0 0 auto!important;min-height:0!important;max-height:65px!important;
+        overflow:hidden!important;
     }
 }
 
@@ -35811,6 +35861,7 @@ async function _loadHostStreakBadge(sid){
         var snap=await window.fs.getDoc(window.fs.doc(window.db,'live_streams',sid));
         if(!snap.exists()) return;
         var hostAddr=(snap.data().hostAddr||'').toLowerCase();
+
         if(!hostAddr) return;
         var usnap=await window.fs.getDoc(window.fs.doc(window.db,'users',hostAddr));
         var streak=usnap.exists()?(usnap.data().battleWinStreak||0):0;
