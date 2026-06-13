@@ -2021,9 +2021,9 @@
             }
 
             body.is-hosting #live-active-panel #live-broadcaster-video-container {
-                height: 320px !important;
-                min-height: 220px !important;
-                max-height: 320px !important;
+                height: 360px !important;
+                min-height: 240px !important;
+                max-height: 360px !important;
                 flex-shrink: 0 !important;
             }
 
@@ -8848,9 +8848,9 @@ body.cinema-mode #btn-end-stream-toolbar { display:none!important; }
 
     /* â”€â”€ 1. VIDEO: always has height so nothing floats without it â”€â”€ */
     #live-player-wrap #live-remote-video-container {
-        height: 320px!important;
-        min-height: 220px!important;
-        max-height: 320px!important;
+        height: 360px!important;
+        min-height: 240px!important;
+        max-height: 360px!important;
         display: block!important;
         position: relative!important;
         background: #0d0a1a!important;
@@ -11587,13 +11587,26 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         </div>
                         <!-- Video box with overlays -->
                         <div class="live-stream-box" id="live-broadcaster-video-container" style="height:clamp(300px, 40vh, 520px);">
-                            <!-- Top bar: health indicator only (name/viewers moved to info bar above) -->
-                            <div class="live-stream-overlay-top" style="justify-content:flex-end;">
-                                <div id="stream-health" style="display:none">
-                                    <div class="health-dot good" id="health-dot"></div>
-                                    <span id="health-label">Good</span>
+                            <!-- Top bar: health indicator + mobile timer + stars overlay -->
+                            <div class="live-stream-overlay-top" style="justify-content:space-between;">
+                                <!-- Mobile host timer pill (left) -->
+                                <div id="host-mobile-topleft" style="display:none;align-items:center;gap:8px;">
+                                    <div id="host-timer-pill">
+                                        <span class="htp-dot"></span>
+                                        <span id="host-timer-elapsed">00:00</span>
+                                    </div>
+                                    <div id="host-stars-pill">
+                                        ⭐ <span id="host-stars-earned-display">0</span>
+                                    </div>
                                 </div>
-                                <span class="live-viewer-chip" id="live-broadcast-viewers" style="display:none;">👁 0</span>
+                                <!-- Right: health + viewers -->
+                                <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+                                    <div id="stream-health" style="display:none">
+                                        <div class="health-dot good" id="health-dot"></div>
+                                        <span id="health-label">Good</span>
+                                    </div>
+                                    <span class="live-viewer-chip" id="live-broadcast-viewers" style="display:none;">👁 0</span>
+                                </div>
                             </div>
 
                             <!-- Screen share label -->
@@ -28148,6 +28161,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // 7. Start duration timer
             streamStartTime = Date.now();
             durationTimer = setInterval(updateDuration, 1000);
+            // Show mobile host overlay pills
+            const _mTopLeft = document.getElementById('host-mobile-topleft');
+            if (_mTopLeft) _mTopLeft.style.display = 'flex';
 
             // 8. Subscribe to live chat for broadcaster
             _sfcReset('bc-sfc-feed');
@@ -28628,6 +28644,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Show player, hide browser and tabs
             hide('live-stream-browser');
             hide('live-tabs');
+            document.body.classList.add('is-watching');
             show('live-player-wrap');
             // Scroll to top so the info bar is visible (page may have been scrolled from a previous section)
             try { window.scrollTo({top:0,behavior:'instant'}); } catch(_) { window.scrollTo(0,0); }
@@ -28807,6 +28824,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var sib = document.getElementById('live-stream-info-bar');
         if(sib) sib.style.display='none';
 
+        document.body.classList.remove('is-watching');
+        window._prevLiveStarsEarned = 0;
         hide('live-player-wrap');
         show('live-stream-browser');
         show('live-tabs');
@@ -29989,7 +30008,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const secs  = Math.floor((Date.now() - streamStartTime) / 1000);
         const m     = Math.floor(secs / 60);
         const s     = secs % 60;
-        setText('live-stat-duration', m + ':' + String(s).padStart(2, '0'));
+        const formatted = m + ':' + String(s).padStart(2, '0');
+        setText('live-stat-duration', formatted);
+        const pill = document.getElementById('host-timer-elapsed');
+        if (pill) pill.textContent = formatted;
     }
 
     // ── Agora cleanup ─────────────────────────────────────────────
@@ -32164,12 +32186,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             setText('live-creator-stars-watch',  (d.starsEarned || 0).toFixed(1));
             setText('live-hype-count',           '(' + (d.hypeCount || 0) + ')');
 
+            var _prevStars = window._prevLiveStarsEarned || 0;
             liveStarsEarned  = d.starsEarned || 0;
             liveHypeCount    = d.hypeCount   || 0;
             liveViewerCount  = d.viewers     || 0;
             setText('live-stat-stars',   liveStarsEarned.toFixed(1) + ' ★');
             setText('live-stat-hypes',   String(liveHypeCount));
             setText('live-broadcast-viewers', '👁 ' + liveViewerCount);
+            // Update host mobile stars pill + pop animation on gift received
+            var _hsd = document.getElementById('host-stars-earned-display');
+            if (_hsd) _hsd.textContent = liveStarsEarned.toFixed(1);
+            if (isHosting && liveStarsEarned > _prevStars) {
+                var _hsp = document.getElementById('host-stars-pill');
+                if (_hsp) { _hsp.classList.remove('stars-pop'); void _hsp.offsetWidth; _hsp.classList.add('stars-pop'); }
+            }
+            window._prevLiveStarsEarned = liveStarsEarned;
 
             // Update goal bar on broadcaster side
             if (starGoalTarget > 0) _updateGoalBar(liveStarsEarned);
@@ -34750,6 +34781,7 @@ body.is-hosting #live-broadcaster-video-container.layout-battle #live-broadcaste
 /* ── Host icon strip (TikTok-style right-side controls) ── */
 #host-icon-strip{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:10px;z-index:30}
 @media(max-width:700px){body.is-hosting #host-icon-strip{display:flex;top:55px!important;transform:none!important;bottom:auto!important}}
+@media(max-width:700px){body.has-battle.is-hosting #host-icon-strip{top:68px!important}}
 /* During battle: keep strip visible but shift it inside host's left-half video; hide ⚔️ (battle already running) */
 body.has-battle #his-battle{display:none!important}
 @media(max-width:700px){body.has-battle.is-hosting #host-icon-strip{right:calc(50% + 8px)!important}}
@@ -34820,6 +34852,170 @@ body.is-watching #viewer-icon-strip{display:flex}
 .vgd-reactions{display:flex;gap:6px;padding:8px 12px 0;flex-wrap:wrap;justify-content:center}
 .vgd-reaction{font-size:1.5rem;background:none;border:none;cursor:pointer;padding:5px 8px;border-radius:8px;transition:transform .1s}
 .vgd-reaction:active{transform:scale(.75)}
+
+/* ═══════════════════════════════════════════════════
+   OPTION C — PREMIUM IMMERSIVE LIVE UI
+   ═══════════════════════════════════════════════════ */
+
+/* ── PREMIUM ICON STRIP BUTTONS ── */
+.his-btn{
+    width:52px!important;height:52px!important;border-radius:50%!important;
+    background:radial-gradient(ellipse at 32% 22%,rgba(255,255,255,0.07) 0%,transparent 60%),rgba(8,6,24,0.62)!important;
+    border:1.5px solid rgba(255,255,255,0.17)!important;
+    box-shadow:0 4px 16px rgba(0,0,0,0.55),inset 0 1px 0 rgba(255,255,255,0.09)!important;
+    backdrop-filter:blur(16px)!important;-webkit-backdrop-filter:blur(16px)!important;
+    font-size:1.4rem!important;cursor:pointer;
+    transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.22s,background 0.22s,border-color 0.22s!important;
+    display:flex!important;align-items:center!important;justify-content:center!important;color:#fff!important;
+}
+.his-btn:hover{
+    transform:scale(1.12)!important;
+    background:radial-gradient(ellipse at 32% 22%,rgba(168,139,250,0.16) 0%,transparent 60%),rgba(124,92,191,0.28)!important;
+    border-color:rgba(168,139,250,0.52)!important;
+    box-shadow:0 6px 22px rgba(124,92,191,0.38),inset 0 1px 0 rgba(255,255,255,0.1)!important;
+}
+.his-btn:active{transform:scale(0.84)!important;}
+.his-btn.his-active{
+    background:radial-gradient(ellipse at 32% 22%,rgba(168,139,250,0.22) 0%,transparent 60%),rgba(124,92,191,0.52)!important;
+    border-color:rgba(168,139,250,0.72)!important;
+    box-shadow:0 4px 18px rgba(124,92,191,0.5),inset 0 1px 0 rgba(255,255,255,0.1)!important;
+}
+
+/* ── HOST MOBILE OVERLAY PILLS ── */
+#host-timer-pill{
+    display:flex;align-items:center;gap:5px;
+    background:rgba(0,0,0,0.55);
+    border:1.5px solid rgba(224,62,62,0.48);
+    border-radius:22px;padding:5px 12px 5px 8px;
+    font-size:0.72rem;font-weight:800;color:#fff;letter-spacing:0.6px;
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    box-shadow:0 2px 12px rgba(0,0,0,0.5);
+}
+.htp-dot{
+    width:7px;height:7px;border-radius:50%;
+    background:#e03e3e;flex-shrink:0;
+    animation:htp-blink 1.2s ease-in-out infinite;
+}
+@keyframes htp-blink{
+    0%,100%{opacity:1;box-shadow:0 0 6px rgba(224,62,62,0.85);}
+    50%{opacity:0.38;box-shadow:none;}
+}
+#host-stars-pill{
+    display:flex;align-items:center;gap:5px;
+    background:rgba(0,0,0,0.55);
+    border:1.5px solid rgba(255,215,0,0.38);
+    border-radius:22px;padding:5px 12px;
+    font-size:0.72rem;font-weight:800;color:#ffd700;
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    box-shadow:0 2px 12px rgba(0,0,0,0.5);
+    transition:transform 0.15s,box-shadow 0.15s;
+}
+@keyframes stars-pop-kf{
+    0%{transform:scale(1);}
+    30%{transform:scale(1.4);box-shadow:0 0 22px rgba(255,215,0,0.75);}
+    60%{transform:scale(1.18);}
+    100%{transform:scale(1);}
+}
+#host-stars-pill.stars-pop{animation:stars-pop-kf 0.58s cubic-bezier(0.34,1.56,0.64,1);}
+@media(min-width:701px){#host-mobile-topleft{display:none!important;}}
+
+/* ── VIEWER FULL-SCREEN MOBILE IMMERSIVE (Option C) ── */
+@media(max-width:700px){
+    /* Nav hidden while watching */
+    body.is-watching #topnav{display:none!important;}
+    body.is-watching #bottom-nav{display:none!important;}
+
+    /* Live player becomes full-viewport overlay */
+    body.is-watching #live-player-wrap{
+        position:fixed!important;inset:0!important;z-index:500!important;
+        overflow:hidden!important;max-height:none!important;background:#000!important;
+    }
+
+    /* Video fills entire screen */
+    body.is-watching #live-player-wrap #live-remote-video-container{
+        position:absolute!important;inset:0!important;
+        height:auto!important;min-height:auto!important;max-height:none!important;
+        border-radius:0!important;overflow:hidden!important;flex-shrink:unset!important;
+    }
+
+    /* Bottom-to-mid gradient so chat is readable over video */
+    body.is-watching #live-player-wrap #live-remote-video-container::after{
+        content:'';position:absolute;bottom:0;left:0;right:0;height:60%;
+        background:linear-gradient(to bottom,transparent 0%,rgba(0,0,0,0.6) 100%);
+        pointer-events:none;z-index:2;
+    }
+
+    /* Dead zones removed */
+    body.is-watching #live-player-wrap .live-action-row,
+    body.is-watching #live-player-wrap #viewer-reactions-bar,
+    body.is-watching #live-player-wrap #viewer-gift-panel,
+    body.is-watching #live-player-wrap #viewer-star-goal,
+    body.is-watching #live-player-wrap #viewer-leaderboard{display:none!important;}
+
+    /* Chat card: transparent overlay at bottom — input row only */
+    body.is-watching #live-player-wrap #viewer-panel-chat-card{
+        position:absolute!important;bottom:0!important;left:0!important;right:0!important;
+        z-index:25!important;background:transparent!important;
+        border:none!important;border-radius:0!important;box-shadow:none!important;padding:0!important;
+    }
+    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-head,
+    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-feed{display:none!important;}
+    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-input-row{
+        background:rgba(0,0,0,0.5)!important;
+        backdrop-filter:blur(14px)!important;-webkit-backdrop-filter:blur(14px)!important;
+        border-top:1px solid rgba(255,255,255,0.08)!important;
+        border-bottom:none!important;border-left:none!important;border-right:none!important;
+        padding:10px 12px 14px!important;
+        display:flex!important;gap:8px!important;align-items:center!important;border-radius:0!important;
+    }
+    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-input-row .field{
+        background:rgba(255,255,255,0.1)!important;
+        border:1.5px solid rgba(255,255,255,0.13)!important;
+        color:#fff!important;border-radius:24px!important;
+        padding:9px 15px!important;font-size:0.82rem!important;flex:1!important;
+    }
+    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-input-row .field::placeholder{
+        color:rgba(255,255,255,0.38)!important;
+    }
+    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-input-row .btn-purple{
+        background:linear-gradient(135deg,rgba(124,92,191,0.92),rgba(79,50,153,0.88))!important;
+        border:1.5px solid rgba(168,139,250,0.4)!important;border-radius:24px!important;
+        padding:9px 16px!important;font-size:0.78rem!important;font-weight:800!important;
+        color:#fff!important;white-space:nowrap!important;
+        box-shadow:0 2px 10px rgba(124,92,191,0.3)!important;
+    }
+
+    /* Floating chat — sits above the input row, clears icon strip on right */
+    body.is-watching .stream-floating-chat{
+        bottom:68px!important;right:66px!important;left:10px!important;
+        width:auto!important;max-width:none!important;
+    }
+
+    /* Icon strip — centered vertically on right edge */
+    body.is-watching #viewer-icon-strip{
+        top:50%!important;transform:translateY(-50%)!important;
+        right:10px!important;gap:12px!important;
+    }
+}
+
+/* ── PREMIUM BATTLE BAR (richer gradients + stronger glow) ── */
+#live-broadcaster-video-container #battle-bar,
+#live-remote-video-container #battle-bar{
+    background:linear-gradient(180deg,rgba(5,3,14,0.98) 0%,rgba(10,6,26,0.97) 100%)!important;
+    box-shadow:0 2px 20px rgba(0,0,0,0.8),inset 0 -1px 0 rgba(124,92,191,0.18)!important;
+}
+.bbar-score.sl{text-shadow:0 0 16px rgba(192,132,252,0.9),0 0 30px rgba(124,58,237,0.45)!important;}
+.bbar-score.sr{text-shadow:0 0 16px rgba(125,211,252,0.9),0 0 30px rgba(14,165,233,0.45)!important;}
+.bcell.bl{background:linear-gradient(90deg,#5b21b6,#a78bfa)!important;box-shadow:0 0 8px rgba(124,92,191,0.75),0 0 18px rgba(124,92,191,0.3)!important;}
+.bcell.br{background:linear-gradient(90deg,#0284c7,#38bdf8)!important;box-shadow:0 0 8px rgba(14,165,233,0.75),0 0 18px rgba(14,165,233,0.3)!important;}
+
+/* ── CO-HOST STAGE JOIN ANIMATION ── */
+@keyframes stage-join-in{
+    0%{opacity:0;transform:scale(0.72) translateY(18px);}
+    55%{opacity:1;transform:scale(1.05) translateY(-3px);}
+    100%{opacity:1;transform:scale(1) translateY(0);}
+}
+#cohost-stage-wrap{animation:stage-join-in 0.5s cubic-bezier(0.34,1.56,0.64,1) both;}
 </style>
 
 <!-- Host more drawer (mobile icon strip) -->
