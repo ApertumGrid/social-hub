@@ -28455,15 +28455,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                     remoteEl.style.width  = container.offsetWidth  + 'px';
                                     remoteEl.style.height = container.offsetHeight + 'px';
                                     remoteUser.videoTrack.play(remoteEl);
-                                    // On mobile full-screen the container is fixed to 100vh.
-                                    // After play() we reset to 100% so the video fills the full
-                                    // viewport regardless of what offsetHeight measured above.
+                                    // On mobile full-screen: override the pixel dimensions
+                                    // stamped above with the exact viewport size so the
+                                    // video fills the screen regardless of CSS class constraints.
                                     if (window.innerWidth <= 700 && document.body.classList.contains('is-watching')) {
                                         remoteEl.style.position = 'absolute';
                                         remoteEl.style.top      = '0';
                                         remoteEl.style.left     = '0';
-                                        remoteEl.style.width    = '100%';
-                                        remoteEl.style.height   = '100%';
+                                        remoteEl.style.width    = window.innerWidth  + 'px';
+                                        remoteEl.style.height   = window.innerHeight + 'px';
                                     }
                                     // Hide waiting room — _wrTimer only fires once at page load;
                                     // subsequent joins need explicit hide here.
@@ -28660,8 +28660,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             try { window.scrollTo({top:0,behavior:'instant'}); } catch(_) { window.scrollTo(0,0); }
             var _pw = document.getElementById('live-player-wrap');
             if (_pw) _pw.scrollTop = 0;
-            // Full-screen on mobile: position:fixed anchors to viewport. No DOM move needed.
+            // Full-screen on mobile: position:fixed anchors to viewport.
+            // Use explicit pixel dimensions from window.innerHeight/Width to guarantee
+            // the sizes — percentage heights can be defeated by CSS class constraints.
             if (window.innerWidth <= 700) {
+                var _fsVh  = window.innerHeight + 'px';
+                var _fsVw  = window.innerWidth  + 'px';
                 var _fsLp  = document.getElementById('live-player-wrap');
                 var _fsRvc = document.getElementById('live-remote-video-container');
                 var _fsVcc = document.getElementById('viewer-panel-chat-card');
@@ -28669,10 +28673,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     _fsLp.style.setProperty('position','fixed','important');
                     _fsLp.style.setProperty('top','0','important');
                     _fsLp.style.setProperty('left','0','important');
-                    _fsLp.style.setProperty('right','0','important');
-                    _fsLp.style.setProperty('bottom','0','important');
-                    _fsLp.style.setProperty('width','100%','important');
-                    _fsLp.style.setProperty('height','100%','important');
+                    _fsLp.style.setProperty('width',_fsVw,'important');
+                    _fsLp.style.setProperty('height',_fsVh,'important');
                     _fsLp.style.setProperty('max-height','none','important');
                     _fsLp.style.setProperty('z-index','9999','important');
                     _fsLp.style.setProperty('overflow','hidden','important');
@@ -28682,11 +28684,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     _fsRvc.style.setProperty('position','absolute','important');
                     _fsRvc.style.setProperty('top','0','important');
                     _fsRvc.style.setProperty('left','0','important');
-                    _fsRvc.style.setProperty('right','0','important');
-                    _fsRvc.style.setProperty('bottom','0','important');
-                    _fsRvc.style.setProperty('width','100%','important');
-                    _fsRvc.style.setProperty('height','100%','important');
+                    _fsRvc.style.setProperty('width',_fsVw,'important');
+                    _fsRvc.style.setProperty('height',_fsVh,'important');
                     _fsRvc.style.setProperty('max-height','none','important');
+                    _fsRvc.style.setProperty('min-height','0','important');
                 }
                 if (_fsVcc) {
                     _fsVcc.style.setProperty('position','absolute','important');
@@ -35065,11 +35066,15 @@ body.is-watching #viewer-icon-strip{display:flex}
     }
 }
 
-/* ── HOST MOBILE: video fills the panel, floating chat overlay for messages ── */
+/* ── HOST MOBILE: video fills the panel, chat input overlaid at bottom ── */
 @media(max-width:700px){
+    /* Allow absolute children to position relative to this panel */
+    body.is-hosting #live-active-panel{
+        position:relative!important;
+    }
     body.is-hosting #live-active-panel #live-broadcaster-video-container{
         flex:1 1 0!important;
-        height:auto!important;min-height:180px!important;max-height:none!important;
+        height:auto!important;min-height:0!important;max-height:none!important;
     }
     /* Show floating chat overlay on mobile host — higher specificity beats line 9226 display:none */
     body.is-hosting #live-broadcaster-video-container .stream-floating-chat{
@@ -35079,10 +35084,23 @@ body.is-watching #viewer-icon-strip{display:flex}
     body.is-hosting #live-active-panel #live-broadcast-chat-feed{
         display:none!important;
     }
-    /* Shrink chat card to just the input row (~65px) */
+    /* Hide the "💬 Live Chat" heading inside the chat card */
+    body.is-hosting #live-active-panel #bc-panel-chat-card .live-chat-head{
+        display:none!important;
+    }
+    /* Chat input overlays bottom of the video — no separate strip */
     body.is-hosting #live-active-panel #bc-panel-chat-card{
-        flex:0 0 auto!important;min-height:0!important;max-height:65px!important;
-        overflow:hidden!important;
+        position:absolute!important;
+        bottom:0!important;left:0!important;right:0!important;
+        z-index:30!important;
+        background:rgba(0,0,0,0.55)!important;
+        backdrop-filter:blur(12px)!important;-webkit-backdrop-filter:blur(12px)!important;
+        border:none!important;border-radius:0!important;box-shadow:none!important;
+        padding:8px 12px 12px!important;
+    }
+    /* Remove the "CHAT ON/OFF" toggle — already in settings, not needed mid-stream */
+    body.is-hosting #bc-chat-toggle-btn{
+        display:none!important;
     }
 }
 
