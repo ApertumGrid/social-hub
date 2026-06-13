@@ -1223,16 +1223,22 @@
             0%,100% { transform: translateY(0); opacity: 0.4; }
             50%      { transform: translateY(-4px); opacity: 1; }
         }
-        /* ── Stream info bar (above video, outside the box) ── */
+        /* ── Stream info bar ── */
+        /* Viewer bar: positioned as absolute overlay inside the video container via JS */
+        /* Broadcast bar: static flex child above the broadcaster video */
         #live-stream-info-bar,#live-broadcast-info-bar{
             display:none;align-items:center;justify-content:space-between;
             padding:8px 12px;gap:10px;
+        }
+        /* Broadcast bar keeps the panel styling */
+        #live-broadcast-info-bar{
             background:var(--bg-panel,#0f0f1a);
             border:1px solid rgba(255,255,255,.07);
             border-bottom:none;
             border-radius:12px 12px 0 0;
-            position:sticky;top:0;z-index:40;
         }
+        /* Hide viewer info bar during battles (battle bar takes over the top area) */
+        body.has-battle #live-stream-info-bar{display:none!important}
         .lsib-left{display:flex;align-items:center;gap:8px;min-width:0;flex:1;}
         .lsib-av{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid rgba(124,92,191,.5);flex-shrink:0;background:#1a1535;}
         .lsib-name{font-size:.9rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;}
@@ -28637,7 +28643,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             setText('live-stream-host-name', streamData.hostName || 'Creator');
             setText('live-stream-title-sm',  streamData.title    || '');
             setText('live-creator-stars-watch', (streamData.starsEarned || 0).toFixed(1));
-            // Populate info bar above video
+            // Populate viewer info bar and anchor it inside the video container as a top overlay.
+            // Moved inside the video container to bypass flex/sticky/scroll layout issues —
+            // the bar is pinned to the top of the video box which is always on screen.
             (function(){
                 var bar=document.getElementById('live-stream-info-bar');
                 if(!bar) return;
@@ -28653,7 +28661,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     var isF=typeof window._isFollowing==='function'?window._isFollowing(hostA):false;
                     fb.style.display=(!isOwn&&!isF)?'':'none';
                 }
-                bar.style.display='flex';
+                var vCon=document.getElementById('live-remote-video-container');
+                if(vCon && bar.parentNode!==vCon) vCon.insertBefore(bar,vCon.firstChild);
+                bar.style.cssText='position:absolute;top:0;left:0;right:0;z-index:18;display:flex;align-items:center;justify-content:space-between;padding:8px 12px;gap:10px;background:linear-gradient(180deg,rgba(0,0,0,.7) 0%,transparent 100%);border:none;border-radius:0;pointer-events:auto;box-sizing:border-box;';
             })();
 
             // ── Paid admission gate check ─────────────────────────────
