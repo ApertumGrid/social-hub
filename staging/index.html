@@ -2115,6 +2115,10 @@
         #gift-video-overlay{position:fixed;inset:0;z-index:9999;pointer-events:none;display:none;mix-blend-mode:screen;}
         #gift-video-el{width:100%;height:100%;object-fit:contain;}
         #gift-video-banner{position:fixed;bottom:18%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.82);color:#fff;padding:8px 24px;border-radius:24px;font-size:0.9rem;font-weight:700;white-space:nowrap;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.18);z-index:10000;letter-spacing:0.3px;display:none;}
+        #gift-video-overlay.gift-tier-small{inset:auto!important;width:65vmin;height:65vmin;top:50%;left:50%;transform:translate(-50%,-50%);border-radius:20px;overflow:hidden;}
+        #gift-video-overlay.gift-tier-medium,#gift-video-overlay.gift-tier-large{inset:0;width:100%;height:100%;transform:none;border-radius:0;}
+        #gift-flash{position:fixed;inset:0;pointer-events:none;z-index:10001;background:#fff;opacity:0;}
+        @keyframes giftScreenFlash{0%{opacity:0.85;}100%{opacity:0;}}
         /* â”€â”€ GIFT ANIMATION SYSTEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
         /* Floating gift orb that rises from the bottom */
@@ -29680,14 +29684,122 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var banner  = document.getElementById('gift-video-banner');
         if (!overlay || !video) return;
         var tier = GIFT_TIERS[tierKey] || {};
+        var chatStyle = tier.chatStyle || '';
+
+        // Determine display tier
+        var displayTier = 'small';
+        if (chatStyle === 'diamond') displayTier = 'medium';
+        else if (chatStyle === 'rocket') displayTier = 'large';
+
+        // Apply tier class for sizing
+        overlay.className = 'gift-tier-' + displayTier;
+
+        // Play sound
+        _playGiftSound(chatStyle);
+
+        // White flash for large gifts
+        if (displayTier === 'large') _flashGiftScreen();
+
         video.src = '/gifts/' + tierKey + '.mp4';
         if (banner) { banner.textContent = (senderName || 'Someone') + ' sent ' + (tier.name || tierKey) + '! ' + (tier.icon || ''); banner.style.display = 'block'; }
         overlay.style.display = 'block';
-        function _hideGiftOverlay() { overlay.style.display = 'none'; video.src = ''; if (banner) banner.style.display = 'none'; }
+        function _hideGiftOverlay() { overlay.style.display = 'none'; overlay.className = ''; video.src = ''; if (banner) banner.style.display = 'none'; }
         video.onerror = _hideGiftOverlay;
         video.onended = _hideGiftOverlay;
         video.load();
         video.play().catch(_hideGiftOverlay);
+    }
+
+    function _flashGiftScreen() {
+        var flash = document.getElementById('gift-flash');
+        if (!flash) return;
+        flash.style.animation = 'none';
+        flash.offsetHeight; // force reflow
+        flash.style.animation = 'giftScreenFlash 0.5s ease-out forwards';
+    }
+
+    function _playGiftSound(chatStyle) {
+        var ctx;
+        try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { return; }
+        if (chatStyle === '' || chatStyle === 'fire') {
+            _soundChime(ctx);
+        } else if (chatStyle === 'diamond') {
+            _soundWhoosh(ctx);
+        } else {
+            _soundEpicBoom(ctx);
+        }
+    }
+
+    function _soundChime(ctx) {
+        [880, 1320, 1760].forEach(function(freq, i) {
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.06);
+            gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + i * 0.06 + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.06 + 0.7);
+            osc.start(ctx.currentTime + i * 0.06);
+            osc.stop(ctx.currentTime + i * 0.06 + 0.7);
+        });
+    }
+
+    function _soundWhoosh(ctx) {
+        var bufSize = Math.floor(ctx.sampleRate * 0.8);
+        var buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+        var d = buf.getChannelData(0);
+        for (var i = 0; i < bufSize; i++) d[i] = Math.random() * 2 - 1;
+        var src = ctx.createBufferSource(); src.buffer = buf;
+        var filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(1000, ctx.currentTime);
+        filter.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.6);
+        filter.Q.value = 1.5;
+        var gain = ctx.createGain();
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.6, ctx.currentTime + 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+        src.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+        src.start();
+        var imp = ctx.createOscillator(); var impG = ctx.createGain();
+        imp.connect(impG); impG.connect(ctx.destination);
+        imp.type = 'sine';
+        imp.frequency.setValueAtTime(140, ctx.currentTime + 0.08);
+        imp.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.45);
+        impG.gain.setValueAtTime(0.7, ctx.currentTime + 0.08);
+        impG.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+        imp.start(ctx.currentTime + 0.08); imp.stop(ctx.currentTime + 0.45);
+    }
+
+    function _soundEpicBoom(ctx) {
+        var bass = ctx.createOscillator(); var bassG = ctx.createGain();
+        bass.connect(bassG); bassG.connect(ctx.destination);
+        bass.type = 'sine';
+        bass.frequency.setValueAtTime(90, ctx.currentTime);
+        bass.frequency.exponentialRampToValueAtTime(28, ctx.currentTime + 0.6);
+        bassG.gain.setValueAtTime(1.0, ctx.currentTime);
+        bassG.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+        bass.start(ctx.currentTime); bass.stop(ctx.currentTime + 1.2);
+        var bufSize = Math.floor(ctx.sampleRate * 1.5);
+        var buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+        var d = buf.getChannelData(0);
+        for (var i = 0; i < bufSize; i++) d[i] = Math.random() * 2 - 1;
+        var noise = ctx.createBufferSource(); noise.buffer = buf;
+        var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180;
+        var nG = ctx.createGain();
+        nG.gain.setValueAtTime(0.45, ctx.currentTime);
+        nG.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5);
+        noise.connect(lp); lp.connect(nG); nG.connect(ctx.destination);
+        noise.start();
+        [1400, 2800].forEach(function(freq) {
+            var o = ctx.createOscillator(); var g = ctx.createGain();
+            o.connect(g); g.connect(ctx.destination);
+            o.type = 'sine'; o.frequency.value = freq;
+            g.gain.setValueAtTime(0.15, ctx.currentTime + 0.04);
+            g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.9);
+            o.start(ctx.currentTime + 0.04); o.stop(ctx.currentTime + 0.9);
+        });
     }
 
     // ── Main gift animation dispatcher ───────────────────────────
@@ -35156,6 +35268,7 @@ body.has-battle .live-stream-overlay-top{display:none!important}
   <video id="gift-video-el" playsinline muted></video>
 </div>
 <div id="gift-video-banner"></div>
+<div id="gift-flash"></div>
 
 <!-- Viewer gift drawer (mobile icon strip) -->
 <div id="viewer-gift-backdrop" onclick="_closeViewerGiftDrawer()"></div>
