@@ -28671,25 +28671,26 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             document.body.classList.add('is-watching');
             show('live-player-wrap');
             _initViewerTapHype();
-            // DEBUG: show computed styles of wrap + video container after 1s (after Agora may have run)
+            // DEBUG: show computed styles + inline style after 1s
             setTimeout(function(){
                 var _lp2=document.getElementById('live-player-wrap');
                 var _vc2=document.getElementById('live-remote-video-container');
-                var info='W:'+window.innerWidth+'\n';
-                if(_lp2){var cs=window.getComputedStyle(_lp2);info+='LP pos='+cs.position+' top='+cs.top+' h='+cs.height+'\n';}else{info+='LP=NULL\n';}
-                if(_vc2){var cs2=window.getComputedStyle(_vc2);info+='VC pos='+cs2.position+' top='+cs2.top+' h='+cs2.height;}else{info+='VC=NULL';}
-                var d=document.createElement('div');d.style.cssText='position:fixed;top:8px;left:8px;z-index:999999;background:rgba(0,0,0,0.92);color:#0f0;font-size:11px;font-weight:bold;padding:8px 10px;border-radius:7px;pointer-events:none;white-space:pre;line-height:1.5;';
+                var info='W:'+window.innerWidth+' VH:'+window.innerHeight+'\n';
+                if(_lp2){var cs=window.getComputedStyle(_lp2);info+='LP pos='+cs.position+' h='+cs.height+'\n';}else{info+='LP=NULL\n';}
+                if(_vc2){var cs2=window.getComputedStyle(_vc2);info+='VC h='+cs2.height+' pos='+cs2.position+'\n';info+='VC.style='+_vc2.style.cssText.substring(0,120);}else{info+='VC=NULL';}
+                var d=document.createElement('div');d.style.cssText='position:fixed;top:8px;left:8px;z-index:999999;background:rgba(0,0,0,0.92);color:#0f0;font-size:10px;font-weight:bold;padding:8px 10px;border-radius:7px;pointer-events:none;white-space:pre;line-height:1.5;max-width:95vw;word-break:break-all;';
                 d.textContent=info;document.body.appendChild(d);
-                setTimeout(function(){if(d.parentNode)d.parentNode.removeChild(d);},8000);
+                setTimeout(function(){if(d.parentNode)d.parentNode.removeChild(d);},10000);
             },1000);
-            // Inject fullscreen style as LAST stylesheet — guarantees it appears after all existing CSS
-            if(!document.getElementById('vfs-style')){var _vfss=document.createElement('style');_vfss.id='vfs-style';_vfss.textContent='@media(max-width:900px){body.is-watching #live-player-wrap{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;overflow:hidden!important;max-height:none!important;}body.is-watching #live-player-wrap #live-remote-video-container{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;max-height:none!important;min-height:0!important;border-radius:0!important;overflow:hidden!important;}body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;object-fit:cover!important;}}';document.head.appendChild(_vfss);}
-            // Inline !important via setProperty — highest possible CSS priority (beats all author stylesheets)
+            // Inject fullscreen style as LAST stylesheet — height:100vh bypasses percentage-chain issues
+            if(!document.getElementById('vfs-style')){var _vfss=document.createElement('style');_vfss.id='vfs-style';_vfss.textContent='@media(max-width:900px){body.is-watching #live-player-wrap{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;overflow:hidden!important;max-height:none!important;}body.is-watching #live-player-wrap #live-remote-video-container{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100vh!important;max-height:none!important;min-height:0!important;border-radius:0!important;overflow:hidden!important;}body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;}}';document.head.appendChild(_vfss);}
+            // setProperty with explicit px — avoids height:100% resolving against intrinsic content height
             if(window.innerWidth<=900){
+                var _vh=window.innerHeight;
                 var _lp=document.getElementById('live-player-wrap');
                 if(_lp){_lp.style.setProperty('position','fixed','important');_lp.style.setProperty('top','0','important');_lp.style.setProperty('right','0','important');_lp.style.setProperty('bottom','0','important');_lp.style.setProperty('left','0','important');_lp.style.setProperty('max-height','none','important');_lp.style.setProperty('overflow','hidden','important');}
                 var _vc=document.getElementById('live-remote-video-container');
-                if(_vc){_vc.style.setProperty('position','absolute','important');_vc.style.setProperty('top','0','important');_vc.style.setProperty('right','0','important');_vc.style.setProperty('bottom','0','important');_vc.style.setProperty('left','0','important');_vc.style.setProperty('width','100%','important');_vc.style.setProperty('height','100%','important');_vc.style.setProperty('max-height','none','important');_vc.style.setProperty('min-height','0','important');_vc.style.setProperty('border-radius','0','important');_vc.style.setProperty('overflow','hidden','important');}
+                if(_vc){_vc.style.setProperty('position','absolute','important');_vc.style.setProperty('top','0','important');_vc.style.setProperty('right','0','important');_vc.style.setProperty('bottom','0','important');_vc.style.setProperty('left','0','important');_vc.style.setProperty('width','100%','important');_vc.style.setProperty('height',_vh+'px','important');_vc.style.setProperty('max-height','none','important');_vc.style.setProperty('min-height','0','important');_vc.style.setProperty('border-radius','0','important');_vc.style.setProperty('overflow','hidden','important');}
             }
             // Scroll to top so the info bar is visible (page may have been scrolled from a previous section)
             try { window.scrollTo({top:0,behavior:'instant'}); } catch(_) { window.scrollTo(0,0); }
@@ -35172,10 +35173,10 @@ body.has-battle .live-stream-overlay-top{display:none!important}
         background:#000!important;max-height:none!important;
     }
 
-    /* Video container: fills entire screen */
+    /* Video container: fills entire screen — height:100vh avoids % resolution against intrinsic content height */
     body.is-watching #live-player-wrap #live-remote-video-container{
         position:absolute!important;top:0!important;right:0!important;bottom:0!important;left:0!important;
-        width:100%!important;height:100%!important;
+        width:100%!important;height:100vh!important;
         border-radius:0!important;overflow:hidden!important;
         flex:none!important;min-height:0!important;max-height:none!important;
     }
@@ -35183,7 +35184,7 @@ body.has-battle .live-stream-overlay-top{display:none!important}
     /* Agora video fills its container */
     body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video{
         position:absolute!important;top:0!important;right:0!important;bottom:0!important;left:0!important;
-        width:100%!important;height:100%!important;object-fit:cover!important;
+        width:100%!important;height:100%!important;
     }
 
     /* Bottom gradient for chat readability */
