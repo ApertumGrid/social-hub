@@ -28671,23 +28671,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             document.body.classList.add('is-watching');
             show('live-player-wrap');
             _initViewerTapHype();
-            // DEBUG: walk ALL descendants of RV and report heights + transforms
-            setTimeout(function(){
-                var _rv2=document.getElementById('live-remote-video');
-                var info='W:'+window.innerWidth+' VH:'+window.innerHeight+'\n';
-                if(_rv2){
-                    var kids=_rv2.querySelectorAll('*');
-                    info+='RV children:'+kids.length+'\n';
-                    kids.forEach(function(el,i){
-                        var cs=window.getComputedStyle(el);
-                        var xfm=cs.transform&&cs.transform!=='none'?cs.transform.substring(0,20):'none';
-                        info+=(el.className||el.tagName)+' h='+cs.height+' ov='+cs.overflow+' xfm='+xfm+'\n';
-                    });
-                }else{info+='RV=NULL';}
-                var d=document.createElement('div');d.style.cssText='position:fixed;top:8px;left:8px;z-index:999999;background:rgba(0,0,0,0.92);color:#0f0;font-size:9px;padding:6px 8px;border-radius:7px;pointer-events:none;white-space:pre;line-height:1.5;max-width:99vw;max-height:80vh;overflow-y:auto;';
-                d.textContent=info;document.body.appendChild(d);
-                setTimeout(function(){if(d.parentNode)d.parentNode.removeChild(d);},15000);
-            },2000);
             // Inject fullscreen style — also covers Agora's internal .agora_video_player and video elements
             if(!document.getElementById('vfs-style')){var _vfss=document.createElement('style');_vfss.id='vfs-style';_vfss.textContent='@media(max-width:900px){body.is-watching #live-player-wrap{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;overflow:hidden!important;max-height:none!important;}body.is-watching #live-player-wrap #live-remote-video-container{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100vh!important;min-height:100vh!important;max-height:none!important;border-radius:0!important;overflow:hidden!important;}body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;}body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video .agora_video_player{position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;}body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video video{position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;object-fit:cover!important;}}';document.head.appendChild(_vfss);}
             // setProperty with explicit px + MutationObserver on both VC and RV (Agora overwrites both)
@@ -28719,6 +28702,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
                 setTimeout(_fixAgoraChildren,800);
                 if(_rv && !window._rvChildObs){window._rvChildObs=new MutationObserver(function(){_fixAgoraChildren();});window._rvChildObs.observe(_rv,{childList:true,subtree:true});}
+                // Force chat card + feed to transparent — beats the dark gradient background from existing CSS
+                var _cc=document.getElementById('viewer-panel-chat-card');
+                if(_cc){_cc.style.setProperty('background','transparent','important');_cc.style.setProperty('border','none','important');_cc.style.setProperty('box-shadow','none','important');_cc.style.setProperty('overflow','visible','important');}
+                var _cf=document.getElementById('live-chat-feed');
+                if(_cf){_cf.style.setProperty('background','transparent','important');}
             }
             // Scroll to top so the info bar is visible (page may have been scrolled from a previous section)
             try { window.scrollTo({top:0,behavior:'instant'}); } catch(_) { window.scrollTo(0,0); }
@@ -35228,8 +35216,8 @@ body.has-battle .live-stream-overlay-top{display:none!important}
 
     /* Bottom gradient for chat readability */
     body.is-watching #live-player-wrap #live-remote-video-container::after{
-        content:'';position:absolute;bottom:0;left:0;right:0;height:55%;
-        background:linear-gradient(to bottom,transparent 0%,rgba(0,0,0,0.78) 100%);
+        content:'';position:absolute;bottom:0;left:0;right:0;height:40%;
+        background:linear-gradient(to bottom,transparent 0%,rgba(0,0,0,0.55) 100%);
         pointer-events:none;z-index:2;
     }
 
