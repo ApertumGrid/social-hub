@@ -28671,9 +28671,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             document.body.classList.add('is-watching');
             show('live-player-wrap');
             _initViewerTapHype();
-            // Force TikTok fullscreen layout on mobile — explicit top/right/bottom/left (inset shorthand unreliable on Android)
-            // NOTE: do NOT setProperty display here — hide() sets display:none and !important would block it
-            if(window.innerWidth<=700){
+            // DEBUG: 3-second width badge — tells us if JS runs and what innerWidth is
+            (function(){var d=document.createElement('div');d.style.cssText='position:fixed;top:10px;right:10px;z-index:999999;background:rgba(220,38,38,0.92);color:#fff;font-size:15px;font-weight:bold;padding:8px 14px;border-radius:8px;pointer-events:none;';d.textContent='W:'+window.innerWidth;document.body.appendChild(d);setTimeout(function(){if(d.parentNode)d.parentNode.removeChild(d);},3000);})();
+            // Inject fullscreen style as LAST stylesheet — guarantees it appears after all existing CSS
+            if(!document.getElementById('vfs-style')){var _vfss=document.createElement('style');_vfss.id='vfs-style';_vfss.textContent='@media(max-width:900px){body.is-watching #live-player-wrap{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;overflow:hidden!important;max-height:none!important;}body.is-watching #live-player-wrap #live-remote-video-container{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;max-height:none!important;min-height:0!important;border-radius:0!important;overflow:hidden!important;}body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;object-fit:cover!important;}}';document.head.appendChild(_vfss);}
+            // Inline !important via setProperty — highest possible CSS priority (beats all author stylesheets)
+            if(window.innerWidth<=900){
                 var _lp=document.getElementById('live-player-wrap');
                 if(_lp){_lp.style.setProperty('position','fixed','important');_lp.style.setProperty('top','0','important');_lp.style.setProperty('right','0','important');_lp.style.setProperty('bottom','0','important');_lp.style.setProperty('left','0','important');_lp.style.setProperty('max-height','none','important');_lp.style.setProperty('overflow','hidden','important');}
                 var _vc=document.getElementById('live-remote-video-container');
@@ -28862,7 +28865,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         document.body.classList.remove('is-watching');
         window._prevLiveStarsEarned = 0;
         // Clear mobile full-screen inline styles (no DOM move needed — just clear styles)
-        if (window.innerWidth <= 700) {
+        if (window.innerWidth <= 900) {
             var _fsClLp  = document.getElementById('live-player-wrap');
             var _fsClVcc = document.getElementById('viewer-panel-chat-card');
             if (_fsClLp) _fsClLp.style.cssText = '';
@@ -35148,13 +35151,13 @@ body.has-battle .live-stream-overlay-top{display:none!important}
 @media(min-width:701px){#host-mobile-topleft{display:none!important;}}
 
 /* ── VIEWER MOBILE LAYOUT — TikTok Style ── */
-@media(max-width:700px){
+@media(max-width:900px){
     body.is-watching #topnav{display:none!important;}
     body.is-watching #bottom-nav{display:none!important;}
 
     /* Wrap: fixed full screen — video IS the background, no flex needed */
     body.is-watching #live-player-wrap{
-        position:fixed!important;inset:0!important;
+        position:fixed!important;top:0!important;right:0!important;bottom:0!important;left:0!important;
         display:block!important;
         z-index:500!important;overflow:hidden!important;
         background:#000!important;max-height:none!important;
@@ -35162,7 +35165,7 @@ body.has-battle .live-stream-overlay-top{display:none!important}
 
     /* Video container: fills entire screen */
     body.is-watching #live-player-wrap #live-remote-video-container{
-        position:absolute!important;inset:0!important;
+        position:absolute!important;top:0!important;right:0!important;bottom:0!important;left:0!important;
         width:100%!important;height:100%!important;
         border-radius:0!important;overflow:hidden!important;
         flex:none!important;min-height:0!important;max-height:none!important;
@@ -35170,7 +35173,7 @@ body.has-battle .live-stream-overlay-top{display:none!important}
 
     /* Agora video fills its container */
     body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video{
-        position:absolute!important;inset:0!important;
+        position:absolute!important;top:0!important;right:0!important;bottom:0!important;left:0!important;
         width:100%!important;height:100%!important;object-fit:cover!important;
     }
 
@@ -35181,7 +35184,7 @@ body.has-battle .live-stream-overlay-top{display:none!important}
         pointer-events:none;z-index:2;
     }
 
-    /* Dead zones hidden */
+    /* Dead zones hidden on mobile viewer */
     body.is-watching #live-player-wrap .live-action-row,
     body.is-watching #live-player-wrap #viewer-reactions-bar,
     body.is-watching #live-player-wrap #viewer-gift-panel,
