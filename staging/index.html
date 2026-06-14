@@ -1,4 +1,4 @@
-﻿
+
 
 
 
@@ -2112,9 +2112,9 @@
         .gift-btn.reign   { border-color:rgba(232,121,249,0.55); background:rgba(232,121,249,0.07); }
         .gift-btn.genesis { border-color:rgba(240,171,252,0.6);  background:rgba(240,171,252,0.08); }
         /* ── Gift Video Overlay (TikTok-style) ── */
-        #gift-video-overlay{position:fixed;inset:0;z-index:9999;pointer-events:none;display:none;align-items:center;justify-content:center;}
-        #gift-video-el{width:100%;height:100%;object-fit:cover;mix-blend-mode:screen;}
-        #gift-video-banner{position:absolute;bottom:18%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.72);color:#fff;padding:8px 24px;border-radius:24px;font-size:0.9rem;font-weight:700;white-space:nowrap;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.18);z-index:2;letter-spacing:0.3px;}
+        #gift-video-overlay{position:fixed;inset:0;z-index:9999;pointer-events:none;display:none;mix-blend-mode:screen;}
+        #gift-video-el{width:100%;height:100%;object-fit:cover;}
+        #gift-video-banner{position:fixed;bottom:18%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.82);color:#fff;padding:8px 24px;border-radius:24px;font-size:0.9rem;font-weight:700;white-space:nowrap;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.18);z-index:10000;letter-spacing:0.3px;display:none;}
         /* â”€â”€ GIFT ANIMATION SYSTEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
         /* Floating gift orb that rises from the bottom */
@@ -29681,12 +29681,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!overlay || !video) return;
         var tier = GIFT_TIERS[tierKey] || {};
         video.src = '/gifts/' + tierKey + '.mp4';
-        if (banner) banner.textContent = (senderName || 'Someone') + ' sent ' + (tier.name || tierKey) + '! ' + (tier.icon || '');
-        overlay.style.display = 'flex';
-        video.onerror = function() { overlay.style.display = 'none'; video.src = ''; };
-        video.onended = function() { overlay.style.display = 'none'; video.src = ''; };
+        if (banner) { banner.textContent = (senderName || 'Someone') + ' sent ' + (tier.name || tierKey) + '! ' + (tier.icon || ''); banner.style.display = 'block'; }
+        overlay.style.display = 'block';
+        function _hideGiftOverlay() { overlay.style.display = 'none'; video.src = ''; if (banner) banner.style.display = 'none'; }
+        video.onerror = _hideGiftOverlay;
+        video.onended = _hideGiftOverlay;
         video.load();
-        video.play().catch(function() { overlay.style.display = 'none'; });
+        video.play().catch(_hideGiftOverlay);
     }
 
     // ── Main gift animation dispatcher ───────────────────────────
@@ -35153,8 +35154,8 @@ body.has-battle .live-stream-overlay-top{display:none!important}
 <!-- Gift video overlay — TikTok-style, plays over live stream -->
 <div id="gift-video-overlay">
   <video id="gift-video-el" playsinline muted></video>
-  <div id="gift-video-banner"></div>
 </div>
+<div id="gift-video-banner"></div>
 
 <!-- Viewer gift drawer (mobile icon strip) -->
 <div id="viewer-gift-backdrop" onclick="_closeViewerGiftDrawer()"></div>
