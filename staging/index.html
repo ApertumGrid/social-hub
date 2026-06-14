@@ -28670,33 +28670,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             hide('live-tabs');
             document.body.classList.add('is-watching');
             show('live-player-wrap');
-            // Full-screen viewer on mobile — JS setProperty beats all CSS cascade/specificity conflicts
-            if (window.innerWidth <= 700) {
-                var _fsWrap = document.getElementById('live-player-wrap');
-                var _fsCon  = document.getElementById('live-remote-video-container');
-                if (_fsWrap) {
-                    _fsWrap.style.setProperty('position',    'fixed',                  'important');
-                    _fsWrap.style.setProperty('top',         '0',                      'important');
-                    _fsWrap.style.setProperty('left',        '0',                      'important');
-                    _fsWrap.style.setProperty('width',       '100%',                   'important');
-                    _fsWrap.style.setProperty('height',      window.innerHeight+'px',  'important');
-                    _fsWrap.style.setProperty('max-height',  'none',                   'important');
-                    _fsWrap.style.setProperty('z-index',     '9000',                   'important');
-                    _fsWrap.style.setProperty('overflow',    'hidden',                 'important');
-                    _fsWrap.style.setProperty('background',  '#000',                   'important');
-                }
-                if (_fsCon) {
-                    _fsCon.style.setProperty('position',     'absolute', 'important');
-                    _fsCon.style.setProperty('top',          '0',        'important');
-                    _fsCon.style.setProperty('left',         '0',        'important');
-                    _fsCon.style.setProperty('right',        '0',        'important');
-                    _fsCon.style.setProperty('bottom',       '0',        'important');
-                    _fsCon.style.setProperty('width',        '100%',     'important');
-                    _fsCon.style.setProperty('height',       '100%',     'important');
-                    _fsCon.style.setProperty('max-height',   'none',     'important');
-                    _fsCon.style.setProperty('min-height',   '0',        'important');
-                }
-            }
+            // CSS handles viewer layout via body.is-watching rules below
             // Scroll to top so the info bar is visible (page may have been scrolled from a previous section)
             try { window.scrollTo({top:0,behavior:'instant'}); } catch(_) { window.scrollTo(0,0); }
             var _pw = document.getElementById('live-player-wrap');
@@ -35136,56 +35110,76 @@ body.has-battle .live-stream-overlay-top{display:none!important}
 #host-stars-pill.stars-pop{animation:stars-pop-kf 0.58s cubic-bezier(0.34,1.56,0.64,1);}
 @media(min-width:701px){#host-mobile-topleft{display:none!important;}}
 
-/* ── VIEWER FULL-SCREEN MOBILE IMMERSIVE (Option C) ── */
+/* ── VIEWER MOBILE LAYOUT (Option C) ── */
 @media(max-width:700px){
     /* Nav hidden while watching */
     body.is-watching #topnav{display:none!important;}
     body.is-watching #bottom-nav{display:none!important;}
 
-    /* Live player becomes full-viewport overlay */
+    /* Player: fixed full viewport, flex column — video on top, chat below, zero gap */
     body.is-watching #live-player-wrap{
         position:fixed!important;
-        top:0!important;left:0!important;right:0!important;bottom:0!important;
-        width:100%!important;height:100%!important;
-        z-index:500!important;overflow:hidden!important;max-height:none!important;background:#000!important;
+        inset:0!important;
+        display:flex!important;
+        flex-direction:column!important;
+        z-index:500!important;
+        overflow:hidden!important;
+        background:#000!important;
+        max-height:none!important;
     }
 
-    /* Video fills entire screen */
+    /* Video: exactly 62vh flex item, relative so children can use absolute inside it */
     body.is-watching #live-player-wrap #live-remote-video-container{
-        position:absolute!important;
-        top:0!important;left:0!important;right:0!important;bottom:0!important;
-        width:100%!important;height:100%!important;
-        min-height:auto!important;max-height:none!important;
-        border-radius:0!important;overflow:hidden!important;flex-shrink:unset!important;
+        flex:0 0 62vh!important;
+        width:100%!important;
+        height:62vh!important;
+        position:relative!important;
+        min-height:0!important;max-height:none!important;
+        border-radius:0!important;overflow:hidden!important;flex-shrink:0!important;
     }
 
-    /* Bottom-to-mid gradient so chat is readable over video */
+    /* Ensure Agora video fills its container */
+    body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video{
+        position:absolute!important;inset:0!important;
+        width:100%!important;height:100%!important;object-fit:cover!important;
+    }
+
+    /* Bottom gradient for readability */
     body.is-watching #live-player-wrap #live-remote-video-container::after{
-        content:'';position:absolute;bottom:0;left:0;right:0;height:60%;
-        background:linear-gradient(to bottom,transparent 0%,rgba(0,0,0,0.6) 100%);
+        content:'';position:absolute;bottom:0;left:0;right:0;height:45%;
+        background:linear-gradient(to bottom,transparent,rgba(0,0,0,0.55));
         pointer-events:none;z-index:2;
     }
 
-    /* Dead zones removed */
+    /* Dead zones hidden */
     body.is-watching #live-player-wrap .live-action-row,
     body.is-watching #live-player-wrap #viewer-reactions-bar,
     body.is-watching #live-player-wrap #viewer-gift-panel,
     body.is-watching #live-player-wrap #viewer-star-goal,
     body.is-watching #live-player-wrap #viewer-leaderboard{display:none!important;}
 
-    /* Chat card: transparent overlay at bottom — input row only */
+    /* Chat card: flex:1 fills ALL remaining space below video — no gap possible */
     body.is-watching #live-player-wrap #viewer-panel-chat-card{
-        position:absolute!important;bottom:0!important;left:0!important;right:0!important;
-        z-index:25!important;background:transparent!important;
-        border:none!important;border-radius:0!important;box-shadow:none!important;padding:0!important;
+        flex:1!important;
+        min-height:0!important;
+        position:relative!important;
+        display:flex!important;
+        flex-direction:column!important;
+        background:var(--bg-panel)!important;
+        border:none!important;border-radius:0!important;
+        box-shadow:none!important;padding:0!important;overflow:hidden!important;
     }
-    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-head,
-    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-feed{display:none!important;}
+    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-head{display:none!important;}
+    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-feed{
+        flex:1!important;min-height:0!important;
+        overflow-y:auto!important;
+        display:flex!important;flex-direction:column!important;
+        padding:8px 12px!important;max-height:none!important;
+    }
     body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-input-row{
-        background:rgba(0,0,0,0.5)!important;
-        backdrop-filter:blur(14px)!important;-webkit-backdrop-filter:blur(14px)!important;
+        flex-shrink:0!important;
+        background:rgba(10,8,30,0.95)!important;
         border-top:1px solid rgba(255,255,255,0.08)!important;
-        border-bottom:none!important;border-left:none!important;border-right:none!important;
         padding:10px 12px 14px!important;
         display:flex!important;gap:8px!important;align-items:center!important;border-radius:0!important;
     }
@@ -35206,17 +35200,14 @@ body.has-battle .live-stream-overlay-top{display:none!important}
         box-shadow:0 2px 10px rgba(124,92,191,0.3)!important;
     }
 
-    /* Floating chat — sits above the input row, clears icon strip on right */
-    body.is-watching .stream-floating-chat{
-        bottom:68px!important;right:66px!important;left:10px!important;
-        width:auto!important;max-width:none!important;
-    }
-
-    /* Icon strip — centered vertically on right edge */
+    /* Icon strip — vertically centered on right edge of video */
     body.is-watching #viewer-icon-strip{
         top:50%!important;transform:translateY(-50%)!important;
         right:10px!important;gap:12px!important;
     }
+
+    /* Floating chat hidden — real chat feed shows in bottom panel */
+    body.is-watching .stream-floating-chat{display:none!important;}
 }
 
 /* Hide CHAT ON/OFF toggle everywhere — it's already in the "..." settings drawer */
