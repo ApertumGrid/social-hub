@@ -28671,8 +28671,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             document.body.classList.add('is-watching');
             show('live-player-wrap');
             _initViewerTapHype();
-            // DEBUG: 3-second width badge — tells us if JS runs and what innerWidth is
-            (function(){var d=document.createElement('div');d.style.cssText='position:fixed;top:10px;right:10px;z-index:999999;background:rgba(220,38,38,0.92);color:#fff;font-size:15px;font-weight:bold;padding:8px 14px;border-radius:8px;pointer-events:none;';d.textContent='W:'+window.innerWidth;document.body.appendChild(d);setTimeout(function(){if(d.parentNode)d.parentNode.removeChild(d);},3000);})();
+            // DEBUG: show computed styles of wrap + video container after 1s (after Agora may have run)
+            setTimeout(function(){
+                var _lp2=document.getElementById('live-player-wrap');
+                var _vc2=document.getElementById('live-remote-video-container');
+                var info='W:'+window.innerWidth+'\n';
+                if(_lp2){var cs=window.getComputedStyle(_lp2);info+='LP pos='+cs.position+' top='+cs.top+' h='+cs.height+'\n';}else{info+='LP=NULL\n';}
+                if(_vc2){var cs2=window.getComputedStyle(_vc2);info+='VC pos='+cs2.position+' top='+cs2.top+' h='+cs2.height;}else{info+='VC=NULL';}
+                var d=document.createElement('div');d.style.cssText='position:fixed;top:8px;left:8px;z-index:999999;background:rgba(0,0,0,0.92);color:#0f0;font-size:11px;font-weight:bold;padding:8px 10px;border-radius:7px;pointer-events:none;white-space:pre;line-height:1.5;';
+                d.textContent=info;document.body.appendChild(d);
+                setTimeout(function(){if(d.parentNode)d.parentNode.removeChild(d);},8000);
+            },1000);
             // Inject fullscreen style as LAST stylesheet — guarantees it appears after all existing CSS
             if(!document.getElementById('vfs-style')){var _vfss=document.createElement('style');_vfss.id='vfs-style';_vfss.textContent='@media(max-width:900px){body.is-watching #live-player-wrap{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;overflow:hidden!important;max-height:none!important;}body.is-watching #live-player-wrap #live-remote-video-container{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;max-height:none!important;min-height:0!important;border-radius:0!important;overflow:hidden!important;}body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;object-fit:cover!important;}}';document.head.appendChild(_vfss);}
             // Inline !important via setProperty — highest possible CSS priority (beats all author stylesheets)
