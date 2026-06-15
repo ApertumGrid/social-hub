@@ -4172,6 +4172,7 @@
         .ledger-badge.spend   { background: rgba(248,113,113,0.12); color: var(--red); }
         .ledger-badge.deposit { background: var(--teal-dim); color: var(--teal); }
         .ledger-badge.settle  { background: var(--purple-dim); color: var(--purple-lt); }
+        .ledger-badge.refund  { background: rgba(62,207,142,0.12); color: var(--green); }
         .ledger-amount { font-family: var(--font-mono); font-size: 0.76rem; font-weight: 700; width: 58px; text-align: right; flex-shrink: 0; }
         .ledger-amount.earn    { color: var(--green); }
         .ledger-amount.spend   { color: var(--red); }
@@ -14341,7 +14342,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Without this guard, the txTo===myAddr branch wins for spend docs and
             // misclassifies them as "+1 Earned" — the Ghost Debit bug.
             let displayType;
-            if (tx.type === 'deposit' || tx.type === 'settle') {
+            if (tx.type === 'deposit' || tx.type === 'settle' || tx.type === 'refund') {
                 displayType = tx.type;  // self-directed — always show as-is
             } else if (txFrom === myAddr && txTo === myAddr) {
                 // Self-addressed: trust the stored type field — do NOT infer from address
@@ -14356,7 +14357,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;  // should never reach here after _mergeFire filter, but guard anyway
             }
 
-            const isEarn = displayType === 'earn' || displayType === 'deposit';
+            const isEarn = displayType === 'earn' || displayType === 'deposit' || displayType === 'refund';
             const isSettle = displayType === 'settle';
             const prefix = isEarn ? '+' : '−';
             // Settle amounts are in USDT; all other types are in Stars
@@ -14364,7 +14365,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 ? '−' + parseFloat(tx.amount).toFixed(4) + ' USDT'
                 : prefix + parseFloat(tx.amount).toFixed(1) + ' ★';
             const amtCls = isEarn ? 'earn' : (isSettle ? 'neutral' : 'spend');
-            const badge  = { earn:'Earned', spend:'Spent', deposit:'Deposit', settle:'Settle' }[displayType] || displayType;
+            const badge  = { earn:'Earned', spend:'Spent', deposit:'Deposit', settle:'Settle', refund:'Refund' }[displayType] || displayType;
             const date   = new Date(tx.timestamp).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
             // Counterpart chip: earn rows show who sent, spend rows show who received
             let counterpart = '';
@@ -27482,14 +27483,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     window.vrToggleGiftPicker = async function() {
         if (!_vrGiftOpen) {
-            // Default to host if no orb was tapped
+            // Default to host only if host is not the current user
             if (!_vrGiftTarget && _vrRoomId && window.db && window.fs) {
                 const snap = await window.fs.getDoc(window.fs.doc(window.db, VR_COL, _vrRoomId)).catch(() => null);
                 if (snap && snap.exists()) {
                     const r = snap.data();
-                    _vrGiftTarget = { addr: r.hostAddr, name: r.hostName || 'Host' };
-                    const lbl = document.getElementById('vr-gift-to-lbl');
-                    if (lbl) lbl.textContent = '→ ' + (_vrGiftTarget.name);
+                    const hostAddr = (r.hostAddr || '').toLowerCase();
+                    if (hostAddr && hostAddr !== (userAddress || '').toLowerCase()) {
+                        _vrGiftTarget = { addr: r.hostAddr, name: r.hostName || 'Host' };
+                        const lbl = document.getElementById('vr-gift-to-lbl');
+                        if (lbl) lbl.textContent = '→ ' + (_vrGiftTarget.name);
+                    }
                 }
             }
         }
@@ -27504,6 +27508,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (picker) picker.classList.remove('open');
         if (!_vrRoomId || !userAddress) return;
         if (!_vrGiftTarget) { showToast('Tap a speaker to gift them'); return; }
+        if ((_vrGiftTarget.addr || '').toLowerCase() === userAddress.toLowerCase()) {
+            showToast("You can't gift yourself — tap another speaker's orb first");
+            _vrGiftTarget = null;
+            return;
+        }
         try {
             const res = await fetch(VR_CF_BASE + 'sendVoiceRoomGift', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
