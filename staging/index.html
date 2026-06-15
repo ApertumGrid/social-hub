@@ -28842,6 +28842,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     // ── Leave stream ──────────────────────────────────────────────
     window.leaveLiveStream = async function() {
+        // ── Fast UI teardown — hide player immediately before any async work ──
+        document.body.classList.remove('is-watching');
+        if(window._vcStyleObs){window._vcStyleObs.disconnect();window._vcStyleObs=null;}
+        if(window._rvStyleObs){window._rvStyleObs.disconnect();window._rvStyleObs=null;}
+        if(window._rvChildObs){window._rvChildObs.disconnect();window._rvChildObs=null;}
+        if (window.innerWidth <= 900) {
+            var _uiLp  = document.getElementById('live-player-wrap');
+            var _uiVcc = document.getElementById('viewer-panel-chat-card');
+            if (_uiLp) _uiLp.style.cssText = '';
+            if (_uiVcc) _uiVcc.style.cssText = '';
+            document.body.style.removeProperty('overflow');
+        }
+        hide('live-player-wrap');
+        show('live-stream-browser');
+        show('live-tabs');
         // Clean up co-host state first
         if (isCoHost) { await leaveCoHost().catch(() => {}); }
 
@@ -34793,7 +34808,8 @@ function _copyReplayLink(link) {
 #cmd-orb.idle{ opacity:0.4; }
 @media (min-width:769px){ #cmd-orb,#cmd-wheel,#cmd-scrim{ display:none!important; } }
 body.cinema-mode #cmd-orb, body.cinema-mode #cmd-wheel, body.cinema-mode #cmd-scrim,
-body.is-hosting #cmd-orb, body.is-hosting #cmd-wheel, body.is-hosting #cmd-scrim{ display:none!important; }
+body.is-hosting #cmd-orb, body.is-hosting #cmd-wheel, body.is-hosting #cmd-scrim,
+body.is-watching #cmd-orb, body.is-watching #cmd-wheel, body.is-watching #cmd-scrim{ display:none!important; }
 </style>
 
 <div id="cmd-scrim"></div>
