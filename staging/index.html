@@ -11372,7 +11372,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div class="live-chat-head">💬 Live Chat</div>
                             <div id="live-chat-feed" class="live-chat-feed"></div>
                             <div class="live-chat-input-row">
-                                <input type="text" id="live-chat-input" class="field" placeholder="Say something…" style="margin-top:0;" autocomplete="off" autocorrect="off" autocapitalize="off" onkeydown="if(event.key==='Enter')sendLiveChat()">
+                                <input type="text" id="live-chat-input" class="field" placeholder="Say something…" style="margin-top:0;" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" onkeydown="if(event.key==='Enter')sendLiveChat()">
                                 <button class="btn btn-purple btn-sm" onclick="sendLiveChat()">Send</button>
                                 <div id="viewer-icon-strip">
                                     <button class="his-btn" onclick="_openViewerGiftDrawer()" title="Send a Gift">🎁</button>
@@ -11957,7 +11957,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div class="live-chat-head">💬 Live Chat</div>
                             <div id="live-broadcast-chat-feed" class="live-chat-feed"></div>
                             <div class="live-chat-input-row">
-                                <input type="text" id="live-broadcast-chat-input" class="field" placeholder="Chat with your viewers…" style="margin-top:0;" autocomplete="off" autocorrect="off" autocapitalize="off" onkeydown="if(event.key==='Enter')sendLiveChatBroadcaster()">
+                                <input type="text" id="live-broadcast-chat-input" class="field" placeholder="Chat with your viewers…" style="margin-top:0;" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" onkeydown="if(event.key==='Enter')sendLiveChatBroadcaster()">
                                 <button class="btn btn-purple btn-sm" onclick="sendLiveChatBroadcaster()">Send</button>
                             </div>
                         </div>
@@ -29043,115 +29043,35 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // ── Hype button ───────────────────────────────────────────────
     window.sendLiveHype = async function() {
         if (!_watchingStreamId) return;
+        const userHandle = window._liveUserHandle || 'Someone';
+        const userAvatar = window._liveUserAvatar || '';
+        const now = Date.now();
 
-        // Read shared state from main IIFE bridge
-        const userAddress = window._liveUserAddress || '';
-        const userHandle  = window._liveUserHandle  || 'Someone';
-        const available   = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
+        // Local UI feedback — always immediate, every tap
+        const hypeBtn = $('live-hype-btn');
+        if (hypeBtn) { hypeBtn.style.transform = 'scale(0.93)'; setTimeout(() => { hypeBtn.style.transform = ''; }, 140); }
 
-        if (available < HYPE_STAR_COST) { showToast('Not enough Stars to Hype! Deposit APTM first.'); return; }
+        // Throttle Firestore writes to max once per 2s — tapping faster just shows the ripple locally
+        if (window._lastHypeWrite && now - window._lastHypeWrite < 2000) return;
+        window._lastHypeWrite = now;
 
         try {
-            const { doc, updateDoc, increment, getDoc } = window.fs;
+            const { doc, updateDoc, increment, collection, addDoc, serverTimestamp } = window.fs;
 
-            // Deduct star from viewer — find host address to credit
-            const streamSnap = await getDoc(doc(window.db, LIVE_COL, _watchingStreamId));
-            if (!streamSnap.exists()) return;
-            const hostAddr = streamSnap.data().hostAddr;
-
-            // 1. Deduct from viewer via canonical spend waterfall (purchased first, then earned).
-            if (userAddress) {
-                await deductSpendableStars(userAddress.toLowerCase(), HYPE_STAR_COST);
-                // Update bridge balance
-                if (typeof window._liveTotalSpendable === 'number') {
-                    window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - HYPE_STAR_COST);
-                    window._liveAvailableStars = window._liveTotalSpendable;
-                }
-            }
-
-            // 2. 80/20 split — credit creator 80%, platform 20%
-            const creatorCut  = parseFloat((HYPE_STAR_COST * 0.8).toFixed(4));
-            const platformCut = parseFloat((HYPE_STAR_COST * 0.2).toFixed(4));
-
-            // Credit creator's earned balance instantly
-            if (hostAddr) {
-                const { collection: col, addDoc: adc, serverTimestamp: sts } = window.fs;
-                await updateDoc(doc(window.db, 'user_balances', hostAddr.toLowerCase()), {
-                    creatorStars: increment(creatorCut)
-                }).catch(() => {});
-                // Log earn entry to host's ledger
-                adc(col(window.db, 'user_transactions'), {
-                    type:           'earn',
-                    amount:         creatorCut,
-                    fromAddress:    (userAddress || '').toLowerCase(),
-                    toAddress:      hostAddr.toLowerCase(),
-                    address:        hostAddr.toLowerCase(),
-                    description:    `Live Stream Hype from ${userHandle} (+${creatorCut.toFixed(1)}★)`,
-                    timestamp:      Date.now(),
-                    schema_version: 2
-                }).catch(() => {});
-            }
-
-            // Credit platform revenue 20% — logAdminRevenue writes to platform_revenue
-            // collection (admin dashboard ledger) AND admin_revenue/global (withdrawable balance)
-            if (typeof window.logAdminRevenue === 'function') {
-                window.logAdminRevenue((userAddress || '').toLowerCase(), 'live_hype', platformCut);
-            } else {
-                // fallback: direct write to both collections
-                window.fs.addDoc(window.fs.collection(window.db, 'platform_revenue'), {
-                    sourceAddress: (userAddress || '').toLowerCase(),
-                    actionType: 'live_hype', amount: platformCut, timestamp: Date.now()
-                }).catch(() => {});
-                const { doc: d2, updateDoc: ud2, increment: inc2 } = window.fs;
-                ud2(d2(window.db, 'admin_revenue', 'global'), { total: inc2(platformCut) }).catch(() => {});
-            }
-
-            // Log spend entry to viewer's ledger
-            if (userAddress) {
-                const { collection: col2, addDoc: adc2 } = window.fs;
-                adc2(col2(window.db, 'user_transactions'), {
-                    type:           'spend',
-                    amount:         HYPE_STAR_COST,
-                    fromAddress:    userAddress.toLowerCase(),
-                    toAddress:      hostAddr || '',
-                    address:        userAddress.toLowerCase(),
-                    description:    `⚡ Live Hype sent (${HYPE_STAR_COST}★ · creator gets ${creatorCut.toFixed(1)}★)`,
-                    timestamp:      Date.now(),
-                    schema_version: 2
-                }).catch(() => {});
-            }
-
-            // 3. Update stream display counter
-            await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
-                starsEarned: increment(HYPE_STAR_COST),
-                hypeCount:   increment(1)
-            });
-
-            // 4. Add hype message to chat (as user, not system)
-            addDoc(collection(window.db, LIVE_CHAT_COL, _watchingStreamId, 'messages'), {
-                author:   userHandle,
-                avatar:   userAvatar || '',
-                text:     `⚡ ${userHandle} hyped the stream!`,
-                ts:       serverTimestamp(),
-                isSystem: false,
-                isHype:   true
+            // Increment hype count — FREE, no star cost
+            updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
+                hypeCount: increment(1)
             }).catch(() => {});
 
-            // 5. Feed into Live Activity ticker (right panel)
-            if (typeof window.tickerLog === 'function') {
-                window.tickerLog('spend', 'Live Hype', HYPE_STAR_COST, '⚡');
+            // Post chat message — throttled to once per 8s so it doesn't flood chat
+            if (!window._lastHypeChat || now - window._lastHypeChat > 8000) {
+                window._lastHypeChat = now;
+                addDoc(collection(window.db, LIVE_CHAT_COL, _watchingStreamId, 'messages'), {
+                    author: userHandle, avatar: userAvatar,
+                    text: `⚡ ${userHandle} hyped the stream!`,
+                    ts: serverTimestamp(), isSystem: false, isHype: true
+                }).catch(() => {});
             }
-
-            // Local UI update
-            const hypeBtn = $('live-hype-btn');
-            if (hypeBtn) {
-                hypeBtn.style.transform = 'scale(0.93)';
-                setTimeout(() => { hypeBtn.style.transform = ''; }, 140);
-            }
-
-            showToast(`⚡ Hype sent! Creator gets ${creatorCut.toFixed(1)} ★ instantly.`);
-            if (typeof updateUI === 'function') updateUI();
-
         } catch(e) {
             console.warn('[Live] Hype error:', e);
         }
