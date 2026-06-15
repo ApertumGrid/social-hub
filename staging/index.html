@@ -28671,20 +28671,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             document.body.classList.add('is-watching');
             show('live-player-wrap');
             _initViewerTapHype();
-            // DEBUG: direct computed style probe on key elements
-            setTimeout(function(){
-                var info='W:'+window.innerWidth+' H:'+window.innerHeight+'\n';
-                var vc=document.getElementById('live-remote-video-container');
-                var cc=document.getElementById('viewer-panel-chat-card');
-                var lp=document.getElementById('live-player-wrap');
-                if(vc){var s=window.getComputedStyle(vc);info+='VC h='+s.height+' pos='+s.position+' top='+s.top+'\n';}
-                if(cc){var s=window.getComputedStyle(cc);info+='CC h='+s.height+' pos='+s.position+'\nCC bg='+s.background.substring(0,40)+'\nCC bgcol='+s.backgroundColor+'\n';}
-                if(lp){var s=window.getComputedStyle(lp);info+='LP h='+s.height+' disp='+s.display+'\n';}
-                info+='is-watching='+document.body.classList.contains('is-watching')+'\n';
-                info+='vfs='+!!document.getElementById('vfs-style');
-                var d=document.createElement('div');d.style.cssText='position:fixed;top:8px;left:8px;z-index:999999;background:rgba(0,0,0,0.92);color:#0f0;font-size:9px;padding:6px 8px;border-radius:7px;pointer-events:none;white-space:pre;line-height:1.5;max-width:99vw;';
-                d.textContent=info;document.body.appendChild(d);setTimeout(function(){if(d.parentNode)d.parentNode.removeChild(d);},25000);
-            },3000);
             // Inject fullscreen style — also covers Agora's internal .agora_video_player and video elements
             if(!document.getElementById('vfs-style')){var _vfss=document.createElement('style');_vfss.id='vfs-style';_vfss.textContent='@media(max-width:900px){body.is-watching #live-player-wrap{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;overflow:hidden!important;max-height:none!important;}body.is-watching #live-player-wrap #live-remote-video-container{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100vh!important;min-height:100vh!important;max-height:none!important;border-radius:0!important;overflow:hidden!important;}body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;}body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video .agora_video_player{position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;}body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video video{position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;object-fit:cover!important;}#viewer-panel-chat-card{background:transparent!important;background-color:transparent!important;background-image:none!important;border:none!important;box-shadow:none!important;}body.is-watching #live-player-wrap #viewer-panel-chat-card{background:transparent!important;background-color:transparent!important;background-image:none!important;border:none!important;box-shadow:none!important;overflow:visible!important;}}';document.head.appendChild(_vfss);}
             // setProperty with explicit px + MutationObserver on both VC and RV (Agora overwrites both)
@@ -28716,11 +28702,34 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
                 setTimeout(_fixAgoraChildren,800);
                 if(_rv && !window._rvChildObs){window._rvChildObs=new MutationObserver(function(){_fixAgoraChildren();});window._rvChildObs.observe(_rv,{childList:true,subtree:true});}
-                // Force chat card + feed to transparent — beats the dark gradient background from existing CSS
+                // Pin chat card to bottom of LP as a transparent overlay (CSS position:absolute rule not applying)
                 var _cc=document.getElementById('viewer-panel-chat-card');
-                if(_cc){_cc.style.setProperty('background','transparent','important');_cc.style.setProperty('border','none','important');_cc.style.setProperty('box-shadow','none','important');_cc.style.setProperty('overflow','visible','important');}
+                if(_cc){
+                    _cc.style.setProperty('position','absolute','important');
+                    _cc.style.setProperty('bottom','0','important');
+                    _cc.style.setProperty('left','0','important');
+                    _cc.style.setProperty('right','0','important');
+                    _cc.style.setProperty('top','auto','important');
+                    _cc.style.setProperty('height','auto','important');
+                    _cc.style.setProperty('max-height','65vh','important');
+                    _cc.style.setProperty('display','flex','important');
+                    _cc.style.setProperty('flex-direction','column','important');
+                    _cc.style.setProperty('z-index','20','important');
+                    _cc.style.setProperty('pointer-events','none','important');
+                    _cc.style.setProperty('background','transparent','important');
+                    _cc.style.setProperty('background-color','transparent','important');
+                    _cc.style.setProperty('background-image','none','important');
+                    _cc.style.setProperty('border','none','important');
+                    _cc.style.setProperty('box-shadow','none','important');
+                    _cc.style.setProperty('overflow','visible','important');
+                    _cc.style.setProperty('border-radius','0','important');
+                    _cc.style.setProperty('padding','0','important');
+                }
                 var _cf=document.getElementById('live-chat-feed');
                 if(_cf){_cf.style.setProperty('background','transparent','important');}
+                // Re-enable pointer events on the input row so typing still works
+                var _cir=document.querySelector('#viewer-panel-chat-card .live-chat-input-row');
+                if(_cir){_cir.style.setProperty('pointer-events','all','important');}
             }
             // Scroll to top so the info bar is visible (page may have been scrolled from a previous section)
             try { window.scrollTo({top:0,behavior:'instant'}); } catch(_) { window.scrollTo(0,0); }
