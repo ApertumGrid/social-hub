@@ -27940,6 +27940,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Enter fullscreen to hide browser chrome on mobile
             if(window.innerWidth<=900){
                 try{var _rfs=document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen;if(_rfs)_rfs.call(document.documentElement,{navigationUI:'hide'});}catch(e){}
+                // Exit fullscreen when broadcast chat input focused
+                var _bcFs=document.getElementById('live-broadcast-chat-input');
+                if(_bcFs&&!_bcFs._fsFocusBound){_bcFs._fsFocusBound=true;_bcFs.addEventListener('focus',function(){if(document.fullscreenElement||document.webkitFullscreenElement){try{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}catch(e){}}});}
                 // Shrink broadcaster video when soft keyboard opens
                 if(!window._vvHostHandler){
                     window._vvHostHandler=function(){
@@ -28748,6 +28751,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
                 var _cf=document.getElementById('live-chat-feed');
                 if(_cf){_cf.style.setProperty('flex','1','important');_cf.style.setProperty('max-height','none','important');_cf.style.setProperty('min-height','0','important');_cf.style.setProperty('background','rgba(9,7,21,0.98)','important');}
+                // Exit fullscreen when chat input focused — prevents autofill bar overlay in fullscreen
+                var _ciFs=document.getElementById('live-chat-input');
+                if(_ciFs&&!_ciFs._fsFocusBound){_ciFs._fsFocusBound=true;_ciFs.addEventListener('focus',function(){if(document.fullscreenElement||document.webkitFullscreenElement){try{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}catch(e){}}});}
                 // Shrink video when soft keyboard opens so the layout fits
                 if(!window._vvViewerHandler){
                     window._vvViewerHandler=function(){
@@ -29083,6 +29089,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const text  = input ? input.value.trim() : '';
         if (!text || !_watchingStreamId) return;
         if (input) input.value = '';
+        // Dismiss keyboard and re-enter fullscreen (called from Send button tap — user gesture)
+        if (input) input.blur();
+        if(window.innerWidth<=900){try{var _rfsSlc=document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen;if(_rfsSlc)_rfsSlc.call(document.documentElement,{navigationUI:'hide'});}catch(e){}}
 
         try {
             const resp = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/sendLiveChat', {
@@ -29108,6 +29117,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const text  = input ? input.value.trim() : '';
         if (!text || !currentStreamId) return;
         if (input) input.value = '';
+        // Dismiss keyboard and re-enter fullscreen (called from Send button tap — user gesture)
+        if (input) input.blur();
+        if(window.innerWidth<=900){try{var _rfsSlbc=document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen;if(_rfsSlbc)_rfsSlbc.call(document.documentElement,{navigationUI:'hide'});}catch(e){}}
         if (!window.db || !window.fs) return;
         const { collection, addDoc, serverTimestamp } = window.fs;
         await addDoc(collection(window.db, LIVE_CHAT_COL, currentStreamId, 'messages'), {
