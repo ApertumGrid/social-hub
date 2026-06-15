@@ -11372,7 +11372,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div class="live-chat-head">💬 Live Chat</div>
                             <div id="live-chat-feed" class="live-chat-feed"></div>
                             <div class="live-chat-input-row">
-                                <input type="text" id="live-chat-input" class="field" placeholder="Say something…" style="margin-top:0;" onkeydown="if(event.key==='Enter')sendLiveChat()">
+                                <input type="text" id="live-chat-input" class="field" placeholder="Say something…" style="margin-top:0;" autocomplete="off" autocorrect="off" autocapitalize="off" onkeydown="if(event.key==='Enter')sendLiveChat()">
                                 <button class="btn btn-purple btn-sm" onclick="sendLiveChat()">Send</button>
                                 <div id="viewer-icon-strip">
                                     <button class="his-btn" onclick="_openViewerGiftDrawer()" title="Send a Gift">🎁</button>
@@ -11957,7 +11957,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div class="live-chat-head">💬 Live Chat</div>
                             <div id="live-broadcast-chat-feed" class="live-chat-feed"></div>
                             <div class="live-chat-input-row">
-                                <input type="text" id="live-broadcast-chat-input" class="field" placeholder="Chat with your viewers…" style="margin-top:0;" onkeydown="if(event.key==='Enter')sendLiveChatBroadcaster()">
+                                <input type="text" id="live-broadcast-chat-input" class="field" placeholder="Chat with your viewers…" style="margin-top:0;" autocomplete="off" autocorrect="off" autocapitalize="off" onkeydown="if(event.key==='Enter')sendLiveChatBroadcaster()">
                                 <button class="btn btn-purple btn-sm" onclick="sendLiveChatBroadcaster()">Send</button>
                             </div>
                         </div>
@@ -27940,6 +27940,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Enter fullscreen to hide browser chrome on mobile
             if(window.innerWidth<=900){
                 try{var _rfs=document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen;if(_rfs)_rfs.call(document.documentElement,{navigationUI:'hide'});}catch(e){}
+                // Shrink broadcaster video when soft keyboard opens
+                if(!window._vvHostHandler){
+                    window._vvHostHandler=function(){
+                        if(!document.body.classList.contains('is-hosting'))return;
+                        var _vvH=window.visualViewport?window.visualViewport.height:window.innerHeight;
+                        var _kbH=window.innerHeight-_vvH;
+                        var _bcVc=document.getElementById('live-broadcaster-video-container');
+                        if(!_bcVc)return;
+                        if(_kbH>150){_bcVc.style.setProperty('height','130px','important');_bcVc.style.setProperty('min-height','100px','important');_bcVc.style.setProperty('max-height','130px','important');}
+                        else{_bcVc.style.removeProperty('height');_bcVc.style.removeProperty('min-height');_bcVc.style.removeProperty('max-height');}
+                    };
+                    if(window.visualViewport)window.visualViewport.addEventListener('resize',window._vvHostHandler);
+                    else window.addEventListener('resize',window._vvHostHandler);
+                }
             }
             // Show camera flip unconditionally on mobile — camera permission is granted by this point
             if (window.innerWidth <= 768) {
@@ -28241,6 +28255,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             isHosting = false;
             document.body.classList.remove('is-hosting');
             if(document.fullscreenElement||document.webkitFullscreenElement){try{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}catch(e){}}
+            if(window._vvHostHandler){if(window.visualViewport)window.visualViewport.removeEventListener('resize',window._vvHostHandler);else window.removeEventListener('resize',window._vvHostHandler);window._vvHostHandler=null;}
         } finally {
             _isStartingLive = false; // always release mutex — success or failure
         }
@@ -28259,6 +28274,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         isHosting       = false;
         document.body.classList.remove('is-hosting');
         if(document.fullscreenElement||document.webkitFullscreenElement){try{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}catch(e){}}
+        if(window._vvHostHandler){if(window.visualViewport)window.visualViewport.removeEventListener('resize',window._vvHostHandler);else window.removeEventListener('resize',window._vvHostHandler);window._vvHostHandler=null;}
         _isStartingLive = false; // reset mutex so a new stream can start after
         _isJoiningLive  = false;
 
@@ -28732,6 +28748,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
                 var _cf=document.getElementById('live-chat-feed');
                 if(_cf){_cf.style.setProperty('flex','1','important');_cf.style.setProperty('max-height','none','important');_cf.style.setProperty('min-height','0','important');_cf.style.setProperty('background','rgba(9,7,21,0.98)','important');}
+                // Shrink video when soft keyboard opens so the layout fits
+                if(!window._vvViewerHandler){
+                    window._vvViewerHandler=function(){
+                        if(!document.body.classList.contains('is-watching'))return;
+                        var _vvH=window.visualViewport?window.visualViewport.height:window.innerHeight;
+                        var _kbH=window.innerHeight-_vvH;
+                        var _vcKb=document.getElementById('live-remote-video-container');
+                        if(!_vcKb)return;
+                        if(_kbH>150){_vcKb.style.setProperty('height','130px','important');_vcKb.style.setProperty('min-height','100px','important');_vcKb.style.setProperty('max-height','130px','important');}
+                        else{_vcKb.style.setProperty('height','360px','important');_vcKb.style.setProperty('min-height','240px','important');_vcKb.style.setProperty('max-height','360px','important');}
+                    };
+                    if(window.visualViewport)window.visualViewport.addEventListener('resize',window._vvViewerHandler);
+                    else window.addEventListener('resize',window._vvViewerHandler);
+                }
             }
             // Scroll to top so the info bar is visible (page may have been scrolled from a previous section)
             try { window.scrollTo({top:1,behavior:'instant'}); } catch(_) { window.scrollTo(0,1); }
@@ -28871,6 +28901,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Exit fullscreen when leaving stream
             if(document.fullscreenElement||document.webkitFullscreenElement){
                 try{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}catch(e){}
+            }
+            // Remove keyboard resize handler
+            if(window._vvViewerHandler){
+                if(window.visualViewport)window.visualViewport.removeEventListener('resize',window._vvViewerHandler);
+                else window.removeEventListener('resize',window._vvViewerHandler);
+                window._vvViewerHandler=null;
             }
         }
         hide('live-player-wrap');
@@ -30415,6 +30451,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         isHosting = false;
         document.body.classList.remove('is-hosting');
         if(document.fullscreenElement||document.webkitFullscreenElement){try{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}catch(e){}}
+        if(window._vvHostHandler){if(window.visualViewport)window.visualViewport.removeEventListener('resize',window._vvHostHandler);else window.removeEventListener('resize',window._vvHostHandler);window._vvHostHandler=null;}
     }
 
     window.addEventListener('beforeunload', function() {
