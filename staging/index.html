@@ -27331,7 +27331,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const _rdVR  = roomSnap.data();
         if (_rdVR.stageRequestsOpen === false) { showToast('Host has closed stage requests'); return; }
         const price = parseFloat(_rdVR.handRaisePrice || 1);
-        if (parseFloat(window._liveAvailableStars || 0) < price) { showToast('Not enough Stars'); return; }
+        const _vrMyBal = parseFloat(purchasedStars || 0) + parseFloat(creatorEarnings || 0);
+        if (_vrMyBal < price) { showToast('Not enough Stars — need ' + price + ' ★'); return; }
         try {
             const res  = await fetch(VR_CF_BASE + 'raiseHandVR', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -27339,9 +27340,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             });
             const data = await res.json();
             if (data.error) { showToast(data.error); return; }
-            showToast('Hand raised! Waiting for host…');
+            showToast('Stage request sent! Waiting for host to let you in…');
             const btn = document.getElementById('vr-ctrl-hand');
-            if (btn) { btn.style.opacity = '0.45'; btn.style.pointerEvents = 'none'; }
+            if (btn) { btn.style.opacity = '0.45'; btn.style.pointerEvents = 'none'; btn.querySelector('#vr-hand-lbl').textContent = 'Requested'; }
         } catch(e) { showToast('Could not raise hand'); }
     };
 
@@ -27514,10 +27515,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (data.error) { showToast(data.error); return; }
             // Write ledger entries client-side — same path as follow/comment/reply (reliable)
             const _VR_TIERS = {
-                spark:   { icon:'⚡', name:'Spark',   cost:1  },
-                fire:    { icon:'🔥', name:'Fire',    cost:5  },
-                diamond: { icon:'💎', name:'Diamond', cost:20 },
-                rocket:  { icon:'🚀', name:'Rocket',  cost:50 }
+                bloom:   { icon:'🌹', name:'Bloom',   cost:1     },
+                blaze:   { icon:'🔥', name:'Blaze',   cost:5     },
+                rush:    { icon:'⚡', name:'Rush',    cost:10    },
+                crown:   { icon:'👑', name:'Crown',   cost:25    },
+                burst:   { icon:'🎊', name:'Burst',   cost:50    },
+                storm:   { icon:'🌩️', name:'Storm',   cost:100   },
+                dragon:  { icon:'🐉', name:'Dragon',  cost:250   },
+                comet:   { icon:'☄️', name:'Comet',   cost:500   },
+                fortune: { icon:'💰', name:'Fortune', cost:1000  },
+                phoenix: { icon:'🦅', name:'Phoenix', cost:5000  },
+                eclipse: { icon:'🌑', name:'Eclipse', cost:10000 },
+                aurora:  { icon:'🌌', name:'Aurora',  cost:25000 },
+                cosmos:  { icon:'🌠', name:'Cosmos',  cost:35000 },
+                reign:   { icon:'💎', name:'Reign',   cost:45000 },
+                genesis: { icon:'✨', name:'Genesis', cost:50000 }
             };
             const _t = _VR_TIERS[tierKey];
             if (_t && window.logTransaction && _vrGiftTarget) {
@@ -27942,7 +27954,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 try{var _rfs=document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen;if(_rfs)_rfs.call(document.documentElement,{navigationUI:'hide'});}catch(e){}
                 // Exit fullscreen when broadcast chat input focused
                 var _bcFs=document.getElementById('live-broadcast-chat-input');
-                if(_bcFs&&!_bcFs._fsFocusBound){_bcFs._fsFocusBound=true;_bcFs.addEventListener('focus',function(){if(document.fullscreenElement||document.webkitFullscreenElement){try{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}catch(e){}}});}
+                if(_bcFs&&!_bcFs._fsFocusBound){_bcFs._fsFocusBound=true;_bcFs.addEventListener('focus',function(){if(document.fullscreenElement||document.webkitFullscreenElement){try{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}catch(e){}}}); _bcFs.addEventListener('blur',function(){setTimeout(function(){if(!document.fullscreenElement&&!document.webkitFullscreenElement&&document.body.classList.contains('is-hosting')){try{var _r=document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen;if(_r)_r.call(document.documentElement,{navigationUI:'hide'});}catch(e){}}},200);});}
                 // Shrink broadcaster video when soft keyboard opens
                 if(!window._vvHostHandler){
                     window._vvHostHandler=function(){
@@ -28014,8 +28026,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                         const cohostPip = document.createElement('div');
                         cohostPip.id = 'cohost-pip-host';
-                        var _pipSide = (window.innerWidth <= 700) ? 'left:10px;right:auto;' : 'right:10px;left:auto;';
-                        cohostPip.style.cssText = 'position:absolute;bottom:90px;' + _pipSide + 'width:140px;height:90px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+                        var _isMobPip = (window.innerWidth <= 700);
+                        var _pipPos = _isMobPip ? 'top:8px;left:8px;bottom:auto;right:auto;width:120px;height:80px;' : 'bottom:90px;right:10px;left:auto;width:140px;height:90px;';
+                        cohostPip.style.cssText = 'position:absolute;' + _pipPos + 'border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
 
                         const label = document.createElement('div');
                         label.style.cssText = 'position:absolute;top:2px;left:4px;font-size:0.55rem;color:#fff;background:rgba(124,92,191,0.8);padding:1px 5px;border-radius:4px;z-index:1;';
@@ -28065,8 +28078,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                 showToast('⛶ Co-host spotlighted for all viewers');
                             } else {
                                 spotBtn.textContent = '⛶ Spotlight';
-                                var _pipSideR = (window.innerWidth <= 700) ? 'left:10px;right:auto;' : 'right:10px;left:auto;';
-                                cohostPip.style.cssText = 'position:absolute;bottom:90px;' + _pipSideR + 'width:140px;height:90px;border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
+                                var _isMobPipR = (window.innerWidth <= 700);
+                                var _pipPosR = _isMobPipR ? 'top:8px;left:8px;bottom:auto;right:auto;width:120px;height:80px;' : 'bottom:90px;right:10px;left:auto;width:140px;height:90px;';
+                                cohostPip.style.cssText = 'position:absolute;' + _pipPosR + 'border-radius:8px;overflow:hidden;border:2px solid var(--purple);z-index:20;background:#000;';
                                 spotBtn.style.cssText = 'position:absolute;bottom:2px;left:4px;background:rgba(124,92,191,0.85);border:none;color:#fff;border-radius:4px;padding:2px 7px;font-size:0.55rem;cursor:pointer;z-index:2;white-space:nowrap;';
                                 showToast('⊠ Co-host restored to PiP');
                             }
@@ -28753,7 +28767,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if(_cf){_cf.style.setProperty('flex','1','important');_cf.style.setProperty('max-height','none','important');_cf.style.setProperty('min-height','0','important');_cf.style.setProperty('background','rgba(9,7,21,0.98)','important');}
                 // Exit fullscreen when chat input focused — prevents autofill bar overlay in fullscreen
                 var _ciFs=document.getElementById('live-chat-input');
-                if(_ciFs&&!_ciFs._fsFocusBound){_ciFs._fsFocusBound=true;_ciFs.addEventListener('focus',function(){if(document.fullscreenElement||document.webkitFullscreenElement){try{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}catch(e){}}});}
+                if(_ciFs&&!_ciFs._fsFocusBound){_ciFs._fsFocusBound=true;_ciFs.addEventListener('focus',function(){if(document.fullscreenElement||document.webkitFullscreenElement){try{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}catch(e){}}}); _ciFs.addEventListener('blur',function(){setTimeout(function(){if(!document.fullscreenElement&&!document.webkitFullscreenElement&&document.body.classList.contains('is-watching')){try{var _r=document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen;if(_r)_r.call(document.documentElement,{navigationUI:'hide'});}catch(e){}}},200);});}
                 // Shrink video when soft keyboard opens so the layout fits
                 if(!window._vvViewerHandler){
                     window._vvViewerHandler=function(){
@@ -29064,20 +29078,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         try {
             const { doc, updateDoc, increment, collection, addDoc, serverTimestamp } = window.fs;
 
-            // Increment hype count — FREE, no star cost
+            // Increment hype count — FREE, no star cost, no chat message
             updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
                 hypeCount: increment(1)
             }).catch(() => {});
-
-            // Post chat message — throttled to once per 8s so it doesn't flood chat
-            if (!window._lastHypeChat || now - window._lastHypeChat > 8000) {
-                window._lastHypeChat = now;
-                addDoc(collection(window.db, LIVE_CHAT_COL, _watchingStreamId, 'messages'), {
-                    author: userHandle, avatar: userAvatar,
-                    text: `⚡ ${userHandle} hyped the stream!`,
-                    ts: serverTimestamp(), isSystem: false, isHype: true
-                }).catch(() => {});
-            }
         } catch(e) {
             console.warn('[Live] Hype error:', e);
         }
@@ -30162,10 +30166,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 // Restore selfPip to floating corner pip — undo any flex/grid parenting
                 selfPip.style.cssText = [
                     'position:absolute',
-                    'bottom:60px',
-                    'right:10px',
-                    'width:160px',
-                    'height:100px',
+                    'top:8px',
+                    'left:8px',
+                    'width:120px',
+                    'height:80px',
                     'border-radius:8px',
                     'overflow:hidden',
                     'border:2px solid #e03e3e',
@@ -30998,10 +31002,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 selfPip.id = 'cohost-self-pip';
                 selfPip.style.cssText = [
                     'position:absolute',
-                    'bottom:60px',
-                    'right:10px',
-                    'width:160px',
-                    'height:100px',
+                    'top:8px',
+                    'left:8px',
+                    'width:120px',
+                    'height:80px',
                     'border-radius:8px',
                     'overflow:hidden',
                     'border:2px solid #e03e3e',
@@ -34684,10 +34688,14 @@ function _copyReplayLink(link) {
             <button class="vr-gift-close-btn" onclick="vrCloseGiftPicker()">×</button>
         </div>
         <div class="vr-gift-tiles">
-            <div class="vr-gift-tile" onclick="vrSendGift('spark')"><span class="gi">⚡</span><span>Spark</span><span style="color:var(--gold);">1★</span></div>
-            <div class="vr-gift-tile" onclick="vrSendGift('fire')"><span class="gi">🔥</span><span>Fire</span><span style="color:var(--gold);">5★</span></div>
-            <div class="vr-gift-tile" onclick="vrSendGift('diamond')"><span class="gi">💎</span><span>Diamond</span><span style="color:var(--gold);">20★</span></div>
-            <div class="vr-gift-tile" onclick="vrSendGift('rocket')"><span class="gi">🚀</span><span>Rocket</span><span style="color:var(--gold);">50★</span></div>
+            <div class="vr-gift-tile" onclick="vrSendGift('bloom')"><span class="gi">🌹</span><span>Bloom</span><span style="color:var(--gold);">1★</span></div>
+            <div class="vr-gift-tile" onclick="vrSendGift('blaze')"><span class="gi">🔥</span><span>Blaze</span><span style="color:var(--gold);">5★</span></div>
+            <div class="vr-gift-tile" onclick="vrSendGift('rush')"><span class="gi">⚡</span><span>Rush</span><span style="color:var(--gold);">10★</span></div>
+            <div class="vr-gift-tile" onclick="vrSendGift('crown')"><span class="gi">👑</span><span>Crown</span><span style="color:var(--gold);">25★</span></div>
+            <div class="vr-gift-tile" onclick="vrSendGift('burst')"><span class="gi">🎊</span><span>Burst</span><span style="color:var(--gold);">50★</span></div>
+            <div class="vr-gift-tile" onclick="vrSendGift('storm')"><span class="gi">🌩️</span><span>Storm</span><span style="color:var(--gold);">100★</span></div>
+            <div class="vr-gift-tile" onclick="vrSendGift('dragon')"><span class="gi">🐉</span><span>Dragon</span><span style="color:var(--gold);">250★</span></div>
+            <div class="vr-gift-tile" onclick="vrSendGift('comet')"><span class="gi">☄️</span><span>Comet</span><span style="color:var(--gold);">500★</span></div>
         </div>
     </div>
 
@@ -34713,10 +34721,10 @@ function _copyReplayLink(link) {
             <span class="vr-ctrl-icon"><span class="vci">🎙</span></span>
             <span class="vr-ctrl-lbl" id="vr-mute-lbl">Mute</span>
         </button>
-        <!-- Audience-only: raise hand -->
+        <!-- Audience-only: join stage -->
         <button class="vr-ctrl hand" id="vr-ctrl-hand" onclick="vrRaiseHand()">
-            <span class="vr-ctrl-icon"><span class="vci">✋</span></span>
-            <span class="vr-ctrl-lbl" id="vr-hand-lbl">Raise Hand</span>
+            <span class="vr-ctrl-icon"><span class="vci">🎤</span></span>
+            <span class="vr-ctrl-lbl" id="vr-hand-lbl">Join Stage</span>
         </button>
         <!-- Gift -->
         <button class="vr-ctrl" id="vr-ctrl-gift" onclick="vrToggleGiftPicker()">
