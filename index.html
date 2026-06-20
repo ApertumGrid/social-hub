@@ -1245,6 +1245,12 @@
         .lsib-right{display:flex;align-items:center;gap:8px;flex-shrink:0;}
         .lsib-follow-btn{background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;font-size:.72rem;font-weight:800;padding:6px 14px;border-radius:20px;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(124,58,237,.35);font-family:inherit;}
         .lsib-follow-btn:active{transform:scale(.95);}
+        .lsib-left-heart{display:flex;align-items:center;flex-shrink:0;}
+        .lsib-heart-btn{background:none;border:none;font-size:1.15rem;cursor:pointer;padding:2px 4px;border-radius:6px;line-height:1;transition:transform .15s,opacity .2s;color:inherit;}
+        .lsib-heart-btn:active{transform:scale(.82);}
+        .lsib-heart-btn.hearted{opacity:.35;cursor:default;pointer-events:none;}
+        @keyframes heart-pop{0%{transform:scale(1)}40%{transform:scale(1.55)}70%{transform:scale(0.9)}100%{transform:scale(1)}}
+        .lsib-heart-btn.heart-pop{animation:heart-pop .35s cubic-bezier(.34,1.56,.64,1) both;}
         .lsib-viewers{font-size:.75rem;color:rgba(255,255,255,.55);white-space:nowrap;}
 
         .live-stream-meta {
@@ -2727,6 +2733,56 @@
         .live-lb-amt  { font-family:var(--font-mono); font-size:0.72rem; font-weight:700; color:var(--gold); }
 
         /* ── LIVE LEADERBOARD BOTTOM SHEET ─────────────────────────────────── */
+        /* ── Creator profile popup ── */
+        #cp-scrim{position:fixed;inset:0;z-index:8996;background:rgba(0,0,0,0.6);display:none;backdrop-filter:blur(2px);}
+        #cp-scrim.open{display:block;}
+        #cp-sheet{position:fixed;bottom:0;left:0;right:0;z-index:8997;background:linear-gradient(160deg,#0f0b20 0%,#0a0d18 100%);border-top:1px solid rgba(124,92,191,0.3);border-radius:22px 22px 0 0;padding:0 0 env(safe-area-inset-bottom,12px);max-height:80vh;overflow-y:auto;transform:translateY(100%);transition:transform .32s cubic-bezier(.34,1.2,.64,1);}
+        #cp-sheet.open{transform:translateY(0);}
+        .cp-handle{width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.18);margin:12px auto 8px;}
+        .cp-close{position:absolute;top:14px;right:16px;background:rgba(255,255,255,.08);border:none;color:rgba(255,255,255,.6);font-size:.85rem;width:28px;height:28px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+        .cp-avatar-wrap{display:flex;justify-content:center;margin:8px 0 12px;}
+        .cp-avatar{width:84px;height:84px;border-radius:50%;object-fit:cover;border:3px solid rgba(124,92,191,.5);box-shadow:0 0 24px rgba(124,92,191,.3);}
+        .cp-name{text-align:center;font-size:1.15rem;font-weight:800;color:#fff;padding:0 48px 2px;}
+        .cp-addr{text-align:center;font-size:.7rem;color:rgba(255,255,255,.35);font-family:var(--font-mono,monospace);margin-bottom:8px;}
+        .cp-bio{text-align:center;font-size:.82rem;color:rgba(255,255,255,.6);line-height:1.45;padding:0 24px;margin-bottom:14px;min-height:0;max-height:60px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;}
+        .cp-bio:empty{display:none;}
+        .cp-stats{display:flex;align-items:center;justify-content:center;gap:0;margin:0 16px 18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:12px 0;}
+        .cp-stat{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;}
+        .cp-stat-val{font-size:1rem;font-weight:800;color:#fff;}
+        .cp-stat-lbl{font-size:.65rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.6px;}
+        .cp-stat-divider{width:1px;height:32px;background:rgba(255,255,255,.1);}
+        .cp-follow-btn{display:block;margin:0 16px 16px;width:calc(100% - 32px);padding:14px;background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;font-size:.95rem;font-weight:800;border-radius:14px;cursor:pointer;letter-spacing:.3px;}
+        .cp-follow-btn:active{transform:scale(.97);}
+        .cp-follow-btn.following{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);}
+        /* ── Viewer Rankings sheet ── */
+        #vr-scrim{position:fixed;inset:0;z-index:8996;background:rgba(0,0,0,0.6);display:none;backdrop-filter:blur(2px);}
+        #vr-scrim.open{display:block;}
+        #vr-sheet{position:fixed;bottom:0;left:0;right:0;z-index:8997;background:linear-gradient(160deg,#0f0b20 0%,#0a0d18 100%);border-top:1px solid rgba(124,92,191,0.3);border-radius:22px 22px 0 0;padding:0 0 env(safe-area-inset-bottom,0);max-height:78vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .32s cubic-bezier(.34,1.2,.64,1);}
+        #vr-sheet.open{transform:translateY(0);}
+        .vr-header{display:flex;align-items:center;justify-content:center;padding:4px 16px 12px;flex-shrink:0;position:relative;}
+        .vr-title{font-size:1rem;font-weight:800;color:#fff;letter-spacing:.2px;}
+        #vr-list{flex:1;overflow-y:auto;padding:0 16px 8px;}
+        .vr-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05);}
+        .vr-row:last-child{border-bottom:none;}
+        .vr-rank{width:22px;text-align:center;font-size:.85rem;font-weight:900;flex-shrink:0;}
+        .vr-rank.r1{color:#FFD700;font-size:1rem;}
+        .vr-rank.r2{color:#C0C0C0;font-size:.95rem;}
+        .vr-rank.r3{color:#CD7F32;font-size:.9rem;}
+        .vr-av{width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid rgba(255,255,255,.1);}
+        .vr-info{flex:1;min-width:0;}
+        .vr-name{font-size:.88rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .vr-stars{font-size:.72rem;color:rgba(255,255,255,.4);margin-top:1px;}
+        .vr-score{font-size:.88rem;font-weight:800;color:rgba(255,200,50,.9);flex-shrink:0;}
+        .vr-empty-msg{text-align:center;color:rgba(255,255,255,.4);font-size:.85rem;padding:28px 16px;}
+        /* Pinned self row */
+        #vr-self-row{flex-shrink:0;border-top:1px solid rgba(124,92,191,.25);background:rgba(124,92,191,.08);padding:10px 16px;}
+        .vr-self-inner{display:flex;align-items:center;gap:10px;}
+        .vr-self-av{width:38px;height:38px;border-radius:50%;object-fit:cover;border:2px solid rgba(124,92,191,.4);flex-shrink:0;}
+        .vr-self-info{flex:1;min-width:0;}
+        .vr-self-name{font-size:.85rem;font-weight:700;color:#fff;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .vr-self-hint{font-size:.7rem;color:rgba(255,255,255,.4);}
+        .vr-gift-btn{background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;font-size:.78rem;font-weight:800;padding:7px 14px;border-radius:20px;cursor:pointer;white-space:nowrap;flex-shrink:0;}
+        .vr-gift-btn:active{transform:scale(.95);}
         #live-lb-scrim { position:fixed; inset:0; z-index:8998; background:rgba(0,0,0,0.55); display:none; }
         #live-lb-scrim.open { display:block; }
         #live-lb-panel { position:fixed; bottom:0; left:0; right:0; z-index:8999; background:rgba(13,10,26,0.98); backdrop-filter:blur(18px); border-top:1px solid rgba(124,92,191,0.3); border-radius:20px 20px 0 0; padding:0 0 env(safe-area-inset-bottom,0); max-height:72vh; display:flex; flex-direction:column; transform:translateY(100%); transition:transform 0.32s cubic-bezier(0.34,1.2,0.64,1); }
@@ -11302,17 +11358,19 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         </div>
                         <!-- Stream info bar — outside the video box -->
                         <div id="live-stream-info-bar">
-                            <div class="lsib-left">
+                            <div class="lsib-left" onclick="window._openCreatorProfile()" style="cursor:pointer;">
                                 <img id="lsib-av" class="lsib-av" src="" onerror="this.style.opacity='.2'">
                                 <span id="lsib-name" class="lsib-name"></span>
                                 <span class="lsib-live">LIVE</span>
-                                <span class="lsib-hypes" id="lsib-hypes">❤️ 0</span>
+                            </div>
+                            <div class="lsib-left-heart">
+                                <button id="lsib-heart-btn" class="lsib-heart-btn" onclick="window._heartCreator()" title="Support this LIVE (1 ★)">❤️</button>
                             </div>
                             <div class="lsib-right">
                                 <button id="lsib-follow" class="lsib-follow-btn" onclick="window._lsibFollow()" style="display:none">+ Follow</button>
                                 <button class="lb-crown-btn" onclick="openLiveLeaderboard()" title="Top Gifters">👑</button>
                                 <button class="lb-crown-btn" onclick="openLiveShare()" title="Share stream">↗</button>
-                                <span id="lsib-viewers" class="lsib-viewers">👁 0</span>
+                                <span id="lsib-viewers" class="lsib-viewers" onclick="window._openViewerRankings()" style="cursor:pointer;">👁 0</span>
                             </div>
                         </div>
                         <div class="live-stream-box" id="live-remote-video-container">
@@ -28862,6 +28920,22 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     var isF=typeof window._isFollowing==='function'?window._isFollowing(hostA):false;
                     fb.style.display=(!isOwn&&!isF)?'':'none';
                 }
+                // Heart button: show for viewers; dim if already used within 24h
+                var _hb=document.getElementById('lsib-heart-btn');
+                if(_hb){
+                    var _myAH=(window.userAddress||'').toLowerCase();
+                    var _hostAH=(streamData.hostAddr||'').toLowerCase();
+                    var _isOwnStream=_myAH&&_myAH===_hostAH;
+                    if(_isOwnStream){
+                        _hb.style.display='none';
+                    } else {
+                        _hb.style.display='';
+                        _hb.classList.remove('hearted','heart-pop');
+                        var _hGateKey='sh_heart_'+_hostAH+'_'+_myAH;
+                        var _lastH=parseInt(localStorage.getItem(_hGateKey)||'0',10);
+                        if(Date.now()-_lastH < 24*60*60*1000) _hb.classList.add('hearted');
+                    }
+                }
                 var vCon=document.getElementById('live-remote-video-container');
                 if(window.innerWidth<=900){
                     var _lp2=document.getElementById('live-player-wrap');
@@ -28955,6 +29029,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (_gcbEl && _gcbEl.parentNode) _gcbEl.parentNode.removeChild(_gcbEl);
         var _cbEl2 = document.getElementById('live-combo-counter');
         if (_cbEl2) _cbEl2.classList.remove('combo-show');
+        // Reset heart button for next stream
+        var _hbLeave = document.getElementById('lsib-heart-btn');
+        if (_hbLeave){ _hbLeave.classList.remove('hearted','heart-pop'); _hbLeave.style.display=''; }
+        // Close creator profile popup if open
+        if(typeof window._closeCreatorProfile === 'function') window._closeCreatorProfile();
+        // Close viewer rankings if open
+        if(typeof window._closeViewerRankings === 'function') window._closeViewerRankings();
         if(window._vcStyleObs){window._vcStyleObs.disconnect();window._vcStyleObs=null;}
         if(window._rvStyleObs){window._rvStyleObs.disconnect();window._rvStyleObs=null;}
         if(window._rvChildObs){window._rvChildObs.disconnect();window._rvChildObs=null;}
@@ -29050,6 +29131,73 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         window._prevLiveStarsEarned = 0;
     };
 
+    // ── Info bar heart button ─────────────────────────────────────
+    window._heartCreator = async function(){
+        if(!_watchingStreamId || !window._lsibHostAddr) return;
+        var viewerAddr = (window.userAddress || '').toLowerCase();
+        if(!viewerAddr){ showToast('Connect your wallet to support creators.'); return; }
+        if(viewerAddr === window._lsibHostAddr){ showToast("You can't heart your own stream."); return; }
+
+        var btn = document.getElementById('lsib-heart-btn');
+
+        // Fast local 24h gate — avoids a CF round-trip if already done today
+        var _gateKey = 'sh_heart_' + window._lsibHostAddr + '_' + viewerAddr;
+        var _lastHeart = parseInt(localStorage.getItem(_gateKey) || '0', 10);
+        if(Date.now() - _lastHeart < 24 * 60 * 60 * 1000){
+            showToast('Already supported today ❤️');
+            if(btn){ btn.classList.add('hearted'); btn.classList.remove('heart-pop'); }
+            return;
+        }
+
+        // Balance check
+        var avail = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
+        if(avail < 1){ showToast('Need at least 1 ★ to send a heart.'); return; }
+
+        // Optimistic: animate immediately
+        if(btn){ btn.classList.add('heart-pop'); void btn.offsetWidth; }
+
+        try {
+            var resp = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/heartCreator', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    streamId:      _watchingStreamId,
+                    viewerAddress: viewerAddr,
+                    viewerHandle:  window._liveUserHandle  || '',
+                    viewerAvatar:  window._liveUserAvatar  || ''
+                })
+            });
+            var data = await resp.json();
+
+            if(data.alreadyDone){
+                showToast('Already supported today ❤️');
+                localStorage.setItem(_gateKey, Date.now().toString());
+                if(btn){ btn.classList.add('hearted'); }
+                return;
+            }
+            if(!data.success){
+                showToast(data.error || 'Heart failed. Try again.');
+                if(btn){ btn.classList.remove('heart-pop'); }
+                return;
+            }
+
+            // Success
+            localStorage.setItem(_gateKey, Date.now().toString());
+            if(typeof window._liveTotalSpendable === 'number'){
+                window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - 1);
+                window._liveAvailableStars = window._liveTotalSpendable;
+                if(typeof updateUI === 'function') updateUI();
+            }
+            if(btn){ btn.classList.add('hearted'); }
+            showToast('❤️ Supported! Creator gets ' + (data.creatorCut || 0.8).toFixed(1) + ' ★');
+
+        } catch(e){
+            console.warn('[Heart]', e);
+            showToast('Heart failed. Please try again.');
+            if(btn){ btn.classList.remove('heart-pop'); }
+        }
+    };
+
     // ── Info bar follow button ────────────────────────────────────
     window._lsibHostAddr = null;
     window._lsibFollow = async function(){
@@ -29069,6 +29217,209 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 ts: _st()
             }).catch(function(){});
         }
+    };
+
+    // ── Creator profile popup ─────────────────────────────────────
+    var _cpHostAddr = null;
+
+    window._openCreatorProfile = async function() {
+        if(!window._lsibHostAddr) return;
+        _cpHostAddr = window._lsibHostAddr;
+
+        var sheet  = document.getElementById('cp-sheet');
+        var scrim  = document.getElementById('cp-scrim');
+        if(!sheet || !scrim) return;
+
+        // Populate immediately from data already in the info bar
+        var nameEl = document.getElementById('lsib-name');
+        var avEl   = document.getElementById('lsib-av');
+        setText('cp-name', nameEl ? nameEl.textContent : 'Creator');
+        var addrShort = _cpHostAddr.slice(0,6) + '…' + _cpHostAddr.slice(-4);
+        setText('cp-addr', addrShort);
+        var cpAv = document.getElementById('cp-avatar');
+        if(cpAv) cpAv.src = avEl ? avEl.src : '';
+        setText('cp-bio', '');
+        setText('cp-followers', '—');
+        setText('cp-following', '—');
+        setText('cp-stars', '—');
+
+        // Follow button state
+        var fb = document.getElementById('cp-follow-btn');
+        var myA = (window.userAddress || '').toLowerCase();
+        var isOwn = myA && myA === _cpHostAddr;
+        if(fb) fb.style.display = isOwn ? 'none' : '';
+        var isFollowing = typeof window._isFollowing === 'function' ? window._isFollowing(_cpHostAddr) : false;
+        if(fb) { fb.textContent = isFollowing ? '✓ Following' : '+ Follow'; fb.classList.toggle('following', isFollowing); }
+
+        // Show immediately
+        scrim.classList.add('open');
+        setTimeout(function(){ sheet.classList.add('open'); }, 10);
+
+        // Lazy-load bio, followers, following, creator stars
+        if(!window.db || !window.fs) return;
+        try {
+            var { getDoc, doc, query, collection, where, getDocs } = window.fs;
+
+            // User profile (bio, displayName, avatar override)
+            var uSnap = await getDoc(doc(window.db, 'users', _cpHostAddr));
+            if(uSnap.exists()) {
+                var ud = uSnap.data();
+                if(ud.displayName) setText('cp-name', ud.displayName);
+                if(ud.bio)        { setText('cp-bio', ud.bio); }
+                if(ud.avatarUrl && cpAv) cpAv.src = ud.avatarUrl;
+            }
+
+            // Follower count
+            var follQ = query(collection(window.db, 'social_graph'), where('following', '==', _cpHostAddr));
+            var follSnap = await getDocs(follQ);
+            setText('cp-followers', _fmtNum(follSnap.size));
+
+            // Following count
+            var fngQ = query(collection(window.db, 'social_graph'), where('follower', '==', _cpHostAddr));
+            var fngSnap = await getDocs(fngQ);
+            setText('cp-following', _fmtNum(fngSnap.size));
+
+            // Creator stars earned (from user_balances)
+            var balSnap = await getDoc(doc(window.db, 'user_balances', _cpHostAddr));
+            if(balSnap.exists()) {
+                var bald = balSnap.data();
+                var earned = parseFloat(bald.creatorStars || 0);
+                setText('cp-stars', _fmtNum(Math.round(earned)) + ' ★');
+            }
+        } catch(e) { console.warn('[CreatorProfile]', e); }
+    };
+
+    function _fmtNum(n) {
+        if(n >= 1000000) return (n/1000000).toFixed(1).replace(/\.0$/,'') + 'M';
+        if(n >= 1000)    return (n/1000).toFixed(1).replace(/\.0$/,'') + 'K';
+        return String(n);
+    }
+
+    window._closeCreatorProfile = function() {
+        var sheet = document.getElementById('cp-sheet');
+        var scrim = document.getElementById('cp-scrim');
+        if(sheet) sheet.classList.remove('open');
+        if(scrim) scrim.classList.remove('open');
+        _cpHostAddr = null;
+    };
+
+    window._cpFollow = async function() {
+        if(!_cpHostAddr) return;
+        var fb = document.getElementById('cp-follow-btn');
+        if(fb) fb.disabled = true;
+        if(typeof window._battleFollow === 'function') await window._battleFollow(_cpHostAddr);
+        var isNowFollowing = typeof window._isFollowing === 'function' ? window._isFollowing(_cpHostAddr) : false;
+        if(fb) {
+            fb.textContent = isNowFollowing ? '✓ Following' : '+ Follow';
+            fb.classList.toggle('following', isNowFollowing);
+            fb.disabled = false;
+        }
+        // Sync the main info bar follow button too
+        var mainFb = document.getElementById('lsib-follow');
+        if(mainFb) mainFb.style.display = 'none';
+        // Update follower count optimistically
+        var follEl = document.getElementById('cp-followers');
+        if(follEl && follEl.textContent !== '—') {
+            var cur = parseInt((follEl.textContent || '0').replace(/[KM]/,'')) || 0;
+            // Simple increment — exact number refreshes on next open
+        }
+    };
+
+    // ── Viewer Rankings sheet ─────────────────────────────────────
+    window._openViewerRankings = async function() {
+        var streamId = _watchingStreamId;
+        if(!streamId) return;
+
+        var sheet = document.getElementById('vr-sheet');
+        var scrim = document.getElementById('vr-scrim');
+        var list  = document.getElementById('vr-list');
+        var empty = document.getElementById('vr-empty');
+        var selfRow = document.getElementById('vr-self-row');
+        if(!sheet || !scrim) return;
+
+        // Show immediately with loading state
+        list.innerHTML = '<div class="vr-empty-msg">Loading…</div>';
+        if(empty)   empty.style.display   = 'none';
+        if(selfRow) selfRow.style.display = 'none';
+        scrim.classList.add('open');
+        setTimeout(function(){ sheet.classList.add('open'); }, 10);
+
+        if(!window.db || !window.fs) return;
+        try {
+            var { collection, getDocs, query, orderBy, limit } = window.fs;
+            var q = query(
+                collection(window.db, 'live_streams', streamId, 'top_gifters'),
+                orderBy('totalStars', 'desc'),
+                limit(20)
+            );
+            var snap = await getDocs(q);
+
+            var myAddr = (window.userAddress || '').toLowerCase();
+            var myHandle = window._liveUserHandle || '';
+            var myAvatar = window._liveUserAvatar || '';
+            var myRank = -1;
+            var myEntry = null;
+            var rankColors = ['r1','r2','r3'];
+            var rows = [];
+
+            snap.forEach(function(doc, idx) {
+                var d = doc.data();
+                var rank = rows.length + 1;
+                var av = d.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + doc.id);
+                var stars = d.totalStars || 0;
+                var starsDisplay = stars >= 1000 ? (stars/1000).toFixed(1).replace(/\.0$/,'') + 'K' : stars.toFixed(1).replace(/\.0$/,'');
+                var rankCls = rank <= 3 ? 'vr-rank ' + rankColors[rank-1] : 'vr-rank';
+                var rankLabel = rank <= 3 ? ['🥇','🥈','🥉'][rank-1] : rank;
+                rows.push(
+                    '<div class="vr-row">' +
+                    '<span class="' + rankCls + '">' + rankLabel + '</span>' +
+                    '<img class="vr-av" src="' + _esc(av) + '" onerror="this.src=\'https://api.dicebear.com/7.x/identicon/svg?seed=hub\'">' +
+                    '<div class="vr-info">' +
+                    '<div class="vr-name">' + _esc(d.name || 'Viewer') + '</div>' +
+                    '<div class="vr-stars">' + rank + (rank===1?' st':rank===2?' nd':rank===3?' rd':' th') + ' place</div>' +
+                    '</div>' +
+                    '<span class="vr-score">★ ' + starsDisplay + '</span>' +
+                    '</div>'
+                );
+                if(myAddr && doc.id === myAddr) {
+                    myRank = rank;
+                    myEntry = d;
+                }
+            });
+
+            list.innerHTML = rows.length ? rows.join('') : '';
+            if(empty) empty.style.display = rows.length ? 'none' : '';
+
+            // Self row — show if viewer has a wallet connected
+            if(selfRow && myAddr) {
+                var selfAv = document.getElementById('vr-self-av');
+                var selfNm = document.getElementById('vr-self-name');
+                if(selfAv) selfAv.src = myEntry ? (myEntry.avatar || myAvatar) : myAvatar;
+                if(selfNm) selfNm.textContent = myEntry ? (myEntry.name || myHandle) : myHandle;
+                // Show pinned row always for connected wallets so they always see their CTA
+                selfRow.style.display = '';
+                // If they're already in the top list, hide the "Send Gift" CTA and just show their rank
+                var hint = selfRow.querySelector('.vr-self-hint');
+                var giftBtn = selfRow.querySelector('.vr-gift-btn');
+                if(myRank > 0) {
+                    if(hint) hint.textContent = 'You\'re ranked #' + myRank;
+                    if(giftBtn) giftBtn.style.display = 'none';
+                } else {
+                    if(hint) hint.textContent = 'Send a Gift to climb the rankings';
+                    if(giftBtn) giftBtn.style.display = '';
+                }
+            }
+        } catch(e) {
+            console.warn('[ViewerRankings]', e);
+            list.innerHTML = '<div class="vr-empty-msg">Could not load rankings.</div>';
+        }
+    };
+
+    window._closeViewerRankings = function() {
+        var sheet = document.getElementById('vr-sheet');
+        var scrim = document.getElementById('vr-scrim');
+        if(sheet) sheet.classList.remove('open');
+        if(scrim) scrim.classList.remove('open');
     };
 
     // ── Hype button ───────────────────────────────────────────────
@@ -35009,6 +35360,58 @@ body.is-watching #cmd-orb, body.is-watching #cmd-wheel, body.is-watching #cmd-sc
   <button class="cmd-slice" data-act="search"  style="--cmd-accent:#2dd4bf"><span class="cmd-ic">🔍</span><span class="cmd-lb">Search</span></button>
   <button class="cmd-slice" data-act="market"  style="--cmd-accent:#22c55e"><span class="cmd-ic">🛍️</span><span class="cmd-lb">Market</span></button>
   <button class="cmd-slice" data-act="comm"     style="--cmd-accent:#a855f7"><span class="cmd-ic">⬡</span><span class="cmd-lb">Hub</span></button>
+</div>
+<!-- ── CREATOR PROFILE POPUP (tap name/avatar in live info bar) ───────── -->
+<div id="cp-scrim" onclick="window._closeCreatorProfile()"></div>
+<div id="cp-sheet">
+    <div class="cp-handle"></div>
+    <button class="cp-close" onclick="window._closeCreatorProfile()">✕</button>
+    <div class="cp-avatar-wrap">
+        <img id="cp-avatar" src="" onerror="this.src='https://api.dicebear.com/7.x/identicon/svg?seed=x'" class="cp-avatar">
+    </div>
+    <div class="cp-name" id="cp-name"></div>
+    <div class="cp-addr" id="cp-addr"></div>
+    <div class="cp-bio"  id="cp-bio"></div>
+    <div class="cp-stats">
+        <div class="cp-stat">
+            <span class="cp-stat-val" id="cp-followers">—</span>
+            <span class="cp-stat-lbl">Followers</span>
+        </div>
+        <div class="cp-stat-divider"></div>
+        <div class="cp-stat">
+            <span class="cp-stat-val" id="cp-following">—</span>
+            <span class="cp-stat-lbl">Following</span>
+        </div>
+        <div class="cp-stat-divider"></div>
+        <div class="cp-stat">
+            <span class="cp-stat-val" id="cp-stars">—</span>
+            <span class="cp-stat-lbl">Stars Earned</span>
+        </div>
+    </div>
+    <button id="cp-follow-btn" class="cp-follow-btn" onclick="window._cpFollow()">+ Follow</button>
+</div>
+<!-- ── VIEWER RANKINGS BOTTOM SHEET (tap 👁 count) ────────────────────── -->
+<div id="vr-scrim" onclick="window._closeViewerRankings()"></div>
+<div id="vr-sheet">
+    <div class="cp-handle"></div>
+    <div class="vr-header">
+        <span class="vr-title">Viewer Rankings</span>
+        <button class="cp-close" onclick="window._closeViewerRankings()">✕</button>
+    </div>
+    <div id="vr-list"></div>
+    <div id="vr-empty" style="display:none;">
+        <div class="vr-empty-msg">🎁 No gifts yet — be the first to top the chart!</div>
+    </div>
+    <div id="vr-self-row" style="display:none;">
+        <div class="vr-self-inner">
+            <img id="vr-self-av" class="vr-self-av" src="" onerror="this.src='https://api.dicebear.com/7.x/identicon/svg?seed=x'">
+            <div class="vr-self-info">
+                <span id="vr-self-name" class="vr-self-name"></span>
+                <span class="vr-self-hint">Send a Gift to climb the rankings</span>
+            </div>
+            <button class="vr-gift-btn" onclick="window._closeViewerRankings();window._openViewerGiftDrawer()">🎁 Gift</button>
+        </div>
+    </div>
 </div>
 <!-- ── LIVE LEADERBOARD BOTTOM SHEET ──────────────────────────────────── -->
 <div id="live-lb-scrim" onclick="closeLiveLeaderboard()"></div>
