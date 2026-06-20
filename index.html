@@ -28400,6 +28400,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
         }
 
+        // End any active battle and notify remaining participant via Firestore
+        if (typeof window._battleEndOnStreamLeave === 'function') await window._battleEndOnStreamLeave().catch(function(){});
+
         await _cleanupAgora();
 
         // Reset ALL session state so the next stream starts clean
@@ -28935,14 +28938,36 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     // ── Leave stream ──────────────────────────────────────────────
     window.leaveLiveStream = async function() {
-        // Clean up co-host state first
+        // FAST UI TEARDOWN — return to browser instantly, don't block on async cleanup
+        var _leaveStreamId = _watchingStreamId;
+        _watchingStreamId = null;
+        window._watchingStreamId = null;
+        document.body.classList.remove('is-watching');
+        if(window._vcStyleObs){window._vcStyleObs.disconnect();window._vcStyleObs=null;}
+        if(window._rvStyleObs){window._rvStyleObs.disconnect();window._rvStyleObs=null;}
+        if(window._rvChildObs){window._rvChildObs.disconnect();window._rvChildObs=null;}
+        if(window.innerWidth<=900){
+            var _fLp=document.getElementById('live-player-wrap');
+            var _fVcc=document.getElementById('viewer-panel-chat-card');
+            if(_fLp)_fLp.style.cssText='';
+            if(_fVcc)_fVcc.style.cssText='';
+            document.body.style.removeProperty('overflow');
+            if(document.fullscreenElement||document.webkitFullscreenElement){try{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}catch(e){}}
+            if(window._vvViewerHandler){if(window.visualViewport)window.visualViewport.removeEventListener('resize',window._vvViewerHandler);else window.removeEventListener('resize',window._vvViewerHandler);window._vvViewerHandler=null;}
+        }
+        hide('live-player-wrap');
+        show('live-stream-browser');
+        show('live-tabs');
+        window.loadStreamBrowser();
+
+        // Async cleanup runs after UI is already showing browser
         if (isCoHost) { await leaveCoHost().catch(() => {}); }
 
-        if (_watchingStreamId && window.db && window.fs) {
+        if (_leaveStreamId && window.db && window.fs) {
             try {
                 const { doc, updateDoc, increment } = window.fs;
-                await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), { viewers: increment(-1) });
-                try { sessionStorage.removeItem('sh_viewing_' + _watchingStreamId); } catch(_) {}
+                await updateDoc(doc(window.db, LIVE_COL, _leaveStreamId), { viewers: increment(-1) });
+                try { sessionStorage.removeItem('sh_viewing_' + _leaveStreamId); } catch(_) {}
             } catch(_) {}
         }
         await _cleanupAgora();
@@ -29010,24 +29035,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var sib = document.getElementById('live-stream-info-bar');
         if(sib) sib.style.display='none';
 
-        document.body.classList.remove('is-watching');
         window._prevLiveStarsEarned = 0;
-        if(window._vcStyleObs){window._vcStyleObs.disconnect();window._vcStyleObs=null;}
-        if(window._rvStyleObs){window._rvStyleObs.disconnect();window._rvStyleObs=null;}
-        if(window._rvChildObs){window._rvChildObs.disconnect();window._rvChildObs=null;}
-        if (window.innerWidth <= 900) {
-            var _fsClLp  = document.getElementById('live-player-wrap');
-            var _fsClVcc = document.getElementById('viewer-panel-chat-card');
-            if (_fsClLp) _fsClLp.style.cssText = '';
-            if (_fsClVcc) _fsClVcc.style.cssText = '';
-            document.body.style.removeProperty('overflow');
-            if(document.fullscreenElement||document.webkitFullscreenElement){try{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}catch(e){}}
-            if(window._vvViewerHandler){if(window.visualViewport)window.visualViewport.removeEventListener('resize',window._vvViewerHandler);else window.removeEventListener('resize',window._vvViewerHandler);window._vvViewerHandler=null;}
-        }
-        hide('live-player-wrap');
-        show('live-stream-browser');
-        show('live-tabs');
-        window.loadStreamBrowser();
     };
 
     // ── Info bar follow button ────────────────────────────────────
@@ -29448,10 +29456,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     // ── Gift System — 80/20 real-time split ───────────────────────
     const GIFT_TIERS = {
-        spark:   { icon:'⚡', name:'Spark',   cost:1,  chatStyle:'' },
-        fire:    { icon:'🔥', name:'Fire',    cost:5,  chatStyle:'fire' },
-        diamond: { icon:'💎', name:'Diamond', cost:20, chatStyle:'diamond' },
-        rocket:  { icon:'🚀', name:'Rocket',  cost:50, chatStyle:'rocket' }
+        bloom:   { key:'bloom',   icon:'🌹', name:'Bloom',   cost:1,     chatStyle:'' },
+        blaze:   { key:'blaze',   icon:'🔥', name:'Blaze',   cost:5,     chatStyle:'fire' },
+        rush:    { key:'rush',    icon:'⚡', name:'Rush',    cost:10,    chatStyle:'fire' },
+        crown:   { key:'crown',   icon:'👑', name:'Crown',   cost:25,    chatStyle:'fire' },
+        burst:   { key:'burst',   icon:'🎊', name:'Burst',   cost:50,    chatStyle:'diamond' },
+        storm:   { key:'storm',   icon:'🌩️', name:'Storm',   cost:100,   chatStyle:'diamond' },
+        dragon:  { key:'dragon',  icon:'🐉', name:'Dragon',  cost:250,   chatStyle:'diamond' },
+        comet:   { key:'comet',   icon:'☄️', name:'Comet',   cost:500,   chatStyle:'rocket' },
+        fortune: { key:'fortune', icon:'💰', name:'Fortune', cost:1000,  chatStyle:'rocket' },
+        phoenix: { key:'phoenix', icon:'🦅', name:'Phoenix', cost:5000,  chatStyle:'rocket' },
+        eclipse: { key:'eclipse', icon:'🌑', name:'Eclipse', cost:10000, chatStyle:'rocket' },
+        aurora:  { key:'aurora',  icon:'🌌', name:'Aurora',  cost:25000, chatStyle:'rocket' },
+        cosmos:  { key:'cosmos',  icon:'🌠', name:'Cosmos',  cost:35000, chatStyle:'rocket' },
+        reign:   { key:'reign',   icon:'💎', name:'Reign',   cost:45000, chatStyle:'rocket' },
+        genesis: { key:'genesis', icon:'✨', name:'Genesis', cost:50000, chatStyle:'rocket' }
     };
 
     // ── Gift picker — used for gifting co-hosts or host directly ──
@@ -31063,6 +31082,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             var btn = $('viewer-cohost-btn');
             if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🎤</span><span>Leave Stage</span>'; btn.style.opacity = ''; btn.style.pointerEvents = ''; btn.classList.add('active'); }
+            var visBtn = $('vis-stage-btn');
+            if (visBtn) { visBtn.textContent = '🎤'; visBtn.title = 'Leave Stage'; visBtn.style.background = 'rgba(220,38,38,.5)'; visBtn.style.borderColor = 'rgba(220,38,38,.7)'; }
             isCoHost = true;
             document.body.classList.add('is-cohost');
             // Explicitly hide End Stream in both normal and cinema panel — CSS !important
@@ -31134,6 +31155,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 btn.style.pointerEvents = '';
                 btn.classList.remove('active');
             }
+            var visBtn = $('vis-stage-btn');
+            if (visBtn) { visBtn.textContent = '🎤'; visBtn.title = 'Join Stage'; visBtn.style.background = ''; visBtn.style.borderColor = ''; }
             // Clean up cohost request doc so host sees slot freed
             if (_watchingStreamId && window.db && window.fs) {
                 var userAddress = window._liveUserAddress || '';
@@ -35495,6 +35518,9 @@ body.has-battle .live-stream-overlay-top{display:none!important}
     body.is-watching #live-player-wrap #viewer-star-goal,
     body.is-watching #live-player-wrap #viewer-leaderboard{display:none!important;}
 
+    /* Co-host stage wrap: hidden on mobile — cohost-self-pip handles self-view */
+    body.is-watching #cohost-stage-wrap{display:none!important;}
+
     /* CC: fills remaining space below video — dark panel like host #bc-panel-chat-card */
     body.is-watching #live-player-wrap #viewer-panel-chat-card{
         flex:1!important;min-height:0!important;
@@ -36204,6 +36230,14 @@ function _deactivate(){
     _clearBattleSplit();
 }
 
+// Called by endLiveStream when a battle host ends their stream — ends battle in Firestore
+// so the remaining host's _bUnsub listener fires _showWinner + _deactivate automatically
+window._battleEndOnStreamLeave = async function(){
+    if(!_bid) return;
+    await _doEndBattle();
+    _deactivate();
+};
+
 // ── Split screen: join opponent's Agora channel ───────────
 async function _joinBattleOpponent(oppSid){
     console.log('[Battle] _joinBattleOpponent oppSid=',oppSid,'AgoraRTC=',!!window.AgoraRTC,'client=',!!_bViewerClient);
@@ -36248,6 +36282,10 @@ async function _joinBattleOpponent(oppSid){
         _bViewerClient.on('user-left',function(){
             var pip=document.getElementById('battle-opponent-pip');
             if(pip) pip.innerHTML='<div class="bop-label">⚔️ Opponent</div><div class="bop-wait">📡<br>Reconnecting…</div>';
+            // If opponent doesn't return in 15s they've left — end the battle
+            setTimeout(function(){
+                if(_bid){ _doEndBattle().catch(function(){}); _deactivate(); }
+            }, 15000);
         });
 
         await _bViewerClient.join('e26e79a0f99446f991beb0d6c68271a3',oppChannel,tokenData.token,tokenData.uid||null);
