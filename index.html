@@ -35739,12 +35739,14 @@ body.is-hosting #live-broadcaster-video-container.layout-battle #live-broadcaste
 /* ── Host icon strip (TikTok-style right-side controls) ── */
 #host-icon-strip{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:10px;z-index:30}
 @media(max-width:700px){
-    body.is-hosting #host-icon-strip{display:flex;top:80px!important;transform:none!important;bottom:auto!important;right:0!important;gap:8px}
+    body.is-hosting #host-icon-strip{display:flex;top:80px!important;transform:none!important;bottom:auto!important;right:0!important;gap:4px}
     /* Collapsed by default: drawer buttons hidden */
     body.is-hosting #host-icon-strip .his-drawer-btn{display:none!important}
     body.is-hosting #host-icon-strip.open .his-drawer-btn{display:flex!important}
+    /* Shrink drawer buttons so all 6 fit without clipping */
+    body.is-hosting #host-icon-strip .his-drawer-btn{width:38px!important;height:38px!important;font-size:1.1rem!important}
     /* Toggle tab — small pill on right edge */
-    body.is-hosting #his-toggle{width:26px!important;height:40px!important;border-radius:10px 0 0 10px!important;font-size:0.85rem!important;background:rgba(90,60,170,.72)!important;border:1px solid rgba(124,92,191,.55)!important;border-right:none!important}
+    body.is-hosting #his-toggle{width:26px!important;height:36px!important;border-radius:10px 0 0 10px!important;font-size:0.85rem!important;background:rgba(90,60,170,.72)!important;border:1px solid rgba(124,92,191,.55)!important;border-right:none!important}
     body.has-battle.is-hosting #host-icon-strip{top:90px!important}
 }
 /* During battle: keep strip visible but shift it inside host's left-half video; hide ⚔️ (battle already running) */
@@ -36349,6 +36351,11 @@ async function _loadAndActivate(bid){
 function _activate(bid, bdata){
     _bid=bid; _bdata=bdata;
     document.body.classList.add('has-battle');
+    // Collapse host strip so it doesn't cover battle split-screen
+    var _as=document.getElementById('host-icon-strip');
+    var _at=document.getElementById('his-toggle');
+    if(_as) _as.classList.remove('open');
+    if(_at) _at.textContent='⊲';
     var my = (window.userAddress||'').toLowerCase();
     if(my===bdata.challengerAddr) _bRole='challenger';
     else if(my===bdata.challengeeAddr) _bRole='challengee';
@@ -36678,6 +36685,11 @@ function _deactivate(){
     if(_bUnsub){try{_bUnsub();}catch(_){} _bUnsub=null;}
     _bid=null; _bdata=null; _bRole=null; _battleEnded=false;
     var bar=document.getElementById('battle-bar'); if(bar) bar.style.display='none';
+    // Collapse strip and reset toggle arrow back to right-side closed state
+    var _ds=document.getElementById('host-icon-strip');
+    var _dt=document.getElementById('his-toggle');
+    if(_ds) _ds.classList.remove('open');
+    if(_dt) _dt.textContent='⊳';
     _clearBattleSplit();
 }
 
