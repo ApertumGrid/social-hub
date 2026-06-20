@@ -28794,39 +28794,37 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             hide('live-tabs');
             document.body.classList.add('is-watching');
             show('live-player-wrap');
-            // Full-screen viewer on mobile — JS setProperty beats all CSS cascade/specificity conflicts
-            if (window.innerWidth <= 700) {
-                var _fsWrap = document.getElementById('live-player-wrap');
-                var _fsCon  = document.getElementById('live-remote-video-container');
-                if (_fsWrap) {
-                    _fsWrap.style.setProperty('position',    'fixed',                  'important');
-                    _fsWrap.style.setProperty('top',         '0',                      'important');
-                    _fsWrap.style.setProperty('left',        '0',                      'important');
-                    _fsWrap.style.setProperty('width',       '100%',                   'important');
-                    _fsWrap.style.setProperty('height',      window.innerHeight+'px',  'important');
-                    _fsWrap.style.setProperty('max-height',  'none',                   'important');
-                    _fsWrap.style.setProperty('z-index',     '9000',                   'important');
-                    _fsWrap.style.setProperty('overflow',    'hidden',                 'important');
-                    _fsWrap.style.setProperty('background',  '#000',                   'important');
-                }
-                if (_fsCon) {
-                    _fsCon.style.setProperty('position',     'absolute', 'important');
-                    _fsCon.style.setProperty('top',          '0',        'important');
-                    _fsCon.style.setProperty('left',         '0',        'important');
-                    _fsCon.style.setProperty('right',        '0',        'important');
-                    _fsCon.style.setProperty('bottom',       '0',        'important');
-                    _fsCon.style.setProperty('width',        '100%',     'important');
-                    _fsCon.style.setProperty('height',       '100%',     'important');
-                    _fsCon.style.setProperty('max-height',   'none',     'important');
-                    _fsCon.style.setProperty('min-height',   '0',        'important');
-                }
+            // Mobile viewer layout: flex-column (info bar → video 360px → chat flex:1)
+            // vfs-style injected last to <head> so it wins cascade over Agora's dynamic styles
+            if(!document.getElementById('vfs-style')){var _vfss=document.createElement('style');_vfss.id='vfs-style';_vfss.textContent='@media(max-width:900px){body.is-watching #live-player-wrap{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;background:#090715!important;max-height:none!important;}body.is-watching #live-player-wrap #live-remote-video-container{flex:0 0 auto!important;position:relative!important;width:100%!important;height:360px!important;min-height:240px!important;max-height:360px!important;border-radius:16px!important;overflow:hidden!important;}body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;}body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video .agora_video_player{position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;}body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video video{position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;object-fit:cover!important;}body.is-watching #live-player-wrap #viewer-panel-chat-card{flex:1!important;position:relative!important;top:auto!important;bottom:auto!important;left:auto!important;right:auto!important;height:auto!important;max-height:none!important;overflow:hidden!important;background:rgba(9,7,21,0.98)!important;border:none!important;box-shadow:none!important;}body.is-watching #live-player-wrap #viewer-panel-chat-card #live-chat-feed{flex:1!important;max-height:none!important;min-height:0!important;}}';document.head.appendChild(_vfss);}
+            if(window.innerWidth<=900){
+                var _vcH=360;
+                var _lp=document.getElementById('live-player-wrap');
+                if(_lp){_lp.style.setProperty('position','fixed','important');_lp.style.setProperty('top','0','important');_lp.style.setProperty('right','0','important');_lp.style.setProperty('bottom','0','important');_lp.style.setProperty('left','0','important');_lp.style.setProperty('display','flex','important');_lp.style.setProperty('flex-direction','column','important');_lp.style.setProperty('overflow','hidden','important');_lp.style.setProperty('background','#090715','important');_lp.style.setProperty('max-height','none','important');}
+                var _vc=document.getElementById('live-remote-video-container');
+                function _applyVcHeight(){if(_vc){_vc.style.setProperty('flex','0 0 auto','important');_vc.style.setProperty('position','relative','important');_vc.style.setProperty('width','100%','important');_vc.style.setProperty('height',_vcH+'px','important');_vc.style.setProperty('min-height','240px','important');_vc.style.setProperty('max-height','360px','important');_vc.style.setProperty('border-radius','16px','important');_vc.style.setProperty('overflow','hidden','important');}}
+                _applyVcHeight();
+                if(_vc && !window._vcStyleObs){var _vcBusy=false;window._vcStyleObs=new MutationObserver(function(){if(_vcBusy||!document.body.classList.contains('is-watching'))return;_vcBusy=true;_applyVcHeight();setTimeout(function(){_vcBusy=false;},50);});window._vcStyleObs.observe(_vc,{attributes:true,attributeFilter:['style']});}
+                var _rv=document.getElementById('live-remote-video');
+                function _applyRvHeight(){if(_rv){_rv.style.setProperty('position','absolute','important');_rv.style.setProperty('top','0','important');_rv.style.setProperty('right','0','important');_rv.style.setProperty('bottom','0','important');_rv.style.setProperty('left','0','important');_rv.style.setProperty('width','100%','important');_rv.style.setProperty('height','100%','important');}}
+                _applyRvHeight();
+                if(_rv && !window._rvStyleObs){var _rvBusy=false;window._rvStyleObs=new MutationObserver(function(){if(_rvBusy||!document.body.classList.contains('is-watching'))return;_rvBusy=true;_applyRvHeight();setTimeout(function(){_rvBusy=false;},50);});window._rvStyleObs.observe(_rv,{attributes:true,attributeFilter:['style']});}
+                function _fixAgoraChildren(){if(!_rv||!document.body.classList.contains('is-watching'))return;_rv.querySelectorAll('*').forEach(function(el){el.style.setProperty('position','absolute','important');el.style.setProperty('top','0','important');el.style.setProperty('left','0','important');el.style.setProperty('width','100%','important');el.style.setProperty('height','100%','important');el.style.setProperty('transform','none','important');if(el.tagName!=='VIDEO'){el.style.setProperty('overflow','visible','important');}if(el.tagName==='VIDEO'){el.style.setProperty('object-fit','cover','important');}});}
+                setTimeout(_fixAgoraChildren,800);
+                if(_rv && !window._rvChildObs){window._rvChildObs=new MutationObserver(function(){_fixAgoraChildren();});window._rvChildObs.observe(_rv,{childList:true,subtree:true});}
+                var _cc=document.getElementById('viewer-panel-chat-card');
+                if(_cc){_cc.style.setProperty('flex','1','important');_cc.style.setProperty('min-height','0','important');_cc.style.setProperty('position','relative','important');_cc.style.setProperty('top','auto','important');_cc.style.setProperty('bottom','auto','important');_cc.style.setProperty('left','auto','important');_cc.style.setProperty('right','auto','important');_cc.style.setProperty('height','auto','important');_cc.style.setProperty('max-height','none','important');_cc.style.setProperty('display','flex','important');_cc.style.setProperty('flex-direction','column','important');_cc.style.setProperty('overflow','hidden','important');_cc.style.setProperty('pointer-events','auto','important');_cc.style.setProperty('background','rgba(9,7,21,0.98)','important');_cc.style.setProperty('border','none','important');_cc.style.setProperty('box-shadow','none','important');_cc.style.setProperty('border-radius','0','important');_cc.style.setProperty('padding','0','important');}
+                var _cf=document.getElementById('live-chat-feed');
+                if(_cf){_cf.style.setProperty('flex','1','important');_cf.style.setProperty('max-height','none','important');_cf.style.setProperty('min-height','0','important');_cf.style.setProperty('background','rgba(9,7,21,0.98)','important');}
+                if(!window._vvViewerHandler){window._vvViewerHandler=function(){if(!document.body.classList.contains('is-watching'))return;var _vvH=window.visualViewport?window.visualViewport.height:window.innerHeight;var _kbH=window.innerHeight-_vvH;var _vcKb=document.getElementById('live-remote-video-container');if(!_vcKb)return;if(_kbH>150){_vcKb.style.setProperty('height','130px','important');_vcKb.style.setProperty('min-height','100px','important');_vcKb.style.setProperty('max-height','130px','important');}else{_vcKb.style.setProperty('height','360px','important');_vcKb.style.setProperty('min-height','240px','important');_vcKb.style.setProperty('max-height','360px','important');}};if(window.visualViewport)window.visualViewport.addEventListener('resize',window._vvViewerHandler);else window.addEventListener('resize',window._vvViewerHandler);}
             }
-            // Scroll to top so the info bar is visible (page may have been scrolled from a previous section)
-            try { window.scrollTo({top:0,behavior:'instant'}); } catch(_) { window.scrollTo(0,0); }
+            // Scroll to top so the info bar is visible
+            try { window.scrollTo({top:1,behavior:'instant'}); } catch(_) { window.scrollTo(0,1); }
             var _pw = document.getElementById('live-player-wrap');
             if (_pw) _pw.scrollTop = 0;
-            // Scroll to top so fixed position:fixed player aligns with viewport top
             document.body.style.setProperty('overflow','hidden','important');
+            // Hide browser chrome on mobile
+            if(window.innerWidth<=900){try{var _rfs=document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen;if(_rfs)_rfs.call(document.documentElement,{navigationUI:'hide'});}catch(e){}}
             // Reset waiting room so it shows while video connects (fixes subsequent joins
             // where the waiting room was left hidden from a previous session)
             var _wrEl = document.getElementById('live-waiting-room');
@@ -28856,8 +28854,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     fb.style.display=(!isOwn&&!isF)?'':'none';
                 }
                 var vCon=document.getElementById('live-remote-video-container');
-                if(vCon && bar.parentNode!==vCon) vCon.insertBefore(bar,vCon.firstChild);
-                bar.style.cssText='position:absolute;top:0;left:0;right:0;z-index:18;display:flex;align-items:center;justify-content:space-between;padding:8px 12px;gap:10px;background:linear-gradient(180deg,rgba(0,0,0,.7) 0%,transparent 100%);border:none;border-radius:0;pointer-events:auto;box-sizing:border-box;';
+                if(window.innerWidth<=900){
+                    var _lp2=document.getElementById('live-player-wrap');
+                    if(_lp2&&bar.parentNode!==_lp2) _lp2.insertBefore(bar,vCon);
+                    bar.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:8px 12px;gap:10px;background:#090715;border:none;box-sizing:border-box;flex-shrink:0;pointer-events:auto;';
+                }else{
+                    if(vCon&&bar.parentNode!==vCon) vCon.insertBefore(bar,vCon.firstChild);
+                    bar.style.cssText='position:absolute;top:0;left:0;right:0;z-index:18;display:flex;align-items:center;justify-content:space-between;padding:8px 12px;gap:10px;background:linear-gradient(180deg,rgba(0,0,0,.7) 0%,transparent 100%);border:none;border-radius:0;pointer-events:auto;box-sizing:border-box;';
+                }
             })();
 
             // ── Paid admission gate check ─────────────────────────────
@@ -29009,13 +29013,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         document.body.classList.remove('is-watching');
         window._prevLiveStarsEarned = 0;
-        // Clear mobile full-screen inline styles (no DOM move needed — just clear styles)
-        if (window.innerWidth <= 700) {
+        if(window._vcStyleObs){window._vcStyleObs.disconnect();window._vcStyleObs=null;}
+        if(window._rvStyleObs){window._rvStyleObs.disconnect();window._rvStyleObs=null;}
+        if(window._rvChildObs){window._rvChildObs.disconnect();window._rvChildObs=null;}
+        if (window.innerWidth <= 900) {
             var _fsClLp  = document.getElementById('live-player-wrap');
             var _fsClVcc = document.getElementById('viewer-panel-chat-card');
             if (_fsClLp) _fsClLp.style.cssText = '';
             if (_fsClVcc) _fsClVcc.style.cssText = '';
             document.body.style.removeProperty('overflow');
+            if(document.fullscreenElement||document.webkitFullscreenElement){try{(document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document);}catch(e){}}
+            if(window._vvViewerHandler){if(window.visualViewport)window.visualViewport.removeEventListener('resize',window._vvViewerHandler);else window.removeEventListener('resize',window._vvViewerHandler);window._vvViewerHandler=null;}
         }
         hide('live-player-wrap');
         show('live-stream-browser');
