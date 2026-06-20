@@ -2010,6 +2010,7 @@
         @media (max-width: 700px) {
             body.is-hosting #topnav           { display: none !important; }
             body.is-hosting #mobile-dashboard  { display: none !important; }
+            body.is-watching #mobile-dashboard { display: none !important; }
             body.is-hosting #bottom-nav        { display: none !important; }
 
             body.is-hosting #live-active-panel {
@@ -11376,13 +11377,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                 <div class="sfc-feed" id="viewer-sfc-feed"></div>
                             </div>
 
-                            <!-- Viewer icon strip — mirrors host strip -->
-                            <div id="viewer-icon-strip">
-                                <button class="his-btn" onclick="_openViewerGiftDrawer()" title="Send a Gift">🎁</button>
-                                <button class="his-btn" onclick="sendLiveHype()" title="Hype">⚡</button>
-                                <button class="his-btn" id="vis-stage-btn" onclick="requestCoHost()" title="Join Stage">🎤</button>
-                                <button class="his-btn" onclick="leaveLiveStream()" title="Leave" style="background:rgba(220,38,38,.35);border-color:rgba(220,38,38,.6);">✕</button>
-                            </div>
                         </div>
 
                         <!-- Hype + Stars row -->
@@ -11482,8 +11476,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div class="live-chat-head">💬 Live Chat</div>
                             <div id="live-chat-feed" class="live-chat-feed"></div>
                             <div class="live-chat-input-row">
-                                <input type="text" id="live-chat-input" class="field" placeholder="Say something…" style="margin-top:0;" onkeydown="if(event.key==='Enter')sendLiveChat()">
+                                <input type="text" id="live-chat-input" class="field" placeholder="Say something…" style="margin-top:0;" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" onkeydown="if(event.key==='Enter')sendLiveChat()">
                                 <button class="btn btn-purple btn-sm" onclick="sendLiveChat()">Send</button>
+                                <div id="viewer-icon-strip">
+                                    <button class="his-btn" onclick="_openViewerGiftDrawer()" title="Send a Gift">🎁</button>
+                                    <button class="his-btn" id="vis-stage-btn" onclick="requestCoHost()" title="Join Stage">🎤</button>
+                                    <button class="his-btn" onclick="leaveLiveStream()" title="Leave" style="background:rgba(220,38,38,.35);border-color:rgba(220,38,38,.6);">✕</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -34948,7 +34947,8 @@ function _copyReplayLink(link) {
 #cmd-orb.idle{ opacity:0.4; }
 @media (min-width:769px){ #cmd-orb,#cmd-wheel,#cmd-scrim{ display:none!important; } }
 body.cinema-mode #cmd-orb, body.cinema-mode #cmd-wheel, body.cinema-mode #cmd-scrim,
-body.is-hosting #cmd-orb, body.is-hosting #cmd-wheel, body.is-hosting #cmd-scrim{ display:none!important; }
+body.is-hosting #cmd-orb, body.is-hosting #cmd-wheel, body.is-hosting #cmd-scrim,
+body.is-watching #cmd-orb, body.is-watching #cmd-wheel, body.is-watching #cmd-scrim{ display:none!important; }
 </style>
 
 <div id="cmd-scrim"></div>
@@ -35435,87 +35435,121 @@ body.has-battle .live-stream-overlay-top{display:none!important}
     body.cinema-mode.is-hosting #bc-floating-chat .sfc-feed:empty + * { display:none; }
 }
 
-/* ── VIEWER FULL-SCREEN MOBILE IMMERSIVE (Option C) ── */
-@media(max-width:700px){
-    /* Nav hidden while watching */
+/* ── VIEWER MOBILE LAYOUT — Streamer Style (mirrors host layout) ── */
+@media(max-width:900px){
+    /* Hide chrome */
     body.is-watching #topnav{display:none!important;}
     body.is-watching #bottom-nav{display:none!important;}
+    body.is-watching #hype-ticker{display:none!important;}
+    body.is-watching #live-stream-meta{display:none!important;}
+    body.is-watching #viewer-floating-chat{display:none!important;}
 
-    /* Live player becomes full-viewport overlay */
+    /* LP: fixed fullscreen flex column — mirrors host #live-active-panel */
     body.is-watching #live-player-wrap{
-        position:fixed!important;
-        top:0!important;left:0!important;right:0!important;bottom:0!important;
-        width:100%!important;height:100%!important;
-        z-index:500!important;overflow:hidden!important;max-height:none!important;background:#000!important;
+        position:fixed!important;top:0!important;right:0!important;bottom:0!important;left:0!important;
+        display:flex!important;flex-direction:column!important;
+        z-index:500!important;overflow:hidden!important;
+        background:#090715!important;max-height:none!important;
     }
 
-    /* Video fills entire screen */
+    /* VC: compact rounded video — mirrors host #live-broadcaster-video-container (360px fixed) */
     body.is-watching #live-player-wrap #live-remote-video-container{
-        position:absolute!important;
-        top:0!important;left:0!important;right:0!important;bottom:0!important;
+        flex:0 0 auto!important;
+        position:relative!important;
+        width:100%!important;
+        height:360px!important;min-height:240px!important;max-height:360px!important;
+        border-radius:16px!important;overflow:hidden!important;
+    }
+
+    /* Agora video fills VC */
+    body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video{
+        position:absolute!important;top:0!important;right:0!important;bottom:0!important;left:0!important;
         width:100%!important;height:100%!important;
-        min-height:auto!important;max-height:none!important;
-        border-radius:0!important;overflow:hidden!important;flex-shrink:unset!important;
+    }
+    body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video .agora_video_player{
+        position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;
+    }
+    body.is-watching #live-player-wrap #live-remote-video-container #live-remote-video video{
+        position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;
+        object-fit:cover!important;
     }
 
-    /* Bottom-to-mid gradient so chat is readable over video */
-    body.is-watching #live-player-wrap #live-remote-video-container::after{
-        content:'';position:absolute;bottom:0;left:0;right:0;height:60%;
-        background:linear-gradient(to bottom,transparent 0%,rgba(0,0,0,0.6) 100%);
-        pointer-events:none;z-index:2;
-    }
+    /* No bottom gradient — chat is below video, not overlaid */
+    body.is-watching #live-player-wrap #live-remote-video-container::after{display:none!important;}
 
-    /* Dead zones removed */
+    /* Dead zones hidden */
     body.is-watching #live-player-wrap .live-action-row,
     body.is-watching #live-player-wrap #viewer-reactions-bar,
     body.is-watching #live-player-wrap #viewer-gift-panel,
     body.is-watching #live-player-wrap #viewer-star-goal,
     body.is-watching #live-player-wrap #viewer-leaderboard{display:none!important;}
 
-    /* Chat card: transparent overlay at bottom — input row only */
+    /* CC: fills remaining space below video — dark panel like host #bc-panel-chat-card */
     body.is-watching #live-player-wrap #viewer-panel-chat-card{
-        position:absolute!important;bottom:0!important;left:0!important;right:0!important;
-        z-index:25!important;background:transparent!important;
-        border:none!important;border-radius:0!important;box-shadow:none!important;padding:0!important;
+        flex:1!important;min-height:0!important;
+        position:relative!important;
+        top:auto!important;bottom:auto!important;left:auto!important;right:auto!important;
+        height:auto!important;max-height:none!important;
+        background:rgba(9,7,21,0.98)!important;
+        border:none!important;border-radius:0!important;
+        box-shadow:none!important;padding:0!important;
+        display:flex!important;flex-direction:column!important;
+        overflow:hidden!important;
+        pointer-events:auto!important;
+        z-index:20!important;
     }
-    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-head,
-    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-feed{display:none!important;}
+    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-head{display:none!important;}
+
+    /* Chat feed: scrollable dark panel */
+    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-feed{
+        flex:1!important;min-height:0!important;max-height:none!important;
+        overflow-y:auto!important;
+        display:flex!important;flex-direction:column!important;justify-content:flex-end!important;
+        padding:8px 12px!important;
+        background:rgba(9,7,21,0.98)!important;
+        -ms-overflow-style:none!important;scrollbar-width:none!important;
+    }
+    body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-feed::-webkit-scrollbar{display:none!important;}
+
+    /* Input row: matches host chat input style */
     body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-input-row{
-        background:rgba(0,0,0,0.5)!important;
-        backdrop-filter:blur(14px)!important;-webkit-backdrop-filter:blur(14px)!important;
-        border-top:1px solid rgba(255,255,255,0.08)!important;
-        border-bottom:none!important;border-left:none!important;border-right:none!important;
-        padding:10px 12px 14px!important;
+        flex-shrink:0!important;pointer-events:all!important;
+        background:rgba(15,11,28,0.97)!important;
+        border-top:1px solid rgba(124,92,191,0.2)!important;
+        padding:8px 10px 14px!important;
         display:flex!important;gap:8px!important;align-items:center!important;border-radius:0!important;
     }
     body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-input-row .field{
-        background:rgba(255,255,255,0.1)!important;
-        border:1.5px solid rgba(255,255,255,0.13)!important;
-        color:#fff!important;border-radius:24px!important;
-        padding:9px 15px!important;font-size:0.82rem!important;flex:1!important;
+        background:rgba(255,255,255,0.08)!important;
+        border:1.5px solid rgba(255,255,255,0.1)!important;
+        color:#fff!important;border-radius:20px!important;
+        padding:9px 14px!important;font-size:0.82rem!important;
+        flex:1!important;min-width:0!important;
     }
     body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-input-row .field::placeholder{
         color:rgba(255,255,255,0.38)!important;
     }
     body.is-watching #live-player-wrap #viewer-panel-chat-card .live-chat-input-row .btn-purple{
-        background:linear-gradient(135deg,rgba(124,92,191,0.92),rgba(79,50,153,0.88))!important;
-        border:1.5px solid rgba(168,139,250,0.4)!important;border-radius:24px!important;
-        padding:9px 16px!important;font-size:0.78rem!important;font-weight:800!important;
-        color:#fff!important;white-space:nowrap!important;
-        box-shadow:0 2px 10px rgba(124,92,191,0.3)!important;
+        background:rgba(124,92,191,0.85)!important;
+        border:1.5px solid rgba(168,139,250,0.4)!important;
+        border-radius:20px!important;padding:8px 11px!important;
+        font-size:0.72rem!important;font-weight:700!important;
+        color:#fff!important;white-space:nowrap!important;flex-shrink:0!important;
     }
 
-    /* Floating chat — sits above the input row, clears icon strip on right */
-    body.is-watching .stream-floating-chat{
-        bottom:68px!important;right:66px!important;left:10px!important;
-        width:auto!important;max-width:none!important;
-    }
-
-    /* Icon strip — centered vertically on right edge */
+    /* Icon strip: horizontal row in the input bar */
     body.is-watching #viewer-icon-strip{
-        top:50%!important;transform:translateY(-50%)!important;
-        right:10px!important;gap:12px!important;
+        position:static!important;transform:none!important;
+        top:auto!important;right:auto!important;
+        display:flex!important;flex-direction:row!important;
+        align-items:center!important;gap:6px!important;flex-shrink:0!important;
     }
+    body.is-watching #viewer-icon-strip .his-btn{
+        width:36px!important;height:36px!important;font-size:0.95rem!important;flex-shrink:0!important;
+    }
+
+    /* Floating chat hidden — panel chat handles all messages */
+    body.is-watching .stream-floating-chat{display:none!important;}
 }
 
 /* Hide CHAT ON/OFF toggle everywhere — it's already in the "..." settings drawer */
