@@ -2,7 +2,6 @@
 
 
 
-
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -2767,6 +2766,28 @@
         .lsib-hypes { font-size:0.7rem; font-weight:700; color:rgba(255,120,120,0.95); margin-left:5px; white-space:nowrap; }
         .lb-crown-btn { background:none; border:none; cursor:pointer; font-size:1.05rem; padding:1px 5px; line-height:1; opacity:0.85; transition:opacity 0.15s,transform 0.15s; }
         .lb-crown-btn:hover { opacity:1; transform:scale(1.15); }
+
+        /* ── GIFT COMBO COUNTER ─────────────────────────────────────────────── */
+        #live-combo-counter { position:fixed; right:16px; top:45%; z-index:300; text-align:center; pointer-events:none; opacity:0; transform:scale(0); transition:opacity 0.2s,transform 0.2s cubic-bezier(0.34,1.4,0.64,1); will-change:transform,opacity; }
+        #live-combo-counter.combo-show { opacity:1; transform:scale(1); }
+        .combo-icon { display:block; font-size:2.4rem; line-height:1; filter:drop-shadow(0 0 8px rgba(255,200,0,0.6)); }
+        .combo-x { display:block; font-size:1.1rem; font-weight:900; color:#fff; text-shadow:0 0 14px rgba(255,200,0,0.9),0 2px 4px rgba(0,0,0,0.8); letter-spacing:2px; margin-top:3px; }
+        .combo-pop { animation:comboPop 0.25s cubic-bezier(0.34,1.4,0.64,1); }
+        @keyframes comboPop { 0%{transform:scale(1.5)} 60%{transform:scale(0.95)} 100%{transform:scale(1)} }
+
+        /* ── NEW FOLLOWER BANNER ────────────────────────────────────────────── */
+        #live-follow-banner { position:fixed; top:-60px; left:50%; transform:translateX(-50%); z-index:400; background:linear-gradient(135deg,rgba(255,80,80,0.95),rgba(255,140,180,0.95)); color:#fff; font-weight:800; font-size:0.8rem; padding:10px 20px; border-radius:50px; box-shadow:0 4px 20px rgba(255,80,80,0.4); pointer-events:none; transition:top 0.35s cubic-bezier(0.34,1.2,0.64,1); white-space:nowrap; }
+        #live-follow-banner.active { top:24px; }
+
+        /* ── LIVE STATS PANEL ───────────────────────────────────────────────── */
+        #live-stats-panel { position:fixed; bottom:0; left:0; right:0; z-index:8999; background:rgba(13,10,26,0.98); backdrop-filter:blur(18px); border-top:1px solid rgba(124,92,191,0.3); border-radius:20px 20px 0 0; padding:0 16px env(safe-area-inset-bottom,16px); transform:translateY(100%); transition:transform 0.3s ease; }
+        #live-stats-panel.open { transform:translateY(0); }
+        #live-stats-panel .lb-handle { width:40px; height:4px; border-radius:2px; background:rgba(255,255,255,0.18); margin:12px auto 10px; }
+        #live-stats-panel .lb-title { font-size:0.8rem; font-weight:800; color:#fff; margin-bottom:14px; }
+        .perf-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+        .perf-stat { background:rgba(255,255,255,0.05); border-radius:10px; padding:12px; text-align:center; }
+        .perf-val { font-size:1.2rem; font-weight:800; color:#fff; }
+        .perf-label { font-size:0.62rem; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
 
         /* â”€â”€ RAISE HAND / STAGE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         .raise-hand-btn {
@@ -11880,6 +11901,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             </button>
                             <button class="studio-btn" id="btn-toggle-chat" onclick="toggleLiveChat()" title="Allow or block viewer comments">
                                 <span class="studio-btn-icon">💬</span> Comments
+                            </button>
+                            <button class="studio-btn" id="btn-live-stats" onclick="openLiveStats()">
+                                <span class="studio-btn-icon">📊</span> Stats
                             </button>
                             <button class="studio-btn" id="btn-end-stream-toolbar"
                                     onclick="if(typeof endLiveStream==='function')endLiveStream()"
@@ -28946,6 +28970,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (window._lbTopUnsub)   { try { window._lbTopUnsub();   } catch(_) {} window._lbTopUnsub   = null; }
         try { closeLiveLeaderboard(); } catch(_) {}
         try { closeLiveShare(); } catch(_) {}
+        try { closeLiveStats(); } catch(_) {}
+        var _cbEl = document.getElementById('live-combo-counter'); if (_cbEl) _cbEl.classList.remove('combo-show');
+        var _fbEl = document.getElementById('live-follow-banner'); if (_fbEl) _fbEl.classList.remove('active');
 
         // Reset paid gate overlay
         const overlay = $('paid-gate-overlay');
@@ -29004,6 +29031,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if(fb) fb.disabled = true;
         if(typeof window._battleFollow === 'function') await window._battleFollow(window._lsibHostAddr);
         if(fb) fb.style.display = 'none';
+        if (_watchingStreamId && window.db && window.fs) {
+            var handle = window._liveUserHandle || 'Someone';
+            var _fc = window.fs.collection, _ad = window.fs.addDoc, _st = window.fs.serverTimestamp;
+            _ad(_fc(window.db, 'live_chat', _watchingStreamId, 'messages'), {
+                text: handle + ' just followed!',
+                author: handle,
+                senderAddr: (window.userAddress || '').toLowerCase(),
+                isFollow: true,
+                ts: _st()
+            }).catch(function(){});
+        }
     };
 
     // ── Hype button ───────────────────────────────────────────────
@@ -29845,6 +29883,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             }
                         }
                     }
+                    if (m.isFollow && typeof window._showFollowBanner === 'function') {
+                        window._showFollowBanner(m.author || 'Someone');
+                    }
                 }
             });
 
@@ -29899,6 +29940,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div class="live-chat-user" style="color:var(--purple-lt);">👑 ${_esc(m.author)}</div>
                         <div class="live-chat-body">${_esc(m.text)}</div>
                     </div>
+                </div>`;
+            }
+            // New follower notification
+            if (m.isFollow) {
+                return `<div class="live-chat-msg" style="background:rgba(255,80,120,0.07);border-radius:6px;padding:4px 8px;margin:2px 0;border-left:2px solid rgba(255,80,120,0.45);">
+                    <div style="font-size:0.7rem;color:rgba(255,160,190,0.95);font-weight:600;">🎉 ${_esc(m.author)} just followed!</div>
                 </div>`;
             }
             // System message
@@ -32590,6 +32637,82 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         closeLiveShare();
     };
 
+    // ── GIFT COMBO COUNTER ─────────────────────────────────────────────────
+    var _comboKey = null, _comboCount = 0, _comboTimer = null;
+    var _COMBO_ICONS = {bloom:'🌹',spark:'✨',blaze:'🔥',nova:'💫',comet:'☄️',pulse:'💜',echo:'🌊',storm:'⚡',clash:'🥊',surge:'💥',crown:'👑',apex:'🦋',eclipse:'🌑',aurora:'🌌',reign:'💎',genesis:'✨'};
+    window._triggerGiftCombo = function(tierKey) {
+        if (_comboTimer) clearTimeout(_comboTimer);
+        if (_comboKey === tierKey) {
+            _comboCount++;
+        } else {
+            _comboKey = tierKey;
+            _comboCount = 1;
+        }
+        if (_comboCount >= 2) {
+            var el = document.getElementById('live-combo-counter');
+            if (el) {
+                el.innerHTML = '<span class="combo-icon">' + (_COMBO_ICONS[tierKey] || '🎁') + '</span><span class="combo-x">x' + _comboCount + '</span>';
+                el.classList.add('combo-show');
+                el.classList.remove('combo-pop');
+                void el.offsetWidth;
+                el.classList.add('combo-pop');
+            }
+        }
+        _comboTimer = setTimeout(function() {
+            var el = document.getElementById('live-combo-counter');
+            if (el) el.classList.remove('combo-show');
+            _comboKey = null; _comboCount = 0;
+        }, 2200);
+    };
+
+    // ── NEW FOLLOWER BANNER ────────────────────────────────────────────────
+    var _followBannerTimer = null;
+    window._showFollowBanner = function(name) {
+        var el = document.getElementById('live-follow-banner');
+        if (!el) return;
+        if (_followBannerTimer) clearTimeout(_followBannerTimer);
+        el.textContent = '🎉 ' + (name || 'Someone') + ' just followed!';
+        el.classList.add('active');
+        _followBannerTimer = setTimeout(function() { el.classList.remove('active'); }, 3000);
+    };
+
+    // ── LIVE PERFORMANCE STATS ─────────────────────────────────────────────
+    window.openLiveStats = function() {
+        var sp = document.getElementById('live-stats-panel');
+        if (!sp) return;
+        sp.classList.add('open');
+        document.getElementById('live-lb-scrim').classList.add('open');
+        document.getElementById('live-lb-scrim').onclick = closeLiveStats;
+        refreshLiveStats();
+    };
+    window.closeLiveStats = function() {
+        var sp = document.getElementById('live-stats-panel');
+        if (sp) sp.classList.remove('open');
+        document.getElementById('live-lb-scrim').classList.remove('open');
+        document.getElementById('live-lb-scrim').onclick = closeLiveLeaderboard;
+    };
+    window.refreshLiveStats = function() {
+        var starsEl = document.getElementById('live-stat-stars');
+        var hypeEl  = document.getElementById('live-stat-hypes');
+        var viewEl  = document.getElementById('live-stat-viewers');
+        var durEl   = document.getElementById('live-stat-duration');
+        var starsRaw = starsEl ? starsEl.textContent.replace(/[★\s]/g,'') : '0';
+        var starsNum = parseFloat(starsRaw.replace('K','')) || 0;
+        if (starsRaw.includes('K')) starsNum *= 1000;
+        var usdtEarned = (starsNum * 0.8 * 0.01).toFixed(2);
+        setText('perf-stars', starsEl ? starsEl.textContent : '0 ★');
+        setText('perf-usdt', '≈ $' + usdtEarned + ' USDT');
+        setText('perf-hypes', hypeEl ? hypeEl.textContent : '0');
+        setText('perf-views', viewEl ? viewEl.textContent : '0');
+        setText('perf-duration', durEl ? durEl.textContent : '--');
+        var streamId = window._currentStreamId || window._watchingStreamId || currentStreamId || '';
+        if (streamId && window.db && window.fs) {
+            window.fs.getDocs(window.fs.collection(window.db, 'live_streams', streamId, 'top_gifters'))
+                .then(function(snap) { setText('perf-gifters', String(snap.size)); })
+                .catch(function() {});
+        }
+    };
+
     // ── PATCH startLiveStream to start health monitor + hand queue ─
     const _origGoLive = window.startLiveStream;
     window.startLiveStream = async function() {
@@ -34870,6 +34993,45 @@ body.is-hosting #cmd-orb, body.is-hosting #cmd-wheel, body.is-hosting #cmd-scrim
     </div>
 </div>
 
+<!-- ── GIFT COMBO COUNTER ─────────────────────────────────────────────── -->
+<div id="live-combo-counter"></div>
+
+<!-- ── NEW FOLLOWER BANNER ───────────────────────────────────────────── -->
+<div id="live-follow-banner"></div>
+
+<!-- ── LIVE PERFORMANCE STATS PANEL ─────────────────────────────────── -->
+<div id="live-stats-panel">
+    <div class="lb-handle"></div>
+    <div class="lb-title">📊 Stream Performance</div>
+    <div class="perf-grid">
+        <div class="perf-stat">
+            <div class="perf-val" id="perf-duration">--</div>
+            <div class="perf-label">Duration</div>
+        </div>
+        <div class="perf-stat">
+            <div class="perf-val" id="perf-views">0</div>
+            <div class="perf-label">Peak Viewers</div>
+        </div>
+        <div class="perf-stat">
+            <div class="perf-val" id="perf-hypes">0</div>
+            <div class="perf-label">Hypes</div>
+        </div>
+        <div class="perf-stat">
+            <div class="perf-val" id="perf-gifters">—</div>
+            <div class="perf-label">Unique Gifters</div>
+        </div>
+        <div class="perf-stat" style="grid-column:span 2;">
+            <div class="perf-val" id="perf-stars" style="color:var(--gold);">0 ★</div>
+            <div class="perf-label">Stars Earned (Gross)</div>
+        </div>
+        <div class="perf-stat" style="grid-column:span 2;">
+            <div class="perf-val" id="perf-usdt" style="color:#22c55e;">≈ $0.00 USDT</div>
+            <div class="perf-label">Your Earnings (80% cut)</div>
+        </div>
+    </div>
+    <button class="btn btn-outline btn-sm" style="width:100%;margin-top:4px;" onclick="closeLiveStats()">Close</button>
+</div>
+
 <div id="cmd-orb" role="button" aria-label="Quick navigation"><span class="cmd-orb-ic">✦</span></div>
 
 <script>
@@ -35253,6 +35415,16 @@ body.has-battle .live-stream-overlay-top{display:none!important}
 }
 #host-stars-pill.stars-pop{animation:stars-pop-kf 0.58s cubic-bezier(0.34,1.56,0.64,1);}
 @media(min-width:701px){#host-mobile-topleft{display:none!important;}}
+
+/* ── Desktop cinema: show broadcaster video overlays ─────────────── */
+@media(min-width:701px){
+    body.cinema-mode.is-hosting #host-mobile-topleft { display:flex !important; align-items:center; gap:8px; }
+    body.cinema-mode.is-hosting #live-broadcast-viewers { display:inline-flex !important; }
+    body.cinema-mode.is-hosting #stream-health { display:flex !important; }
+    body.cinema-mode.is-hosting #bc-floating-chat { display:flex !important; }
+    body.cinema-mode.is-hosting #bc-floating-chat .sfc-feed { max-height:50vh; }
+    body.cinema-mode.is-hosting #bc-floating-chat .sfc-feed:empty + * { display:none; }
+}
 
 /* ── VIEWER FULL-SCREEN MOBILE IMMERSIVE (Option C) ── */
 @media(max-width:700px){
@@ -36101,6 +36273,7 @@ window._bhpWatch=function(){
 var _origSendGiftBattle = window.sendGift;
 window.sendGift = async function(tierKey){
     await _origSendGiftBattle(tierKey);
+    if (window._triggerGiftCombo) window._triggerGiftCombo(tierKey);
     if(!_bid||!_bdata) return;
     var costs={spark:1,fire:5,diamond:20,rocket:50};
     var stars=costs[tierKey]||1;
