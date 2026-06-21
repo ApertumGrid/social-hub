@@ -28322,7 +28322,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             agoraClient.on('user-unpublished', (remoteUser, mediaType) => {
                 if (_cohostToggling) return;
                 if (mediaType === 'audio') return;
-                if (remoteUser.videoTrack) return;
+                // hasAudio means user is still on stage — they just toggled camera, not left
+                if (remoteUser.hasAudio) return;
                 // Co-host truly left — clear their slot
                 if (currentStreamId && window.db && window.fs) {
                     var _uSlots = (window._currentCoSlots || []).slice();
@@ -28866,9 +28867,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     // Another user (co-host) unpublished something.
                     // IMPORTANT: mic/cam toggle fires user-unpublished for that mediaType only.
                     // Only remove the PiP when their VIDEO is truly gone (not just muted/toggled).
-                    if (mediaType === 'audio') return; // audio toggle — ignore, pip stays
-                    if (remoteUser.videoTrack) return; // video renegotiation — pip stays
-                    // Co-host truly left — remove their PiP and restore normal view
+                    if (mediaType === 'audio') return; // audio toggle — ignore, slot stays
+                    if (remoteUser.hasAudio) return;  // cam toggle only — still on stage
+                    // Co-host truly left — clear their slot
                     const pip = document.getElementById('cohost-pip-viewer');
                     if (pip) pip.remove();
                     window._applyViewerSpotlight = null;
@@ -30644,7 +30645,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (typeof window._applyVcHeight === 'function') { try { window._applyVcHeight(); } catch(_){} }
         if (window._renderSlotGrid) {
             window._renderSlotGrid(container, 'live-remote-video', mode, window._currentCoSlots || [], false);
-            setTimeout(function(){ window._syncAgoraToSlots(window._currentCoSlots || [], false); }, 150);
+            // Re-play the host track AFTER repositioning so Agora initialises at the correct
+            // final size — prevents Agora's internal resize observer resetting object-fit to contain.
+            setTimeout(function() {
+                var _remEl = document.getElementById('live-remote-video');
+                if (_remEl && window._liveHostVideoTrack) {
+                    try { window._liveHostVideoTrack.play(_remEl, { fit: 'cover' }); } catch(_) {}
+                }
+                window._syncAgoraToSlots && window._syncAgoraToSlots(window._currentCoSlots || [], false);
+            }, 250);
         }
     }
 
