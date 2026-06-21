@@ -9398,6 +9398,31 @@ body.cinema-mode #btn-end-stream-toolbar { display:none!important; }
     #panel-end-stream-wrap { display: none !important; }
 }
 
+/* ── Desktop host: fullscreen video, slim right panel ── */
+@media (min-width: 769px) {
+    /* Hide the duplicate button grid — all controls are on the video overlay (#host-icon-strip + more drawer) */
+    body.cinema-mode.is-hosting #cinema-controls-btns { display:none !important; }
+    body.cinema-mode.is-hosting #cinema-controls { padding:0 !important; margin:0 !important; min-height:0 !important; }
+    /* Right column becomes slim: just chat feed + input + END STREAM */
+    body.cinema-mode.is-hosting #cinema-chat-col {
+        width: 260px !important;
+        min-width: 260px !important;
+        max-width: 260px !important;
+        flex-shrink: 0 !important;
+    }
+    /* Video column fills all remaining space */
+    body.cinema-mode.is-hosting #cinema-video-col {
+        flex: 1 !important;
+        min-width: 0 !important;
+    }
+    /* Show floating chat overlay ON the video (viewer messages float bottom-left) */
+    body.cinema-mode.is-hosting #bc-floating-chat { display:block !important; }
+    /* Show timer + stars pills on the video on desktop too */
+    body.cinema-mode.is-hosting #host-mobile-topleft { display:flex !important; }
+    /* Ensure stats row stays hidden (duplicated by pills overlay) */
+    body.cinema-mode.is-hosting #bc-live-stats-row { display:none !important; }
+}
+
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    GEMINI V2028.04 — AUTHORITATIVE DESIGN SYSTEM
@@ -30358,10 +30383,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     function _showGiftBurst(tier, senderName) {
         senderName = senderName || '';
         _triggerCombo(tier.cost);
-        if (tier.key) {
+        // Diamond + Rocket → full MP4 video replaces emoji animations
+        if (tier.key && (tier.chatStyle === 'diamond' || tier.chatStyle === 'rocket')) {
             _playGiftVideo(tier.key, senderName);
             return;
         }
+        // Fire + default (small gifts) → keep emoji burst animations
         switch (tier.chatStyle) {
             case 'rocket':
                 _showMegaBurst(tier, senderName);
