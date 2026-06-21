@@ -8837,13 +8837,7 @@ html body #profile-hero .hero-action-btn.btn-follow {
 .slot-vid > div { width:100%!important; height:100%!important; }
 .slot-vid video { width:100%!important; height:100%!important; object-fit:cover!important; }
 
-/* ── MOBILE HOST: host video always full-screen; slots are small overlay cards ── */
-@media(max-width:900px) {
-    body.is-hosting #live-broadcaster-video {
-        position:absolute!important; left:0!important; top:0!important;
-        width:100%!important; height:100%!important; z-index:2!important;
-    }
-}
+
 /* ── CO-HOST ON-STAGE BAR (floating, mobile viewer on stage) */
 #cohost-stage-bar { display:none; position:fixed; bottom:72px; left:50%; transform:translateX(-50%); z-index:9990; background:rgba(10,8,24,0.88); border:1px solid rgba(124,92,191,0.35); border-radius:50px; padding:6px 16px; gap:10px; align-items:center; backdrop-filter:blur(8px); }
 #cohost-stage-bar button { background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.25); color:#fff; border-radius:20px; padding:4px 12px; font-size:0.68rem; font-weight:600; cursor:pointer; white-space:nowrap; }
@@ -9244,13 +9238,14 @@ body.cinema-mode #btn-end-stream-toolbar { display:none!important; }
         visibility: visible !important;
         position: relative !important;
     }
-    /* Agora injects its video here — ensure it always has dimensions */
+    /* Agora injects its video here — ensure it always has dimensions. No !important on
+       top/left/width/height so that _renderSlotGrid inline styles control placement. */
     body.is-hosting #live-broadcaster-video {
         display: block !important;
         visibility: visible !important;
         position: absolute !important;
-        top: 0 !important; left: 0 !important;
-        width: 100% !important; height: 100% !important;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
         min-height: 200px !important;
     }
     /* In split/grid layouts, override the full-width forced style above */
@@ -30679,6 +30674,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
     };
 
+    // Locally mutes a co-host's audio by their Agora UID (host-side only)
+    window._muteSlotUid = function(uid) {
+        if (!agoraClient || !uid) return;
+        var remotes = agoraClient.remoteUsers || [];
+        for (var i = 0; i < remotes.length; i++) {
+            if (String(remotes[i].uid) === String(uid)) {
+                if (remotes[i].audioTrack) {
+                    try { remotes[i].audioTrack.stop(); showToast('Co-host muted locally.'); } catch(e) {}
+                }
+                return;
+            }
+        }
+        showToast('Could not find that user\'s audio track.');
+    };
+
     // ── Duration timer ────────────────────────────────────────────
     function updateDuration() {
         if (!streamStartTime) return;
@@ -31580,6 +31590,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // ── Co-host mic/cam state flags (mirrors isMicMuted / isCamOff on host side) ──
     let _cohostMicMuted = false;
     let _cohostCamOff   = false;
+    window._coHostStateGet = function() { return { micMuted: _cohostMicMuted, camOff: _cohostCamOff }; };
 
     // ── Co-host mic toggle (viewer on stage) ─────────────────────
     // Flag set to true for the duration of a deliberate mic/cam toggle.
@@ -31612,28 +31623,49 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             _cohostToggling = true;
             await cohostVideoTrack.setEnabled(!_cohostCamOff);
             setTimeout(function(){ _cohostToggling = false; }, 2000);
-            const btn = $('cohost-btn-cam');
+            var btn = $('cohost-btn-cam');
             if (btn) btn.textContent = _cohostCamOff ? '📷 Cam On' : '📷 Cam Off';
-            // Show/hide a cam-off overlay inside selfPip so the pip stays visible
-            // even when camera is disabled — it just shows black with a label
-            var selfPip = document.getElementById('cohost-self-pip');
-            if (selfPip) {
-                var camOffOverlay = document.getElementById('cohost-cam-off-overlay');
-                if (_cohostCamOff) {
-                    if (!camOffOverlay) {
-                        camOffOverlay = document.createElement('div');
-                        camOffOverlay.id = 'cohost-cam-off-overlay';
-                        camOffOverlay.style.cssText = 'position:absolute;inset:0;background:#111;display:flex;align-items:center;justify-content:center;z-index:5;font-size:0.7rem;color:rgba(255,255,255,0.6);font-weight:600;';
-                        camOffOverlay.textContent = '📷 Cam Off';
-                        selfPip.appendChild(camOffOverlay);
-                    } else {
-                        camOffOverlay.style.display = 'flex';
+            showToast(_cohostCamOff ? '📷 Camera off' : '📷 Camera live');
+
+            // Write camOff state to Firestore so all viewers see profile pic or live video
+            var _myAddr = (window._liveUserAddress || '').toLowerCase();
+            var _myAvatar = window._liveUserAvatar || '';
+            var _sid = _watchingStreamId || currentStreamId;
+            if (_sid && window.db && window.fs && _myAddr) {
+                var _cs = (window._currentCoSlots || []).slice();
+                var _ci = _cs.findIndex(function(s){ return s && (s.address||'').toLowerCase() === _myAddr; });
+                if (_ci !== -1) {
+                    _cs[_ci] = Object.assign({}, _cs[_ci], {
+                        camOff: _cohostCamOff,
+                        avatar: _cohostCamOff ? _myAvatar : ''
+                    });
+                    window._currentCoSlots = _cs;
+                    window.fs.updateDoc(window.fs.doc(window.db, 'live_streams', _sid), { coSlots: _cs }).catch(function(){});
+
+                    // Immediately update own slot DOM without waiting for Firestore round-trip
+                    var _slotEl = document.getElementById('live-slot-' + _ci);
+                    if (_slotEl) {
+                        var _existing = _slotEl.querySelector('.slot-cam-off');
+                        if (_cohostCamOff) {
+                            if (!_existing) {
+                                _existing = document.createElement('div');
+                                _existing.className = 'slot-cam-off';
+                                _existing.style.cssText = 'position:absolute;inset:0;background:#0a0810;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:4;gap:6px;';
+                                _existing.innerHTML = _myAvatar
+                                    ? '<img src="'+_myAvatar+'" style="width:58px;height:58px;border-radius:50%;object-fit:cover;border:2px solid rgba(124,92,191,0.5);" /><div style="font-size:0.55rem;color:rgba(255,255,255,0.38);font-weight:600;letter-spacing:0.5px;">CAM OFF</div>'
+                                    : '<div style="font-size:2.2rem;line-height:1;">👤</div><div style="font-size:0.55rem;color:rgba(255,255,255,0.38);font-weight:600;letter-spacing:0.5px;">CAM OFF</div>';
+                                _slotEl.appendChild(_existing);
+                            } else {
+                                _existing.style.display = 'flex';
+                            }
+                        } else {
+                            if (_existing) _existing.style.display = 'none';
+                            // Resume playing cam in slot
+                            try { cohostVideoTrack.play(_slotEl.querySelector('.slot-vid') || _slotEl); } catch(_e) {}
+                        }
                     }
-                } else {
-                    if (camOffOverlay) camOffOverlay.style.display = 'none';
                 }
             }
-            showToast(_cohostCamOff ? '📷 Camera off' : '📷 Camera live');
         } catch(e) {
             _cohostCamOff = !_cohostCamOff; // roll back
             _cohostToggling = false;
@@ -37027,37 +37059,17 @@ window._renderSlotGrid = function(container, hostVidId, mode, coSlots, isHost) {
     container.style.overflow = 'hidden';
     var hostEl = hostVidId ? document.getElementById(hostVidId) : null;
 
-    // Mobile host: keep host video full-screen, slots as small right-edge pips.
-    // Grid modes are excluded — in grid mode host explicitly chose to be a small block.
-    var isGridMode = mode === 'grid2x2' || mode === 'grid3x3';
-    var isMobileHost = isHost && window.innerWidth <= 900 && !isGridMode;
-
     if (hostEl) {
-        if (isMobileHost) {
-            hostEl.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;z-index:2;';
-        } else {
-            var h = def.host;
-            hostEl.style.cssText = 'position:absolute;left:'+h.l+'%;top:'+h.t+'%;width:'+h.w+'%;height:'+h.h+'%;z-index:2;';
-        }
+        var h = def.host;
+        hostEl.style.cssText = 'position:absolute;left:'+h.l+'%;top:'+h.t+'%;width:'+h.w+'%;height:'+h.h+'%;z-index:2;';
     }
     // Remove old slots
     var old = container.querySelectorAll('.live-slot');
     for (var s = 0; s < old.length; s++) old[s].remove();
 
-    // Calculate slot positions — mobile host uses small right-edge pips
-    var slotCount = def.slots.length;
-    var slotPositions = def.slots;
-    if (isMobileHost && slotCount > 0) {
-        slotPositions = [];
-        var pipH = Math.floor(100 / slotCount);
-        for (var p = 0; p < slotCount; p++) {
-            slotPositions.push({l:67, t:p*pipH, w:33, h:pipH});
-        }
-    }
-
     // Build new slots
-    for (var i = 0; i < slotPositions.length; i++) {
-        var pos = slotPositions[i];
+    for (var i = 0; i < def.slots.length; i++) {
+        var pos = def.slots[i];
         var sd  = (coSlots && coSlots[i]) ? coSlots[i] : {status:'empty'};
         var el  = document.createElement('div');
         el.className = 'live-slot';
@@ -37068,12 +37080,32 @@ window._renderSlotGrid = function(container, hostVidId, mode, coSlots, isHost) {
             vd.id = 'live-slot-' + i;
             vd.className = 'slot-vid';
             el.appendChild(vd);
+            // Camera-off state: show profile pic overlay instead of black video
+            if (sd.camOff) {
+                var cov = document.createElement('div');
+                cov.className = 'slot-cam-off';
+                cov.style.cssText = 'position:absolute;inset:0;background:#0a0810;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:4;gap:6px;';
+                var avHtml = sd.avatar
+                    ? '<img src="'+sd.avatar+'" style="width:58px;height:58px;border-radius:50%;object-fit:cover;border:2px solid rgba(124,92,191,0.5);" />'
+                    : '<div style="font-size:2.2rem;line-height:1;">👤</div>';
+                cov.innerHTML = avHtml + '<div style="font-size:0.55rem;color:rgba(255,255,255,0.38);font-weight:600;letter-spacing:0.5px;">CAM OFF</div>';
+                el.appendChild(cov);
+            }
             if (sd.name) { var nm = document.createElement('div'); nm.className = 'slot-name'; nm.textContent = sd.name; el.appendChild(nm); }
             if (isHost) {
                 var kk = document.createElement('button'); kk.className = 'slot-kick'; kk.textContent = '✕'; kk.title = 'Remove from stage';
                 var _ka = sd.address; kk.onclick = (function(a){ return function(){ window._kickFromStage && window._kickFromStage(a); }; })(_ka);
                 el.appendChild(kk);
             }
+            // Tap the slot face to open action menu (gift / follow / mute)
+            el.style.cursor = 'pointer';
+            (function(_sd, _el, _ih) {
+                _el.onclick = function(e) {
+                    if (e.target.classList.contains('slot-kick') || e.target.classList.contains('slot-admit')) return;
+                    e.stopPropagation();
+                    window._openSlotAction && window._openSlotAction(_sd, _el, _ih);
+                };
+            })(sd, el, isHost);
         } else if (sd.status === 'pending') {
             var pi = document.createElement('div'); pi.className = 'slot-inner';
             pi.innerHTML = '<div style="font-size:0.9rem;color:rgba(255,255,255,0.45);">⏳</div><div class="slot-label" style="color:rgba(255,255,255,0.45);">'+(sd.name||'Waiting...')+'</div>';
@@ -37092,6 +37124,137 @@ window._renderSlotGrid = function(container, hostVidId, mode, coSlots, isHost) {
         }
         container.appendChild(el);
     }
+};
+
+window._openSlotAction = function(slotData, slotEl, isHost) {
+    // Clear any previous highlight + popup
+    document.querySelectorAll('.live-slot').forEach(function(s) { s.style.outline = ''; });
+    var prev = document.getElementById('slot-action-popup');
+    if (prev) { prev.remove(); if (prev._forEl === slotEl) return; } // second tap on same slot closes
+
+    var myAddr   = (window._liveUserAddress || '').toLowerCase();
+    var theirAddr = (slotData.address || '').toLowerCase();
+    if (!theirAddr) return;
+
+    // Co-host tapping their own block → self-controls (mic / cam)
+    if (myAddr && myAddr === theirAddr) {
+        slotEl.style.outline = '2px solid rgba(124,92,191,0.85)';
+        slotEl.style.outlineOffset = '-2px';
+        var selfPopup = document.createElement('div');
+        selfPopup.id  = 'slot-action-popup';
+        selfPopup._forEl = slotEl;
+        var srect = slotEl.getBoundingClientRect();
+        var spW = 168;
+        var sl = srect.right + 8; if (sl + spW > window.innerWidth - 8) sl = srect.left - spW - 8; if (sl < 8) sl = 8;
+        var st = Math.max(8, Math.min(srect.top, window.innerHeight - 160));
+        selfPopup.style.cssText = 'position:fixed;z-index:9800;left:'+sl+'px;top:'+st+'px;background:rgba(10,8,24,0.95);border:1px solid rgba(124,92,191,0.4);border-radius:12px;padding:10px;min-width:'+spW+'px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 4px 28px rgba(0,0,0,0.5);';
+        selfPopup.innerHTML = '<div style="font-size:0.62rem;color:rgba(255,255,255,0.45);padding:0 4px 8px;font-weight:700;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:6px;">You (on stage)</div>';
+        var state = window._coHostStateGet ? window._coHostStateGet() : { micMuted:false, camOff:false };
+        function selfBtn(icon, label, cb) {
+            var b = document.createElement('button');
+            b.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;color:#fff;padding:8px 8px;font-size:0.72rem;border-radius:7px;cursor:pointer;';
+            b.innerHTML = '<span style="font-size:0.85rem;width:18px;text-align:center;flex-shrink:0;">'+icon+'</span><span>'+label+'</span>';
+            b.onmouseover = function(){ b.style.background='rgba(124,92,191,0.18)'; };
+            b.onmouseout  = function(){ b.style.background='none'; };
+            b.onclick = function(e) { e.stopPropagation(); selfPopup.remove(); slotEl.style.outline=''; cb(); };
+            selfPopup.appendChild(b);
+        }
+        selfBtn(state.micMuted ? '🎙' : '🔇', state.micMuted ? 'Unmute Mic' : 'Mute Mic', function() {
+            window.toggleCoHostMic && window.toggleCoHostMic();
+        });
+        selfBtn(state.camOff ? '📷' : '📷', state.camOff ? 'Turn Camera On' : 'Turn Camera Off', function() {
+            window.toggleCoHostCam && window.toggleCoHostCam();
+        });
+        document.body.appendChild(selfPopup);
+        setTimeout(function() {
+            function _selfDismiss(e) { if (!selfPopup.contains(e.target)) { selfPopup.remove(); slotEl.style.outline=''; document.removeEventListener('click',_selfDismiss); } }
+            document.addEventListener('click', _selfDismiss);
+        }, 50);
+        return;
+    }
+
+    var name = slotData.name || 'Co-host';
+
+    slotEl.style.outline = '2px solid rgba(124,92,191,0.85)';
+    slotEl.style.outlineOffset = '-2px';
+
+    var popup = document.createElement('div');
+    popup.id  = 'slot-action-popup';
+    popup._forEl = slotEl;
+
+    // Position popup beside slot, keep within viewport
+    var rect = slotEl.getBoundingClientRect();
+    var popW = 158;
+    var left = rect.right + 8;
+    if (left + popW > window.innerWidth - 8) left = rect.left - popW - 8;
+    if (left < 8) left = 8;
+    var top = Math.max(8, Math.min(rect.top, window.innerHeight - 200));
+
+    popup.style.cssText = 'position:fixed;z-index:9800;left:'+left+'px;top:'+top+'px;background:rgba(10,8,24,0.95);border:1px solid rgba(124,92,191,0.4);border-radius:12px;padding:10px;min-width:'+popW+'px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 4px 28px rgba(0,0,0,0.5);';
+
+    popup.innerHTML = '<div style="font-size:0.62rem;color:rgba(255,255,255,0.45);padding:0 4px 8px;font-weight:700;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">@'+name+'</div>';
+
+    function addBtn(icon, label, danger, cb) {
+        var b = document.createElement('button');
+        b.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;color:'+(danger?'rgba(239,68,68,0.9)':'#fff')+';padding:8px 8px;font-size:0.72rem;border-radius:7px;cursor:pointer;';
+        b.innerHTML = '<span style="font-size:0.85rem;width:18px;text-align:center;flex-shrink:0;">'+icon+'</span><span>'+label+'</span>';
+        b.onmouseover = function(){ b.style.background='rgba(124,92,191,0.18)'; };
+        b.onmouseout  = function(){ b.style.background='none'; };
+        b.onclick = function(e) {
+            e.stopPropagation();
+            popup.remove();
+            slotEl.style.outline='';
+            cb();
+        };
+        popup.appendChild(b);
+        return b;
+    }
+
+    // Gift — everyone can gift everyone else
+    addBtn('🎁', 'Gift '+name.split(' ')[0], false, function() {
+        if (window.openGiftPickerDirect) window.openGiftPickerDirect(theirAddr, name);
+        else if (typeof showToast === 'function') showToast('Gift system not ready.');
+    });
+
+    if (isHost) {
+        addBtn('🔇', 'Mute', false, function() {
+            if (window._muteSlotUid) window._muteSlotUid(slotData.uid);
+        });
+        addBtn('✕', 'Remove from stage', true, function() {
+            window._kickFromStage && window._kickFromStage(theirAddr);
+        });
+    } else {
+        // Follow button — async check if already following
+        if (myAddr && window.db && window.fs) {
+            var followBtn = addBtn('👤', 'Follow', false, function() {
+                if (window._battleFollow) window._battleFollow(theirAddr);
+                else if (typeof showToast === 'function') showToast('Follow unavailable.');
+            });
+            if (window.fs.getDoc && window.fs.doc) {
+                window.fs.getDoc(window.fs.doc(window.db, 'follows', myAddr+'_'+theirAddr)).then(function(snap) {
+                    if (snap && snap.exists()) {
+                        followBtn.querySelector('span:nth-child(1)').textContent = '✓';
+                        followBtn.querySelector('span:nth-child(2)').textContent = 'Following';
+                        followBtn.style.color = 'rgba(124,92,191,0.9)';
+                    }
+                }).catch(function(){});
+            }
+        }
+    }
+
+    document.body.appendChild(popup);
+
+    // Dismiss when clicking outside
+    setTimeout(function() {
+        function _dismiss(e) {
+            if (!popup.contains(e.target)) {
+                popup.remove();
+                slotEl.style.outline = '';
+                document.removeEventListener('click', _dismiss);
+            }
+        }
+        document.addEventListener('click', _dismiss);
+    }, 50);
 };
 
 window._mutedLiveAddrs = new Set();
