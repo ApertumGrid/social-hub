@@ -28308,7 +28308,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             for (var _si = 0; _si < _slots.length; _si++) {
                                 if (_slots[_si] && String(_slots[_si].uid) === String(remoteUser.uid) && _slots[_si].status === 'active') {
                                     var _slotDiv = document.getElementById('live-slot-' + _si);
-                                    if (_slotDiv) { try { remoteUser.videoTrack.play(_slotDiv); _matched = true; console.log('[Host] co-host video in slot', _si); } catch(e) {} }
+                                    if (_slotDiv) { try { remoteUser.videoTrack.play(_slotDiv, { fit: 'cover' }); _matched = true; console.log('[Host] co-host video in slot', _si); } catch(e) {} }
                                 }
                             }
                             if (!_matched && _slotRetry < 20) { _slotRetry++; setTimeout(_trySlotPlay, 200); }
@@ -28689,7 +28689,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                     // Force the inner div to fill so Agora can inject into it
                                     remoteEl.style.width  = container.offsetWidth  + 'px';
                                     remoteEl.style.height = container.offsetHeight + 'px';
-                                    remoteUser.videoTrack.play(remoteEl);
+                                    remoteUser.videoTrack.play(remoteEl, { fit: 'cover' });
                                     // Hide waiting room — _wrTimer only fires once at page load;
                                     // subsequent joins need explicit hide here.
                                     var _wr = document.getElementById('live-waiting-room');
@@ -28819,8 +28819,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         (function _playPip() {
                             var rt = document.getElementById('cohost-pip-viewer-video');
                             if (rt && (rt.offsetWidth > 0 || rt.offsetHeight > 0 || _pipRetry > 10)) {
-                                try { remoteUser.videoTrack.play(rt); } catch(_pipErr) {
-                                    try { remoteUser.videoTrack.play(cohostPip); } catch(_) {}
+                                try { remoteUser.videoTrack.play(rt, { fit: 'cover' }); } catch(_pipErr) {
+                                    try { remoteUser.videoTrack.play(cohostPip, { fit: 'cover' }); } catch(_) {}
                                 }
                             } else if (_pipRetry < 20) {
                                 _pipRetry++;
@@ -30556,6 +30556,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var _newCoSlots = Array.isArray(d.coSlots) ? d.coSlots : [];
             window._currentCoSlots = _newCoSlots;
 
+            // Host cam-off: show profile pic overlay on viewer side
+            if (!isHosting && typeof window._applyHostCamOffOverlay === 'function') {
+                window._applyHostCamOffOverlay(!!d.hostCamOff, d.hostAvatar || '');
+            }
+
             if (!isHosting && d.streamLayout) {
                 _applyViewerLayout(d.streamLayout);
                 // Update Join Stage button availability
@@ -30656,7 +30661,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             for (var ri = 0; ri < remotes.length; ri++) {
                 var ru = remotes[ri];
                 if (String(ru.uid) === String(sd.uid) && ru.videoTrack) {
-                    try { ru.videoTrack.play(slotEl); } catch(e) {}
+                    try { ru.videoTrack.play(slotEl, { fit: 'cover' }); } catch(e) {}
                     break;
                 }
             }
@@ -30667,7 +30672,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             for (var j = 0; j < slots.length; j++) {
                 if ((slots[j].address||'').toLowerCase() === myAddr && slots[j].status === 'active') {
                     var mySlotEl = document.getElementById('live-slot-' + j);
-                    if (mySlotEl) { try { cohostVideoTrack.play(mySlotEl); } catch(e) {} }
+                    if (mySlotEl) { try { cohostVideoTrack.play(mySlotEl, { fit: 'cover' }); } catch(e) {} }
                     break;
                 }
             }
@@ -31450,7 +31455,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             (function _playSelfInSlot() {
                 var slotDiv = _slotIdx !== -1 ? document.getElementById('live-slot-' + _slotIdx) : null;
                 if (slotDiv) {
-                    try { cohostVideoTrack.play(slotDiv); console.log('[CoHost] self-view playing in slot', _slotIdx); }
+                    try { cohostVideoTrack.play(slotDiv, { fit: 'cover' }); console.log('[CoHost] self-view playing in slot', _slotIdx); }
                     catch(e) { console.warn('[CoHost] self-view slot play err:', e); }
                 } else if (_selfPlayRetry < 30) {
                     _selfPlayRetry++;
@@ -31477,7 +31482,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         if (ru2.uid === _myViewerUid) continue;
                         if (window._cohostPublishedUid && ru2.uid === window._cohostPublishedUid) continue;
                         if (ru2.videoTrack) {
-                            ru2.videoTrack.play(remoteEl);
+                            ru2.videoTrack.play(remoteEl, { fit: 'cover' });
                             console.log('[CoHost] Safety net: re-rendered host video uid:', ru2.uid);
                             break;
                         }
@@ -31535,7 +31540,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     try { await agoraClient.subscribe(_ru, 'audio'); if (_ru.audioTrack) _ru.audioTrack.play(); } catch(_) {}
                     if (_ru.videoTrack && _liveHostUid && _ru.uid === _liveHostUid) {
                         var _re = document.getElementById('live-remote-video');
-                        if (_re) { try { _ru.videoTrack.play(_re); } catch(_) {} }
+                        if (_re) { try { _ru.videoTrack.play(_re, { fit: 'cover' }); } catch(_) {} }
                     }
                 }
             } catch(_leaveReSub) { console.warn('[CoHost] leave re-subscribe error:', _leaveReSub); }
@@ -31661,7 +31666,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         } else {
                             if (_existing) _existing.style.display = 'none';
                             // Resume playing cam in slot
-                            try { cohostVideoTrack.play(_slotEl.querySelector('.slot-vid') || _slotEl); } catch(_e) {}
+                            try { cohostVideoTrack.play(_slotEl.querySelector('.slot-vid') || _slotEl, { fit: 'cover' }); } catch(_e) {}
                         }
                     }
                 }
@@ -32188,6 +32193,36 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (pip) pip.style.display = isCamOff ? 'none' : 'block';
             }
             showToast(isCamOff ? '📷 Camera off' : '📷 Camera on');
+
+            // Show profile pic in host's own broadcaster view when cam is off
+            var _bcVid = document.getElementById('live-broadcaster-video');
+            if (_bcVid) {
+                var _hco = document.getElementById('host-cam-off-overlay');
+                if (isCamOff) {
+                    if (!_hco) {
+                        _hco = document.createElement('div');
+                        _hco.id = 'host-cam-off-overlay';
+                        _hco.style.cssText = 'position:absolute;inset:0;background:#0a0810;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:5;gap:8px;pointer-events:none;';
+                        var _av = window._liveUserAvatar || '';
+                        _hco.innerHTML = _av
+                            ? '<img src="'+_av+'" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid rgba(124,92,191,0.5);" /><div style="font-size:0.62rem;color:rgba(255,255,255,0.45);font-weight:600;letter-spacing:0.5px;">CAM OFF</div>'
+                            : '<div style="font-size:3rem;line-height:1;">👤</div><div style="font-size:0.62rem;color:rgba(255,255,255,0.45);font-weight:600;letter-spacing:0.5px;">CAM OFF</div>';
+                        _bcVid.appendChild(_hco);
+                    } else {
+                        _hco.style.display = 'flex';
+                    }
+                } else {
+                    if (_hco) _hco.style.display = 'none';
+                }
+            }
+
+            // Write to Firestore so viewers also see profile pic instead of black
+            if (currentStreamId && window.db && window.fs) {
+                window.fs.updateDoc(window.fs.doc(window.db, LIVE_COL, currentStreamId), {
+                    hostCamOff: isCamOff,
+                    hostAvatar: isCamOff ? (window._liveUserAvatar || '') : ''
+                }).catch(function(){});
+            }
         } catch(e) {
             isCamOff = !isCamOff;
             console.error('[Live] toggleCamera error:', e);
@@ -32894,6 +32929,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // ── SLOT STATE + SYNCHRONIZED LAYOUT ─────────────────────
             var _cSlots2 = Array.isArray(d.coSlots) ? d.coSlots : [];
             window._currentCoSlots = _cSlots2;
+
+            // Host cam-off: show profile pic overlay on viewer side
+            if (!isHosting && typeof window._applyHostCamOffOverlay === 'function') {
+                window._applyHostCamOffOverlay(!!d.hostCamOff, d.hostAvatar || '');
+            }
 
             if (!isHosting && d.streamLayout) {
                 if (typeof _applyViewerLayout === 'function') {
@@ -33871,7 +33911,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     var h = col ? col.offsetHeight : 240;
                     remoteEl.style.width  = w + 'px';
                     remoteEl.style.height = h + 'px';
-                    try { window._liveHostVideoTrack.play(remoteEl); } catch(_) {}
+                    try { window._liveHostVideoTrack.play(remoteEl, { fit: 'cover' }); } catch(_) {}
                 }
             }
         }, 300);
@@ -36726,11 +36766,11 @@ async function _joinBattleOpponent(oppSid){
                         var w=pip.offsetWidth, h=pip.offsetHeight;
                         console.log('[Battle] pip dims',w,'x',h);
                         if(w>0&&h>0){
-                            remoteUser.videoTrack.play(pip);
+                            remoteUser.videoTrack.play(pip, { fit: 'cover' });
                         } else {
                             setTimeout(function(){
                                 var p2=document.getElementById('battle-opponent-pip');
-                                if(p2) remoteUser.videoTrack.play(p2);
+                                if(p2) remoteUser.videoTrack.play(p2, { fit: 'cover' });
                             },300);
                         }
                     }
@@ -37255,6 +37295,28 @@ window._openSlotAction = function(slotData, slotEl, isHost) {
         }
         document.addEventListener('click', _dismiss);
     }, 50);
+};
+
+// Show/hide host profile pic on the viewer's host video block when host turns cam off
+window._applyHostCamOffOverlay = function(camOff, avatar) {
+    var hostVidEl = document.getElementById('live-remote-video');
+    if (!hostVidEl) return;
+    var overlay = document.getElementById('viewer-host-cam-off');
+    if (camOff) {
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'viewer-host-cam-off';
+            overlay.style.cssText = 'position:absolute;inset:0;background:#0a0810;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:5;gap:8px;pointer-events:none;';
+            hostVidEl.appendChild(overlay);
+        }
+        var av = avatar || '';
+        overlay.innerHTML = av
+            ? '<img src="'+av+'" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid rgba(124,92,191,0.5);" /><div style="font-size:0.62rem;color:rgba(255,255,255,0.45);font-weight:600;letter-spacing:0.5px;">CAM OFF</div>'
+            : '<div style="font-size:3rem;line-height:1;">👤</div><div style="font-size:0.62rem;color:rgba(255,255,255,0.45);font-weight:600;letter-spacing:0.5px;">CAM OFF</div>';
+        overlay.style.display = 'flex';
+    } else {
+        if (overlay) overlay.style.display = 'none';
+    }
 };
 
 window._mutedLiveAddrs = new Set();
