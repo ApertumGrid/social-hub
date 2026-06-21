@@ -28680,39 +28680,38 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     if (mediaType === 'video') {
                         const remoteEl = $('live-remote-video');
                         if (remoteEl) {
-                            remoteEl.style.cssText = '';
                             const playRemoteWhenReady = () => {
-                                // On mobile the inner div is position:absolute so offsetWidth may
-                                // be 0 even when the container has height. Measure the container instead.
                                 const container = $('live-remote-video-container') || remoteEl;
                                 const hasSize = container.offsetWidth > 0 || container.offsetHeight > 0;
                                 if (hasSize) {
-                                    // Force the inner div to fill so Agora can inject into it
-                                    remoteEl.style.width  = container.offsetWidth  + 'px';
-                                    remoteEl.style.height = container.offsetHeight + 'px';
+                                    // Play track — don't pre-set pixel dimensions; let _applyViewerLayout
+                                    // handle sizing so Agora initialises at the correct layout size.
                                     remoteUser.videoTrack.play(remoteEl, { fit: 'cover' });
-                                    // Hide waiting room — _wrTimer only fires once at page load;
-                                    // subsequent joins need explicit hide here.
                                     var _wr = document.getElementById('live-waiting-room');
                                     if (_wr) { _wr.style.transition = 'opacity 0.6s ease'; _wr.style.opacity = '0'; setTimeout(function() { _wr.style.display = 'none'; }, 650); }
-                                    // Store track so enterCinema can re-play after DOM move
                                     window._liveHostVideoTrack = remoteUser.videoTrack;
-                                    // If we just promoted to co-host, re-apply the current
-                                    // stream layout now that host video is playing again
-                                    if (_justPromotedToCoHost) {
-                                        _justPromotedToCoHost = false;
-                                        var sid = _watchingStreamId;
-                                        if (sid && window.db && window.fs) {
-                                            window.fs.getDoc(window.fs.doc(window.db, 'live_streams', sid))
-                                                .then(function(snap) {
-                                                    var layout = snap.exists() ? (snap.data().streamLayout || 'solo') : 'solo';
-                                                    console.log('[CoHost] Host video restored — applying layout:', layout);
-                                                    if (typeof _applyViewerLayout === 'function') _applyViewerLayout(layout);
-                                                }).catch(function() {
-                                                    if (typeof _applyViewerLayout === 'function') _applyViewerLayout('solo');
-                                                });
+                                    // Always re-apply the current viewer layout after the track starts
+                                    // playing — this repositions the host block to its correct slot and
+                                    // re-plays with { fit:'cover' } at the final container size, preventing
+                                    // Agora's resize observer from reverting to object-fit:contain.
+                                    setTimeout(function() {
+                                        var _mode = window._viewerLayoutMode || 'solo';
+                                        if (_justPromotedToCoHost) {
+                                            _justPromotedToCoHost = false;
+                                            var _sid = _watchingStreamId;
+                                            if (_sid && window.db && window.fs) {
+                                                window.fs.getDoc(window.fs.doc(window.db, 'live_streams', _sid))
+                                                    .then(function(snap) {
+                                                        var _lay = snap.exists() ? (snap.data().streamLayout || 'solo') : 'solo';
+                                                        if (typeof _applyViewerLayout === 'function') _applyViewerLayout(_lay);
+                                                    }).catch(function() {
+                                                        if (typeof _applyViewerLayout === 'function') _applyViewerLayout('solo');
+                                                    });
+                                                return;
+                                            }
                                         }
-                                    }
+                                        if (typeof _applyViewerLayout === 'function') _applyViewerLayout(_mode);
+                                    }, 200);
                                 } else {
                                     setTimeout(playRemoteWhenReady, 100);
                                 }
@@ -30432,6 +30431,37 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     function renderChatFeed(feedElId, msgs) {
         const feed = $(feedElId);
         if (!feed) return;
+
+        // ── Build per-sender gift totals for this stream session ──
+        const giftTotals = {};
+        msgs.forEach(function(m) {
+            if (!m.isGift || !m.giftTier) return;
+            var _a = (m.address || '').toLowerCase();
+            if (!_a) return;
+            var _t = GIFT_TIERS[m.giftTier];
+            giftTotals[_a] = (giftTotals[_a] || 0) + (_t ? _t.cost : 0);
+        });
+        window._streamGiftTotals = giftTotals;
+
+        // Find top gifter address this session
+        var _topAddr = '', _topAmt = 0;
+        Object.keys(giftTotals).forEach(function(a) {
+            if (giftTotals[a] > _topAmt) { _topAmt = giftTotals[a]; _topAddr = a; }
+        });
+
+        function _fmtStars(n) {
+            if (!n) return '';
+            if (n >= 1000000) return (n/1000000).toFixed(1).replace('.0','') + 'm';
+            if (n >= 1000) return (n/1000).toFixed(1).replace('.0','') + 'k';
+            return String(n);
+        }
+        function _giftBadge(addr) {
+            var tot = giftTotals[(addr||'').toLowerCase()];
+            if (!tot) return '';
+            var isTop = _topAmt > 0 && (addr||'').toLowerCase() === _topAddr;
+            return '<span style="font-size:0.52rem;font-weight:700;color:'+(isTop?'rgba(240,180,41,0.95)':'rgba(180,140,255,0.75)')+';margin-left:3px;vertical-align:middle;white-space:nowrap;">⭐'+_fmtStars(tot)+'</span>';
+        }
+
         feed.innerHTML = msgs.map(m => {
             const addr     = (m.address || '').toLowerCase();
             if (addr && window._mutedLiveAddrs && window._mutedLiveAddrs.has(addr)) return '';
@@ -30440,24 +30470,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const replyBtn = `<button class="live-reply-btn" onclick="event.stopPropagation();window._setReplyTo('${_esc(m.id||'')}','${_esc(m.author||'')}','${_esc((m.text||'').slice(0,40))}')">↩</button>`;
             const replyQ   = m.replyTo ? `<div class="lcm-reply-quote"><b>${_esc(m.replyTo.author)}</b>: ${_esc(m.replyTo.text)}</div>` : '';
             const av       = m.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=' + _esc(m.author||'hub');
+            const badge    = _giftBadge(addr);
 
             if (m.isGift && m.giftStyle) {
                 return `<div class="live-superchat-bar ${m.giftStyle}" ${da}>
                     <span style="font-size:1.2rem;">${m.giftIcon || '🎁'}</span>
-                    <div style="flex:1;min-width:0;">${replyQ}<div style="font-size:0.62rem;color:var(--text-muted);font-weight:600;"><span ${nameAttrs}>${_esc(m.author)}</span></div><div>${_esc(m.text)}</div></div>
+                    <div style="flex:1;min-width:0;">${replyQ}<div style="font-size:0.62rem;color:var(--text-muted);font-weight:600;"><span ${nameAttrs}>${_esc(m.author)}</span>${badge}</div><div>${_esc(m.text)}</div></div>
                     ${replyBtn}
                 </div>`;
             }
             if (m.isGift) {
                 return `<div class="live-chat-msg" ${da} style="background:rgba(124,92,191,0.08);border-radius:6px;padding:4px 6px;margin:2px 0;">
                     <img class="live-chat-av" src="${av}" onerror="this.src='https://api.dicebear.com/7.x/identicon/svg?seed=hub'">
-                    <div style="flex:1;min-width:0;">${replyQ}<div ${nameAttrs}>${_esc(m.author)}</div><div class="live-chat-body live-chat-hype-msg">${_esc(m.text)}</div></div>
+                    <div style="flex:1;min-width:0;">${replyQ}<div ${nameAttrs}>${_esc(m.author)}${badge}</div><div class="live-chat-body live-chat-hype-msg">${_esc(m.text)}</div></div>
                     ${replyBtn}
                 </div>`;
             }
             if (m.isHype) {
                 return `<div class="live-chat-msg" ${da} style="background:rgba(240,180,41,0.13);border-radius:6px;padding:5px 8px;margin:2px 0;border-left:3px solid var(--gold);">
-                    <div style="font-size:0.72rem;color:var(--gold);font-weight:700;">⚡ <span ${nameAttrs}>${_esc(m.author)}</span> hyped the stream!</div>
+                    <div style="font-size:0.72rem;color:var(--gold);font-weight:700;">⚡ <span ${nameAttrs}>${_esc(m.author)}</span>${badge} hyped the stream!</div>
                 </div>`;
             }
             if (m.isJoin) {
@@ -30474,7 +30505,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
             if (m.isFollow) {
                 return `<div class="live-chat-msg" ${da} style="background:rgba(255,80,120,0.07);border-radius:6px;padding:4px 8px;margin:2px 0;border-left:2px solid rgba(255,80,120,0.45);">
-                    <div style="font-size:0.7rem;color:rgba(255,160,190,0.95);font-weight:600;">🎉 <span ${nameAttrs}>${_esc(m.author)}</span> just followed!</div>
+                    <div style="font-size:0.7rem;color:rgba(255,160,190,0.95);font-weight:600;">🎉 <span ${nameAttrs}>${_esc(m.author)}</span>${badge} just followed!</div>
                 </div>`;
             }
             if (m.isSystem) {
@@ -30485,7 +30516,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
             return `<div class="live-chat-msg" ${da}>
                 <img class="live-chat-av" src="${av}" onerror="this.src='https://api.dicebear.com/7.x/identicon/svg?seed=hub'">
-                <div style="flex:1;min-width:0;">${replyQ}<div><span ${nameAttrs}>${_esc(m.author)}</span>${replyBtn}</div><div class="live-chat-body">${_esc(m.text)}</div></div>
+                <div style="flex:1;min-width:0;">${replyQ}<div><span ${nameAttrs}>${_esc(m.author)}</span>${badge}${replyBtn}</div><div class="live-chat-body">${_esc(m.text)}</div></div>
             </div>`;
         }).join('');
         requestAnimationFrame(function() { feed.scrollTop = feed.scrollHeight; });
