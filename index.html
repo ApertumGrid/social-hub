@@ -12817,16 +12817,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     </div>
                 </div>
 
-                <div style="display:flex; gap:10px; align-items:flex-end;">
-                    <div style="flex:1;">
-                        <div style="font-size:0.62rem; color:var(--text-muted); margin-bottom:4px;">USDT Amount</div>
-                        <input type="number" id="drawer-deposit-input" class="field" style="margin-top:0; font-size:1.1rem; padding:12px 14px;" placeholder="5.0" min="0.1" step="0.1">
-                    </div>
-                    <button class="btn btn-teal btn-sm" style="flex-shrink:0; margin-bottom:0; height:48px; padding:0 20px; font-size:0.85rem; white-space:nowrap;" onclick="drawerDeposit()">Top Up ★</button>
-                </div>
-                <div style="font-size:0.65rem; color:var(--text-muted); margin-top:8px; font-family:var(--font-mono);">
+                <div style="font-size:0.62rem; color:var(--text-muted); margin-bottom:6px;">USDT Amount</div>
+                <input type="number" id="drawer-deposit-input" class="field" style="margin-top:0; font-size:1.15rem; padding:13px 16px; width:100%; box-sizing:border-box;" placeholder="5.0" min="0.1" step="0.1">
+                <div style="font-size:0.65rem; color:var(--text-muted); margin-top:6px; margin-bottom:10px; font-family:var(--font-mono);">
                     Est. Stars: <span id="drawer-deposit-est" style="color:var(--gold);">—</span>
                 </div>
+                <button class="btn btn-teal" style="width:100%; padding:12px; font-size:0.88rem;" onclick="drawerDeposit()">⭐ Top Up Stars</button>
                 <input id="drawer-deposit-hidden" type="number" style="display:none;" value="5">
             </div>
 
@@ -15681,23 +15677,39 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const _rpc      = getRpcProvider();
 
             // Step 1: Approve USDT spend
-            _dpStatus('Step 1/2 — Approve USDT spend in your wallet…');
-            if (_isWC) _dpWallet('Step 1/2 — Approve USDT spend in your wallet');
-            showToast('Step 1/2 — Approving USDT…');
+            // Check existing allowance — approve MAX once so future deposits skip this step
+            const _usdtGas = { gasLimit: 100000, ...(_isWC ? { gasPrice: ethers.utils.parseUnits('5','gwei') } : {}) };
+            const _depGas  = { gasLimit: 150000, ...(_isWC ? { gasPrice: ethers.utils.parseUnits('5','gwei') } : {}) };
             const usdtContract = new ethers.Contract(CONFIG.USDT_ADDRESS, usdtAbi, signer);
-            const approveTx    = await usdtContract.approve(CONFIG.CONTRACT_ADDRESS, amountWei, { gasLimit: 100000, ...(_isWC ? { gasPrice: ethers.utils.parseUnits('5','gwei') } : {}) });
-            _dpStatus('Step 1/2 — Waiting for approval confirmation…');
-            await Promise.race([
-                _rpc.waitForTransaction(approveTx.hash, 1),
-                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Approval timeout')); }, 120000); })
-            ]);
+            _dpStatus('Checking USDT allowance…');
+            const _existingAllowance = await Promise.race([
+                usdtContract.allowance(userAddress, CONFIG.CONTRACT_ADDRESS),
+                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('timeout')); }, 15000); })
+            ]).catch(function() { return ethers.BigNumber.from(0); });
+            const _needsApproval = _existingAllowance.lt(amountWei);
 
-            // Step 2: Deposit
-            _dpStatus('Step 2/2 — Confirm deposit in your wallet…');
-            if (_isWC) _dpWallet('Step 2/2 — Confirm the deposit in your wallet');
-            showToast('Step 2/2 — Depositing USDT…');
-            const depositTx = await hubContract.deposit(amountWei, { gasLimit: 150000, ...(_isWC ? { gasPrice: ethers.utils.parseUnits('5','gwei') } : {}) });
-            _dpStatus('Step 2/2 — Waiting for deposit confirmation…');
+            if (_needsApproval) {
+                // Approve MAX so users never need to approve again
+                const _maxApproval = ethers.constants.MaxUint256;
+                _dpStatus('Step 1/2 — Approve USDT (one-time only — you won\'t need to do this again)');
+                if (_isWC) _dpWallet('Step 1/2 — Approve USDT in your wallet (one-time setup)');
+                showToast('Step 1/2 — Approving USDT…');
+                const approveTx = await usdtContract.approve(CONFIG.CONTRACT_ADDRESS, _maxApproval, _usdtGas);
+                _dpStatus('Step 1/2 — Waiting for approval confirmation…');
+                await Promise.race([
+                    _rpc.waitForTransaction(approveTx.hash, 1),
+                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Approval timeout')); }, 120000); })
+                ]);
+                _dpStatus('Step 1/2 — Approved ✓');
+            }
+
+            // Step 2 (or Step 1 if already approved): Deposit
+            var _stepLabel = _needsApproval ? 'Step 2/2' : 'Step 1/1';
+            _dpStatus(_stepLabel + ' — Confirm deposit in your wallet…');
+            if (_isWC) _dpWallet(_stepLabel + ' — Confirm deposit in your wallet');
+            showToast(_stepLabel + ' — Depositing USDT…');
+            const depositTx = await hubContract.deposit(amountWei, _depGas);
+            _dpStatus(_stepLabel + ' — Waiting for deposit confirmation…');
             await Promise.race([
                 _rpc.waitForTransaction(depositTx.hash, 1),
                 new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Deposit timeout')); }, 120000); })
