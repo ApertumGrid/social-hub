@@ -2761,7 +2761,6 @@
         .cp-badge-genesis{background:rgba(240,180,41,.18);border:1px solid rgba(240,180,41,.6);color:rgba(255,210,60,1);}
         .cp-badge-first{background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.45);color:rgba(134,239,172,1);}
         /* ── Creator Insights card ── */
-        #creator-insights-card{display:none;}
         .ci-section-lbl{font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);margin-bottom:10px;}
         .ci-q{display:flex;flex-direction:column;gap:6px;}
         .ci-q-title{font-size:.78rem;font-weight:700;color:var(--text-primary);}
@@ -2770,7 +2769,6 @@
         .ci-q-sub{font-size:.68rem;color:var(--teal);font-family:var(--font-mono);}
         .ci-next-task{background:rgba(124,92,191,.12);border:1px solid rgba(124,92,191,.3);border-radius:10px;padding:10px 14px;font-size:.78rem;color:var(--purple-light);font-weight:600;}
         /* ── 7-Day Challenge card ── */
-        #creator-challenge-card{display:none;}
         .ch-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
         .ch-title{font-size:.9rem;font-weight:800;color:var(--text-primary);}
         .ch-progress{font-size:.65rem;color:var(--text-muted);font-weight:600;}
@@ -37851,7 +37849,7 @@ window._loadCreatorChallenge = async function() {
             return;
         }
 
-        panel.style.display = '';
+        panel.style.display = 'block';
 
         // Update progress bar
         var bar = document.getElementById('ch-progress-bar');
@@ -37874,7 +37872,7 @@ window._loadCreatorChallenge = async function() {
         var rName = document.getElementById('ch-reward-name');
         var rDesc = document.getElementById('ch-reward-desc');
         if (rRow) {
-            rRow.style.display = '';
+            rRow.style.display = 'flex';
             // Peek at genesis count (non-blocking)
             window.fs.getDoc(window.fs.doc(window.db, 'platform_meta', 'genesis_count'))
                 .then(function(gs) {
@@ -37911,7 +37909,7 @@ window._loadCreatorInsights = async function() {
     if (!addr || !window.db || !window.fs) return;
     var card = document.getElementById('creator-insights-card');
     if (!card) return;
-    card.style.display = '';
+    card.style.display = 'block';
 
     var weekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
 
@@ -37993,6 +37991,30 @@ window._loadCreatorInsights = async function() {
         } catch(_) {}
     }
 };
+
+// ── Auto-load when Creator Studio page is already active on reconnect ──
+(function() {
+    function _tryLoadStudio() {
+        var pageE = document.getElementById('page-earnings');
+        if (!pageE || pageE.style.display === 'none' || !pageE.classList.contains('active')) return;
+        if (!window.userAddress || !window.db || !window.fs) return;
+        if (typeof window._loadCreatorChallenge === 'function') window._loadCreatorChallenge();
+        if (typeof window._loadCreatorInsights  === 'function') window._loadCreatorInsights();
+    }
+    // Try after wallet connects (userAddress is set some time after page load)
+    var _studioCheckInterval = setInterval(function() {
+        if (window.userAddress && window.db && window.fs) {
+            clearInterval(_studioCheckInterval);
+            setTimeout(_tryLoadStudio, 500);
+        }
+    }, 800);
+    // Also try on DOMContentLoaded in case already connected
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(_tryLoadStudio, 1200); });
+    } else {
+        setTimeout(_tryLoadStudio, 1200);
+    }
+})();
 </script>
 </body>
 </html>
