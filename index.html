@@ -13939,16 +13939,31 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     await window.fs.setDoc(userRef, { stars: 0, creatorStars: 0, depositedUsdt: 0, lastSync: Date.now(), address: addr.toLowerCase() });
                 } else {
                     const d = snap.data();
-                    // Combine: Firestore unsettled + on-chain settled (withdrawableUSDT)
-                    const fbCreatorStars = Math.max(0, parseFloat(d.creatorStars || 0));
-                    window._firestoreCreatorStars = fbCreatorStars;
-                    const onChainSettled = Math.floor(withdrawableHuman / CONFIG.STAR_USD * 10) / 10;
-                    window._onChainEarned = onChainSettled;
-                    window._onChainWithdrawableUsdt = withdrawableHuman;
-                    creatorEarnings   = fbCreatorStars + onChainSettled;
-                    currentEarnedUsdt = creatorEarnings * CONFIG.STAR_USD;
+
+                    // Auto-zero Firestore if on-chain is empty and there was a recent withdrawal.
+                    // This handles the case where tx.wait() timed out before the zero-write ran.
+                    var _lastWd = parseFloat(d.lastWithdraw || 0);
+                    var _hadBal = (parseFloat(d.stars || 0) > 0 || parseFloat(d.creatorStars || 0) > 0 || parseFloat(d.depositedUsdt || 0) > 0);
+                    var _recentWd = _lastWd > 0 && (Date.now() - _lastWd) < 7200000; // within 2 hours
+                    if (depositedHuman === 0 && withdrawableHuman === 0 && _hadBal && _recentWd) {
+                        console.log('[syncData] on-chain empty + recent withdrawal detected — zeroing Firestore');
+                        await window.fs.setDoc(userRef, { stars: 0, creatorStars: 0, depositedUsdt: 0, lastSync: Date.now() }, { merge: true }).catch(() => {});
+                        creatorEarnings = 0; currentEarnedUsdt = 0;
+                        window._firestoreCreatorStars = 0;
+                        window._onChainEarned = 0;
+                        window._onChainWithdrawableUsdt = 0;
+                    } else {
+                        // Combine: Firestore unsettled + on-chain settled (withdrawableUSDT)
+                        const fbCreatorStars = Math.max(0, parseFloat(d.creatorStars || 0));
+                        window._firestoreCreatorStars = fbCreatorStars;
+                        const onChainSettled = Math.floor(withdrawableHuman / CONFIG.STAR_USD * 10) / 10;
+                        window._onChainEarned = onChainSettled;
+                        window._onChainWithdrawableUsdt = withdrawableHuman;
+                        creatorEarnings   = fbCreatorStars + onChainSettled;
+                        currentEarnedUsdt = creatorEarnings * CONFIG.STAR_USD;
+                        await window.fs.updateDoc(userRef, { lastSync: Date.now() }).catch(() => {});
+                    }
                     console.log(`[syncData] depositedUSDT=${depositedHuman.toFixed(4)} | withdrawableUSDT=${withdrawableHuman.toFixed(4)} | purchasedStars=${purchasedStars.toFixed(2)}★ | earnedStars=${creatorEarnings.toFixed(2)}★`);
-                    await window.fs.updateDoc(userRef, { lastSync: Date.now() }).catch(() => {});
                 }
             }
             updateUI();
@@ -17434,6 +17449,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // ── On-screen status logger — uses a fixed overlay visible over any tab ──
         var _wdOverlay   = document.getElementById('wd-global-overlay');
         var _wdStatusEl  = document.getElementById('wd-global-status');
+        // Reset from any previous run before starting
+        if (_wdOverlay)  { _wdOverlay.style.display = 'none'; }
+        if (_wdStatusEl) { _wdStatusEl.textContent  = ''; }
         // Also keep the buried Studio div in sync so desktop users see it too
         var _wdStudioEl  = document.getElementById('withdraw-status');
         function _wdStatus(msg, isError) {
@@ -17559,10 +17577,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // Send the tx — signing request goes to wallet via WalletConnect relay
             const tx = await hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, _txOverrides);
-            _wdStatus('Step 6/7 — Transaction submitted: ' + tx.hash.slice(0,12) + '… Waiting for confirmation…');
+            _wdStatus('Step 6/7 — Tx submitted: ' + tx.hash.slice(0,12) + '…\nWaiting for BSC confirmation…');
             showToast('Tx sent — waiting for BSC confirmation…');
 
-            const receipt = await tx.wait();
+            // Use a direct BSC RPC provider to poll for the receipt — NOT the WalletConnect
+            // provider which may drop its connection after the user returns from the wallet app.
+            const _rpcForReceipt = getRpcProvider();
+            const receipt = await Promise.race([
+                _rpcForReceipt.waitForTransaction(tx.hash, 1),
+                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Receipt timeout — tx may still confirm. Hash: ' + tx.hash)); }, 120000); })
+            ]);
             if (!receipt || receipt.status !== 1) {
                 return _wdFail('Transaction reverted on-chain. Your balance is unchanged. Block: ' + (receipt ? receipt.blockNumber : '?'), _clickedBtn);
             }
@@ -17586,10 +17610,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             logTransaction('settle', totalUsdt, { from: addr, to: 'wallet', description: 'Withdrew $' + fmtUsdt(totalUsdt) + ' USDT to wallet' });
             updateUI(); updateDrawerUI();
             if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
-            _wdStatus('✅ Withdrawal complete! $' + fmtUsdt(totalUsdt) + ' USDT sent to your wallet. Block: ' + receipt.blockNumber);
+            _wdStatus('✅ Withdrawal complete! $' + fmtUsdt(totalUsdt) + ' USDT sent to your wallet. Block: ' + (receipt ? receipt.blockNumber : '?'));
             showToast('✅ Withdrawal successful! $' + fmtUsdt(totalUsdt) + ' USDT sent ✓');
             setTimeout(_wdDone, 6000);
-            syncData();
+            // Re-read chain + Firestore after a short delay so the zero-write has propagated.
+            // syncData() now auto-zeros Firestore if on-chain is empty + recent withdrawal detected.
+            setTimeout(syncData, 2500);
 
         } catch (err) {
             console.error('[settleStarsToWallet] threw:', err);
@@ -38365,7 +38391,10 @@ window._loadCreatorInsights = async function() {
 
 <!-- Global withdrawal status overlay — fixed position, visible over any tab/page -->
 <div id="wd-global-overlay" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:99999;padding:14px 16px 28px;background:linear-gradient(to top,rgba(10,12,18,0.98) 80%,rgba(10,12,18,0));pointer-events:none;">
-    <div id="wd-global-status" style="background:var(--bg-card,#1a1d2e);border:1px solid rgba(45,212,191,0.3);border-radius:14px;padding:16px 18px;font-size:0.75rem;font-family:var(--font-mono,monospace);line-height:1.7;word-break:break-all;pointer-events:auto;box-shadow:0 -4px 32px rgba(0,0,0,0.6);"></div>
+    <div style="position:relative;pointer-events:auto;">
+        <button onclick="document.getElementById('wd-global-overlay').style.display='none'" style="position:absolute;top:-2px;right:0;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:50%;width:28px;height:28px;color:#8b9ab5;font-size:0.85rem;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;z-index:2;">✕</button>
+        <div id="wd-global-status" style="background:var(--bg-card,#1a1d2e);border:1px solid rgba(45,212,191,0.3);border-radius:14px;padding:16px 18px 16px 18px;font-size:0.75rem;font-family:var(--font-mono,monospace);line-height:1.7;word-break:break-all;box-shadow:0 -4px 32px rgba(0,0,0,0.6);"></div>
+    </div>
 </div>
 </body>
 </html>
