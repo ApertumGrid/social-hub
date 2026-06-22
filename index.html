@@ -17431,16 +17431,22 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             return alert("Connect Wallet First");
         }
 
-        // ── On-screen status logger — visible on mobile where console is inaccessible ──
-        var _wdStatusEl = document.getElementById('withdraw-status');
+        // ── On-screen status logger — uses a fixed overlay visible over any tab ──
+        var _wdOverlay   = document.getElementById('wd-global-overlay');
+        var _wdStatusEl  = document.getElementById('wd-global-status');
+        // Also keep the buried Studio div in sync so desktop users see it too
+        var _wdStudioEl  = document.getElementById('withdraw-status');
         function _wdStatus(msg, isError) {
             console.log('[Withdraw]', msg);
-            if (!_wdStatusEl) return;
-            _wdStatusEl.style.display = 'block';
-            _wdStatusEl.style.color   = isError ? '#f87171' : 'var(--teal)';
-            _wdStatusEl.textContent   = msg;
+            var _col = isError ? '#f87171' : '#2dd4bf';
+            if (_wdOverlay)  _wdOverlay.style.display  = 'block';
+            if (_wdStatusEl) { _wdStatusEl.style.color = _col; _wdStatusEl.textContent = msg; }
+            if (_wdStudioEl) { _wdStudioEl.style.display = 'block'; _wdStudioEl.style.color = _col; _wdStudioEl.textContent = msg; }
         }
-        function _wdDone() { if (_wdStatusEl) _wdStatusEl.style.display = 'none'; }
+        function _wdDone() {
+            if (_wdOverlay)  _wdOverlay.style.display  = 'none';
+            if (_wdStudioEl) _wdStudioEl.style.display = 'none';
+        }
         function _wdFail(msg, btn) {
             _wdStatus('❌ ' + msg, true);
             if (btn) { btn.disabled = false; btn.textContent = 'Withdraw USDT →'; }
@@ -17540,21 +17546,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 _txOverrides.gasPrice = ethers.utils.parseUnits('5', 'gwei');
             }
 
-            // Show the "Open Wallet" button BEFORE sending the tx so it's visible immediately.
-            // On WalletConnect mobile the signing request arrives in the wallet silently —
-            // the user needs a tap target to switch to their wallet app and approve.
-            if (_wdStatusEl) {
-                var _wName    = (window._wcWalletName     && window._wcWalletName !== 'undefined') ? window._wcWalletName : 'MetaMask';
-                var _wLink    = (window._wcWalletDeepLink && window._wcWalletDeepLink !== 'undefined') ? window._wcWalletDeepLink : 'metamask://';
-                _wdStatusEl.style.display = 'block';
-                _wdStatusEl.style.color   = 'var(--teal)';
-                var _openBtn = '<a href="' + _wLink + '" style="display:block;text-align:center;background:rgba(240,180,41,0.15);border:1px solid rgba(240,180,41,0.5);color:#f0b429;font-weight:800;font-size:1rem;text-decoration:none;padding:14px 20px;border-radius:10px;letter-spacing:0.3px;">📲 Tap to Open ' + _wName + ' &amp; Approve →</a>';
-                _wdStatusEl.innerHTML =
-                    '<div style="margin-bottom:10px;">Step 6/7 — Signing request sent to wallet.</div>' +
-                    _openBtn +
-                    '<div style="font-size:0.65rem;color:#8b9ab5;margin-top:8px;">Tap above → approve in ' + _wName + ' → come back here. The page waits automatically.</div>';
-                try { _wdStatusEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(_) {}
-            }
+            // Show the "Open Wallet" button in the fixed overlay — visible over any page/tab.
+            var _wName = (window._wcWalletName && window._wcWalletName !== 'undefined') ? window._wcWalletName : 'MetaMask';
+            var _wLink = (window._wcWalletDeepLink && window._wcWalletDeepLink !== 'undefined') ? window._wcWalletDeepLink : 'metamask://';
+            var _wcHtml =
+                '<div style="color:#2dd4bf;margin-bottom:12px;font-size:0.78rem;">Step 6/7 — Signing request sent. Open your wallet to approve.</div>' +
+                '<a href="' + _wLink + '" style="display:block;text-align:center;background:rgba(240,180,41,0.18);border:2px solid rgba(240,180,41,0.6);color:#f0b429;font-weight:800;font-size:1.05rem;text-decoration:none;padding:16px 20px;border-radius:12px;letter-spacing:0.3px;">📲 Open ' + _wName + ' to Approve →</a>' +
+                '<div style="font-size:0.65rem;color:#8b9ab5;margin-top:10px;text-align:center;">Tap above → approve in ' + _wName + ' → come back here. This page waits automatically.</div>';
+            if (_wdOverlay)  { _wdOverlay.style.display = 'block'; }
+            if (_wdStatusEl) { _wdStatusEl.innerHTML = _wcHtml; }
+            if (_wdStudioEl) { _wdStudioEl.style.display = 'block'; _wdStudioEl.innerHTML = _wcHtml; }
 
             // Send the tx — signing request goes to wallet via WalletConnect relay
             const tx = await hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, _txOverrides);
@@ -17587,6 +17588,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
             _wdStatus('✅ Withdrawal complete! $' + fmtUsdt(totalUsdt) + ' USDT sent to your wallet. Block: ' + receipt.blockNumber);
             showToast('✅ Withdrawal successful! $' + fmtUsdt(totalUsdt) + ' USDT sent ✓');
+            setTimeout(_wdDone, 6000);
             syncData();
 
         } catch (err) {
@@ -38360,6 +38362,11 @@ window._loadCreatorInsights = async function() {
     }
 })();
 </script>
+
+<!-- Global withdrawal status overlay — fixed position, visible over any tab/page -->
+<div id="wd-global-overlay" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:99999;padding:14px 16px 28px;background:linear-gradient(to top,rgba(10,12,18,0.98) 80%,rgba(10,12,18,0));pointer-events:none;">
+    <div id="wd-global-status" style="background:var(--bg-card,#1a1d2e);border:1px solid rgba(45,212,191,0.3);border-radius:14px;padding:16px 18px;font-size:0.75rem;font-family:var(--font-mono,monospace);line-height:1.7;word-break:break-all;pointer-events:auto;box-shadow:0 -4px 32px rgba(0,0,0,0.6);"></div>
+</div>
 </body>
 </html>
 
