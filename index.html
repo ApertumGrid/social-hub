@@ -17508,8 +17508,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const depBN  = ethers.BigNumber.from(String(depositAmount  || '0'));
             const earnBN = ethers.BigNumber.from(String(earnedAmount   || '0'));
 
-            _wdStatus('Step 6/7 — Sending transaction — check your wallet app…');
-            showToast('Open your wallet app to approve the transaction…');
+            _wdStatus('Step 6/7 — Sending signing request to wallet…');
+            showToast('Sending to wallet…');
 
             var _txOverrides = { gasLimit: 300000 };
             if (_isWC) {
@@ -17521,7 +17521,22 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     _txOverrides.gasPrice = ethers.utils.parseUnits('5', 'gwei');
                 }
             }
-            const tx = await hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, _txOverrides);
+            // Start the tx (sends signing request via WalletConnect relay)
+            const _txPromise = hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, _txOverrides);
+
+            // For WalletConnect on mobile: the signing request is now sitting in MetaMask
+            // but MetaMask won't auto-open. Show a deep-link button immediately so the
+            // user can tap to open MetaMask and see the pending approval.
+            if (_isWC && _wdStatusEl) {
+                _wdStatusEl.style.display = 'block';
+                _wdStatusEl.style.color   = 'var(--teal)';
+                _wdStatusEl.innerHTML =
+                    '<div style="margin-bottom:10px;">Step 6/7 — Signing request sent ✓<br>MetaMask is waiting for your approval.</div>' +
+                    '<a href="metamask://" style="display:block;text-align:center;background:rgba(240,180,41,0.15);border:1px solid rgba(240,180,41,0.5);color:#f0b429;font-weight:800;font-size:1rem;text-decoration:none;padding:14px 20px;border-radius:10px;letter-spacing:0.3px;">📲 Tap to Open MetaMask &amp; Approve →</a>' +
+                    '<div style="font-size:0.65rem;color:#8b9ab5;margin-top:8px;">Tap the button above — MetaMask will show the withdrawal to confirm. Come back here after approving.</div>';
+            }
+
+            const tx = await _txPromise;
             _wdStatus('Step 6/7 — Transaction submitted: ' + tx.hash.slice(0,12) + '… Waiting for confirmation…');
             showToast('Tx sent — waiting for BSC confirmation…');
 
