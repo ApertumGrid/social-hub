@@ -13567,6 +13567,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (typeof _adminRevenueUnsub === 'function')  { try { _adminRevenueUnsub(); } catch(_) {} }
 
         try { localStorage.removeItem('sh_wallet_type'); } catch(_) {}
+        // Clear stale WC session keys so next connection is always a fresh pairing
+        try {
+            Object.keys(localStorage).forEach(function(k) {
+                if (k.startsWith('wc@2:') || k.startsWith('walletconnect')) {
+                    localStorage.removeItem(k);
+                }
+            });
+        } catch(_) {}
         _setWalletDisconnectedUI();
         if (typeof updateUI === 'function') updateUI();
         showToast('Wallet disconnected.');
@@ -13693,6 +13701,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     try { await window._activeWCProvider.disconnect(); } catch(_) {}
                     window._activeWCProvider = null;
                 }
+                // Clear stale WC session/pairing keys from localStorage before every
+                // connect. Stale keys cause WC to resume a dead session — MetaMask
+                // opens but shows nothing because the pairing is expired on its end.
+                try {
+                    Object.keys(localStorage).forEach(function(k) {
+                        if (k.startsWith('wc@2:') || k.startsWith('walletconnect')) {
+                            localStorage.removeItem(k);
+                        }
+                    });
+                } catch(_) {}
                 const wcProv = await window._WCEthProviderClass.init({
                     projectId:      WC_PROJECT_ID,
                     showQrModal:    true,
@@ -15674,16 +15692,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // BSC USDT = 18 decimals
             const amountWei = ethers.utils.parseUnits(String(usdtAmount), 18);
-            const _rpc      = getRpcProvider();
+            const _rpc      = getRpcProvider(); // direct BSC RPC — never routes through WC relay
 
-            // Step 1: Approve USDT spend
-            // Check existing allowance — approve MAX once so future deposits skip this step
             const _usdtGas = { gasLimit: 100000, ...(_isWC ? { gasPrice: ethers.utils.parseUnits('5','gwei') } : {}) };
             const _depGas  = { gasLimit: 150000, ...(_isWC ? { gasPrice: ethers.utils.parseUnits('5','gwei') } : {}) };
+
+            // Read-only allowance check via direct RPC — WC routes eth_call through relay which hangs on mobile
+            const _usdtRead = new ethers.Contract(CONFIG.USDT_ADDRESS, usdtAbi, _rpc);
             const usdtContract = new ethers.Contract(CONFIG.USDT_ADDRESS, usdtAbi, signer);
-            _dpStatus('Checking USDT allowance…');
+            _dpStatus('Preparing deposit…');
             const _existingAllowance = await Promise.race([
-                usdtContract.allowance(userAddress, CONFIG.CONTRACT_ADDRESS),
+                _usdtRead.allowance(userAddress, CONFIG.CONTRACT_ADDRESS),
                 new Promise(function(_, rej) { setTimeout(function() { rej(new Error('timeout')); }, 15000); })
             ]).catch(function() { return ethers.BigNumber.from(0); });
             const _needsApproval = _existingAllowance.lt(amountWei);
@@ -15694,11 +15713,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 _dpStatus('Step 1/2 — Approve USDT (one-time only — you won\'t need to do this again)');
                 if (_isWC) _dpWallet('Step 1/2 — Approve USDT in your wallet (one-time setup)');
                 showToast('Step 1/2 — Approving USDT…');
-                const approveTx = await usdtContract.approve(CONFIG.CONTRACT_ADDRESS, _maxApproval, _usdtGas);
+                const approveTx = await Promise.race([
+                    usdtContract.approve(CONFIG.CONTRACT_ADDRESS, _maxApproval, _usdtGas),
+                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Wallet did not respond. Open your wallet and look for an approval request.')); }, 300000); })
+                ]);
                 _dpStatus('Step 1/2 — Waiting for approval confirmation…');
                 await Promise.race([
                     _rpc.waitForTransaction(approveTx.hash, 1),
-                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Approval timeout')); }, 120000); })
+                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Approval confirmation timeout')); }, 120000); })
                 ]);
                 _dpStatus('Step 1/2 — Approved ✓');
             }
@@ -15708,7 +15730,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             _dpStatus(_stepLabel + ' — Confirm deposit in your wallet…');
             if (_isWC) _dpWallet(_stepLabel + ' — Confirm deposit in your wallet');
             showToast(_stepLabel + ' — Depositing USDT…');
-            const depositTx = await hubContract.deposit(amountWei, _depGas);
+            const depositTx = await Promise.race([
+                hubContract.deposit(amountWei, _depGas),
+                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Wallet did not respond. Open your wallet and look for a deposit request.')); }, 300000); })
+            ]);
             _dpStatus(_stepLabel + ' — Waiting for deposit confirmation…');
             await Promise.race([
                 _rpc.waitForTransaction(depositTx.hash, 1),
