@@ -12809,7 +12809,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         </div>
                         <div style="display:flex;gap:8px;align-items:flex-start;">
                             <span style="background:rgba(124,92,191,0.35);color:var(--purple-light);border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700;flex-shrink:0;margin-top:1px;">3</span>
-                            <div>Connect your wallet here, enter your USDT amount, and tap <strong>Convert →</strong></div>
+                            <div>Connect your wallet here, enter your USDT amount, and tap <strong>Top Up ★</strong></div>
                         </div>
                         <div style="margin-top:10px;padding:7px 10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:6px;font-size:0.7rem;color:rgba(239,68,68,0.85);">
                             ⚠ Wrong network = lost funds. Always select <strong>BNB Smart Chain (BSC)</strong> when withdrawing from any exchange.
@@ -12817,12 +12817,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     </div>
                 </div>
 
-                <div style="display:flex; gap:8px; align-items:flex-end;">
+                <div style="display:flex; gap:10px; align-items:flex-end;">
                     <div style="flex:1;">
                         <div style="font-size:0.62rem; color:var(--text-muted); margin-bottom:4px;">USDT Amount</div>
-                        <input type="number" id="drawer-deposit-input" class="field" style="margin-top:0;" placeholder="5.0" min="0.1" step="0.1">
+                        <input type="number" id="drawer-deposit-input" class="field" style="margin-top:0; font-size:1.1rem; padding:12px 14px;" placeholder="5.0" min="0.1" step="0.1">
                     </div>
-                    <button class="btn btn-teal btn-sm" style="flex-shrink:0; margin-bottom:0; height:40px;" onclick="drawerDeposit()">Convert →</button>
+                    <button class="btn btn-teal btn-sm" style="flex-shrink:0; margin-bottom:0; height:48px; padding:0 20px; font-size:0.85rem; white-space:nowrap;" onclick="drawerDeposit()">Top Up ★</button>
                 </div>
                 <div style="font-size:0.65rem; color:var(--text-muted); margin-top:8px; font-family:var(--font-mono);">
                     Est. Stars: <span id="drawer-deposit-est" style="color:var(--gold);">—</span>
@@ -12834,19 +12834,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             <div class="rp-card">
                 <div class="drawer-section-label" style="margin-bottom:6px;">Creator Studio</div>
                 <!-- IDENTITY SEPARATION: personal star balance — userWithdraw() path -->
-                <div style="
-                    background: rgba(45,212,191,0.06);
-                    border: 1px solid rgba(45,212,191,0.2);
-                    border-radius: 6px;
-                    padding: 5px 10px;
-                    margin-bottom:10px;
-                    font-size: 0.57rem;
-                    color: var(--teal);
-                    font-family: var(--font-mono);
-                    letter-spacing: 1px;
-                    text-transform: uppercase;
-                    font-weight: 700;
-                ">Personal Account · Contract: userWithdraw(amount)</div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
                     <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px;">
                         <div style="font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700;">Earned Stars</div>
@@ -15639,7 +15626,40 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             await connectWallet();
             if (!hubContract) return;
         }
-        if (window._shLastEth) {
+
+        // Reuse the global withdrawal overlay for deposit status
+        var _dpOverlay  = document.getElementById('wd-global-overlay');
+        var _dpStatusEl = document.getElementById('wd-global-status');
+        function _dpStatus(msg, isError) {
+            var col = isError ? '#f87171' : '#2dd4bf';
+            if (_dpOverlay)  { _dpOverlay.style.display = 'block'; }
+            if (_dpStatusEl) { _dpStatusEl.style.color = col; _dpStatusEl.textContent = msg; }
+        }
+        function _dpWallet(stepLabel) {
+            var _wName = (window._wcWalletName && window._wcWalletName !== 'undefined') ? window._wcWalletName : 'MetaMask';
+            var _wLink = (window._wcWalletDeepLink && window._wcWalletDeepLink !== 'undefined') ? window._wcWalletDeepLink : 'metamask://';
+            if (_dpStatusEl) {
+                _dpStatusEl.innerHTML =
+                    '<div style="color:#2dd4bf;margin-bottom:12px;">' + stepLabel + '</div>' +
+                    '<a href="' + _wLink + '" style="display:block;text-align:center;background:rgba(240,180,41,0.18);border:2px solid rgba(240,180,41,0.6);color:#f0b429;font-weight:800;font-size:1.05rem;text-decoration:none;padding:16px 20px;border-radius:12px;">📲 Open ' + _wName + ' to Approve →</a>' +
+                    '<div style="font-size:0.65rem;color:#8b9ab5;margin-top:10px;text-align:center;">Tap above → approve in ' + _wName + ' → come back here.</div>';
+            }
+        }
+        if (_dpOverlay) _dpOverlay.style.display = 'none';
+
+        var _isWC = window._shLastWalletType === 'walletconnect' || !!window._activeWCProvider;
+        var _txGas = { gasLimit: 100000 };
+        if (_isWC) {
+            _txGas.gasPrice = ethers.utils.parseUnits('5', 'gwei');
+            if (window._activeWCProvider) {
+                try {
+                    const wcP = new ethers.providers.Web3Provider(window._activeWCProvider);
+                    signer = wcP.getSigner();
+                    hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
+                    window.signer = signer; window.hubContract = hubContract;
+                } catch(_) {}
+            }
+        } else if (window._shLastEth) {
             const onBSC = await _ensureBSCChain(window._shLastEth);
             if (!onBSC) { showToast('Please switch to BNB Smart Chain to deposit.'); return; }
             try {
@@ -15649,6 +15669,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 window.provider = provider; window.signer = signer; window.hubContract = hubContract;
             } catch(_) {}
         }
+
         try {
             const usdtAmount = parseFloat(amt);
             if (!Number.isFinite(usdtAmount) || usdtAmount <= 0) {
@@ -15657,17 +15678,30 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // BSC USDT = 18 decimals
             const amountWei = ethers.utils.parseUnits(String(usdtAmount), 18);
+            const _rpc      = getRpcProvider();
 
             // Step 1: Approve USDT spend
+            _dpStatus('Step 1/2 — Approve USDT spend in your wallet…');
+            if (_isWC) _dpWallet('Step 1/2 — Approve USDT spend in your wallet');
             showToast('Step 1/2 — Approving USDT…');
             const usdtContract = new ethers.Contract(CONFIG.USDT_ADDRESS, usdtAbi, signer);
-            const approveTx    = await usdtContract.approve(CONFIG.CONTRACT_ADDRESS, amountWei, { gasLimit: 100000 });
-            await approveTx.wait();
+            const approveTx    = await usdtContract.approve(CONFIG.CONTRACT_ADDRESS, amountWei, { gasLimit: 100000, ...(_isWC ? { gasPrice: ethers.utils.parseUnits('5','gwei') } : {}) });
+            _dpStatus('Step 1/2 — Waiting for approval confirmation…');
+            await Promise.race([
+                _rpc.waitForTransaction(approveTx.hash, 1),
+                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Approval timeout')); }, 120000); })
+            ]);
 
             // Step 2: Deposit
+            _dpStatus('Step 2/2 — Confirm deposit in your wallet…');
+            if (_isWC) _dpWallet('Step 2/2 — Confirm the deposit in your wallet');
             showToast('Step 2/2 — Depositing USDT…');
-            const depositTx = await hubContract.deposit(amountWei, { gasLimit: 150000 });
-            await depositTx.wait();
+            const depositTx = await hubContract.deposit(amountWei, { gasLimit: 150000, ...(_isWC ? { gasPrice: ethers.utils.parseUnits('5','gwei') } : {}) });
+            _dpStatus('Step 2/2 — Waiting for deposit confirmation…');
+            await Promise.race([
+                _rpc.waitForTransaction(depositTx.hash, 1),
+                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Deposit timeout')); }, 120000); })
+            ]);
 
             const starsReceived = Math.floor(usdtAmount / CONFIG.STAR_USD);
             console.log(`[Deposit] ${usdtAmount} USDT = ${starsReceived} Stars`);
@@ -15703,9 +15737,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 from: 'on-chain', to: userAddress,
                 description: `Deposited $${usdtAmount.toFixed(2)} USDT → ${starsReceived} Stars`
             });
+            _dpStatus('✅ Deposit complete! ' + starsReceived + ' Stars added to your balance.');
             showToast(`Deposit Successful ✓ — ${starsReceived} Stars added`);
-            setTimeout(() => { syncData(); }, 2000);
-        } catch (e) { console.error("[Deposit] Failed:", e); alert("Transaction failed: " + (e.reason || e.message || '').slice(0, 100)); }
+            setTimeout(function() { if (_dpOverlay) _dpOverlay.style.display = 'none'; }, 5000);
+            setTimeout(function() { syncData(); }, 2000);
+        } catch (e) {
+            console.error("[Deposit] Failed:", e);
+            if (_dpStatusEl) { _dpStatusEl.style.color = '#f87171'; _dpStatusEl.textContent = '❌ ' + (e.reason || e.message || String(e)).slice(0, 200); }
+            if (_dpOverlay) _dpOverlay.style.display = 'block';
+        }
     }
 
     async function convertAPTM() {
