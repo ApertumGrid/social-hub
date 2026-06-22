@@ -10303,11 +10303,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div style="min-width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#7c5cbf,#2dd4bf);display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:800;color:#fff;flex-shrink:0;">5</div>
                             <div>
                                 <div style="font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:3px;">Click Connect in the Top Bar</div>
-                                <div style="font-size:0.75rem;color:var(--text-secondary);line-height:1.6;">Tap <strong style="color:var(--purple-lt);">Connect</strong> in the navigation bar at the top of the page. Select your wallet and approve the connection request.</div>
+                                <div style="font-size:0.75rem;color:var(--text-secondary);line-height:1.6;">Tap <strong style="color:var(--purple-lt);">Connect</strong> in the navigation bar at the top of the page. Select your wallet and approve the connection request. <strong style="color:#f0b429;">Choose carefully — see the important note below.</strong></div>
                             </div>
                         </div>
 
-                        <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:24px;">
+                        <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:20px;">
                             <div style="min-width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#7c5cbf,#2dd4bf);display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:800;color:#fff;flex-shrink:0;">6</div>
                             <div>
                                 <div style="font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:3px;">Buy Stars &amp; Start Earning</div>
@@ -10315,8 +10315,19 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             </div>
                         </div>
 
+                        <!-- Identity warning — must read before connecting -->
+                        <div style="background:rgba(240,180,41,0.08);border:1.5px solid rgba(240,180,41,0.45);border-radius:12px;padding:14px 16px;margin-bottom:20px;">
+                            <div style="font-size:0.8rem;font-weight:800;color:#f0b429;margin-bottom:8px;display:flex;align-items:center;gap:7px;">
+                                <span style="font-size:1rem;">⚠️</span> Your Wallet = Your Identity
+                            </div>
+                            <div style="font-size:0.74rem;color:var(--text-secondary);line-height:1.7;">
+                                The wallet address you connect becomes your <strong style="color:var(--text-primary);">permanent SocialHub identity</strong>. Your profile, earnings, and balance are all tied to that address.<br><br>
+                                <strong style="color:#f87171;">You can only withdraw USDT back to the same wallet you connected with.</strong> There is no way to transfer your balance to a different wallet address. Make sure you connect the wallet you intend to use long-term.
+                            </div>
+                        </div>
+
                         <button onclick="closeOnboardingModal();connectWallet();" style="width:100%;padding:13px;border-radius:14px;border:none;background:linear-gradient(135deg,#7c5cbf,#2dd4bf);color:#fff;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;">
-                            Connect Wallet →
+                            I Understand — Connect Wallet →
                         </button>
                         <div style="margin-top:10px;text-align:center;font-size:0.7rem;color:var(--text-muted);">Or tap Connect in the top navigation bar.</div>
                     </div>
@@ -10845,7 +10856,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                    border-radius:var(--radius-md);color:#ef4444;
                                    font-family:var(--font-body);font-size:0.78rem;font-weight:700;
                                    cursor:pointer;letter-spacing:0.3px;"
-                            title="One-time: reset all balances to match actual APTM deposits">
+                            title="One-time: reset all balances to match actual USDT deposits">
                         ⚠ Run Balance Reconciliation
                     </button>
                     <button id="admin-recalc-posts-btn" onclick="adminRecalcPostCounts()"
@@ -10864,10 +10875,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <!-- Use this to cover reserve shortfalls without inflating supply.  -->
                     <div style="margin-top:14px; padding-top:12px; border-top:1px solid rgba(45,212,191,0.15);">
                         <div class="mcd-seed-notice">
-                            ✦ Protocol Liquidity Tool · Sends APTM to contract · Zero star mint · Vault health reconciliation only
+                            ✦ Protocol Liquidity Tool · Sends USDT to contract · Zero star mint · Vault health reconciliation only
                         </div>
                         <button id="seed-vault-btn" class="mcd-seed-btn" onclick="seedProtocolVault()"
-                                title="Deposit APTM to the contract to cover reserve shortfalls — no stars are minted">
+                                title="Deposit USDT to the contract to cover reserve shortfalls — no stars are minted">
                             ✦ SEED PROTOCOL LIQUIDITY
                         </button>
                         <div id="seed-vault-status" style="display:none; margin-top:6px; font-family:var(--font-mono); font-size:0.6rem; color:var(--teal); letter-spacing:0.8px; text-transform:uppercase; line-height:1.7;"></div>
@@ -13717,6 +13728,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 });
                 await wcProv.enable(); // opens QR modal — resolves when user approves
                 window._activeWCProvider = wcProv;
+                // Extract wallet name + deep link from WC session metadata so we can
+                // show a wallet-specific "Open [WalletName]" button when signing is needed.
+                try {
+                    var _wcMeta = wcProv.session && wcProv.session.peer && wcProv.session.peer.metadata;
+                    if (_wcMeta) {
+                        window._wcWalletName     = _wcMeta.name || '';
+                        var _wcRedir             = _wcMeta.redirect || {};
+                        window._wcWalletDeepLink = _wcRedir.native || _wcRedir.universal || '';
+                    }
+                } catch(_) {}
                 eth = wcProv;
             } else {
                 // When multiple wallets are installed (e.g. XOVA + MetaMask), one of them
@@ -15750,7 +15771,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     b.disabled    = true;
                     b.textContent = 'Settle unavailable — price not loaded';
                 });
-                return alert('Live APTM price is not available. Settle is disabled.\nPlease wait a moment and try again.');
+                return alert('USDT price data is not available. Settle is disabled.\nPlease wait a moment and try again.');
             }
 
             // ── Compute user withdrawal amount ───────────────────────────────────────────
@@ -15805,7 +15826,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     b.disabled    = false;
                     b.textContent = 'Settle Total Balance to Wallet →';
                 });
-                return alert('Withdraw amount is 0 at the current price.\n\nYour stars could not be converted to APTM.');
+                return alert('Withdraw amount is 0.\n\nYour stars could not be converted to USDT. Try again in a moment.');
             }
 
             console.log('[settleToWallet] depositAptm=' + depositAptmOwed.toFixed(8) +
@@ -15819,10 +15840,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var confirmed = confirm(
                 'Settle Stars to Wallet\n\n' +
                 'Total Stars:      ' + totalStarsDisplay.toFixed(2) + ' ★\n' +
-                '  Deposit Stars:  ' + depositStarsDisplay.toFixed(2) + ' ★ (repriced at live APTM)\n' +
+                '  Deposit Stars:  ' + depositStarsDisplay.toFixed(2) + ' ★\n' +
                 '  Earned Stars:   ' + fbEarned.toFixed(2) + ' ★\n' +
-                'Live Price:       $' + livePrice.toFixed(4) + ' / APTM\n' +
-                'Will Withdraw:    ' + safeWithdrawAptm.toFixed(6) + ' APTM\n' +
+                'Live Price:       $' + livePrice.toFixed(4) + ' / USDT\n' +
+                'Will Withdraw:    ' + safeWithdrawAptm.toFixed(6) + ' USDT\n' +
                 '─'.repeat(30) + '\n' +
                 'Firebase balances zeroed ONLY after on-chain confirmation.\nProceed?'
             );
@@ -15850,7 +15871,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 console.error('[settleToWallet] Tx reverted.', detail);
                 updateSettleButtons();
                 return alert('Withdrawal reverted on-chain.\n\n' + detail +
-                    '\n\nYour APTM has NOT left the contract.\nYour Firebase stars are unchanged — try again.');
+                    '\n\nYour USDT has NOT left the contract.\nYour Firebase stars are unchanged — try again.');
             }
 
             console.log('[settleToWallet] Confirmed. Block: ' + receipt.blockNumber +
@@ -15890,9 +15911,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             logTransaction('settle', safeWithdrawAptm, {
                 from: addr, to: 'wallet',
-                description: 'Settled ' + totalStarsDisplay.toFixed(2) + '★ → ' + safeWithdrawAptm.toFixed(4) + ' $APTM to wallet'
+                description: 'Settled ' + totalStarsDisplay.toFixed(2) + '★ → ' + safeWithdrawAptm.toFixed(4) + ' USDT to wallet'
             });
-            showToast('Settled! ' + safeWithdrawAptm.toFixed(4) + ' APTM → wallet ✓');
+            showToast('Settled! ' + safeWithdrawAptm.toFixed(4) + ' USDT → wallet ✓');
             // Check for first-ever earnings withdrawal
             var _settledUsdtDisplay = (totalStarsDisplay * 0.01).toFixed(2);
             window._checkFirstEarnings && window._checkFirstEarnings(addr, '$' + _settledUsdtDisplay + ' USDT');
@@ -17524,16 +17545,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Start the tx (sends signing request via WalletConnect relay)
             const _txPromise = hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, _txOverrides);
 
-            // For WalletConnect on mobile: the signing request is now sitting in MetaMask
-            // but MetaMask won't auto-open. Show a deep-link button immediately so the
-            // user can tap to open MetaMask and see the pending approval.
+            // For WalletConnect on mobile: the signing request is now sitting in the wallet
+            // but the wallet won't auto-open from a browser context. Show a wallet-specific
+            // deep-link button so the user can tap to open their wallet and approve.
             if (_isWC && _wdStatusEl) {
+                var _wName    = window._wcWalletName     || 'your wallet';
+                var _wLink    = window._wcWalletDeepLink || '';
                 _wdStatusEl.style.display = 'block';
                 _wdStatusEl.style.color   = 'var(--teal)';
+                var _openBtn = _wLink
+                    ? '<a href="' + _wLink + '" style="display:block;text-align:center;background:rgba(240,180,41,0.15);border:1px solid rgba(240,180,41,0.5);color:#f0b429;font-weight:800;font-size:1rem;text-decoration:none;padding:14px 20px;border-radius:10px;letter-spacing:0.3px;">📲 Tap to Open ' + _wName + ' &amp; Approve →</a>'
+                    : '<div style="background:rgba(240,180,41,0.1);border:1px solid rgba(240,180,41,0.4);color:#f0b429;font-weight:700;font-size:0.9rem;padding:12px 16px;border-radius:10px;text-align:center;">📲 Switch to ' + _wName + ' — a transaction is waiting for your approval.</div>';
                 _wdStatusEl.innerHTML =
-                    '<div style="margin-bottom:10px;">Step 6/7 — Signing request sent ✓<br>MetaMask is waiting for your approval.</div>' +
-                    '<a href="metamask://" style="display:block;text-align:center;background:rgba(240,180,41,0.15);border:1px solid rgba(240,180,41,0.5);color:#f0b429;font-weight:800;font-size:1rem;text-decoration:none;padding:14px 20px;border-radius:10px;letter-spacing:0.3px;">📲 Tap to Open MetaMask &amp; Approve →</a>' +
-                    '<div style="font-size:0.65rem;color:#8b9ab5;margin-top:8px;">Tap the button above — MetaMask will show the withdrawal to confirm. Come back here after approving.</div>';
+                    '<div style="margin-bottom:10px;">Step 6/7 — Signing request sent ✓<br>' + _wName + ' is waiting for your approval.</div>' +
+                    _openBtn +
+                    '<div style="font-size:0.65rem;color:#8b9ab5;margin-top:8px;">After approving in ' + _wName + ', come back here — the page will confirm automatically.</div>';
             }
 
             const tx = await _txPromise;
@@ -17639,7 +17665,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (_clickedBtn) _clickedBtn.disabled = false;
             return alert(
                 "Nothing to settle.\n\n" +
-                "Your APTM balance is 0 and you have no earned stars.\n\n" +
+                "Your USDT balance is 0 and you have no earned stars.\n\n" +
                 "Deposit USDT or earn stars through interactions first."
             );
         }
@@ -17691,7 +17717,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         if (withdrawNowAptm <= 0) {
             if (_clickedBtn) _clickedBtn.disabled = false;
-            return alert("Withdraw amount is 0.\n\nYour APTM balance is 0.\nDeposit USDT or earn stars through interactions first.");
+            return alert("Withdraw amount is 0.\n\nYour USDT balance is 0.\nDeposit USDT or earn stars through interactions first.");
         }
 
         // ── Step 5: Confirmation modal ─────────────────────────────────────────
@@ -17701,20 +17727,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             : "";
         const confirmed = confirm(
             "Settle Balance to Wallet\n\n" +
-            "Purchased Balance:  " + fbAptmBalance.toFixed(6) + " APTM\n" +
+            "Purchased Balance:  " + fbAptmBalance.toFixed(6) + " USDT\n" +
             (fbCreatorStars > 0
-                ? ("Creator Earnings:   " + fbCreatorStars.toFixed(2) + " \u2605 (\u2248 " + earnedAptmValue.toFixed(6) + " APTM)" +
+                ? ("Creator Earnings:   " + fbCreatorStars.toFixed(2) + " \u2605 (\u2248 " + earnedAptmValue.toFixed(6) + " USDT)" +
                    (creatorSyncPossible ? "" : " \u2014 kept for later") + "\n")
                 : "") +
             "\u2500".repeat(34) + "\n" +
-            "You Will Receive:   " + withdrawNowAptm.toFixed(6) + " APTM\n" +
-            "Live Price:         $" + livePrice.toFixed(4) + " / APTM\n" +
+            "You Will Receive:   " + withdrawNowAptm.toFixed(6) + " USDT\n" +
+            "Live Rate:          1 Star = $0.01 USDT\n" +
             "\u2500".repeat(34) + "\n\n" +
             starsKeptNote +
             (creatorSyncPossible
                 ? ("Step 1 \u2014 " + fbCreatorStars.toFixed(2) + " earned \u2605 will be synced to contract.\nStep 2 \u2014 ")
                 : "") +
-            "MetaMask opens to send APTM to your wallet.\n" +
+            "Your wallet will be prompted to confirm the USDT transfer.\n" +
             "Firebase balances zeroed ONLY after on-chain confirmation.\nProceed?"
         );
 
@@ -17786,7 +17812,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             const _roC = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, _roP);
                             const pollWei  = await _roC.starBalances(finalAddr);
                             const pollAptm = parseFloat(ethers.utils.formatEther(pollWei));
-                            showToast("Confirming on chain... (" + pollAttempts + "/10) " + pollAptm.toFixed(4) + " APTM");
+                            showToast("Confirming on chain... (" + pollAttempts + "/10) " + pollAptm.toFixed(4) + " USDT");
                             if (pollAptm > preSyncAptm + 0.001) {
                                 chainUpdated = true;
                                 showToast("Earned stars confirmed on-chain \u2713 opening MetaMask\u2026");
@@ -17913,14 +17939,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     console.log("[Settlement] Firebase zeroed after confirmed receipt \u2713");
                 } catch (fbErr) {
                     console.error("[Settlement] CRITICAL: on-chain OK, Firebase zero failed:", fbErr);
-                    showToast("\u26a0 APTM sent to wallet but Firebase reset failed. Contact support with tx: " + (receipt.transactionHash || ""));
+                    showToast("\u26a0 USDT sent to wallet but Firebase reset failed. Contact support with tx: " + (receipt.transactionHash || ""));
                 }
             }
 
             logTransaction("settle", withdrawAptm, {
                 from: addr, to: "wallet",
-                description: "Settled " + fbAptmBalance.toFixed(4) + " APTM (purchased) + " +
-                    fbCreatorStars.toFixed(2) + "\u2605 earned = " + withdrawAptm.toFixed(4) + " APTM withdrawn"
+                description: "Settled " + fbAptmBalance.toFixed(4) + " USDT (purchased) + " +
+                    fbCreatorStars.toFixed(2) + "\u2605 earned = " + withdrawAptm.toFixed(4) + " USDT withdrawn"
             });
 
             updateUI();
@@ -19907,7 +19933,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     `Purchased Stars: ${livePurchased.toFixed(1)} ★\n` +
                     `Earned Stars:    ${liveEarned.toFixed(1)} ★\n` +
                     `Total Available: ${totalAvailable.toFixed(1)} ★\n\n` +
-                    `Deposit more APTM to increase your balance.`
+                    `Buy more Stars to increase your balance.`
                 );
             }
 
@@ -20032,7 +20058,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 `Purchased Stars: ${livePurchased.toFixed(1)}★\n` +
                 `Earned Stars:    ${liveEarned.toFixed(1)}★\n` +
                 `Total Available: ${totalAvailable.toFixed(1)}★\n\n` +
-                `Deposit more APTM to increase your balance.`
+                `Buy more Stars to increase your balance.`
             );
         }
 
@@ -20570,7 +20596,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     `Post Type:       ${postTypeLabel}\n` +
                     `Required:        ${feeAmount.toFixed(1)}★\n` +
                     `Total Available: ${(livePurchased + liveEarned).toFixed(1)}★\n\n` +
-                    `Deposit more APTM to increase your balance.`
+                    `Buy more Stars to increase your balance.`
                 );
             }
         }
@@ -22194,7 +22220,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     'Insufficient Stars to start a Community Hub!\n' +
                     'Required: ' + effectiveCost.toLocaleString() + ' \u2605\n' +
                     'Your balance: ' + (livePurchased + liveEarned).toFixed(1) + ' \u2605\n\n' +
-                    'Deposit more APTM to increase your balance.'
+                    'Buy more Stars to increase your balance.'
                 );
             }
         }
@@ -22565,7 +22591,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (total < 1) {
                     isActionPending = false;
                     if (followBtn) followBtn.disabled = false;
-                    return showToast('Not enough Stars to follow! Deposit APTM.');
+                    return showToast('Not enough Stars to follow! Tap Buy Stars to top up.');
                 }
 
                 // STEP B: Log the spend entry BEFORE deducting.
@@ -25002,7 +25028,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (total < 1) {
                     isActionPending = false;
                     if (followBtn) followBtn.disabled = false;
-                    return showToast('Not enough Stars to follow! Deposit APTM.');
+                    return showToast('Not enough Stars to follow! Tap Buy Stars to top up.');
                 }
 
                 // ── SELF-DEALING GUARD ───────────────────────────────────────
@@ -25440,9 +25466,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // ── Prompt for amount ───────────────────────────────────────────
         const input = window.prompt(
             '✦ SEED PROTOCOL LIQUIDITY\n\n' +
-            'Enter the amount of APTM to deposit into the contract.\n' +
+            'Enter the amount of USDT to deposit into the contract.\n' +
             'NO stars will be minted. This is a pure reserve top-up.\n\n' +
-            'APTM amount:'
+            'USDT amount:'
         );
         if (input === null) return;   // cancelled
         const aptmAmount = parseFloat(input);
@@ -25453,9 +25479,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // ── Final confirmation ──────────────────────────────────────────
         const confirmed = window.confirm(
             `CONFIRM PROTOCOL SEED\n\n` +
-            `Amount:   ${aptmAmount.toFixed(6)} APTM\n` +
+            `Amount:   ${aptmAmount.toFixed(6)} USDT\n` +
             `To:       ${CONFIG.CONTRACT_ADDRESS}\n` +
-            `Function: depositAPTM() [payable]\n` +
+            `Function: deposit() [USDT]\n` +
             `Stars:    0 — NO stars will be minted\n\n` +
             `Proceed?`
         );
@@ -25547,10 +25573,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
 
             setStatus(
-                `✦ SEED COMPLETE · ${aptmAmount.toFixed(6)} APTM deposited · 0 stars minted · Block ${receipt.blockNumber}`,
+                `✦ SEED COMPLETE · ${aptmAmount.toFixed(6)} USDT deposited · 0 stars minted · Block ${receipt.blockNumber}`,
                 '#22c55e'
             );
-            showToast(`✦ Protocol seeded: ${aptmAmount.toFixed(6)} APTM added to reserve ✓`);
+            showToast(`✦ Protocol seeded: ${aptmAmount.toFixed(6)} USDT added to reserve ✓`);
 
         } catch (err) {
             console.error('[SeedVault] Error:', err);
@@ -25984,14 +26010,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // Step 3: show confirmation dialog
             const preview = plan.slice(0, 8).map(p =>
-                p.addr.slice(0,8) + '…  deposit=' + p.deposit + 'APTM (' + p.depositStars + '★)' +
+                p.addr.slice(0,8) + '…  deposit=' + p.deposit + 'USDT (' + p.depositStars + '★)' +
                 '  cur=' + p.curStars + '+' + p.curCreator + '★' +
                 '  →  new=' + p.newStars.toFixed(2) + '+' + p.newCreator.toFixed(2) + '★'
             ).join('\n');
 
             const confirmed = confirm(
                 'BALANCE RECONCILIATION\n\n' +
-                'Live APTM price: $' + livePrice.toFixed(4) + '\n' +
+                'Rate: 1 Star = $0.01 USDT\n' +
                 'Users to update: ' + plan.length + '\n' +
                 'Ghost stars to REMOVE: ' + totalGhost.toFixed(2) + '★\n' +
                 '  (purchased: ' + totalGhostStars.toFixed(2) + '★  earned: ' + totalGhostCreator.toFixed(2) + '★)\n' +
@@ -27275,7 +27301,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 </div>
                 <div class="hiw-scene-step">Step 1 of 4</div>
                 <div class="hiw-scene-title">Connect your wallet,<br>buy <span>Stars ★</span></div>
-                <div class="hiw-scene-body">Deposit <strong>$USDT</strong> and receive <strong>Stars ★</strong> instantly.<br><br><span class="hiw-scene-tag gold">1 Star = $0.01 USDT</span><br><br>Stars are your on-platform currency —<br>spend them to interact with the community.</div>
+                <div class="hiw-scene-body">Deposit <strong>$USDT</strong> and receive <strong>Stars ★</strong> instantly.<br><br><span class="hiw-scene-tag gold">1 Star = $0.01 USDT</span><br><br>Stars are your on-platform currency —<br>spend them to interact with the community.<br><br><span style="font-size:0.78rem;color:#f0b429;font-weight:700;">⚠ Your wallet address is your identity.<br>Withdrawals always return to this same wallet.</span></div>
             </div>
             <div class="hiw-scene" id="hiw-scene-2">
                 <div class="hiw-scene-art teal">
@@ -27310,7 +27336,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 </div>
                 <div class="hiw-scene-step">Step 4 of 4</div>
                 <div class="hiw-scene-title">Cash out any time —<br><span>back to your wallet</span></div>
-                <div class="hiw-scene-body">Open <strong>Creator Studio</strong> and tap<br><strong>Settle Total Balance → Wallet</strong>.<br><br>Stars convert to <strong>$APTM at the live price</strong><br>and land straight in your wallet.&nbsp;<span class="hiw-scene-tag green">No lock-up. Ever.</span><br><br><span style="font-size:0.78rem;color:rgba(255,255,255,0.45);">Need help? Tap the Support button inside your Inbox tab at any time.</span></div>
+                <div class="hiw-scene-body">Open <strong>Creator Studio</strong> and tap<br><strong>Settle Total Balance → Wallet</strong>.<br><br>Your Stars convert to <strong>$USDT</strong> and land straight in the wallet you connected.&nbsp;<span class="hiw-scene-tag green">No lock-up. Ever.</span><br><br><span style="font-size:0.78rem;color:#f0b429;">Withdrawals go to your connected wallet only — you cannot redirect to a different address.</span></div>
             </div>
         </div>
         <div id="hiw-progress-track"><div id="hiw-progress-fill"></div></div>
@@ -27358,7 +27384,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             <h3>Data Hosting</h3><p>All data is hosted on <strong>Google Firebase infrastructure</strong>.</p>
             <h3>What We Store</h3><ul><li>Your public wallet address</li><li>Display name and avatar URL</li><li>Posts, comments, and interactions</li><li>Star transaction ledger</li><li>Direct messages (if Mailbox is active)</li></ul>
             <h3>Message Privacy</h3><p>The UI provides private inboxes visible only to participants. Users should be aware that communications reside on Firebase infrastructure.</p>
-            <h3>Blockchain Transparency</h3><p>Your <strong>wallet address is publicly visible</strong> on the Apertum blockchain. All on-chain transactions are permanently auditable.</p>
+            <h3>Blockchain Transparency</h3><p>Your <strong>wallet address is publicly visible</strong> on BNB Smart Chain (BSC). All on-chain transactions are permanently auditable.</p>
             <h3>No Advertising</h3><p>SocialHub does not sell your data. Revenue is entirely from protocol transaction fees.</p>
         </div>
     </div>
@@ -29951,7 +29977,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const userHandle  = window._liveUserHandle  || 'Someone';
         const available   = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
 
-        if (available < HYPE_STAR_COST) { showToast('Not enough Stars to Hype! Deposit APTM first.'); return; }
+        if (available < HYPE_STAR_COST) { showToast('Not enough Stars to Hype! Tap Buy Stars to top up.'); return; }
 
         try {
             const { doc, updateDoc, increment, getDoc } = window.fs;
