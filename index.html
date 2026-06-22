@@ -8842,6 +8842,8 @@ html body #profile-hero .hero-action-btn.btn-follow {
 #cohost-stage-bar { display:none; position:fixed; bottom:72px; left:50%; transform:translateX(-50%); z-index:9990; background:rgba(10,8,24,0.88); border:1px solid rgba(124,92,191,0.35); border-radius:50px; padding:6px 16px; gap:10px; align-items:center; backdrop-filter:blur(8px); }
 #cohost-stage-bar button { background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.25); color:#fff; border-radius:20px; padding:4px 12px; font-size:0.68rem; font-weight:600; cursor:pointer; white-space:nowrap; }
 #cohost-stage-bar .sb-leave { background:rgba(220,38,38,0.75)!important; border-color:rgba(220,38,38,0.8)!important; }
+/* In TikTok viewer mode, co-host uses their slot block (tap to mute/cam/leave) — hide pill */
+body.is-watching #cohost-stage-bar { display:none !important; }
 /* ── GIFT VIDEO OVERLAY */
 #gift-video-overlay{position:fixed;inset:0;z-index:9999;pointer-events:none;display:none;mix-blend-mode:screen;}
 #gift-video-overlay.gift-tier-small{inset:auto!important;width:65vmin;height:65vmin;top:50%;left:50%;transform:translate(-50%,-50%);border-radius:20px;overflow:hidden;}
@@ -34262,6 +34264,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 // ── CINEMA SHORTCUT BUTTON ON VIEWER STREAM BOX ──────────────────
 (function() {
     function addCinemaShortcut() {
+        if (window.innerWidth <= 900) return; // slot grid handles mobile — no cinema button needed
         var box = document.getElementById('live-remote-video-container');
         if (!box || document.getElementById('cinema-shortcut-btn')) return;
         var btn = document.createElement('button');
@@ -37141,7 +37144,18 @@ window._renderSlotGrid = function(container, hostVidId, mode, coSlots, isHost) {
 
     if (hostEl) {
         var h = def.host;
-        hostEl.style.cssText = 'position:absolute;left:'+h.l+'%;top:'+h.t+'%;width:'+h.w+'%;height:'+h.h+'%;z-index:2;';
+        // Use setProperty 'important' so inline beats any stylesheet !important rules
+        // (e.g. viewer-side CSS forces live-remote-video to 100%x100%!important)
+        hostEl.style.setProperty('position',   'absolute',  'important');
+        hostEl.style.setProperty('left',        h.l+'%',    'important');
+        hostEl.style.setProperty('top',         h.t+'%',    'important');
+        hostEl.style.setProperty('width',       h.w+'%',    'important');
+        hostEl.style.setProperty('height',      h.h+'%',    'important');
+        hostEl.style.setProperty('z-index',     '2',        'important');
+        hostEl.style.setProperty('min-height',  '0',        'important');
+        hostEl.style.setProperty('max-height',  'none',     'important');
+        hostEl.style.setProperty('min-width',   '0',        'important');
+        hostEl.style.setProperty('max-width',   'none',     'important');
     }
     // Remove old slots
     var old = container.querySelectorAll('.live-slot');
@@ -37244,6 +37258,13 @@ window._openSlotAction = function(slotData, slotEl, isHost) {
         });
         selfBtn(state.camOff ? '📷' : '📷', state.camOff ? 'Turn Camera On' : 'Turn Camera Off', function() {
             window.toggleCoHostCam && window.toggleCoHostCam();
+        });
+        // Divider then leave
+        var _sdiv = document.createElement('div');
+        _sdiv.style.cssText = 'height:1px;background:rgba(255,255,255,0.08);margin:6px 0;';
+        selfPopup.appendChild(_sdiv);
+        selfBtn('🚪', 'Leave Stage', function() {
+            window.leaveCoHost && window.leaveCoHost();
         });
         document.body.appendChild(selfPopup);
         setTimeout(function() {
