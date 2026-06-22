@@ -28353,6 +28353,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 var av=document.getElementById('lbib-av'); if(av) av.src=window._liveUserAvatar||'';
                 var nm=document.getElementById('lbib-name'); if(nm) nm.textContent=window._liveUserHandle||userAddress.slice(0,8);
                 bar.style.display='flex';
+                // Store host name globally so star badges can track gifts received by the host
+                window._liveStreamHostName = window._liveUserHandle || userAddress.slice(0,8);
             })();
 
             // Update tab buttons
@@ -28924,6 +28926,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Populate stream info
             setText('live-stream-host-name', streamData.hostName || 'Creator');
             setText('live-stream-title-sm',  streamData.title    || '');
+            // Store host name globally for slot star badge lookups
+            window._liveStreamHostName = streamData.hostName || 'Creator';
             setText('live-creator-stars-watch', (streamData.starsEarned || 0).toFixed(1));
             // Populate viewer info bar and anchor it inside the video container as a top overlay.
             // Moved inside the video container to bypass flex/sticky/scroll layout issues —
@@ -29058,6 +29062,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // Reset viewer layout mode so observers restore solo behaviour on next stream
         window._viewerLayoutMode = 'solo';
         window._applyVcHeight = null;
+        // Force-hide co-host stage bar (JS inline style persists past CSS class removal)
+        var _csb = document.getElementById('cohost-stage-bar');
+        if (_csb) { _csb.style.display = 'none'; }
+        document.body.classList.remove('is-cohost');
+        // Reset gift totals for next stream
+        window._streamGiftTotals = {};
+        window._streamGiftsReceivedByName = {};
         // Close creator profile popup if open
         if(typeof window._closeCreatorProfile === 'function') window._closeCreatorProfile();
         // Close viewer rankings if open
@@ -30434,16 +30445,27 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const feed = $(feedElId);
         if (!feed) return;
 
-        // ── Build per-sender gift totals for this stream session ──
+        // ── Build per-sender gift totals (stars sent by each person) ──
         const giftTotals = {};
+        const giftsReceivedByName = {};
         msgs.forEach(function(m) {
             if (!m.isGift || !m.giftTier) return;
+            var _cost = (GIFT_TIERS[m.giftTier] || {}).cost || 0;
+            if (!_cost) return;
+            // Sender totals (shown as badge in chat)
             var _a = (m.address || '').toLowerCase();
-            if (!_a) return;
-            var _t = GIFT_TIERS[m.giftTier];
-            giftTotals[_a] = (giftTotals[_a] || 0) + (_t ? _t.cost : 0);
+            if (_a) giftTotals[_a] = (giftTotals[_a] || 0) + _cost;
+            // Recipient totals (shown on video blocks) — parse "gifted X to [Name]! (N"
+            var _rm = (m.text || '').match(/\bto\s+(.+?)!\s*\(/i);
+            if (_rm) {
+                var _rn = _rm[1].trim();
+                giftsReceivedByName[_rn] = (giftsReceivedByName[_rn] || 0) + _cost;
+            }
         });
         window._streamGiftTotals = giftTotals;
+        window._streamGiftsReceivedByName = giftsReceivedByName;
+        // Refresh star badges on video blocks
+        if (window._updateSlotStarBadges) window._updateSlotStarBadges();
 
         // Find top gifter address this session
         var _topAddr = '', _topAmt = 0;
@@ -30461,7 +30483,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var tot = giftTotals[(addr||'').toLowerCase()];
             if (!tot) return '';
             var isTop = _topAmt > 0 && (addr||'').toLowerCase() === _topAddr;
-            return '<span style="font-size:0.52rem;font-weight:700;color:'+(isTop?'rgba(240,180,41,0.95)':'rgba(180,140,255,0.75)')+';margin-left:3px;vertical-align:middle;white-space:nowrap;">⭐'+_fmtStars(tot)+'</span>';
+            // Gold for top gifter, bright purple for others — large enough to see on mobile
+            return '<span style="font-size:0.65rem;font-weight:800;color:'+(isTop?'#f0b429':'rgba(210,160,255,1)')+';margin-left:4px;vertical-align:middle;white-space:nowrap;text-shadow:0 1px 4px rgba(0,0,0,0.6);">⭐'+_fmtStars(tot)+'</span>';
         }
 
         feed.innerHTML = msgs.map(m => {
@@ -31611,6 +31634,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             isCoHost = false;
             document.body.classList.remove('is-cohost');
+            // Force-hide stage bar so inline style can't bleed
+            var _csbl = document.getElementById('cohost-stage-bar');
+            if (_csbl) _csbl.style.display = 'none';
             var btn = $('viewer-cohost-btn');
             if (btn) {
                 btn.innerHTML = '<span class="studio-btn-icon">🎤</span><span>Join Stage</span>';
@@ -35876,8 +35902,8 @@ body.has-battle .live-stream-overlay-top{display:none!important}
   /* Hide the page heading when actively watching or hosting — info bar replaces it */
   body.is-watching #page-live>.page-heading,
   body.is-hosting  #page-live>.page-heading{display:none!important}
-  /* Co-host on-stage floating control bar (mobile) */
-  body.is-watching.is-cohost #cohost-stage-bar{display:flex!important}
+  /* Co-host on-stage floating control bar — replaced by slot tap popup, always hidden */
+  body.is-watching.is-cohost #cohost-stage-bar{display:none!important}
 }
 /* Viewer icon strip */
 #viewer-icon-strip{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:10px;z-index:30}
@@ -36040,7 +36066,8 @@ body.has-battle .live-stream-overlay-top{display:none!important}
 
     /* Co-host stage wrap: hidden on mobile — slot div handles self-view */
     body.is-watching #cohost-stage-wrap{display:none!important;}
-    body.is-watching.is-cohost #cohost-stage-bar{display:flex!important;}
+    /* Stage pill replaced by slot self-tap popup — always hidden */
+    body.is-watching.is-cohost #cohost-stage-bar{display:none!important;}
 
     /* CC: fills remaining space below video — dark panel like host #bc-panel-chat-card */
     body.is-watching #live-player-wrap #viewer-panel-chat-card{
@@ -37157,9 +37184,23 @@ window._renderSlotGrid = function(container, hostVidId, mode, coSlots, isHost) {
         hostEl.style.setProperty('min-width',   '0',        'important');
         hostEl.style.setProperty('max-width',   'none',     'important');
     }
-    // Remove old slots
+    // Store coSlots globally so _updateSlotStarBadges can read them
+    window._currentCoSlots = coSlots || [];
+
+    // Remove old slots and host star badge
     var old = container.querySelectorAll('.live-slot');
     for (var s = 0; s < old.length; s++) old[s].remove();
+    var _oldHBadge = container.querySelector('.host-slot-stars');
+    if (_oldHBadge) _oldHBadge.remove();
+
+    // Add host star badge for viewer side (top-left corner of host's slot)
+    if (!isHost && def.slots.length > 0) {
+        var _hbDef = def.host;
+        var _hStarBadge = document.createElement('div');
+        _hStarBadge.className = 'host-slot-stars';
+        _hStarBadge.style.cssText = 'position:absolute;left:calc('+_hbDef.l+'% + 6px);top:calc('+_hbDef.t+'% + 6px);z-index:12;background:rgba(0,0,0,0.5);border-radius:20px;padding:2px 7px;font-size:0.58rem;font-weight:700;color:rgba(255,220,80,0.95);backdrop-filter:blur(4px);display:none;pointer-events:none;';
+        container.appendChild(_hStarBadge);
+    }
 
     // Build new slots
     for (var i = 0; i < def.slots.length; i++) {
@@ -37186,6 +37227,11 @@ window._renderSlotGrid = function(container, hostVidId, mode, coSlots, isHost) {
                 el.appendChild(cov);
             }
             if (sd.name) { var nm = document.createElement('div'); nm.className = 'slot-name'; nm.textContent = sd.name; el.appendChild(nm); }
+            // ⭐ TikTok-style gift-received badge (updated by _updateSlotStarBadges)
+            var _sgBadge = document.createElement('div');
+            _sgBadge.className = 'slot-stars-badge';
+            _sgBadge.style.cssText = 'position:absolute;top:6px;left:6px;z-index:12;background:rgba(0,0,0,0.5);border-radius:20px;padding:2px 7px;font-size:0.58rem;font-weight:700;color:rgba(255,220,80,0.95);backdrop-filter:blur(4px);display:none;pointer-events:none;';
+            el.appendChild(_sgBadge);
             if (isHost) {
                 var kk = document.createElement('button'); kk.className = 'slot-kick'; kk.textContent = '✕'; kk.title = 'Remove from stage';
                 var _ka = sd.address; kk.onclick = (function(a){ return function(){ window._kickFromStage && window._kickFromStage(a); }; })(_ka);
@@ -37217,6 +37263,37 @@ window._renderSlotGrid = function(container, hostVidId, mode, coSlots, isHost) {
             el.appendChild(ei);
         }
         container.appendChild(el);
+    }
+    // Immediately refresh star badges with any cached data
+    if (window._updateSlotStarBadges) window._updateSlotStarBadges();
+};
+
+window._updateSlotStarBadges = function() {
+    var received = window._streamGiftsReceivedByName || {};
+    function _sfmt(n) {
+        if (!n) return '';
+        if (n >= 1000000) return (n/1000000).toFixed(1).replace('.0','')+'m';
+        if (n >= 1000) return (n/1000).toFixed(1).replace('.0','')+'k';
+        return String(n);
+    }
+    // Update each co-host slot badge
+    document.querySelectorAll('.live-slot[data-slot]').forEach(function(el) {
+        var idx = parseInt(el.dataset.slot, 10);
+        var sd = (window._currentCoSlots || [])[idx];
+        var badge = el.querySelector('.slot-stars-badge');
+        if (!badge) return;
+        var name = (sd && sd.status === 'active' && sd.name) ? sd.name : '';
+        var tot = name ? (received[name] || 0) : 0;
+        if (tot > 0) { badge.textContent = '⭐' + _sfmt(tot); badge.style.display = 'block'; }
+        else { badge.style.display = 'none'; }
+    });
+    // Update host video star badge
+    var hostBadge = document.querySelector('.host-slot-stars');
+    if (hostBadge) {
+        var hostName = window._liveStreamHostName || '';
+        var hostTot = hostName ? (received[hostName] || 0) : 0;
+        if (hostTot > 0) { hostBadge.textContent = '⭐' + _sfmt(hostTot); hostBadge.style.display = 'block'; }
+        else { hostBadge.style.display = 'none'; }
     }
 };
 
