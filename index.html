@@ -17446,9 +17446,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (btn) { btn.disabled = false; btn.textContent = 'Withdraw USDT →'; }
         }
 
-        _wdStatus('Step 1/7 — Checking wallet type…');
+        // Detect WalletConnect by type flag OR by active provider — whichever is set
+        var _isWC = window._shLastWalletType === 'walletconnect' || !!window._activeWCProvider;
+        _wdStatus('Step 1/7 — Wallet: ' + (window._shLastWalletType || 'unknown') + ' | WC provider: ' + (window._activeWCProvider ? 'yes' : 'no'));
 
-        var _isWC = window._shLastWalletType === 'walletconnect';
         if (_isWC && !window._activeWCProvider) {
             return _wdFail('WalletConnect session expired. Disconnect and reconnect, then try again.', _clickedBtn);
         }
@@ -17542,16 +17543,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Show the "Open Wallet" button BEFORE sending the tx so it's visible immediately.
             // On WalletConnect mobile the signing request arrives in the wallet silently —
             // the user needs a tap target to switch to their wallet app and approve.
-            if (_isWC && _wdStatusEl) {
-                var _wName    = window._wcWalletName     || 'MetaMask';
-                var _wLink    = window._wcWalletDeepLink || 'metamask://';
+            if (_wdStatusEl) {
+                var _wName    = (window._wcWalletName     && window._wcWalletName !== 'undefined') ? window._wcWalletName : 'MetaMask';
+                var _wLink    = (window._wcWalletDeepLink && window._wcWalletDeepLink !== 'undefined') ? window._wcWalletDeepLink : 'metamask://';
                 _wdStatusEl.style.display = 'block';
                 _wdStatusEl.style.color   = 'var(--teal)';
                 var _openBtn = '<a href="' + _wLink + '" style="display:block;text-align:center;background:rgba(240,180,41,0.15);border:1px solid rgba(240,180,41,0.5);color:#f0b429;font-weight:800;font-size:1rem;text-decoration:none;padding:14px 20px;border-radius:10px;letter-spacing:0.3px;">📲 Tap to Open ' + _wName + ' &amp; Approve →</a>';
                 _wdStatusEl.innerHTML =
-                    '<div style="margin-bottom:10px;">Step 6/7 — Sending signing request…</div>' +
+                    '<div style="margin-bottom:10px;">Step 6/7 — Signing request sent to wallet.</div>' +
                     _openBtn +
-                    '<div style="font-size:0.65rem;color:#8b9ab5;margin-top:8px;">Tap above to switch to ' + _wName + ' and approve the transaction. This page waits automatically.</div>';
+                    '<div style="font-size:0.65rem;color:#8b9ab5;margin-top:8px;">Tap above → approve in ' + _wName + ' → come back here. The page waits automatically.</div>';
+                try { _wdStatusEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(_) {}
             }
 
             // Send the tx — signing request goes to wallet via WalletConnect relay
