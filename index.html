@@ -10437,6 +10437,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                       <div id="hero-bio"></div>
                       <div id="hero-links"></div>
                       <div id="hero-mkt-badges" style="display:none;"></div>
+                      <div id="hero-creator-badges" style="display:none;margin-top:8px;flex-wrap:wrap;gap:6px;"></div>
 
                       <!-- Profile QR — own wall only -->
                       <div id="hero-qr-section">
@@ -19550,6 +19551,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
             }
         } catch(e) { console.warn('Marketplace badges failed:', e); }
+
+        // ── Creator badges (Verified / Genesis 50 / First Earnings) ───────────────
+        try {
+            const cbEl = document.getElementById('hero-creator-badges');
+            if (cbEl) {
+                const cbSnap = await window.fs.getDoc(window.fs.doc(window.db, 'users', addrLower));
+                const cbBdg  = cbSnap.exists() ? (cbSnap.data().badges || {}) : {};
+                let cbHtml = '';
+                if (cbBdg.genesis)       cbHtml += '<span class="cp-badge cp-badge-genesis">★ Genesis 50</span>';
+                if (cbBdg.verified)      cbHtml += '<span class="cp-badge cp-badge-verified">✓ Verified Creator</span>';
+                if (cbBdg.firstEarnings) cbHtml += '<span class="cp-badge cp-badge-first">💰 First Earnings</span>';
+                if (cbHtml) { cbEl.innerHTML = cbHtml; cbEl.style.display = 'flex'; }
+                else          { cbEl.style.display = 'none'; cbEl.innerHTML = ''; }
+            }
+        } catch(e) {}
 
         // ── Step 5: Active signals → hero row + teal avatar glow ─────────────────
         const cutoff = Date.now() - 24 * 60 * 60 * 1000;
