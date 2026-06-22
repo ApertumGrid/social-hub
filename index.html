@@ -37730,14 +37730,14 @@ window._awardVerifiedBadge = async function(addr) {
         var genesisCount = gSnap.exists() ? (gSnap.data().count || 0) : 0;
         var earnGenesis = genesisCount < 50;
 
-        var badges = { verified: true };
         if (earnGenesis) {
-            badges.genesis = true;
-            // Increment genesis count
             await window.fs.setDoc(gRef, { count: window.fs.increment(1) }, { merge: true });
         }
 
-        await window.fs.setDoc(uRef, { badges: badges, verifiedAt: Date.now() }, { merge: true });
+        // Use updateDoc with dot-notation so we only add new badges, never overwrite existing ones
+        var badgeUpdate = { 'badges.verified': true, verifiedAt: Date.now() };
+        if (earnGenesis) badgeUpdate['badges.genesis'] = true;
+        await window.fs.updateDoc(uRef, badgeUpdate);
 
         // Show toast
         if (earnGenesis) {
@@ -37824,8 +37824,11 @@ window._loadCreatorChallenge = async function() {
         }
 
         // ── Days 4, 5 from Firestore flags (set by event hooks) ──
-        var d4 = ch.day4 || false;
-        var d5 = ch.day5 || false;
+        // Also check old flat-field format ('challenge.day4' key) and auto-migrate to nested
+        var d4 = ch.day4 || (ud['challenge.day4'] === true);
+        var d5 = ch.day5 || (ud['challenge.day5'] === true);
+        if (!ch.day4 && ud['challenge.day4'] === true) window.fs.updateDoc(uRef, {'challenge.day4': true}).catch(function(){});
+        if (!ch.day5 && ud['challenge.day5'] === true) window.fs.updateDoc(uRef, {'challenge.day5': true}).catch(function(){});
 
         // ── Day 6: Hub exists ──
         var d6 = ch.day6 || false;
@@ -37886,7 +37889,7 @@ window._loadCreatorChallenge = async function() {
                     var spotsLeft = Math.max(0, 50 - gc);
                     if (rName) rName.textContent = spotsLeft > 0 ? '⭐ Genesis 50 + Verified Creator' : '✓ Verified Creator';
                     if (rDesc) rDesc.textContent = spotsLeft > 0
-                        ? 'Complete all 6 tasks — ' + spotsLeft + ' Genesis 50 spots remaining!'
+                        ? 'Genesis 50 — ' + spotsLeft + ' spots remaining, complete all 6 tasks to claim yours!'
                         : 'Complete all 6 tasks — Verified Creator badge awarded automatically.';
                 }).catch(function() {});
         }
