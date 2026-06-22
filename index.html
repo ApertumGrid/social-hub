@@ -37754,15 +37754,21 @@ window._challengeMarkDone = async function(day) {
     var addr = (window.userAddress || '').toLowerCase();
     if (!addr || !window.db || !window.fs) return;
     try {
-        var fieldKey = 'challenge.day' + day;
         var update = {};
-        update[fieldKey] = true;
-        await window.fs.setDoc(window.fs.doc(window.db, 'users', addr), update, { merge: true });
-        // Refresh panel if Creator Studio is open
-        if (typeof window._loadCreatorChallenge === 'function') {
-            setTimeout(window._loadCreatorChallenge, 300);
-        }
-    } catch(e) { console.warn('[challengeMarkDone]', e); }
+        update['challenge.day' + day] = true;
+        // updateDoc uses dot-notation to update nested fields without overwriting siblings
+        await window.fs.updateDoc(window.fs.doc(window.db, 'users', addr), update);
+    } catch(e) {
+        // Doc may not exist yet — fall back to setDoc with proper nested structure
+        try {
+            var nested = { challenge: {} };
+            nested.challenge['day' + day] = true;
+            await window.fs.setDoc(window.fs.doc(window.db, 'users', addr), nested, { merge: true });
+        } catch(e2) { console.warn('[challengeMarkDone]', e2); }
+    }
+    if (typeof window._loadCreatorChallenge === 'function') {
+        setTimeout(window._loadCreatorChallenge, 300);
+    }
 };
 
 // ── 7-Day Creator Challenge loader ────────────────────────────────────
@@ -37801,7 +37807,7 @@ window._loadCreatorChallenge = async function() {
                     window.fs.where('authorAddr', '==', window.userAddress), window.fs.limit(1));
                 var pS = await window.fs.getDocs(pQ);
                 d2 = !pS.empty;
-                if (d2) await window.fs.setDoc(uRef, { challenge: { day2: true } }, { merge: true });
+                if (d2) await window.fs.updateDoc(uRef, { 'challenge.day2': true }).catch(function(){});
             } catch(e) {}
         }
 
@@ -37813,7 +37819,7 @@ window._loadCreatorChallenge = async function() {
                     window.fs.where('follower', '==', addr));
                 var fS = await window.fs.getDocs(fQ);
                 d3 = fS.size >= 5;
-                if (d3) await window.fs.setDoc(uRef, { challenge: { day3: true } }, { merge: true });
+                if (d3) await window.fs.updateDoc(uRef, { 'challenge.day3': true }).catch(function(){});
             } catch(e) {}
         }
 
@@ -37829,7 +37835,7 @@ window._loadCreatorChallenge = async function() {
                     window.fs.where('ownerId', '==', window.userAddress), window.fs.limit(1));
                 var cS = await window.fs.getDocs(cQ);
                 d6 = !cS.empty;
-                if (d6) await window.fs.setDoc(uRef, { challenge: { day6: true } }, { merge: true });
+                if (d6) await window.fs.updateDoc(uRef, { 'challenge.day6': true }).catch(function(){});
             } catch(e) {}
         }
 
