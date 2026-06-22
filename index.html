@@ -10683,6 +10683,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <strong>How it works:</strong> Stars power instant interactions on the internal ledger. 1 Star = $0.01 USDT — fixed forever. Click <strong>Withdraw USDT</strong> to send your entire balance to your wallet. Both balances are zeroed after the transaction confirms.
                     </div>
                     <button class="btn btn-teal" style="width:auto; padding:10px 24px;" onclick="settleStarsToWallet(event)">Settle Total Balance to Wallet →</button>
+                    <div id="withdraw-status" style="display:none; margin-top:8px; padding:8px 12px; background:rgba(45,212,191,0.07); border:1px solid rgba(45,212,191,0.2); border-radius:8px; font-size:0.72rem; font-family:var(--font-mono); color:var(--teal); line-height:1.6; white-space:pre-wrap; word-break:break-all;"></div>
                     <button id="manual-sync-btn" class="btn btn-outline" style="width:auto; padding:8px 18px; margin-top:8px; font-size:0.75rem;" onclick="manualProviderSync()">⟳ Re-verify Wallet Connection</button>
                     <div id="manual-sync-status" style="display:none; font-size:0.68rem; color:var(--text-muted); font-family:var(--font-mono); margin-top:6px;"></div>
                 </div>
@@ -17409,29 +17410,44 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             return alert("Connect Wallet First");
         }
 
+        // ── On-screen status logger — visible on mobile where console is inaccessible ──
+        var _wdStatusEl = document.getElementById('withdraw-status');
+        function _wdStatus(msg, isError) {
+            console.log('[Withdraw]', msg);
+            if (!_wdStatusEl) return;
+            _wdStatusEl.style.display = 'block';
+            _wdStatusEl.style.color   = isError ? '#f87171' : 'var(--teal)';
+            _wdStatusEl.textContent   = msg;
+        }
+        function _wdDone() { if (_wdStatusEl) _wdStatusEl.style.display = 'none'; }
+        function _wdFail(msg, btn) {
+            _wdStatus('❌ ' + msg, true);
+            if (btn) { btn.disabled = false; btn.textContent = 'Withdraw USDT →'; }
+        }
+
+        _wdStatus('Step 1/7 — Checking wallet type…');
+
         var _isWC = window._shLastWalletType === 'walletconnect';
         if (_isWC && !window._activeWCProvider) {
-            if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
-            return alert('WalletConnect session has expired.\n\nPlease disconnect and reconnect via WalletConnect, then try again.');
+            return _wdFail('WalletConnect session expired. Disconnect and reconnect, then try again.', _clickedBtn);
         }
+
+        _wdStatus('Step 2/7 — Refreshing signer…');
         if (_isWC && window._activeWCProvider) {
-            // WalletConnect: provider was initialized on BSC (chains:[56]) — no chain switch needed.
-            // Re-wrap the live WC provider to get a fresh signer; don't use _shLastEth which may be stale.
             try {
                 const wcFreshProvider = new ethers.providers.Web3Provider(window._activeWCProvider);
                 const wcFreshSigner   = wcFreshProvider.getSigner();
                 hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, wcFreshSigner);
                 provider = wcFreshProvider; signer = wcFreshSigner;
                 window.provider = wcFreshProvider; window.signer = wcFreshSigner; window.hubContract = hubContract;
+                _wdStatus('Step 2/7 — WalletConnect signer ready ✓');
             } catch(wcErr) {
-                if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
-                return alert('WalletConnect session error. Please disconnect and reconnect your wallet, then try again.\n\n' + (wcErr.message || String(wcErr)));
+                return _wdFail('WalletConnect signer error: ' + (wcErr.message || String(wcErr)), _clickedBtn);
             }
         } else if (window._shLastEth) {
             const onBSC = await _ensureBSCChain(window._shLastEth);
             if (!onBSC) {
-                if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
-                return alert('Please switch your wallet to BNB Smart Chain (BSC) and try again.');
+                return _wdFail('Wrong network — please switch your wallet to BNB Smart Chain (BSC 56).', _clickedBtn);
             }
             try {
                 const freshProvider = new ethers.providers.Web3Provider(window._shLastEth);
@@ -17439,48 +17455,43 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, freshSigner);
                 provider = freshProvider; signer = freshSigner;
                 window.provider = freshProvider; window.signer = freshSigner; window.hubContract = hubContract;
+                _wdStatus('Step 2/7 — Signer ready ✓');
             } catch(provErr) {
-                if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
-                return alert('Could not refresh wallet connection. Please reconnect and try again.\n\n' + (provErr.message || String(provErr)));
+                return _wdFail('Could not refresh wallet connection: ' + (provErr.message || String(provErr)), _clickedBtn);
             }
         }
 
         try {
+            _wdStatus('Step 3/7 — Reading wallet address…');
             const addr = (await signer.getAddress()).toLowerCase();
+            _wdStatus('Step 3/7 — Address: ' + addr.slice(0,8) + '…' + addr.slice(-6));
 
-            // Read on-chain balance
+            _wdStatus('Step 4/7 — Reading on-chain balance (BSC)…');
+            // Wrap RPC call with 15-second timeout so it can never hang forever on mobile
             const roContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, getRpcProvider());
-            const bal = await roContract.getBalance(addr);
-            // depositedUSDT on-chain minus Firestore-tracked spend = true spendable deposit
+            const bal = await Promise.race([
+                roContract.getBalance(addr),
+                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('RPC timeout after 15s — check your mobile connection')); }, 15000); })
+            ]);
+
             const onChainDeposited    = parseFloat(ethers.utils.formatUnits(bal.deposited,    18)) || 0;
             const onChainWithdrawable = parseFloat(ethers.utils.formatUnits(bal.withdrawable, 18)) || 0;
-            // earnUsdt = on-chain already-settled + Firestore not-yet-settled (no double-count)
             const firestoreCreatorUsdt = (window._firestoreCreatorStars || 0) * CONFIG.STAR_USD;
             const depUsdt   = Math.max(0, onChainDeposited - ((window._totalSpentStars || 0) * CONFIG.STAR_USD));
             const earnUsdt  = onChainWithdrawable + firestoreCreatorUsdt;
             const totalUsdt = depUsdt + earnUsdt;
 
+            _wdStatus('Step 4/7 — Balance: deposited $' + fmtUsdt(depUsdt) + ' + earned $' + fmtUsdt(earnUsdt) + ' = $' + fmtUsdt(totalUsdt) + ' USDT');
+
             if (totalUsdt <= 0) {
-                if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
-                return alert('No USDT balance to withdraw.');
+                return _wdFail('No USDT balance to withdraw.', _clickedBtn);
             }
 
-            const confirmed = confirm(
-                'Withdraw USDT\n\n' +
-                'Deposited balance:  $' + fmtUsdt(depUsdt)   + ' USDT\n' +
-                'Earned balance:     $' + fmtUsdt(earnUsdt)  + ' USDT\n' +
-                '─'.repeat(30) + '\n' +
-                'Total to withdraw:  $' + fmtUsdt(totalUsdt) + ' USDT\n\n' +
-                'The platform will verify your balance and authorize the withdrawal.\nProceed?'
-            );
-            if (!confirmed) {
-                if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
-                return;
-            }
+            // Skip confirm() — unreliable on mobile browsers/WebViews.
+            // User already pressed Withdraw — show amount in status and proceed.
+            _wdStatus('Step 5/7 — Requesting withdrawal permit from server…');
+            showToast('Authorizing withdrawal of $' + fmtUsdt(totalUsdt) + ' USDT…');
 
-            showToast('Requesting withdrawal authorization…');
-
-            // Request CF-signed withdrawal permit
             const cfResp = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/requestWithdraw', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -17489,43 +17500,42 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const cfData = await cfResp.json();
 
             if (!cfData.success) {
-                if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
-                return alert('Withdrawal authorization failed:\n' + (cfData.error || 'Unknown error'));
+                return _wdFail('Server authorization failed: ' + (cfData.error || 'Unknown error'), _clickedBtn);
             }
+            _wdStatus('Step 5/7 — Permit received ✓');
 
             const { depositAmount, earnedAmount, nonce, expiry, signature } = cfData;
-            // depositAmount and earnedAmount are raw uint256 strings (6-decimal USDT)
-            // already settled on-chain by the CF — pass directly, no re-parsing
             const depBN  = ethers.BigNumber.from(String(depositAmount  || '0'));
             const earnBN = ethers.BigNumber.from(String(earnedAmount   || '0'));
 
-            showToast('Submitting withdrawal to blockchain…');
-            // WalletConnect on mobile wallets may reject EIP-1559 format — force legacy tx with explicit gasPrice
+            _wdStatus('Step 6/7 — Sending transaction — check your wallet app…');
+            showToast('Open your wallet app to approve the transaction…');
+
             var _txOverrides = { gasLimit: 300000 };
             if (_isWC) {
+                // Force legacy gas format — some mobile wallets reject EIP-1559 via WalletConnect
                 try {
                     var _gasPx = await provider.getGasPrice();
-                    // Add 20% buffer so the mobile wallet doesn't stall on price estimation
-                    _txOverrides.gasPrice = _gasPx.mul(12).div(10);
+                    _txOverrides.gasPrice = _gasPx.mul(12).div(10); // +20% buffer
                 } catch(_) {
                     _txOverrides.gasPrice = ethers.utils.parseUnits('5', 'gwei');
                 }
             }
             const tx = await hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, _txOverrides);
-            const receipt = await tx.wait();
+            _wdStatus('Step 6/7 — Transaction submitted: ' + tx.hash.slice(0,12) + '… Waiting for confirmation…');
+            showToast('Tx sent — waiting for BSC confirmation…');
 
+            const receipt = await tx.wait();
             if (!receipt || receipt.status !== 1) {
-                if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
-                return alert('Withdrawal reverted on-chain. Your balance is unchanged. Try again.');
+                return _wdFail('Transaction reverted on-chain. Your balance is unchanged. Block: ' + (receipt ? receipt.blockNumber : '?'), _clickedBtn);
             }
 
+            _wdStatus('Step 7/7 — Confirmed on block ' + receipt.blockNumber + ' ✓ Clearing balances…');
+
             // Zero local state
-            purchasedStars     = 0;
-            creatorEarnings    = 0;
-            currentUsdtBalance = 0;
-            currentEarnedUsdt  = 0;
-            currentAptmBalance = 0;
-            _lastSpendTime     = Date.now();
+            purchasedStars = 0; creatorEarnings = 0;
+            currentUsdtBalance = 0; currentEarnedUsdt = 0; currentAptmBalance = 0;
+            _lastSpendTime = Date.now();
 
             // Zero Firebase
             if (window.db) {
@@ -17539,13 +17549,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             logTransaction('settle', totalUsdt, { from: addr, to: 'wallet', description: 'Withdrew $' + fmtUsdt(totalUsdt) + ' USDT to wallet' });
             updateUI(); updateDrawerUI();
             if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
-            alert('Withdrawal Successful! $' + fmtUsdt(totalUsdt) + ' USDT sent to your wallet.');
+            _wdStatus('✅ Withdrawal complete! $' + fmtUsdt(totalUsdt) + ' USDT sent to your wallet. Block: ' + receipt.blockNumber);
+            showToast('✅ Withdrawal successful! $' + fmtUsdt(totalUsdt) + ' USDT sent ✓');
             syncData();
 
         } catch (err) {
             console.error('[settleStarsToWallet] threw:', err);
-            if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
-            alert('Withdrawal failed: ' + (err.reason || err.message || String(err)).slice(0, 200));
+            _wdFail((err.reason || err.message || String(err)).slice(0, 300), _clickedBtn);
+            showToast('Withdrawal failed — see status below the button');
         }
 
         // Legacy dead code below — never reached
