@@ -13019,6 +13019,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         "function depositedUSDT(address user) view returns (uint256)",
         "function withdrawableUSDT(address user) view returns (uint256)",
         "function getBalance(address user) view returns (uint256 deposited, uint256 withdrawable, uint256 total)",
+        "function adminWithdrawToTreasury() external",
         "function platformPool() view returns (uint256)",
         "function nonces(address user) view returns (uint256)",
         "function paused() view returns (bool)",
@@ -17408,11 +17409,29 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             return alert("Connect Wallet First");
         }
 
-        if (window._shLastEth) {
+        var _isWC = window._shLastWalletType === 'walletconnect';
+        if (_isWC && !window._activeWCProvider) {
+            if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
+            return alert('WalletConnect session has expired.\n\nPlease disconnect and reconnect via WalletConnect, then try again.');
+        }
+        if (_isWC && window._activeWCProvider) {
+            // WalletConnect: provider was initialized on BSC (chains:[56]) — no chain switch needed.
+            // Re-wrap the live WC provider to get a fresh signer; don't use _shLastEth which may be stale.
+            try {
+                const wcFreshProvider = new ethers.providers.Web3Provider(window._activeWCProvider);
+                const wcFreshSigner   = wcFreshProvider.getSigner();
+                hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, wcFreshSigner);
+                provider = wcFreshProvider; signer = wcFreshSigner;
+                window.provider = wcFreshProvider; window.signer = wcFreshSigner; window.hubContract = hubContract;
+            } catch(wcErr) {
+                if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
+                return alert('WalletConnect session error. Please disconnect and reconnect your wallet, then try again.\n\n' + (wcErr.message || String(wcErr)));
+            }
+        } else if (window._shLastEth) {
             const onBSC = await _ensureBSCChain(window._shLastEth);
             if (!onBSC) {
                 if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
-                return;
+                return alert('Please switch your wallet to BNB Smart Chain (BSC) and try again.');
             }
             try {
                 const freshProvider = new ethers.providers.Web3Provider(window._shLastEth);
@@ -17420,7 +17439,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, freshSigner);
                 provider = freshProvider; signer = freshSigner;
                 window.provider = freshProvider; window.signer = freshSigner; window.hubContract = hubContract;
-            } catch(_) {}
+            } catch(provErr) {
+                if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
+                return alert('Could not refresh wallet connection. Please reconnect and try again.\n\n' + (provErr.message || String(provErr)));
+            }
         }
 
         try {
@@ -17478,7 +17500,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const earnBN = ethers.BigNumber.from(String(earnedAmount   || '0'));
 
             showToast('Submitting withdrawal to blockchain…');
-            const tx = await hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, { gasLimit: 300000 });
+            // WalletConnect on mobile wallets may reject EIP-1559 format — force legacy tx with explicit gasPrice
+            var _txOverrides = { gasLimit: 300000 };
+            if (_isWC) {
+                try {
+                    var _gasPx = await provider.getGasPrice();
+                    // Add 20% buffer so the mobile wallet doesn't stall on price estimation
+                    _txOverrides.gasPrice = _gasPx.mul(12).div(10);
+                } catch(_) {
+                    _txOverrides.gasPrice = ethers.utils.parseUnits('5', 'gwei');
+                }
+            }
+            const tx = await hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, _txOverrides);
             const receipt = await tx.wait();
 
             if (!receipt || receipt.status !== 1) {
