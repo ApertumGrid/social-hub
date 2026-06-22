@@ -13940,14 +13940,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 } else {
                     const d = snap.data();
 
-                    // Auto-zero Firestore if on-chain is empty and there was a recent withdrawal.
-                    // This handles the case where tx.wait() timed out before the zero-write ran.
-                    var _lastWd = parseFloat(d.lastWithdraw || 0);
-                    var _hadBal = (parseFloat(d.stars || 0) > 0 || parseFloat(d.creatorStars || 0) > 0 || parseFloat(d.depositedUsdt || 0) > 0);
-                    var _recentWd = _lastWd > 0 && (Date.now() - _lastWd) < 7200000; // within 2 hours
-                    if (depositedHuman === 0 && withdrawableHuman === 0 && _hadBal && _recentWd) {
-                        console.log('[syncData] on-chain empty + recent withdrawal detected — zeroing Firestore');
-                        await window.fs.setDoc(userRef, { stars: 0, creatorStars: 0, depositedUsdt: 0, lastSync: Date.now() }, { merge: true }).catch(() => {});
+                    // If on-chain is completely empty but Firestore still shows a balance,
+                    // the withdrawal succeeded but the Firestore zero-write didn't complete.
+                    // Zero Firestore now so the UI reflects reality.
+                    var _fbStars   = parseFloat(d.stars        || 0);
+                    var _fbCreator = parseFloat(d.creatorStars || 0);
+                    var _fbDep     = parseFloat(d.depositedUsdt|| 0);
+                    var _hadBal    = _fbStars > 0 || _fbCreator > 0 || _fbDep > 0;
+                    if (depositedHuman === 0 && withdrawableHuman === 0 && _hadBal) {
+                        console.log('[syncData] on-chain zero but Firestore non-zero — zeroing Firestore');
+                        await window.fs.setDoc(userRef, { stars: 0, creatorStars: 0, depositedUsdt: 0, lastWithdraw: Date.now(), lastSync: Date.now() }, { merge: true }).catch(() => {});
                         creatorEarnings = 0; currentEarnedUsdt = 0;
                         window._firestoreCreatorStars = 0;
                         window._onChainEarned = 0;
