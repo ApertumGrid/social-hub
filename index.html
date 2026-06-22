@@ -17532,37 +17532,30 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             _wdStatus('Step 6/7 — Sending signing request to wallet…');
             showToast('Sending to wallet…');
 
+            // WalletConnect on mobile: skip getGasPrice() RPC call — it hangs on mobile
+            // connections with no timeout. BSC gas is 3–5 gwei and stable; hardcode 5 gwei.
             var _txOverrides = { gasLimit: 300000 };
             if (_isWC) {
-                // Force legacy gas format — some mobile wallets reject EIP-1559 via WalletConnect
-                try {
-                    var _gasPx = await provider.getGasPrice();
-                    _txOverrides.gasPrice = _gasPx.mul(12).div(10); // +20% buffer
-                } catch(_) {
-                    _txOverrides.gasPrice = ethers.utils.parseUnits('5', 'gwei');
-                }
+                _txOverrides.gasPrice = ethers.utils.parseUnits('5', 'gwei');
             }
-            // Start the tx (sends signing request via WalletConnect relay)
-            const _txPromise = hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, _txOverrides);
 
-            // For WalletConnect on mobile: the signing request is now sitting in the wallet
-            // but the wallet won't auto-open from a browser context. Show a wallet-specific
-            // deep-link button so the user can tap to open their wallet and approve.
+            // Show the "Open Wallet" button BEFORE sending the tx so it's visible immediately.
+            // On WalletConnect mobile the signing request arrives in the wallet silently —
+            // the user needs a tap target to switch to their wallet app and approve.
             if (_isWC && _wdStatusEl) {
-                var _wName    = window._wcWalletName     || 'your wallet';
-                var _wLink    = window._wcWalletDeepLink || '';
+                var _wName    = window._wcWalletName     || 'MetaMask';
+                var _wLink    = window._wcWalletDeepLink || 'metamask://';
                 _wdStatusEl.style.display = 'block';
                 _wdStatusEl.style.color   = 'var(--teal)';
-                var _openBtn = _wLink
-                    ? '<a href="' + _wLink + '" style="display:block;text-align:center;background:rgba(240,180,41,0.15);border:1px solid rgba(240,180,41,0.5);color:#f0b429;font-weight:800;font-size:1rem;text-decoration:none;padding:14px 20px;border-radius:10px;letter-spacing:0.3px;">📲 Tap to Open ' + _wName + ' &amp; Approve →</a>'
-                    : '<div style="background:rgba(240,180,41,0.1);border:1px solid rgba(240,180,41,0.4);color:#f0b429;font-weight:700;font-size:0.9rem;padding:12px 16px;border-radius:10px;text-align:center;">📲 Switch to ' + _wName + ' — a transaction is waiting for your approval.</div>';
+                var _openBtn = '<a href="' + _wLink + '" style="display:block;text-align:center;background:rgba(240,180,41,0.15);border:1px solid rgba(240,180,41,0.5);color:#f0b429;font-weight:800;font-size:1rem;text-decoration:none;padding:14px 20px;border-radius:10px;letter-spacing:0.3px;">📲 Tap to Open ' + _wName + ' &amp; Approve →</a>';
                 _wdStatusEl.innerHTML =
-                    '<div style="margin-bottom:10px;">Step 6/7 — Signing request sent ✓<br>' + _wName + ' is waiting for your approval.</div>' +
+                    '<div style="margin-bottom:10px;">Step 6/7 — Sending signing request…</div>' +
                     _openBtn +
-                    '<div style="font-size:0.65rem;color:#8b9ab5;margin-top:8px;">After approving in ' + _wName + ', come back here — the page will confirm automatically.</div>';
+                    '<div style="font-size:0.65rem;color:#8b9ab5;margin-top:8px;">Tap above to switch to ' + _wName + ' and approve the transaction. This page waits automatically.</div>';
             }
 
-            const tx = await _txPromise;
+            // Send the tx — signing request goes to wallet via WalletConnect relay
+            const tx = await hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, _txOverrides);
             _wdStatus('Step 6/7 — Transaction submitted: ' + tx.hash.slice(0,12) + '… Waiting for confirmation…');
             showToast('Tx sent — waiting for BSC confirmation…');
 
