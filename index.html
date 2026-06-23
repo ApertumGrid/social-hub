@@ -23665,7 +23665,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mediaUrl: mediaUrl, postId: postId })
             });
-            if (!cfResp.ok) throw new Error('CF ' + cfResp.status);
+            if (!cfResp.ok) {
+                var cfErr = ''; try { cfErr = (await cfResp.json()).error || ''; } catch(e) {}
+                throw new Error('CF ' + cfResp.status + (cfErr ? ': ' + cfErr : ''));
+            }
             var cfData = await cfResp.json();
             if (!cfData.url) throw new Error('No URL');
 
@@ -23683,8 +23686,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         } catch(err) {
             console.warn('downloadFlick CF failed, trying direct:', err.message);
-            // Fallback: direct download without watermark
-            showToast('Saving video...');
+            showToast('CF error: ' + err.message);
             try {
                 var r2 = await fetch(mediaUrl, { mode: 'cors' });
                 if (!r2.ok) throw new Error('direct fetch');
