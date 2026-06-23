@@ -23399,7 +23399,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             '<div class="flick-overlay"></div>' +
             '<div class="flick-badge">▶ Flick</div>' +
             '<button class="flick-sound-btn" id="flick-sound-' + postId + '" onclick="toggleFlickSound(\'' + postId + '\',this)" title="Toggle sound">' +
-                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>' +
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>' +
             '</button>' +
             '<div class="flick-info">' +
                 '<div class="flick-author" onclick="viewUserWall(\'' + safeAddr + '\')">' +
@@ -23451,8 +23451,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (videoEl) {
             const obs = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
-                    if (entry.isIntersecting) { videoEl.play().catch(() => {}); }
-                    else { videoEl.pause(); }
+                    if (entry.isIntersecting) {
+                        videoEl.muted = (window._flickMuted === true);
+                        var _sb = document.getElementById('flick-sound-' + postId);
+                        if (_sb) _sb.innerHTML = videoEl.muted
+                            ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
+                            : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
+                        videoEl.play().catch(() => {});
+                    } else { videoEl.pause(); }
                 });
             }, { threshold: 0.6 });
             obs.observe(card);
@@ -23618,6 +23624,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const vid = card.querySelector('.flick-video');
         if (!vid) return;
         vid.muted = !vid.muted;
+        window._flickMuted = vid.muted;
         btn.innerHTML = vid.muted
             ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
             : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
