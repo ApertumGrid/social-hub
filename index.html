@@ -10051,7 +10051,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div class="wdd-logo" style="display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#3B99FC 0%,#1069c9 100%);font-size:1.05rem;color:#fff;">⬡</div>
                             <div class="wdd-option-text">
                                 <span class="wdd-name">WalletConnect</span>
-                                <span class="wdd-sub">QR code · any browser</span>
+                                <span class="wdd-sub" id="wdd-wc-sub">QR code · desktop recommended</span>
                             </div>
                         </button>
                     </div>
@@ -13129,6 +13129,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // ═══════════════════════════════════════════════════════════════════
     // WALLET DRAWER (V11 NEW)
     // ═══════════════════════════════════════════════════════════════════
+    var _isMobileBrowser = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+
     function openWalletDrawer() {
         setBnav('wallet');
         const drawer = document.getElementById('wallet-drawer');
@@ -14041,13 +14043,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         setStatus('Checking provider…', 'var(--teal)');
 
         try {
-            // Step 1 — wait for ethereum to be injected (handles slow mobile browsers)
-            const eth = await _waitForEthereum(4000);
-            setStatus('Provider found — re-initialising contract…', 'var(--teal)');
+            // Step 1 — get the right provider (WalletConnect or injected)
+            var _syncEth = null;
+            if (window._activeWCProvider) {
+                _syncEth = window._activeWCProvider;
+                setStatus('WalletConnect session found — re-initialising…', 'var(--teal)');
+            } else {
+                _syncEth = await _waitForEthereum(4000);
+                if (!_syncEth) throw new Error('No wallet detected. Connect a wallet first.');
+                setStatus('Provider found — re-initialising contract…', 'var(--teal)');
+            }
 
             // Step 2 — rebuild provider/signer/contract if they were lost
             if (!provider || !signer || !hubContract) {
-                provider    = new ethers.providers.Web3Provider(eth);
+                provider    = new ethers.providers.Web3Provider(_syncEth);
                 const accts = await provider.send("eth_requestAccounts", []);
                 if (!userAddress) {
                     userAddress        = accts[0];
@@ -15715,7 +15724,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 showToast('Step 1/2 — Approving USDT…');
                 const approveTx = await Promise.race([
                     usdtContract.approve(CONFIG.CONTRACT_ADDRESS, _maxApproval, _usdtGas),
-                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Wallet did not respond. Open your wallet and look for an approval request.')); }, 300000); })
+                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('wc_timeout')); }, 300000); })
                 ]);
                 _dpStatus('Step 1/2 — Waiting for approval confirmation…');
                 await Promise.race([
@@ -15732,7 +15741,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             showToast(_stepLabel + ' — Depositing USDT…');
             const depositTx = await Promise.race([
                 hubContract.deposit(amountWei, _depGas),
-                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Wallet did not respond. Open your wallet and look for a deposit request.')); }, 300000); })
+                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('wc_timeout')); }, 300000); })
             ]);
             _dpStatus(_stepLabel + ' — Waiting for deposit confirmation…');
             await Promise.race([
@@ -15780,8 +15789,27 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             setTimeout(function() { syncData(); }, 2000);
         } catch (e) {
             console.error("[Deposit] Failed:", e);
-            if (_dpStatusEl) { _dpStatusEl.style.color = '#f87171'; _dpStatusEl.textContent = '❌ ' + (e.reason || e.message || String(e)).slice(0, 200); }
-            if (_dpOverlay) _dpOverlay.style.display = 'block';
+            var _eMsg = e.reason || e.message || String(e);
+            if (_eMsg === 'wc_timeout' && _isWC) {
+                // WalletConnect relay did not deliver request to wallet.
+                // Offer to reconnect the WC session (fresh relay connection) and retry.
+                if (_dpOverlay) _dpOverlay.style.display = 'block';
+                if (_dpStatusEl) {
+                    _dpStatusEl.innerHTML =
+                        '<div style="color:#f87171;margin-bottom:10px;font-size:0.78rem;">No response from MetaMask — the WalletConnect relay may have dropped the connection.</div>' +
+                        '<button onclick="(async function(){' +
+                            'try{await window._activeWCProvider.disconnect();}catch(_){}' +
+                            'window._activeWCProvider=null;window._shLastWalletType=\'\';' +
+                            'try{Object.keys(localStorage).forEach(function(k){if(k.startsWith(\'wc@2:\')||k.startsWith(\'walletconnect\'))localStorage.removeItem(k);});}catch(_){}' +
+                            'document.getElementById(\'wd-global-overlay\').style.display=\'none\';' +
+                            '_connectWithProvider(\'walletconnect\');' +
+                        '})()" style="display:block;width:100%;padding:13px;background:rgba(240,180,41,0.18);border:2px solid rgba(240,180,41,0.6);color:#f0b429;font-weight:800;font-size:0.9rem;border-radius:10px;cursor:pointer;margin-bottom:8px;">Reconnect Wallet & Retry →</button>' +
+                        '<div style="font-size:0.62rem;color:#8b9ab5;text-align:center;">This opens a fresh WalletConnect session — approve in MetaMask, then tap Top Up Stars again.</div>';
+                }
+            } else {
+                if (_dpStatusEl) { _dpStatusEl.style.color = '#f87171'; _dpStatusEl.textContent = '❌ ' + _eMsg.slice(0, 200); }
+                if (_dpOverlay) _dpOverlay.style.display = 'block';
+            }
         }
     }
 
