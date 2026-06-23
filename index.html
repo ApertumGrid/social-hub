@@ -13752,7 +13752,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     }
                 } catch(_) {}
                 // ── WC relay event listeners — detect drops + session expiry ──
+                // Guard: WC fires transient `disconnect` during the handshake itself.
+                // Don't nuke the session while we're still inside _connectWithProvider.
+                window._wcConnecting = true;
                 var _wcSessionDead = function(reason) {
+                    if (window._wcConnecting) {
+                        console.warn('[WC] Ignoring transient', reason, 'during handshake');
+                        return;
+                    }
                     console.warn('[WC] Session ended:', reason);
                     window._activeWCProvider = null;
                     window._shLastWalletType = '';
@@ -13763,10 +13770,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         });
                     } catch(_) {}
                     showToast('WalletConnect session dropped — tap Reconnect to resume.');
-                    // Show reconnect banner in wallet drawer
                     var _wcBanner = document.getElementById('wc-reconnect-banner');
                     if (_wcBanner) _wcBanner.style.display = 'block';
                 };
+                window._wcSessionDeadFn = _wcSessionDead;
                 wcProv.on('disconnect', function() { _wcSessionDead('relay disconnect'); });
                 wcProv.on('session_delete', function() { _wcSessionDead('session deleted by wallet'); });
                 wcProv.on('session_expire', function() { _wcSessionDead('session expired'); });
@@ -13926,9 +13933,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (typeof loadFollowingSet === 'function') loadFollowingSet();
 
             showToast('Connected via ' + (walletType === 'xova' ? 'XOVA Wallet' : walletType === 'walletconnect' ? 'WalletConnect' : 'MetaMask') + ' ✓');
+            window._wcConnecting = false;
             // Prompt for push notifications (delayed slightly so connect toast shows first)
             setTimeout(function() { initPushNotifications(userAddress); }, 2500);
         } catch(err) {
+            window._wcConnecting = false;
             console.error(err);
             showToast('Connection Failed — ' + (err.message || String(err)));
         }
