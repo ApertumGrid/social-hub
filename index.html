@@ -6021,6 +6021,7 @@
             transition: background 0.2s;
         }
         .flick-sound-btn:hover { background: rgba(0,0,0,0.65); }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .flick-info {
             position: absolute;
             bottom: 20px;
@@ -23387,6 +23388,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const card = document.createElement('div');
         card.className = 'flick-card';
         card.setAttribute('data-id', postId);
+        card.setAttribute('data-media', post.media);
         // Match card height to the scroll container so each card fills exactly one screen
         const flicksContainer = document.getElementById('flicks-feed');
         const cardH = (flicksContainer && flicksContainer.clientHeight > 100)
@@ -23427,6 +23429,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 '<div class="flick-action-btn" onclick="toggleRainPicker(\'' + postId + '\',event)" title="Rain Stars">' +
                     '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="16" y1="13" x2="16" y2="21"/><line x1="8" y1="13" x2="8" y2="21"/><line x1="12" y1="15" x2="12" y2="23"/><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/></svg>' +
                     '<span>Rain</span>' +
+                '</div>' +
+                '<div class="flick-action-btn" id="flick-dl-' + postId + '" onclick="downloadFlick(\'' + postId + '\')" title="Download with watermark">' +
+                    '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+                    '<span>Save</span>' +
                 '</div>' +
             '</div>';
 
@@ -23630,6 +23636,154 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
     }
     window.toggleFlickSound = toggleFlickSound;
+
+    var _DL_SVG = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+    var _DL_SPIN = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>';
+
+    async function downloadFlick(postId) {
+        var card = document.querySelector('.flick-card[data-id="' + postId + '"]');
+        if (!card) return;
+        var mediaUrl = card.getAttribute('data-media');
+        if (!mediaUrl) return;
+        var btn = document.getElementById('flick-dl-' + postId);
+
+        // Fallback: direct download (no watermark) for unsupported browsers
+        function fallbackDownload() {
+            if (btn) { btn.innerHTML = _DL_SVG + '<span>Save</span>'; btn.style.opacity = ''; }
+            showToast('Downloading...');
+            var a = document.createElement('a');
+            a.href = mediaUrl;
+            a.download = 'socialhub-flick.mp4';
+            a.target = '_blank';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+            return fallbackDownload();
+        }
+
+        if (btn) { btn.innerHTML = _DL_SPIN + '<span>...</span>'; btn.style.opacity = '0.6'; }
+        showToast('Preparing — stay on this tab...');
+
+        try {
+            // Fetch as blob to avoid canvas CORS taint from Firebase Storage URLs
+            var resp = await fetch(mediaUrl);
+            if (!resp.ok) throw new Error('fetch');
+            var blob = await resp.blob();
+            var blobUrl = URL.createObjectURL(blob);
+
+            var vid = document.createElement('video');
+            vid.src = blobUrl;
+            vid.playsInline = true;
+            vid.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;';
+            document.body.appendChild(vid);
+
+            await new Promise(function(res, rej) {
+                vid.onloadedmetadata = res;
+                vid.onerror = rej;
+                setTimeout(rej, 15000);
+            });
+
+            var W = vid.videoWidth || 720;
+            var H = vid.videoHeight || 1280;
+            var canvas = document.createElement('canvas');
+            canvas.width = W;
+            canvas.height = H;
+            var ctx = canvas.getContext('2d');
+
+            var canvasStream = canvas.captureStream(30);
+            // Add audio tracks from the video element
+            try {
+                var vidStream = vid.captureStream ? vid.captureStream() : null;
+                if (vidStream) vidStream.getAudioTracks().forEach(function(t) { canvasStream.addTrack(t); });
+            } catch(e) {}
+
+            var mimeType = ['video/mp4;codecs=avc1','video/webm;codecs=vp9','video/webm'].find(function(t) {
+                try { return MediaRecorder.isTypeSupported(t); } catch(e) { return false; }
+            }) || '';
+            var recorder = new MediaRecorder(canvasStream, mimeType ? { mimeType: mimeType } : {});
+            var chunks = [];
+            recorder.ondataavailable = function(e) { if (e.data && e.data.size > 0) chunks.push(e.data); };
+
+            recorder.onstop = function() {
+                var outBlob = new Blob(chunks, { type: mimeType || 'video/webm' });
+                var dlUrl = URL.createObjectURL(outBlob);
+                var ext = mimeType.indexOf('mp4') !== -1 ? 'mp4' : 'webm';
+                var a = document.createElement('a');
+                a.href = dlUrl;
+                a.download = 'socialhub-flick.' + ext;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(function() { URL.revokeObjectURL(dlUrl); }, 5000);
+                URL.revokeObjectURL(blobUrl);
+                if (document.body.contains(vid)) document.body.removeChild(vid);
+                if (btn) { btn.innerHTML = _DL_SVG + '<span>Save</span>'; btn.style.opacity = ''; }
+                showToast('Saved with SocialHub watermark!');
+            };
+
+            recorder.onerror = function() {
+                URL.revokeObjectURL(blobUrl);
+                if (document.body.contains(vid)) document.body.removeChild(vid);
+                fallbackDownload();
+            };
+
+            // Draw watermark helper
+            function drawWatermark() {
+                var pH = Math.round(H * 0.065);
+                var pW = Math.round(W * 0.62);
+                var pX = Math.round(W * 0.04);
+                var pY = H - pH - Math.round(H * 0.05);
+                var r  = pH / 2;
+                ctx.fillStyle = 'rgba(0,0,0,0.52)';
+                ctx.beginPath();
+                ctx.moveTo(pX + r, pY);
+                ctx.lineTo(pX + pW - r, pY);
+                ctx.quadraticCurveTo(pX + pW, pY, pX + pW, pY + r);
+                ctx.lineTo(pX + pW, pY + pH - r);
+                ctx.quadraticCurveTo(pX + pW, pY + pH, pX + pW - r, pY + pH);
+                ctx.lineTo(pX + r, pY + pH);
+                ctx.quadraticCurveTo(pX, pY + pH, pX, pY + pH - r);
+                ctx.lineTo(pX, pY + r);
+                ctx.quadraticCurveTo(pX, pY, pX + r, pY);
+                ctx.closePath();
+                ctx.fill();
+                var iP = Math.round(W * 0.03);
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold ' + Math.round(H * 0.033) + 'px Arial,sans-serif';
+                ctx.fillText('SocialHub', pX + iP, pY + Math.round(pH * 0.36));
+                ctx.font = Math.round(H * 0.022) + 'px Arial,sans-serif';
+                ctx.fillStyle = 'rgba(255,255,255,0.82)';
+                ctx.fillText('socialhubglobal.com', pX + iP, pY + Math.round(pH * 0.72));
+            }
+
+            var drawInterval = setInterval(function() {
+                if (vid.ended) {
+                    clearInterval(drawInterval);
+                    recorder.stop();
+                    return;
+                }
+                ctx.drawImage(vid, 0, 0, W, H);
+                drawWatermark();
+            }, 33);
+
+            vid.onended = function() { clearInterval(drawInterval); recorder.stop(); };
+
+            recorder.start();
+            vid.play().catch(function() {
+                clearInterval(drawInterval);
+                recorder.stop();
+            });
+
+        } catch(err) {
+            console.warn('downloadFlick error:', err);
+            fallbackDownload();
+        }
+    }
+    window.downloadFlick = downloadFlick;
 
     // ═══════════════════════════════════════════════════════════════════
     // MARKETPLACE
