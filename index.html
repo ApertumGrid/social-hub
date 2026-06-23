@@ -13726,7 +13726,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         name:        'SocialHub',
                         description: 'Web3 Social Platform on BSC',
                         url:         'https://socialhubglobal.com',
-                        icons:       ['https://socialhubglobal.com/favicon.ico']
+                        icons:       ['https://socialhubglobal.com/favicon.ico'],
+                        redirect: {
+                            universal: 'https://socialhubglobal.com'
+                        }
                     }
                 });
                 await wcProv.enable(); // opens QR modal — resolves when user approves
@@ -15716,22 +15719,47 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             ]).catch(function() { return ethers.BigNumber.from(0); });
             const _needsApproval = _existingAllowance.lt(amountWei);
 
+            // Pre-fetch nonce via direct BSC RPC so no WC relay call is needed before signing
+            var _nonce = await Promise.race([
+                _rpc.getTransactionCount(userAddress, 'latest'),
+                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('timeout')); }, 15000); })
+            ]).catch(function() { return undefined; });
+
             if (_needsApproval) {
-                // Approve MAX so users never need to approve again
                 const _maxApproval = ethers.constants.MaxUint256;
                 _dpStatus('Step 1/2 — Approve USDT (one-time only — you won\'t need to do this again)');
                 if (_isWC) _dpWallet('Step 1/2 — Approve USDT in your wallet (one-time setup)');
                 showToast('Step 1/2 — Approving USDT…');
-                const approveTx = await Promise.race([
-                    usdtContract.approve(CONFIG.CONTRACT_ADDRESS, _maxApproval, _usdtGas),
-                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('wc_timeout')); }, 300000); })
-                ]);
+
+                var _approveTxHash;
+                if (_isWC) {
+                    // sendUncheckedTransaction fires immediately — no hidden WC relay calls for nonce/block validation
+                    var _approveTxReq = {
+                        to:       CONFIG.USDT_ADDRESS,
+                        data:     usdtContract.interface.encodeFunctionData('approve', [CONFIG.CONTRACT_ADDRESS, _maxApproval]),
+                        gasLimit: ethers.BigNumber.from(100000),
+                        gasPrice: ethers.utils.parseUnits('5', 'gwei'),
+                        chainId:  56,
+                        value:    '0x0'
+                    };
+                    if (_nonce !== undefined) _approveTxReq.nonce = _nonce;
+                    _approveTxHash = await Promise.race([
+                        signer.sendUncheckedTransaction(_approveTxReq),
+                        new Promise(function(_, rej) { setTimeout(function() { rej(new Error('wc_timeout')); }, 300000); })
+                    ]);
+                } else {
+                    var _approveTx = await usdtContract.approve(CONFIG.CONTRACT_ADDRESS, _maxApproval, _usdtGas);
+                    _approveTxHash = _approveTx.hash;
+                }
+
                 _dpStatus('Step 1/2 — Waiting for approval confirmation…');
                 await Promise.race([
-                    _rpc.waitForTransaction(approveTx.hash, 1),
+                    _rpc.waitForTransaction(_approveTxHash, 1),
                     new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Approval confirmation timeout')); }, 120000); })
                 ]);
                 _dpStatus('Step 1/2 — Approved ✓');
+                // Increment nonce for next tx
+                if (_nonce !== undefined) _nonce++;
             }
 
             // Step 2 (or Step 1 if already approved): Deposit
@@ -15739,10 +15767,27 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             _dpStatus(_stepLabel + ' — Confirm deposit in your wallet…');
             if (_isWC) _dpWallet(_stepLabel + ' — Confirm deposit in your wallet');
             showToast(_stepLabel + ' — Depositing USDT…');
-            const depositTx = await Promise.race([
-                hubContract.deposit(amountWei, _depGas),
-                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('wc_timeout')); }, 300000); })
-            ]);
+
+            var _depositTxHash;
+            if (_isWC) {
+                var _depositTxReq = {
+                    to:       CONFIG.CONTRACT_ADDRESS,
+                    data:     hubContract.interface.encodeFunctionData('deposit', [amountWei]),
+                    gasLimit: ethers.BigNumber.from(150000),
+                    gasPrice: ethers.utils.parseUnits('5', 'gwei'),
+                    chainId:  56,
+                    value:    '0x0'
+                };
+                if (_nonce !== undefined) _depositTxReq.nonce = _nonce;
+                _depositTxHash = await Promise.race([
+                    signer.sendUncheckedTransaction(_depositTxReq),
+                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('wc_timeout')); }, 300000); })
+                ]);
+            } else {
+                var _depositTx = await hubContract.deposit(amountWei, _depGas);
+                _depositTxHash = _depositTx.hash;
+            }
+            var depositTx = { hash: _depositTxHash };
             _dpStatus(_stepLabel + ' — Waiting for deposit confirmation…');
             await Promise.race([
                 _rpc.waitForTransaction(depositTx.hash, 1),
