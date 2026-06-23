@@ -23665,10 +23665,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mediaUrl: mediaUrl, postId: postId })
             });
-            if (!cfResp.ok) {
-                var cfErr = ''; try { cfErr = (await cfResp.json()).error || ''; } catch(e) {}
-                throw new Error('CF ' + cfResp.status + (cfErr ? ': ' + cfErr : ''));
-            }
+            if (!cfResp.ok) throw new Error('CF ' + cfResp.status);
             var cfData = await cfResp.json();
             if (!cfData.url) throw new Error('No URL');
 
@@ -23686,7 +23683,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         } catch(err) {
             console.warn('downloadFlick CF failed, trying direct:', err.message);
-            showToast('CF error: ' + err.message);
+            showToast('Saving video...');
+            try {
+                var r2 = await fetch(mediaUrl, { mode: 'cors' });
+                if (!r2.ok) throw new Error('direct fetch');
+                var b2 = await r2.blob();
+                var bu2 = URL.createObjectURL(b2);
+                var a2 = document.createElement('a');
+                a2.href = bu2; a2.download = fileName;
+                document.body.appendChild(a2); a2.click(); document.body.removeChild(a2);
+                setTimeout(function() { URL.revokeObjectURL(bu2); }, 30000);
+                showToast('Video saved ✓');
+            } catch(e2) {
+                showToast('Tap and hold the video to save it');
+                window.open(mediaUrl, '_blank');
+            }
             try {
                 var r2 = await fetch(mediaUrl, { mode: 'cors' });
                 if (!r2.ok) throw new Error('direct fetch');
