@@ -13739,7 +13739,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         }
                     }
                 });
-                await wcProv.enable(); // opens QR modal — resolves when user approves
+                await Promise.race([
+                    wcProv.enable(),
+                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('WalletConnect timed out after 2 minutes. Clear MetaMask connections (Settings → Connections → remove SocialHub) and try again.')); }, 120000); })
+                ]);
                 window._activeWCProvider = wcProv;
                 // Extract wallet name + deep link from WC session metadata so we can
                 // show a wallet-specific "Open [WalletName]" button when signing is needed.
@@ -13946,15 +13949,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     // ── WC Reconnect — safe teardown with timeout + fresh session ──
     window._wcReconnect = async function() {
-        // Tear down dead provider with a 3s timeout so it can't hang forever
-        if (window._activeWCProvider) {
-            try {
-                await Promise.race([
-                    window._activeWCProvider.disconnect(),
-                    new Promise(function(r) { setTimeout(r, 3000); })
-                ]);
-            } catch(_) {}
-        }
+        // Don't call disconnect() on a dead provider — stale relay messages
+        // can interfere with the new session. Just null it and move on.
         window._activeWCProvider = null;
         window._shLastWalletType = '';
         window._wcSessionAlive = false;
