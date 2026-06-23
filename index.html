@@ -23683,27 +23683,50 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (btn) { btn.innerHTML = _DL_SVG + '<span>Save</span>'; btn.style.opacity = ''; }
         }
 
-        if (btn) { btn.innerHTML = _DL_SPIN + '<span>...</span>'; btn.style.opacity = '0.6'; }
-        showToast('Downloading...');
+        if (btn) { btn.innerHTML = _DL_SPIN + '<span>Watermarking...</span>'; btn.style.opacity = '0.6'; }
+        showToast('Adding SocialHub watermark — takes ~30 seconds...');
 
         try {
-            var resp = await fetch(mediaUrl, { mode: 'cors' });
-            if (!resp.ok) throw new Error('fetch ' + resp.status);
-            var blob = await resp.blob();
+            // Step 1: CF burns watermark server-side
+            var cfResp = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/watermarkFlick', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mediaUrl: mediaUrl, postId: postId })
+            });
+            if (!cfResp.ok) throw new Error('CF ' + cfResp.status);
+            var cfData = await cfResp.json();
+            if (!cfData.url) throw new Error('No URL');
+
+            // Step 2: Download the watermarked file
+            if (btn) btn.innerHTML = _DL_SPIN + '<span>Saving...</span>';
+            var dlResp = await fetch(cfData.url);
+            if (!dlResp.ok) throw new Error('DL ' + dlResp.status);
+            var blob = await dlResp.blob();
             var blobUrl = URL.createObjectURL(blob);
             var a = document.createElement('a');
-            a.href = blobUrl;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            a.href = blobUrl; a.download = fileName;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
             setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 30000);
-            showToast('Video saved to your device ✓');
+            showToast('Saved with SocialHub watermark ✓');
+
         } catch(err) {
-            console.warn('downloadFlick:', err);
-            // CORS blocked — open in new tab, user can long-press to save
-            showToast('Tap and hold the video then choose Save');
-            window.open(mediaUrl, '_blank');
+            console.warn('downloadFlick CF failed, trying direct:', err.message);
+            // Fallback: direct download without watermark
+            showToast('Saving video...');
+            try {
+                var r2 = await fetch(mediaUrl, { mode: 'cors' });
+                if (!r2.ok) throw new Error('direct fetch');
+                var b2 = await r2.blob();
+                var bu2 = URL.createObjectURL(b2);
+                var a2 = document.createElement('a');
+                a2.href = bu2; a2.download = fileName;
+                document.body.appendChild(a2); a2.click(); document.body.removeChild(a2);
+                setTimeout(function() { URL.revokeObjectURL(bu2); }, 30000);
+                showToast('Video saved ✓');
+            } catch(e2) {
+                showToast('Tap and hold the video to save it');
+                window.open(mediaUrl, '_blank');
+            }
         } finally {
             resetBtn();
         }
