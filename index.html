@@ -23646,141 +23646,153 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var mediaUrl = card.getAttribute('data-media');
         if (!mediaUrl) return;
         var btn = document.getElementById('flick-dl-' + postId);
+        var srcVid = card.querySelector('.flick-video');
 
-        // Fallback: direct download (no watermark) for unsupported browsers
-        function fallbackDownload() {
+        function resetBtn() {
             if (btn) { btn.innerHTML = _DL_SVG + '<span>Save</span>'; btn.style.opacity = ''; }
+        }
+        function fallbackDownload(reason) {
+            resetBtn();
+            console.warn('flick-dl fallback:', reason);
             showToast('Downloading...');
             var a = document.createElement('a');
-            a.href = mediaUrl;
-            a.download = 'socialhub-flick.mp4';
-            a.target = '_blank';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            a.href = mediaUrl; a.download = 'socialhub-flick.mp4'; a.target = '_blank';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
         }
 
-        if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
-            return fallbackDownload();
-        }
+        if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream || !srcVid)
+            return fallbackDownload('unsupported');
 
         if (btn) { btn.innerHTML = _DL_SPIN + '<span>...</span>'; btn.style.opacity = '0.6'; }
-        showToast('Preparing — stay on this tab...');
+        showToast('Recording — stay on this page...');
 
         try {
-            // Fetch as blob to avoid canvas CORS taint from Firebase Storage URLs
-            var resp = await fetch(mediaUrl);
-            if (!resp.ok) throw new Error('fetch');
-            var blob = await resp.blob();
-            var blobUrl = URL.createObjectURL(blob);
-
-            var vid = document.createElement('video');
-            vid.src = blobUrl;
-            vid.playsInline = true;
-            vid.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;';
-            document.body.appendChild(vid);
-
-            await new Promise(function(res, rej) {
-                vid.onloadedmetadata = res;
-                vid.onerror = rej;
-                setTimeout(rej, 15000);
-            });
-
-            var W = vid.videoWidth || 720;
-            var H = vid.videoHeight || 1280;
+            var W = srcVid.videoWidth || 720;
+            var H = srcVid.videoHeight || 1280;
             var canvas = document.createElement('canvas');
-            canvas.width = W;
-            canvas.height = H;
+            canvas.width = W; canvas.height = H;
             var ctx = canvas.getContext('2d');
 
+            // Test canvas draw — throws if video is CORS-tainted
+            ctx.drawImage(srcVid, 0, 0, 1, 1);
+
             var canvasStream = canvas.captureStream(30);
-            // Add audio tracks from the video element
+
+            // Add audio from video's own stream
             try {
-                var vidStream = vid.captureStream ? vid.captureStream() : null;
-                if (vidStream) vidStream.getAudioTracks().forEach(function(t) { canvasStream.addTrack(t); });
+                if (srcVid.captureStream) {
+                    srcVid.captureStream().getAudioTracks().forEach(function(t) {
+                        canvasStream.addTrack(t.clone());
+                    });
+                }
             } catch(e) {}
 
             var mimeType = ['video/mp4;codecs=avc1','video/webm;codecs=vp9','video/webm'].find(function(t) {
                 try { return MediaRecorder.isTypeSupported(t); } catch(e) { return false; }
             }) || '';
+
             var recorder = new MediaRecorder(canvasStream, mimeType ? { mimeType: mimeType } : {});
             var chunks = [];
             recorder.ondataavailable = function(e) { if (e.data && e.data.size > 0) chunks.push(e.data); };
 
+            function doStop() {
+                if (recorder.state === 'recording') recorder.stop();
+            }
+
             recorder.onstop = function() {
+                clearInterval(drawInterval);
+                // Restore video to normal looping playback
+                srcVid.loop = true;
+                srcVid.muted = (window._flickMuted === true);
+                srcVid.play().catch(function(){});
+                if (chunks.length === 0) { resetBtn(); showToast('Recording failed — try again'); return; }
                 var outBlob = new Blob(chunks, { type: mimeType || 'video/webm' });
                 var dlUrl = URL.createObjectURL(outBlob);
                 var ext = mimeType.indexOf('mp4') !== -1 ? 'mp4' : 'webm';
                 var a = document.createElement('a');
-                a.href = dlUrl;
-                a.download = 'socialhub-flick.' + ext;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                setTimeout(function() { URL.revokeObjectURL(dlUrl); }, 5000);
-                URL.revokeObjectURL(blobUrl);
-                if (document.body.contains(vid)) document.body.removeChild(vid);
-                if (btn) { btn.innerHTML = _DL_SVG + '<span>Save</span>'; btn.style.opacity = ''; }
-                showToast('Saved with SocialHub watermark!');
+                a.href = dlUrl; a.download = 'socialhub-flick.' + ext;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                setTimeout(function() { URL.revokeObjectURL(dlUrl); }, 8000);
+                resetBtn();
+                showToast('Saved with SocialHub watermark ✓');
+            };
+            recorder.onerror = function(e) {
+                clearInterval(drawInterval);
+                srcVid.loop = true; srcVid.play().catch(function(){});
+                fallbackDownload('recorder error: ' + (e.error && e.error.message));
             };
 
-            recorder.onerror = function() {
-                URL.revokeObjectURL(blobUrl);
-                if (document.body.contains(vid)) document.body.removeChild(vid);
-                fallbackDownload();
-            };
+            // Pre-load logo image before recording starts
+            var logoImg = null;
+            try { logoImg = await _loadLogoImg(); } catch(e) {}
 
-            // Draw watermark helper
             function drawWatermark() {
-                var pH = Math.round(H * 0.065);
-                var pW = Math.round(W * 0.62);
+                var iSz  = Math.round(W * 0.07);
+                var t1   = Math.round(H * 0.028);
+                var t2   = Math.round(H * 0.019);
+                var gp   = Math.round(iSz * 0.3);
+                var pad  = Math.round(W * 0.028);
+                var lineH = Math.round(t1 * 1.4);
+                ctx.font = 'bold ' + t1 + 'px Arial,sans-serif';
+                var w1 = ctx.measureText('SocialHub').width;
+                ctx.font = t2 + 'px Arial,sans-serif';
+                var w2 = ctx.measureText('socialhubglobal.com').width;
+                var textW  = Math.max(w1, w2);
+                var pillW  = pad + iSz + gp + textW + pad;
+                var pillH  = pad + Math.max(iSz, lineH * 2) + pad;
                 var pX = Math.round(W * 0.04);
-                var pY = H - pH - Math.round(H * 0.05);
-                var r  = pH / 2;
-                ctx.fillStyle = 'rgba(0,0,0,0.52)';
+                var pY = H - pillH - Math.round(H * 0.045);
+                var r  = Math.round(pillH * 0.22);
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
                 ctx.beginPath();
-                ctx.moveTo(pX + r, pY);
-                ctx.lineTo(pX + pW - r, pY);
-                ctx.quadraticCurveTo(pX + pW, pY, pX + pW, pY + r);
-                ctx.lineTo(pX + pW, pY + pH - r);
-                ctx.quadraticCurveTo(pX + pW, pY + pH, pX + pW - r, pY + pH);
-                ctx.lineTo(pX + r, pY + pH);
-                ctx.quadraticCurveTo(pX, pY + pH, pX, pY + pH - r);
-                ctx.lineTo(pX, pY + r);
-                ctx.quadraticCurveTo(pX, pY, pX + r, pY);
-                ctx.closePath();
-                ctx.fill();
-                var iP = Math.round(W * 0.03);
-                ctx.textBaseline = 'middle';
+                ctx.moveTo(pX + r, pY); ctx.lineTo(pX + pillW - r, pY);
+                ctx.quadraticCurveTo(pX + pillW, pY, pX + pillW, pY + r);
+                ctx.lineTo(pX + pillW, pY + pillH - r);
+                ctx.quadraticCurveTo(pX + pillW, pY + pillH, pX + pillW - r, pY + pillH);
+                ctx.lineTo(pX + r, pY + pillH);
+                ctx.quadraticCurveTo(pX, pY + pillH, pX, pY + pillH - r);
+                ctx.lineTo(pX, pY + r); ctx.quadraticCurveTo(pX, pY, pX + r, pY);
+                ctx.closePath(); ctx.fill();
+                var lX = pX + pad;
+                var lY = pY + Math.round((pillH - iSz) / 2);
+                if (logoImg) ctx.drawImage(logoImg, lX, lY, iSz, iSz);
+                var tX = lX + iSz + gp;
+                var tY = pY + Math.round(pillH / 2) - Math.round(lineH * 0.45);
+                ctx.textAlign = 'left'; ctx.textBaseline = 'top';
                 ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold ' + Math.round(H * 0.033) + 'px Arial,sans-serif';
-                ctx.fillText('SocialHub', pX + iP, pY + Math.round(pH * 0.36));
-                ctx.font = Math.round(H * 0.022) + 'px Arial,sans-serif';
-                ctx.fillStyle = 'rgba(255,255,255,0.82)';
-                ctx.fillText('socialhubglobal.com', pX + iP, pY + Math.round(pH * 0.72));
+                ctx.font = 'bold ' + t1 + 'px Arial,sans-serif';
+                ctx.fillText('SocialHub', tX, tY);
+                ctx.font = t2 + 'px Arial,sans-serif';
+                ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                ctx.fillText('socialhubglobal.com', tX, tY + lineH);
+                ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
             }
 
+            // Seek to start, stop looping so onended fires
+            srcVid.loop = false;
+            srcVid.currentTime = 0;
+            var duration = (srcVid.duration && isFinite(srcVid.duration)) ? srcVid.duration : 60;
+            var elapsed = 0;
+
             var drawInterval = setInterval(function() {
-                if (vid.ended) {
-                    clearInterval(drawInterval);
-                    recorder.stop();
-                    return;
-                }
-                ctx.drawImage(vid, 0, 0, W, H);
+                elapsed += 0.033;
+                try { ctx.drawImage(srcVid, 0, 0, W, H); } catch(e) {}
                 drawWatermark();
+                if (srcVid.ended || elapsed >= duration + 0.5) doStop();
             }, 33);
 
-            vid.onended = function() { clearInterval(drawInterval); recorder.stop(); };
+            srcVid.onended = function() { doStop(); };
 
             recorder.start();
-            vid.play().catch(function() {
+            srcVid.play().catch(function(e) {
                 clearInterval(drawInterval);
-                recorder.stop();
+                srcVid.loop = true;
+                fallbackDownload('play failed: ' + e.message);
             });
 
         } catch(err) {
             console.warn('downloadFlick error:', err);
-            fallbackDownload();
+            fallbackDownload('outer: ' + err.message);
         }
     }
     window.downloadFlick = downloadFlick;
