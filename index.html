@@ -17725,45 +17725,93 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var _wcHtml =
                 '<div style="color:#2dd4bf;margin-bottom:12px;font-size:0.78rem;">Step 6/7 — Signing request sent. Open your wallet to approve.</div>' +
                 '<a href="' + _wLink + '" style="display:block;text-align:center;background:rgba(240,180,41,0.18);border:2px solid rgba(240,180,41,0.6);color:#f0b429;font-weight:800;font-size:1.05rem;text-decoration:none;padding:16px 20px;border-radius:12px;letter-spacing:0.3px;">📲 Open ' + _wName + ' to Approve →</a>' +
-                '<div style="font-size:0.65rem;color:#8b9ab5;margin-top:10px;text-align:center;">Tap above → approve in ' + _wName + ' → come back here. This page waits automatically.</div>';
+                '<div style="font-size:0.65rem;color:#8b9ab5;margin-top:10px;text-align:center;">Tap above → approve in ' + _wName + ' → come back here. This page waits automatically.</div>' +
+                '<div id="wd-poll-timer" style="font-size:0.6rem;color:#8b9ab5;margin-top:8px;text-align:center;"></div>';
             if (_wdOverlay)  { _wdOverlay.style.display = 'block'; }
             if (_wdStatusEl) { _wdStatusEl.innerHTML = _wcHtml; }
             if (_wdStudioEl) { _wdStudioEl.style.display = 'block'; _wdStudioEl.innerHTML = _wcHtml; }
 
-            // Send tx — for WC use sendUncheckedTransaction to skip ethers.js internal
-            // relay calls (nonce fetch, block validation) that cause "invalid ID" errors.
-            var _withdrawTxHash;
+            // Fire tx — for WC use sendUncheckedTransaction (skips ethers.js hidden relay calls).
+            // Don't await the WC response: WC drops the connection when user returns from
+            // MetaMask, so the promise may never resolve even when the tx goes through.
+            // Instead, poll BSC directly for confirmation.
+            window._pendingWithdrawHash = null;
+            var _wcTxRejected = false;
+            var _wcTxErrMsg   = '';
+
             if (_isWC) {
                 var _wdTxReq = {
+                    from:     addr,
                     to:       CONFIG.CONTRACT_ADDRESS,
                     data:     hubContract.interface.encodeFunctionData('withdrawAll', [depBN, earnBN, nonce, expiry, signature]),
-                    gasLimit: ethers.BigNumber.from(300000),
-                    gasPrice: ethers.utils.parseUnits('5', 'gwei'),
-                    chainId:  56,
+                    gasLimit: ethers.utils.hexlify(300000),
+                    gasPrice: ethers.utils.hexlify(ethers.utils.parseUnits('5', 'gwei')),
                     value:    '0x0'
                 };
-                if (_wdNonce !== undefined) _wdTxReq.nonce = _wdNonce;
-                _withdrawTxHash = await signer.sendUncheckedTransaction(_wdTxReq);
+                if (_wdNonce !== undefined) _wdTxReq.nonce = ethers.utils.hexlify(_wdNonce);
+                signer.sendUncheckedTransaction(_wdTxReq).then(function(h) {
+                    if (h) { window._pendingWithdrawHash = h; }
+                }).catch(function(e) {
+                    _wcTxRejected = true;
+                    _wcTxErrMsg = (e && (e.message || String(e))) || 'rejected';
+                });
             } else {
-                const tx = await hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, { gasLimit: 300000 });
-                _withdrawTxHash = tx.hash;
+                var _nonWcTx = await hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, { gasLimit: 300000 });
+                window._pendingWithdrawHash = _nonWcTx.hash;
             }
-            var tx = { hash: _withdrawTxHash };
-            _wdStatus('Step 6/7 — Tx submitted: ' + _withdrawTxHash.slice(0,12) + '…\nWaiting for BSC confirmation…');
+
             showToast('Tx sent — waiting for BSC confirmation…');
 
-            // Use a direct BSC RPC provider to poll for the receipt — NOT the WalletConnect
-            // provider which may drop its connection after the user returns from the wallet app.
-            const _rpcForReceipt = getRpcProvider();
-            const receipt = await Promise.race([
-                _rpcForReceipt.waitForTransaction(tx.hash, 1),
-                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Receipt timeout — tx may still confirm. Hash: ' + tx.hash)); }, 120000); })
-            ]);
-            if (!receipt || receipt.status !== 1) {
-                return _wdFail('Transaction reverted on-chain. Your balance is unchanged. Block: ' + (receipt ? receipt.blockNumber : '?'), _clickedBtn);
+            // Poll BSC every 5s until on-chain balance is zero (withdrawal confirmed)
+            var _roC = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, getRpcProvider());
+            var _wdConfirmed = false;
+            var _wdPollStart = Date.now();
+            for (var _pi = 0; _pi < 36; _pi++) {
+                await new Promise(function(r) { setTimeout(r, 5000); });
+                try {
+                    var _pBal = await _roC.getBalance(addr);
+                    var _pDep = parseFloat(ethers.utils.formatUnits(_pBal.deposited, 18)) || 0;
+                    var _pWd  = parseFloat(ethers.utils.formatUnits(_pBal.withdrawable, 18)) || 0;
+                    if (_pDep === 0 && _pWd === 0) { _wdConfirmed = true; break; }
+                } catch(_) {}
+                // If WC explicitly said user rejected/cancelled, stop polling immediately
+                if (_wcTxRejected) {
+                    var _errLower = _wcTxErrMsg.toLowerCase();
+                    if (_errLower.includes('reject') || _errLower.includes('cancel') || _errLower.includes('denied') || _errLower.includes('declin')) {
+                        return _wdFail('Withdrawal cancelled in wallet.', _clickedBtn);
+                    }
+                }
+                // Update only the timer line — keep the "Open MetaMask" button visible
+                var _elapsed = Math.round((Date.now() - _wdPollStart) / 1000);
+                var _timerEl = document.getElementById('wd-poll-timer');
+                if (_timerEl) _timerEl.textContent = 'Checking BSC… ' + _elapsed + 's';
             }
 
-            _wdStatus('Step 7/7 — Confirmed on block ' + receipt.blockNumber + ' ✓ Clearing balances…');
+            if (!_wdConfirmed) {
+                // Show reconnect option — request may have expired on WC relay
+                if (_wdOverlay) _wdOverlay.style.display = 'block';
+                if (_wdStatusEl) {
+                    _wdStatusEl.innerHTML =
+                        '<div style="color:#f87171;margin-bottom:10px;">The signing request may have expired before MetaMask responded.<br><br>If you already approved — tap Re-verify below to sync your balance.<br>If not — reconnect and try again.</div>' +
+                        '<button onclick="manualProviderSync()" style="display:block;width:100%;padding:11px;background:rgba(45,212,191,0.15);border:1.5px solid rgba(45,212,191,0.5);color:#2dd4bf;font-weight:700;border-radius:9px;cursor:pointer;margin-bottom:8px;">⟳ Re-verify Balance Now</button>' +
+                        '<button onclick="(async function(){' +
+                            'try{await window._activeWCProvider.disconnect();}catch(_){}' +
+                            'window._activeWCProvider=null;window._shLastWalletType=\'\';' +
+                            'try{Object.keys(localStorage).forEach(function(k){if(k.startsWith(\'wc@2:\')||k.startsWith(\'walletconnect\'))localStorage.removeItem(k);});}catch(_){}' +
+                            'document.getElementById(\'wd-global-overlay\').style.display=\'none\';' +
+                            '_connectWithProvider(\'walletconnect\');' +
+                        '})()" style="display:block;width:100%;padding:11px;background:rgba(240,180,41,0.12);border:1.5px solid rgba(240,180,41,0.5);color:#f0b429;font-weight:700;border-radius:9px;cursor:pointer;">Reconnect Wallet & Retry →</button>';
+                }
+                if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
+                return;
+            }
+
+            var receipt = null;
+            if (window._pendingWithdrawHash) {
+                try { receipt = await getRpcProvider().getTransactionReceipt(window._pendingWithdrawHash); } catch(_) {}
+            }
+
+            _wdStatus('Step 7/7 — Confirmed ✓ Clearing balances…');
 
             // Zero local state
             purchasedStars = 0; creatorEarnings = 0;
@@ -38564,7 +38612,7 @@ window._loadCreatorInsights = async function() {
 <!-- Global withdrawal status overlay — fixed position, visible over any tab/page -->
 <div id="wd-global-overlay" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:99999;padding:14px 16px 28px;background:linear-gradient(to top,rgba(10,12,18,0.98) 80%,rgba(10,12,18,0));pointer-events:none;">
     <div style="position:relative;pointer-events:auto;">
-        <button onclick="document.getElementById('wd-global-overlay').style.display='none'" style="position:absolute;top:-2px;right:0;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:50%;width:28px;height:28px;color:#8b9ab5;font-size:0.85rem;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;z-index:2;">✕</button>
+        <button onclick="document.getElementById('wd-global-overlay').style.display='none';if(typeof syncData==='function')syncData();" style="position:absolute;top:-2px;right:0;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:50%;width:28px;height:28px;color:#8b9ab5;font-size:0.85rem;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;z-index:2;">✕</button>
         <div id="wd-global-status" style="background:var(--bg-card,#1a1d2e);border:1px solid rgba(45,212,191,0.3);border-radius:14px;padding:16px 18px 16px 18px;font-size:0.75rem;font-family:var(--font-mono,monospace);line-height:1.7;word-break:break-all;box-shadow:0 -4px 32px rgba(0,0,0,0.6);"></div>
     </div>
 </div>
