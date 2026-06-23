@@ -17661,7 +17661,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         try {
             _wdStatus('Step 3/7 — Reading wallet address…');
-            const addr = (await signer.getAddress()).toLowerCase();
+            // For WC use the stored address — avoids an extra relay roundtrip
+            const addr = (_isWC && userAddress) ? userAddress.toLowerCase() : (await signer.getAddress()).toLowerCase();
             _wdStatus('Step 3/7 — Address: ' + addr.slice(0,8) + '…' + addr.slice(-6));
 
             _wdStatus('Step 4/7 — Reading on-chain balance (BSC)…');
@@ -17709,11 +17710,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             _wdStatus('Step 6/7 — Sending signing request to wallet…');
             showToast('Sending to wallet…');
 
-            // WalletConnect on mobile: skip getGasPrice() RPC call — it hangs on mobile
-            // connections with no timeout. BSC gas is 3–5 gwei and stable; hardcode 5 gwei.
-            var _txOverrides = { gasLimit: 300000 };
+            // Pre-fetch nonce via direct BSC RPC — avoids WC relay call before signing
+            var _wdNonce = undefined;
             if (_isWC) {
-                _txOverrides.gasPrice = ethers.utils.parseUnits('5', 'gwei');
+                _wdNonce = await Promise.race([
+                    getRpcProvider().getTransactionCount(addr, 'latest'),
+                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('timeout')); }, 15000); })
+                ]).catch(function() { return undefined; });
             }
 
             // Show the "Open Wallet" button in the fixed overlay — visible over any page/tab.
@@ -17727,9 +17730,26 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (_wdStatusEl) { _wdStatusEl.innerHTML = _wcHtml; }
             if (_wdStudioEl) { _wdStudioEl.style.display = 'block'; _wdStudioEl.innerHTML = _wcHtml; }
 
-            // Send the tx — signing request goes to wallet via WalletConnect relay
-            const tx = await hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, _txOverrides);
-            _wdStatus('Step 6/7 — Tx submitted: ' + tx.hash.slice(0,12) + '…\nWaiting for BSC confirmation…');
+            // Send tx — for WC use sendUncheckedTransaction to skip ethers.js internal
+            // relay calls (nonce fetch, block validation) that cause "invalid ID" errors.
+            var _withdrawTxHash;
+            if (_isWC) {
+                var _wdTxReq = {
+                    to:       CONFIG.CONTRACT_ADDRESS,
+                    data:     hubContract.interface.encodeFunctionData('withdrawAll', [depBN, earnBN, nonce, expiry, signature]),
+                    gasLimit: ethers.BigNumber.from(300000),
+                    gasPrice: ethers.utils.parseUnits('5', 'gwei'),
+                    chainId:  56,
+                    value:    '0x0'
+                };
+                if (_wdNonce !== undefined) _wdTxReq.nonce = _wdNonce;
+                _withdrawTxHash = await signer.sendUncheckedTransaction(_wdTxReq);
+            } else {
+                const tx = await hubContract.withdrawAll(depBN, earnBN, nonce, expiry, signature, { gasLimit: 300000 });
+                _withdrawTxHash = tx.hash;
+            }
+            var tx = { hash: _withdrawTxHash };
+            _wdStatus('Step 6/7 — Tx submitted: ' + _withdrawTxHash.slice(0,12) + '…\nWaiting for BSC confirmation…');
             showToast('Tx sent — waiting for BSC confirmation…');
 
             // Use a direct BSC RPC provider to poll for the receipt — NOT the WalletConnect
