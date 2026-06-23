@@ -10697,6 +10697,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <div id="withdraw-status" style="display:none; margin-top:8px; padding:8px 12px; background:rgba(45,212,191,0.07); border:1px solid rgba(45,212,191,0.2); border-radius:8px; font-size:0.72rem; font-family:var(--font-mono); color:var(--teal); line-height:1.6; white-space:pre-wrap; word-break:break-all;"></div>
                     <button id="manual-sync-btn" class="btn btn-outline" style="width:auto; padding:8px 18px; margin-top:8px; font-size:0.75rem;" onclick="manualProviderSync()">⟳ Re-verify Wallet Connection</button>
                     <div id="manual-sync-status" style="display:none; font-size:0.68rem; color:var(--text-muted); font-family:var(--font-mono); margin-top:6px;"></div>
+                    <div id="wc-reconnect-banner" style="display:none;margin-top:10px;padding:12px;background:rgba(240,180,41,0.1);border:1.5px solid rgba(240,180,41,0.4);border-radius:10px;">
+                        <div style="color:#f0b429;font-size:0.75rem;font-weight:700;margin-bottom:8px;">WalletConnect session dropped</div>
+                        <button onclick="window._wcReconnect()" style="display:block;width:100%;padding:11px;background:rgba(240,180,41,0.18);border:2px solid rgba(240,180,41,0.6);color:#f0b429;font-weight:800;font-size:0.85rem;border-radius:9px;cursor:pointer;">Reconnect Wallet →</button>
+                    </div>
                 </div>
 
                 <div class="card">
@@ -13437,6 +13441,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (walletBtn) walletBtn.classList.remove('not-connected');
         if (walletDot) walletDot.className = 'wallet-online-dot';
         if (addrEl)    addrEl.textContent  = address.slice(0,6) + '…' + address.slice(-4);
+        // Hide WC reconnect banner on successful connection
+        var _wcBanner = document.getElementById('wc-reconnect-banner');
+        if (_wcBanner) _wcBanner.style.display = 'none';
         // Show analytics button only for admin wallet
         var analyticsBtn = document.getElementById('wdd-admin-analytics-btn');
         if (analyticsBtn) analyticsBtn.style.display =
@@ -13744,6 +13751,26 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         window._wcWalletDeepLink = _wcRedir.native || _wcRedir.universal || '';
                     }
                 } catch(_) {}
+                // ── WC relay event listeners — detect drops + session expiry ──
+                var _wcSessionDead = function(reason) {
+                    console.warn('[WC] Session ended:', reason);
+                    window._activeWCProvider = null;
+                    window._shLastWalletType = '';
+                    window._wcSessionAlive = false;
+                    try {
+                        Object.keys(localStorage).forEach(function(k) {
+                            if (k.startsWith('wc@2:') || k.startsWith('walletconnect')) localStorage.removeItem(k);
+                        });
+                    } catch(_) {}
+                    showToast('WalletConnect session dropped — tap Reconnect to resume.');
+                    // Show reconnect banner in wallet drawer
+                    var _wcBanner = document.getElementById('wc-reconnect-banner');
+                    if (_wcBanner) _wcBanner.style.display = 'block';
+                };
+                wcProv.on('disconnect', function() { _wcSessionDead('relay disconnect'); });
+                wcProv.on('session_delete', function() { _wcSessionDead('session deleted by wallet'); });
+                wcProv.on('session_expire', function() { _wcSessionDead('session expired'); });
+                window._wcSessionAlive = true;
                 eth = wcProv;
             } else {
                 // When multiple wallets are installed (e.g. XOVA + MetaMask), one of them
@@ -13841,14 +13868,27 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 window._shVisibilityBound = true;
                 document.addEventListener('visibilitychange', function() {
                     if (document.hidden) return;
+                    if (!userAddress) return;
+                    // WC: if session already flagged dead, show reconnect banner — don't touch the dead relay
+                    if (window._shLastWalletType === 'walletconnect' && window._wcSessionAlive === false) {
+                        var _wcBanner = document.getElementById('wc-reconnect-banner');
+                        if (_wcBanner) _wcBanner.style.display = 'block';
+                        return;
+                    }
                     var _eth = window._shLastEth;
-                    if (!_eth || !userAddress) return;
-                    // Silently verify the wallet is still connected
+                    if (!_eth || !_eth.request) return;
+                    // For WC: use a 5s timeout so a dead relay can't hang the check forever
+                    var _isWcCheck = window._shLastWalletType === 'walletconnect';
                     setTimeout(function() {
-                        if (!_eth.request) return;
-                        _eth.request({ method: 'eth_accounts' }).then(function(accs) {
+                        var _acctPromise = _eth.request({ method: 'eth_accounts' });
+                        if (_isWcCheck) {
+                            _acctPromise = Promise.race([
+                                _acctPromise,
+                                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('wc_vis_timeout')); }, 5000); })
+                            ]);
+                        }
+                        _acctPromise.then(function(accs) {
                             if (accs && accs.length > 0) {
-                                // Still connected — refresh provider in case it went stale
                                 try {
                                     var freshProvider = new ethers.providers.Web3Provider(_eth);
                                     provider = freshProvider;
@@ -13859,8 +13899,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                     window.hubContract = hubContract;
                                 } catch(_) {}
                             }
-                            // If accs is empty, let the accountsChanged debounce handle it
-                        }).catch(function() {});
+                        }).catch(function() {
+                            if (_isWcCheck) {
+                                window._wcSessionAlive = false;
+                                window._activeWCProvider = null;
+                                showToast('WalletConnect session lost — tap Reconnect in your wallet drawer.');
+                                var _wcBanner = document.getElementById('wc-reconnect-banner');
+                                if (_wcBanner) _wcBanner.style.display = 'block';
+                            }
+                        });
                     }, 800);
                 });
             }
@@ -13887,6 +13934,32 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
     }
     window._connectWithProvider = _connectWithProvider;
+
+    // ── WC Reconnect — safe teardown with timeout + fresh session ──
+    window._wcReconnect = async function() {
+        // Tear down dead provider with a 3s timeout so it can't hang forever
+        if (window._activeWCProvider) {
+            try {
+                await Promise.race([
+                    window._activeWCProvider.disconnect(),
+                    new Promise(function(r) { setTimeout(r, 3000); })
+                ]);
+            } catch(_) {}
+        }
+        window._activeWCProvider = null;
+        window._shLastWalletType = '';
+        window._wcSessionAlive = false;
+        try {
+            Object.keys(localStorage).forEach(function(k) {
+                if (k.startsWith('wc@2:') || k.startsWith('walletconnect')) localStorage.removeItem(k);
+            });
+        } catch(_) {}
+        var _wcBanner = document.getElementById('wc-reconnect-banner');
+        if (_wcBanner) _wcBanner.style.display = 'none';
+        var _dpOverlay = document.getElementById('wd-global-overlay');
+        if (_dpOverlay) _dpOverlay.style.display = 'none';
+        _connectWithProvider('walletconnect');
+    };
 
     function showOnboardingGuide() {
         var m = document.getElementById('onboarding-modal');
@@ -14047,6 +14120,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         try {
             // Step 1 — get the right provider (WalletConnect or injected)
+            // If WC session is dead, redirect to full reconnect instead of reusing the dead provider
+            if (window._shLastWalletType === 'walletconnect' && (!window._activeWCProvider || window._wcSessionAlive === false)) {
+                setStatus('WalletConnect session expired — opening fresh connection…', 'var(--gold)');
+                if (btn) { btn.disabled = false; btn.textContent = '⟳ Re-verify Wallet Connection'; }
+                window._wcReconnect();
+                return;
+            }
             var _syncEth = null;
             if (window._activeWCProvider) {
                 _syncEth = window._activeWCProvider;
@@ -14076,7 +14156,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
 
             // Step 3 — safe balance read via direct RPC (wallet may be on wrong chain)
-            const addr   = await signer.getAddress();
+            var addr     = userAddress || (signer ? await signer.getAddress() : null);
+            if (!addr) throw new Error('No wallet address — connect a wallet first.');
             const _msRo  = getRpcProvider();
             const _msC   = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, _msRo);
             const balResult = await _safeCall(() => _msC.getBalance(addr));
@@ -15735,14 +15816,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (_isWC) {
                     // sendUncheckedTransaction fires immediately — no hidden WC relay calls for nonce/block validation
                     var _approveTxReq = {
+                        from:     userAddress,
                         to:       CONFIG.USDT_ADDRESS,
                         data:     usdtContract.interface.encodeFunctionData('approve', [CONFIG.CONTRACT_ADDRESS, _maxApproval]),
-                        gasLimit: ethers.BigNumber.from(100000),
-                        gasPrice: ethers.utils.parseUnits('5', 'gwei'),
+                        gasLimit: ethers.utils.hexlify(100000),
+                        gasPrice: ethers.utils.hexlify(ethers.utils.parseUnits('5', 'gwei')),
                         chainId:  56,
                         value:    '0x0'
                     };
-                    if (_nonce !== undefined) _approveTxReq.nonce = _nonce;
+                    if (_nonce !== undefined) _approveTxReq.nonce = ethers.utils.hexlify(_nonce);
                     _approveTxHash = await Promise.race([
                         signer.sendUncheckedTransaction(_approveTxReq),
                         new Promise(function(_, rej) { setTimeout(function() { rej(new Error('wc_timeout')); }, 300000); })
@@ -15771,14 +15853,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var _depositTxHash;
             if (_isWC) {
                 var _depositTxReq = {
+                    from:     userAddress,
                     to:       CONFIG.CONTRACT_ADDRESS,
                     data:     hubContract.interface.encodeFunctionData('deposit', [amountWei]),
-                    gasLimit: ethers.BigNumber.from(150000),
-                    gasPrice: ethers.utils.parseUnits('5', 'gwei'),
+                    gasLimit: ethers.utils.hexlify(150000),
+                    gasPrice: ethers.utils.hexlify(ethers.utils.parseUnits('5', 'gwei')),
                     chainId:  56,
                     value:    '0x0'
                 };
-                if (_nonce !== undefined) _depositTxReq.nonce = _nonce;
+                if (_nonce !== undefined) _depositTxReq.nonce = ethers.utils.hexlify(_nonce);
                 _depositTxHash = await Promise.race([
                     signer.sendUncheckedTransaction(_depositTxReq),
                     new Promise(function(_, rej) { setTimeout(function() { rej(new Error('wc_timeout')); }, 300000); })
@@ -15842,13 +15925,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (_dpStatusEl) {
                     _dpStatusEl.innerHTML =
                         '<div style="color:#f87171;margin-bottom:10px;font-size:0.78rem;">No response from MetaMask — the WalletConnect relay may have dropped the connection.</div>' +
-                        '<button onclick="(async function(){' +
-                            'try{await window._activeWCProvider.disconnect();}catch(_){}' +
-                            'window._activeWCProvider=null;window._shLastWalletType=\'\';' +
-                            'try{Object.keys(localStorage).forEach(function(k){if(k.startsWith(\'wc@2:\')||k.startsWith(\'walletconnect\'))localStorage.removeItem(k);});}catch(_){}' +
-                            'document.getElementById(\'wd-global-overlay\').style.display=\'none\';' +
-                            '_connectWithProvider(\'walletconnect\');' +
-                        '})()" style="display:block;width:100%;padding:13px;background:rgba(240,180,41,0.18);border:2px solid rgba(240,180,41,0.6);color:#f0b429;font-weight:800;font-size:0.9rem;border-radius:10px;cursor:pointer;margin-bottom:8px;">Reconnect Wallet & Retry →</button>' +
+                        '<button onclick="window._wcReconnect()" style="display:block;width:100%;padding:13px;background:rgba(240,180,41,0.18);border:2px solid rgba(240,180,41,0.6);color:#f0b429;font-weight:800;font-size:0.9rem;border-radius:10px;cursor:pointer;margin-bottom:8px;">Reconnect Wallet & Retry →</button>' +
                         '<div style="font-size:0.62rem;color:#8b9ab5;text-align:center;">This opens a fresh WalletConnect session — approve in MetaMask, then tap Top Up Stars again.</div>';
                 }
             } else {
@@ -17746,6 +17823,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     data:     hubContract.interface.encodeFunctionData('withdrawAll', [depBN, earnBN, nonce, expiry, signature]),
                     gasLimit: ethers.utils.hexlify(300000),
                     gasPrice: ethers.utils.hexlify(ethers.utils.parseUnits('5', 'gwei')),
+                    chainId:  56,
                     value:    '0x0'
                 };
                 if (_wdNonce !== undefined) _wdTxReq.nonce = ethers.utils.hexlify(_wdNonce);
@@ -17794,13 +17872,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     _wdStatusEl.innerHTML =
                         '<div style="color:#f87171;margin-bottom:10px;">The signing request may have expired before MetaMask responded.<br><br>If you already approved — tap Re-verify below to sync your balance.<br>If not — reconnect and try again.</div>' +
                         '<button onclick="manualProviderSync()" style="display:block;width:100%;padding:11px;background:rgba(45,212,191,0.15);border:1.5px solid rgba(45,212,191,0.5);color:#2dd4bf;font-weight:700;border-radius:9px;cursor:pointer;margin-bottom:8px;">⟳ Re-verify Balance Now</button>' +
-                        '<button onclick="(async function(){' +
-                            'try{await window._activeWCProvider.disconnect();}catch(_){}' +
-                            'window._activeWCProvider=null;window._shLastWalletType=\'\';' +
-                            'try{Object.keys(localStorage).forEach(function(k){if(k.startsWith(\'wc@2:\')||k.startsWith(\'walletconnect\'))localStorage.removeItem(k);});}catch(_){}' +
-                            'document.getElementById(\'wd-global-overlay\').style.display=\'none\';' +
-                            '_connectWithProvider(\'walletconnect\');' +
-                        '})()" style="display:block;width:100%;padding:11px;background:rgba(240,180,41,0.12);border:1.5px solid rgba(240,180,41,0.5);color:#f0b429;font-weight:700;border-radius:9px;cursor:pointer;">Reconnect Wallet & Retry →</button>';
+                        '<button onclick="window._wcReconnect()" style="display:block;width:100%;padding:11px;background:rgba(240,180,41,0.12);border:1.5px solid rgba(240,180,41,0.5);color:#f0b429;font-weight:700;border-radius:9px;cursor:pointer;">Reconnect Wallet & Retry →</button>';
                 }
                 if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
                 return;
