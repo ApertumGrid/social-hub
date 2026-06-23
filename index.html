@@ -14171,7 +14171,39 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 setStatus('⚠ Contract read failed — RPC may be congested. Try again.', 'var(--gold)');
             } else {
                 const depUsdt = parseFloat(ethers.utils.formatUnits(balResult.deposited, 18)) || 0;
-                setStatus(`✓ On-chain: $${depUsdt.toFixed(2)} USDT deposited — running full sync…`, '#22c55e');
+                // Detect on-chain deposit that Firestore missed (WC relay dropped before recordDeposit)
+                var _fbDep = window._firestoreDepositedUsdt || 0;
+                var _missingUsdt = Math.round((depUsdt - _fbDep) * 100) / 100;
+                if (_missingUsdt > 0.001) {
+                    setStatus(`⟳ Found $${_missingUsdt.toFixed(2)} USDT on-chain not in Firestore — syncing now…`, 'var(--gold)');
+                    try {
+                        var _recResp = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/recordDeposit', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ senderAddress: addr.toLowerCase(), usdtAmount: _missingUsdt })
+                        });
+                        var _recData = await _recResp.json();
+                        if (_recData.success) {
+                            setStatus(`✓ Recovered $${_missingUsdt.toFixed(2)} USDT — balance updated!`, '#22c55e');
+                        } else {
+                            // CF rejected — write directly to Firestore as fallback
+                            var _recRef = window.fs.doc(window.db, 'user_balances', addr.toLowerCase());
+                            await window.fs.setDoc(_recRef, { depositedUsdt: window.fs.increment(_missingUsdt), lastUpdated: Date.now() }, { merge: true });
+                            setStatus(`✓ Recovered $${_missingUsdt.toFixed(2)} USDT (direct write)`, '#22c55e');
+                        }
+                    } catch(_recErr) {
+                        console.warn('[ManualSync] Recovery CF failed:', _recErr);
+                        try {
+                            var _recRef2 = window.fs.doc(window.db, 'user_balances', addr.toLowerCase());
+                            await window.fs.setDoc(_recRef2, { depositedUsdt: window.fs.increment(_missingUsdt), lastUpdated: Date.now() }, { merge: true });
+                            setStatus(`✓ Recovered $${_missingUsdt.toFixed(2)} USDT (direct write)`, '#22c55e');
+                        } catch(_) {
+                            setStatus('⚠ Recovery write failed — try again.', 'var(--red)');
+                        }
+                    }
+                } else {
+                    setStatus(`✓ On-chain: $${depUsdt.toFixed(2)} USDT deposited — running full sync…`, '#22c55e');
+                }
                 await syncData();
                 showToast('Wallet re-verified & synced ✓');
                 setTimeout(() => { if (status) status.style.display = 'none'; }, 4000);
@@ -15819,7 +15851,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                 var _approveTxHash;
                 if (_isWC) {
-                    // sendUncheckedTransaction fires immediately — no hidden WC relay calls for nonce/block validation
                     var _approveTxReq = {
                         from:     userAddress,
                         to:       CONFIG.USDT_ADDRESS,
@@ -15830,23 +15861,46 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         value:    '0x0'
                     };
                     if (_nonce !== undefined) _approveTxReq.nonce = ethers.utils.hexlify(_nonce);
-                    _approveTxHash = await Promise.race([
-                        signer.sendUncheckedTransaction(_approveTxReq),
-                        new Promise(function(_, rej) { setTimeout(function() { rej(new Error('wc_timeout')); }, 300000); })
-                    ]);
+
+                    // Fire WITHOUT await — poll allowance to detect approval
+                    signer.sendUncheckedTransaction(_approveTxReq).then(function(h) {
+                        if (h) _approveTxHash = h;
+                    }).catch(function() {});
+
+                    if (_dpOverlay) _dpOverlay.style.display = 'block';
+                    _dpWallet('Step 1/2 — Approve USDT in your wallet (one-time setup)');
+
+                    var _approveConfirmed = false;
+                    for (var _apI = 0; _apI < 36; _apI++) {
+                        await new Promise(function(r) { setTimeout(r, 5000); });
+                        try {
+                            var _nowAllowance = await Promise.race([
+                                _usdtRead.allowance(userAddress, CONFIG.CONTRACT_ADDRESS),
+                                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('timeout')); }, 10000); })
+                            ]);
+                            if (_nowAllowance.gte(amountWei)) { _approveConfirmed = true; break; }
+                        } catch(_) {}
+                    }
+                    if (!_approveConfirmed) {
+                        _dpStatus('Approval not detected after 3 minutes. Please try again.');
+                        if (_dpOverlay) _dpOverlay.style.display = 'block';
+                        return;
+                    }
                 } else {
                     var _approveTx = await usdtContract.approve(CONFIG.CONTRACT_ADDRESS, _maxApproval, _usdtGas);
                     _approveTxHash = _approveTx.hash;
+                    _dpStatus('Step 1/2 — Waiting for approval confirmation…');
+                    await Promise.race([
+                        _rpc.waitForTransaction(_approveTxHash, 1),
+                        new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Approval confirmation timeout')); }, 120000); })
+                    ]);
                 }
-
-                _dpStatus('Step 1/2 — Waiting for approval confirmation…');
-                await Promise.race([
-                    _rpc.waitForTransaction(_approveTxHash, 1),
-                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Approval confirmation timeout')); }, 120000); })
-                ]);
                 _dpStatus('Step 1/2 — Approved ✓');
-                // Increment nonce for next tx
-                if (_nonce !== undefined) _nonce++;
+                // Re-fetch nonce since approval tx consumed one
+                _nonce = await Promise.race([
+                    _rpc.getTransactionCount(userAddress, 'latest'),
+                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('timeout')); }, 15000); })
+                ]).catch(function() { return undefined; });
             }
 
             // Step 2 (or Step 1 if already approved): Deposit
@@ -15854,6 +15908,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             _dpStatus(_stepLabel + ' — Confirm deposit in your wallet…');
             if (_isWC) _dpWallet(_stepLabel + ' — Confirm deposit in your wallet');
             showToast(_stepLabel + ' — Depositing USDT…');
+
+            // Capture pre-deposit on-chain balance so we can detect when deposit lands
+            var _preDepositBal = null;
+            try {
+                var _roC = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, _rpc);
+                var _preBal = await Promise.race([
+                    _roC.getBalance(userAddress),
+                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('timeout')); }, 10000); })
+                ]);
+                _preDepositBal = _preBal.deposited;
+            } catch(_) {}
 
             var _depositTxHash;
             if (_isWC) {
@@ -15867,20 +15932,72 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     value:    '0x0'
                 };
                 if (_nonce !== undefined) _depositTxReq.nonce = ethers.utils.hexlify(_nonce);
-                _depositTxHash = await Promise.race([
-                    signer.sendUncheckedTransaction(_depositTxReq),
-                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('wc_timeout')); }, 300000); })
-                ]);
+
+                // Fire WITHOUT await — WC relay dies when user returns from MetaMask.
+                // Poll BSC directly to detect when deposit lands (same pattern as withdrawal).
+                window._pendingDepositHash = null;
+                signer.sendUncheckedTransaction(_depositTxReq).then(function(h) {
+                    if (h) window._pendingDepositHash = h;
+                }).catch(function(e) {
+                    console.warn('[Deposit] WC tx error:', e && e.message);
+                });
+
+                // Show wallet deep link + poll timer
+                var _wName = (window._wcWalletName && window._wcWalletName !== 'undefined') ? window._wcWalletName : 'MetaMask';
+                var _wLink = (window._wcWalletDeepLink && window._wcWalletDeepLink !== 'undefined') ? window._wcWalletDeepLink : 'metamask://';
+                if (_dpStatusEl) {
+                    _dpStatusEl.innerHTML =
+                        '<div style="color:#2dd4bf;margin-bottom:8px;">' + _stepLabel + ' — Approve in ' + _wName + ', then come back here.</div>' +
+                        '<a href="' + _wLink + '" style="display:block;text-align:center;background:rgba(240,180,41,0.18);border:2px solid rgba(240,180,41,0.6);color:#f0b429;font-weight:800;font-size:1.05rem;text-decoration:none;padding:16px 20px;border-radius:12px;margin-bottom:10px;">📲 Open ' + _wName + ' to Approve →</a>' +
+                        '<div id="dp-poll-timer" style="font-size:0.7rem;color:#8b9ab5;text-align:center;">Waiting for BSC confirmation…</div>';
+                }
+                if (_dpOverlay) _dpOverlay.style.display = 'block';
+
+                // Poll BSC every 5s — detect deposit by checking on-chain balance increase
+                var _dpConfirmed = false;
+                var _dpPollStart = Date.now();
+                var _dpMaxPoll   = 180000; // 3 minutes
+                for (var _dpI = 0; _dpI < 36; _dpI++) {
+                    await new Promise(function(r) { setTimeout(r, 5000); });
+                    if (Date.now() - _dpPollStart > _dpMaxPoll) break;
+                    try {
+                        var _roC2 = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, _rpc);
+                        var _nowBal = await _roC2.getBalance(userAddress);
+                        if (_preDepositBal && _nowBal.deposited.gt(_preDepositBal)) {
+                            _dpConfirmed = true;
+                            break;
+                        }
+                        // Fallback: if we couldn't read pre-balance, check if deposited > Firestore
+                        if (!_preDepositBal) {
+                            var _nowDep = parseFloat(ethers.utils.formatUnits(_nowBal.deposited, 18)) || 0;
+                            var _fbDep  = window._firestoreDepositedUsdt || 0;
+                            if (_nowDep > _fbDep + 0.001) { _dpConfirmed = true; break; }
+                        }
+                    } catch(_) {}
+                    var _dpElapsed = Math.round((Date.now() - _dpPollStart) / 1000);
+                    var _dpTimerEl = document.getElementById('dp-poll-timer');
+                    if (_dpTimerEl) _dpTimerEl.textContent = 'Checking BSC… ' + _dpElapsed + 's';
+                }
+
+                if (!_dpConfirmed) {
+                    // Timeout — offer re-verify and reconnect
+                    if (_dpStatusEl) {
+                        _dpStatusEl.innerHTML =
+                            '<div style="color:#f87171;margin-bottom:10px;">Deposit not detected yet. If you already approved in MetaMask, tap Re-verify to sync your balance.</div>' +
+                            '<button onclick="manualProviderSync()" style="display:block;width:100%;padding:11px;background:rgba(45,212,191,0.15);border:1.5px solid rgba(45,212,191,0.5);color:#2dd4bf;font-weight:700;border-radius:9px;cursor:pointer;margin-bottom:8px;">⟳ Re-verify Balance Now</button>' +
+                            '<button onclick="window._wcReconnect()" style="display:block;width:100%;padding:11px;background:rgba(240,180,41,0.12);border:1.5px solid rgba(240,180,41,0.5);color:#f0b429;font-weight:700;border-radius:9px;cursor:pointer;">Reconnect Wallet & Retry →</button>';
+                    }
+                    return;
+                }
             } else {
                 var _depositTx = await hubContract.deposit(amountWei, _depGas);
                 _depositTxHash = _depositTx.hash;
+                _dpStatus(_stepLabel + ' — Waiting for deposit confirmation…');
+                await Promise.race([
+                    _rpc.waitForTransaction(_depositTx.hash, 1),
+                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Deposit timeout')); }, 120000); })
+                ]);
             }
-            var depositTx = { hash: _depositTxHash };
-            _dpStatus(_stepLabel + ' — Waiting for deposit confirmation…');
-            await Promise.race([
-                _rpc.waitForTransaction(depositTx.hash, 1),
-                new Promise(function(_, rej) { setTimeout(function() { rej(new Error('Deposit timeout')); }, 120000); })
-            ]);
 
             const starsReceived = Math.floor(usdtAmount / CONFIG.STAR_USD);
             console.log(`[Deposit] ${usdtAmount} USDT = ${starsReceived} Stars`);
