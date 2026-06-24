@@ -11428,7 +11428,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:12px;">✎ Edit Hub Details</div>
                         <input type="text" id="comm-edit-name" class="field" placeholder="Hub Name" style="margin-bottom:8px;">
                         <textarea id="comm-edit-desc" class="field" rows="3" placeholder="Description" style="margin-bottom:8px; resize:none; overflow:hidden;" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,400)+'px';"></textarea>
-                        <input type="text" id="comm-edit-img" class="field" placeholder="Header Image URL (optional)" style="margin-bottom:8px;">
+                        <div style="margin-bottom:8px;">
+                            <input type="file" id="comm-edit-img-file" accept="image/*" style="display:none;" onchange="uploadHubBanner(this,'comm-edit-img','comm-edit-banner-thumb','comm-edit-banner-wrap','comm-edit-banner-progress')">
+                            <button type="button" class="btn" onclick="document.getElementById('comm-edit-img-file').click()" style="width:100%;margin-bottom:6px;font-size:0.73rem;">📷 Upload Banner Image</button>
+                            <div id="comm-edit-banner-wrap" style="display:none;margin-bottom:6px;">
+                                <img id="comm-edit-banner-thumb" src="" style="width:100%;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);">
+                            </div>
+                            <div id="comm-edit-banner-progress" style="display:none;font-size:0.7rem;color:var(--teal);margin-bottom:6px;"></div>
+                            <input type="text" id="comm-edit-img" class="field" placeholder="Or paste image URL" style="font-size:0.72rem;">
+                        </div>
                         <textarea id="comm-edit-rules" class="field" rows="3" placeholder="Hub Rules (optional — shown to all visitors)" style="margin-bottom:12px; resize:none; overflow:hidden; font-size:0.73rem;" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,300)+'px';"></textarea>
                         <div style="border-top:1px solid var(--border); padding-top:12px; margin-bottom:12px;">
                             <div style="font-size:0.72rem; font-weight:700; color:var(--text-secondary); margin-bottom:10px; letter-spacing:0.3px;">★ SUBSCRIPTIONS</div>
@@ -11573,8 +11581,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <textarea id="comm-desc-input" class="field" rows="4"
                                   placeholder="Short description — press Enter for line breaks, they will be preserved exactly as you type them."
                                   style="margin-bottom:8px; resize:vertical;"></textarea>
-                        <input type="text" id="comm-img-input" class="field"
-                               placeholder="Header Image URL (optional)" style="margin-bottom:12px;">
+                        <div style="margin-bottom:12px;">
+                            <input type="file" id="comm-create-img-file" accept="image/*" style="display:none;" onchange="uploadHubBanner(this,'comm-img-input','comm-create-banner-thumb','comm-create-banner-wrap','comm-create-banner-progress')">
+                            <button type="button" class="btn" onclick="document.getElementById('comm-create-img-file').click()" style="width:100%;margin-bottom:6px;font-size:0.73rem;">📷 Upload Banner Image</button>
+                            <div id="comm-create-banner-wrap" style="display:none;margin-bottom:6px;">
+                                <img id="comm-create-banner-thumb" src="" style="width:100%;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);">
+                            </div>
+                            <div id="comm-create-banner-progress" style="display:none;font-size:0.7rem;color:var(--teal);margin-bottom:6px;"></div>
+                            <input type="text" id="comm-img-input" class="field" placeholder="Or paste image URL" style="font-size:0.72rem;">
+                        </div>
                         <!-- Hub Handle / Alias — free feature, stored as comm.alias -->
                         <div class="alias-input-wrap">
                             <span class="alias-prefix">?hub=</span>
@@ -22100,7 +22115,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 d.style.height = 'auto';
                 d.style.height = Math.min(d.scrollHeight, 400) + 'px';
             }
-            if (i) i.value = _activeCommunity.headerImg || '';
+            if (i) {
+                i.value = _activeCommunity.headerImg || '';
+                var _bw = document.getElementById('comm-edit-banner-wrap');
+                var _bt = document.getElementById('comm-edit-banner-thumb');
+                if (_activeCommunity.headerImg && _bw && _bt) {
+                    _bt.src = _activeCommunity.headerImg;
+                    _bw.style.display = 'block';
+                } else if (_bw) {
+                    _bw.style.display = 'none';
+                }
+            }
             var _se  = document.getElementById('comm-edit-sub-enabled');
             var _sp  = document.getElementById('comm-edit-sub-price');
             var _spr = document.getElementById('comm-edit-sub-price-row');
@@ -22129,6 +22154,47 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         } catch(e) { console.warn('[togglePinHubPost]', e); showToast('Failed to pin post.'); }
     }
     window.togglePinHubPost = togglePinHubPost;
+
+    // ─── Upload hub banner to Firebase Storage ────────────────────────────────────
+    async function uploadHubBanner(input, urlFieldId, thumbId, wrapId, progressId) {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) return showToast('Please select an image file.');
+        if (file.size > 5 * 1024 * 1024) return showToast('Banner image must be under 5 MB.');
+        if (!window.storage || !window.fsStorage) return showToast('Storage not ready. Try again.');
+        var progressEl = document.getElementById(progressId);
+        var wrapEl     = document.getElementById(wrapId);
+        var thumbEl    = document.getElementById(thumbId);
+        var urlEl      = document.getElementById(urlFieldId);
+        if (progressEl) { progressEl.textContent = 'Uploading… 0%'; progressEl.style.display = 'block'; }
+        try {
+            var storageRef = window.fsStorage.ref(window.storage, 'hub-banners/' + Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_'));
+            var uploadTask = window.fsStorage.uploadBytesResumable(storageRef, file);
+            await new Promise(function(resolve, reject) {
+                uploadTask.on('state_changed',
+                    function(snap) {
+                        var pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+                        if (progressEl) progressEl.textContent = 'Uploading… ' + pct + '%';
+                    },
+                    reject,
+                    async function() {
+                        var url = await window.fsStorage.getDownloadURL(uploadTask.snapshot.ref);
+                        if (urlEl)   urlEl.value = url;
+                        if (thumbEl) { thumbEl.src = url; }
+                        if (wrapEl)  wrapEl.style.display = 'block';
+                        if (progressEl) { progressEl.textContent = '✓ Done!'; setTimeout(function() { progressEl.style.display = 'none'; }, 2000); }
+                        input.value = '';
+                        resolve();
+                    }
+                );
+            });
+        } catch(e) {
+            console.error('[uploadHubBanner]', e);
+            if (progressEl) progressEl.style.display = 'none';
+            showToast('Upload failed. Try again.');
+        }
+    }
+    window.uploadHubBanner = uploadHubBanner;
 
     // ─── Save Hub edits to Firestore ─────────────────────────────────────────────
     async function saveEditCommunityHub() {
