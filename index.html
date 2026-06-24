@@ -6879,6 +6879,12 @@
             font-size: 0.58rem; color: var(--text-muted); font-weight: 600;
             text-transform: uppercase; letter-spacing: 0.8px;
         }
+        .ca-stat-sub {
+            font-family: var(--font-mono); font-size: 0.6rem; color: var(--teal);
+            margin-bottom: 3px; opacity: 0.8;
+        }
+        .ca-stat-val.gold { color: var(--gold); }
+        .ca-stat-val.green { color: #22c55e; }
         .ca-section-hd {
             font-size: 0.7rem; font-weight: 700; color: var(--text-secondary);
             margin: 14px 0 8px; letter-spacing: 0.2px;
@@ -10651,29 +10657,52 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                 <div id="studio-main-panel">
 
-                <!-- CREATOR INSIGHTS — 3 Key Questions -->
-                <div class="card" id="creator-insights-card" style="display:none;">
-                    <div class="ci-section-lbl">Creator Insights</div>
-                    <div style="display:grid;gap:16px;">
-                        <!-- Q1 -->
-                        <div class="ci-q">
-                            <div class="ci-q-title">💰 How much did I earn this week?</div>
-                            <div class="ci-q-row">
-                                <span class="ci-q-val" id="ci-week-stars">—</span>
-                                <span class="ci-q-sub" id="ci-week-usdt"></span>
+                <!-- CREATOR ANALYTICS -->
+                <div class="card" id="creator-analytics-card" style="display:none;padding:0;overflow:hidden;">
+                    <div class="ca-inner" id="creator-analytics-inner">
+                        <button class="ca-toggle" onclick="toggleCreatorAnalytics()">
+                            <span>📊 Creator Analytics</span>
+                            <span class="ca-chevron">▾</span>
+                        </button>
+                        <div class="ca-body">
+                            <!-- Earnings -->
+                            <div class="ca-section-hd">💰 Earnings</div>
+                            <div class="ca-stats-row">
+                                <div class="ca-stat">
+                                    <div class="ca-stat-val gold" id="cca-week-stars">—</div>
+                                    <div class="ca-stat-sub" id="cca-week-usdt"></div>
+                                    <div class="ca-stat-label">This Week</div>
+                                </div>
+                                <div class="ca-stat">
+                                    <div class="ca-stat-val gold" id="cca-month-stars">—</div>
+                                    <div class="ca-stat-sub" id="cca-month-usdt"></div>
+                                    <div class="ca-stat-label">This Month</div>
+                                </div>
+                                <div class="ca-stat">
+                                    <div class="ca-stat-val gold" id="cca-total-stars">—</div>
+                                    <div class="ca-stat-sub" id="cca-total-usdt"></div>
+                                    <div class="ca-stat-label">All Time</div>
+                                </div>
                             </div>
-                        </div>
-                        <div style="height:1px;background:rgba(255,255,255,.06);"></div>
-                        <!-- Q2 -->
-                        <div class="ci-q">
-                            <div class="ci-q-title">👑 Who are my top supporters?</div>
-                            <div id="ci-top-supporters" style="margin-top:6px;"><span style="color:var(--text-muted);font-size:.72rem;">Loading…</span></div>
-                        </div>
-                        <div style="height:1px;background:rgba(255,255,255,.06);"></div>
-                        <!-- Q3 -->
-                        <div class="ci-q">
-                            <div class="ci-q-title">🎯 What should I do next?</div>
-                            <div id="ci-next-task" class="ci-next-task" style="margin-top:6px;">Loading challenge…</div>
+                            <!-- Top Posts -->
+                            <div class="ca-section-hd">❤️ Top Posts</div>
+                            <div id="cca-top-posts"><div class="ca-empty">Loading…</div></div>
+                            <!-- Audience -->
+                            <div class="ca-section-hd" style="margin-top:14px;">👥 Audience</div>
+                            <div class="ca-stats-row" style="grid-template-columns:1fr 1fr;">
+                                <div class="ca-stat">
+                                    <div class="ca-stat-val" id="cca-followers">—</div>
+                                    <div class="ca-stat-label">Followers</div>
+                                </div>
+                                <div class="ca-stat">
+                                    <div class="ca-stat-val green" id="cca-new-followers">—</div>
+                                    <div class="ca-stat-label">New This Week</div>
+                                </div>
+                            </div>
+                            <div class="ca-section-hd">📈 Growth <span style="font-weight:400;color:var(--text-muted);font-size:0.6rem;">(last 30 days)</span></div>
+                            <div class="ca-chart-wrap" id="cca-growth-chart"><div class="ca-empty">Loading…</div></div>
+                            <div class="ca-section-hd" style="margin-top:14px;">👑 Top Supporters</div>
+                            <div id="cca-top-supporters"><div class="ca-empty">Loading…</div></div>
                         </div>
                     </div>
                 </div>
@@ -16790,8 +16819,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (typeof loadMyRecordings === 'function') loadMyRecordings();
                 // Load Creator Insights and 7-Day Challenge panel
                 setTimeout(function() {
-                    if (typeof window._loadCreatorChallenge === 'function') window._loadCreatorChallenge();
-                    if (typeof window._loadCreatorInsights  === 'function') window._loadCreatorInsights();
+                    if (typeof window._loadCreatorChallenge  === 'function') window._loadCreatorChallenge();
+                    if (typeof window._loadCreatorAnalytics  === 'function') window._loadCreatorAnalytics();
                 }, 200);
             }
 
@@ -39022,93 +39051,175 @@ window._loadCreatorChallenge = async function() {
     } catch(e) { console.warn('[LoadCreatorChallenge]', e); }
 };
 
-// ── Creator Insights: 3 Key Questions ─────────────────────────────────
-window._loadCreatorInsights = async function() {
+// ── Creator Analytics ──────────────────────────────────────────────────
+window._loadCreatorInsights = window._loadCreatorAnalytics = async function() {
     var addr = (window.userAddress || '').toLowerCase();
     if (!addr || !window.db || !window.fs) return;
-    var card = document.getElementById('creator-insights-card');
+    var card = document.getElementById('creator-analytics-card');
     if (!card) return;
     card.style.display = 'block';
 
-    var weekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    var now      = Date.now();
+    var weekAgo  = now - 7  * 86400000;
+    var monthAgo = now - 30 * 86400000;
+
+    function _fmt(n) {
+        n = parseFloat(n) || 0;
+        if (n >= 1000000) return (n/1000000).toFixed(1).replace(/\.0$/,'') + 'M';
+        if (n >= 1000)    return (n/1000).toFixed(1).replace(/\.0$/,'') + 'k';
+        return n % 1 === 0 ? n.toString() : n.toFixed(1);
+    }
 
     try {
-        // Q1 + Q2: Query 'earn' transactions where this wallet is recipient
-        // address field = toAddress for earn records (see logTransaction routing)
-        // Use simple address query (has existing index) + client-side type filter
-        var earnQ = window.fs.query(
-            window.fs.collection(window.db, 'user_transactions'),
-            window.fs.where('address', '==', addr),
-            window.fs.limit(200)
-        );
-        var earnSnap = await window.fs.getDocs(earnQ);
+        var results = await Promise.all([
+            window.fs.getDocs(window.fs.query(
+                window.fs.collection(window.db, 'user_transactions'),
+                window.fs.where('address', '==', addr),
+                window.fs.limit(500)
+            )),
+            window.fs.getDocs(window.fs.query(
+                window.fs.collection(window.db, 'posts'),
+                window.fs.where('author', '==', addr)
+            )),
+            window.fs.getDocs(window.fs.query(
+                window.fs.collection(window.db, 'social_graph'),
+                window.fs.where('following', '==', addr)
+            ))
+        ]);
+        var txSnap = results[0], postsSnap = results[1], followSnap = results[2];
 
-        var weekStars = 0;
-        var suppMap = {};  // fromAddress → total sent
-
-        earnSnap.forEach(function(d) {
+        // ── Earnings ────────────────────────────────────────────────────────
+        var weekStars = 0, monthStars = 0, totalStars = 0, suppMap = {};
+        txSnap.forEach(function(d) {
             var tx = d.data();
-            if (tx.type !== 'earn') return; // skip spend/settle/deposit rows
+            if (tx.type !== 'earn') return;
             var amt = parseFloat(tx.amount || 0);
-            // Q1: this week
-            if ((tx.timestamp || 0) >= weekAgo) weekStars += amt;
-            // Q2: top supporters (all time)
+            var ts  = tx.timestamp || 0;
+            totalStars += amt;
+            if (ts >= weekAgo)  weekStars  += amt;
+            if (ts >= monthAgo) monthStars += amt;
             var from = (tx.fromAddress || '').toLowerCase();
             if (from && from !== 'platform' && from !== '0x_unknown') {
                 suppMap[from] = (suppMap[from] || 0) + amt;
             }
         });
 
-        // Q1 display
-        var weekUsdt = (weekStars * 0.01).toFixed(2);
-        var wsEl = document.getElementById('ci-week-stars');
-        var wuEl = document.getElementById('ci-week-usdt');
-        if (wsEl) wsEl.textContent = _cgFmt(weekStars) + ' ★';
-        if (wuEl) wuEl.textContent = '= $' + weekUsdt + ' USDT';
+        var wkEl = document.getElementById('cca-week-stars');
+        var wkU  = document.getElementById('cca-week-usdt');
+        var moEl = document.getElementById('cca-month-stars');
+        var moU  = document.getElementById('cca-month-usdt');
+        var atEl = document.getElementById('cca-total-stars');
+        var atU  = document.getElementById('cca-total-usdt');
+        if (wkEl) wkEl.textContent = _fmt(weekStars)  + ' ★';
+        if (wkU)  wkU.textContent  = '$' + (weekStars  * 0.01).toFixed(2) + ' USDT';
+        if (moEl) moEl.textContent = _fmt(monthStars) + ' ★';
+        if (moU)  moU.textContent  = '$' + (monthStars * 0.01).toFixed(2) + ' USDT';
+        if (atEl) atEl.textContent = _fmt(totalStars)  + ' ★';
+        if (atU)  atU.textContent  = '$' + (totalStars  * 0.01).toFixed(2) + ' USDT';
 
-        // Q2 display — top 3 supporters
-        var suppList = Object.keys(suppMap).map(function(a) { return { addr: a, total: suppMap[a] }; });
-        suppList.sort(function(a, b) { return b.total - a.total; });
-        var top3 = suppList.slice(0, 3);
-        var suppEl = document.getElementById('ci-top-supporters');
-        if (suppEl) {
-            if (!top3.length) {
-                suppEl.innerHTML = '<span style="color:var(--text-muted);font-size:.72rem;">No supporters yet — share your profile!</span>';
+        // ── Top Posts ───────────────────────────────────────────────────────
+        var postsEl = document.getElementById('cca-top-posts');
+        if (postsEl) {
+            var top5 = postsSnap.docs
+                .map(function(d) { return d.data(); })
+                .sort(function(a, b) { return (b.hypes || 0) - (a.hypes || 0); })
+                .slice(0, 5);
+            if (!top5.length) {
+                postsEl.innerHTML = '<div class="ca-empty">No posts yet — share something!</div>';
             } else {
-                var medals = ['🥇','🥈','🥉'];
-                suppEl.innerHTML = top3.map(function(s, i) {
-                    // Try to look up display name from users collection (non-blocking, skip if fails)
-                    return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;">' +
-                        '<span style="font-size:.9rem;">' + medals[i] + '</span>' +
-                        '<span style="font-family:var(--font-mono);font-size:.7rem;color:var(--text-primary);flex:1;">' + s.addr.slice(0,6) + '…' + s.addr.slice(-4) + '</span>' +
-                        '<span style="font-family:var(--font-mono);font-size:.72rem;color:var(--gold);font-weight:700;">' + _cgFmt(s.total) + ' ★</span>' +
-                    '</div>';
+                var medals = ['🥇','🥈','🥉','4.','5.'];
+                postsEl.innerHTML = top5.map(function(p, i) {
+                    var txt   = (p.text || '').replace(/\s+/g,' ').trim().slice(0, 80) || '(media post)';
+                    var hypes = (p.hypes || 0).toLocaleString();
+                    var cmts  = (p.comments || 0).toLocaleString();
+                    return '<div class="ca-post-row">'
+                        + '<div class="ca-post-rank">' + medals[i] + '</div>'
+                        + '<div class="ca-post-text">' + escHtml(txt) + '</div>'
+                        + '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;">'
+                        + '<div class="ca-post-hypes">★ ' + hypes + '</div>'
+                        + '<div style="font-size:.6rem;color:var(--text-muted);">💬 ' + cmts + '</div>'
+                        + '</div></div>';
                 }).join('');
+            }
+        }
 
-                // Async: enrich with display names
-                top3.forEach(function(s, i) {
+        // ── Audience ────────────────────────────────────────────────────────
+        var total = followSnap.size, newThisWeek = 0;
+        followSnap.docs.forEach(function(d) {
+            if ((d.data().timestamp || 0) >= weekAgo) newThisWeek++;
+        });
+        var flEl  = document.getElementById('cca-followers');
+        var nfEl  = document.getElementById('cca-new-followers');
+        if (flEl) flEl.textContent = total.toLocaleString();
+        if (nfEl) nfEl.textContent = (newThisWeek > 0 ? '+' : '') + newThisWeek;
+
+        // Growth chart (30 days)
+        var chartEl = document.getElementById('cca-growth-chart');
+        if (chartEl) {
+            if (total === 0) {
+                chartEl.innerHTML = '<div class="ca-empty">No followers yet</div>';
+            } else {
+                var DAYS = 30, msDay = 86400000;
+                var counts = new Array(DAYS).fill(0);
+                followSnap.docs.forEach(function(d) {
+                    var daysAgo = Math.floor((now - (d.data().timestamp || 0)) / msDay);
+                    if (daysAgo >= 0 && daysAgo < DAYS) counts[DAYS - 1 - daysAgo]++;
+                });
+                var maxC = Math.max.apply(null, counts.concat([1]));
+                chartEl.innerHTML = counts.map(function(n, i) {
+                    var h = Math.max(Math.round((n / maxC) * 52), n > 0 ? 3 : 1);
+                    var showLbl = (i === 0 || i === DAYS - 1 || i % 7 === 0);
+                    var lbl = showLbl
+                        ? new Date(now - (DAYS - 1 - i) * msDay).toLocaleDateString('en-US', {month:'numeric',day:'numeric'})
+                        : '';
+                    return '<div class="ca-bar-col" title="' + n + ' follow' + (n !== 1 ? 's' : '') + '">'
+                        + '<div class="ca-bar" style="height:' + h + 'px;background:linear-gradient(180deg,rgba(45,212,191,.85),rgba(45,212,191,.2));"></div>'
+                        + '<div class="ca-bar-lbl">' + escHtml(lbl) + '</div>'
+                        + '</div>';
+                }).join('');
+            }
+        }
+
+        // ── Top Supporters ──────────────────────────────────────────────────
+        var suppEl = document.getElementById('cca-top-supporters');
+        if (suppEl) {
+            var suppList = Object.keys(suppMap)
+                .map(function(a) { return { addr: a, total: suppMap[a] }; })
+                .sort(function(a, b) { return b.total - a.total; })
+                .slice(0, 5);
+            if (!suppList.length) {
+                suppEl.innerHTML = '<div class="ca-empty">No supporters yet — keep creating!</div>';
+            } else {
+                var m2 = ['🥇','🥈','🥉','4.','5.'];
+                suppEl.innerHTML = suppList.map(function(s, i) {
+                    return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);">'
+                        + '<span style="font-size:.85rem;width:20px;text-align:center;flex-shrink:0;">' + m2[i] + '</span>'
+                        + '<span style="font-family:var(--font-mono);font-size:.7rem;color:var(--text-primary);flex:1;" data-supp-addr="' + escHtml(s.addr) + '">'
+                        + s.addr.slice(0,6) + '…' + s.addr.slice(-4) + '</span>'
+                        + '<span style="font-family:var(--font-mono);font-size:.72rem;color:var(--gold);font-weight:700;">' + _fmt(s.total) + ' ★</span>'
+                        + '</div>';
+                }).join('');
+                suppList.forEach(function(s) {
                     window.fs.getDoc(window.fs.doc(window.db, 'users', s.addr))
                         .then(function(snap) {
                             if (!snap.exists()) return;
                             var dn = snap.data().displayName || snap.data().handle || '';
                             if (!dn) return;
-                            var rows = suppEl.querySelectorAll('div');
-                            if (rows[i]) {
-                                var nm = rows[i].querySelector('span:nth-child(2)');
-                                if (nm) nm.textContent = dn.slice(0, 18) + (dn.length > 18 ? '…' : '');
-                            }
+                            var el = suppEl.querySelector('[data-supp-addr="' + s.addr + '"]');
+                            if (el) el.textContent = dn.slice(0,18) + (dn.length > 18 ? '…' : '');
                         }).catch(function() {});
                 });
             }
         }
+
     } catch(e) {
-        // Composite index may not exist — fall back to simpler query
-        console.warn('[CreatorInsights] earn query failed, falling back:', e.message);
-        try {
-            var wsEl2 = document.getElementById('ci-week-stars');
-            if (wsEl2) wsEl2.textContent = 'Connect to ledger';
-        } catch(_) {}
+        console.warn('[CreatorAnalytics]', e);
     }
+};
+
+window.toggleCreatorAnalytics = function() {
+    var inner = document.getElementById('creator-analytics-inner');
+    if (inner) inner.classList.toggle('ca-open');
 };
 
 // ── Auto-load when Creator Studio page is already active on reconnect ──
@@ -39117,8 +39228,8 @@ window._loadCreatorInsights = async function() {
         var pageE = document.getElementById('page-earnings');
         if (!pageE || pageE.style.display === 'none' || !pageE.classList.contains('active')) return;
         if (!window.userAddress || !window.db || !window.fs) return;
-        if (typeof window._loadCreatorChallenge === 'function') window._loadCreatorChallenge();
-        if (typeof window._loadCreatorInsights  === 'function') window._loadCreatorInsights();
+        if (typeof window._loadCreatorChallenge  === 'function') window._loadCreatorChallenge();
+        if (typeof window._loadCreatorAnalytics  === 'function') window._loadCreatorAnalytics();
     }
     // Try after wallet connects (userAddress is set some time after page load)
     var _studioCheckInterval = setInterval(function() {
