@@ -22087,7 +22087,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var panel = document.getElementById('comm-edit-panel');
         if (!panel) return;
         var isOpen = panel.style.display !== 'none';
-        if (!isOpen && _activeCommunity) {
+        if (isOpen) { panel.style.display = 'none'; return; }
+        // Show panel first so scrollHeight is accurate
+        panel.style.display = 'block';
+        if (_activeCommunity) {
             var n = document.getElementById('comm-edit-name');
             var d = document.getElementById('comm-edit-desc');
             var i = document.getElementById('comm-edit-img');
@@ -22107,9 +22110,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var _re = document.getElementById('comm-edit-rules');
             if (_re) { _re.value = _activeCommunity.rulesText || ''; _re.style.height = 'auto'; _re.style.height = Math.min(_re.scrollHeight, 300) + 'px'; }
             var _cm = document.getElementById('comm-edit-comods');
-            if (_cm) { _cm.value = Array.isArray(_activeCommunity.coMods) ? _activeCommunity.coMods.join('\n') : ''; }
+            if (_cm) { _cm.value = Array.isArray(_activeCommunity.coMods) ? _activeCommunity.coMods.join('\n') : ''; _cm.style.height = 'auto'; _cm.style.height = Math.min(_cm.scrollHeight, 200) + 'px'; }
         }
-        panel.style.display = isOpen ? 'none' : 'block';
     }
     window.toggleCommEditPanel = toggleCommEditPanel;
 
@@ -22706,10 +22708,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             } catch (e) { console.warn('[alias check]', e); }
         }
 
-        // ── Admin bypass: set cost = 0 for the platform owner ────────────────────
-        // The master wallet below pays zero Stars to create Community Hubs.
+        // ── Admin bypass: set cost = 0 for whitelisted wallets ───────────────────
+        var _FREE_HUB_WALLETS = [
+            '0xe348fedea1850a0c2d4ac0fed3f903774de1e16a',
+            '0xdbfdeec655898dd79b08a96d5c3deffd122a9fb0'
+        ];
         var effectiveCost = COMMUNITY_STARTUP_COST;
-        if (userAddress && userAddress.toLowerCase() === '0xe348fedea1850a0c2d4ac0fed3f903774de1e16a') {
+        if (userAddress && _FREE_HUB_WALLETS.includes(userAddress.toLowerCase())) {
             effectiveCost = 0;
         }
 
