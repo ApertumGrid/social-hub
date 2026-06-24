@@ -3018,7 +3018,10 @@
         .alias-hint.ok    { color: var(--teal); }
         .start-comm-title { font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:12px; }
         #community-feed-view { display:none; }
-        .comm-feed-banner { width:100%; height:180px; object-fit:cover; object-position:center; border-radius:var(--radius-md); display:block; margin-bottom:10px; background:linear-gradient(135deg,#12151f 0%,#1a1f2e 100%); }
+        .comm-feed-banner { width:100%; height:180px; object-fit:cover; object-position:50% 50%; border-radius:var(--radius-md); display:block; margin-bottom:10px; background:linear-gradient(135deg,#12151f 0%,#1a1f2e 100%); }
+        .banner-drag-wrap { position:relative; cursor:grab; border-radius:8px; overflow:hidden; border:1px solid var(--border); margin-bottom:6px; display:none; }
+        .banner-drag-wrap:active { cursor:grabbing; }
+        .banner-drag-hint { position:absolute; bottom:7px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.65); color:#fff; font-size:0.6rem; font-weight:600; padding:3px 10px; border-radius:20px; pointer-events:none; white-space:nowrap; letter-spacing:0.3px; }
         .comm-feed-name { font-size:1.1rem; font-weight:700; color:var(--text-primary); margin-bottom:2px; }
         .comm-feed-desc { font-size:0.74rem; color:var(--text-muted); margin-bottom:14px; white-space:pre-wrap; word-wrap:break-word; }
         .mod-badge { display:inline-block; font-size:0.56rem; font-weight:800; padding:1px 6px; border-radius:4px; background:rgba(45,212,191,0.15); border:1px solid rgba(45,212,191,0.4); color:var(--teal); letter-spacing:0.5px; margin-left:5px; vertical-align:middle; text-transform:uppercase; }
@@ -11431,9 +11434,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div style="margin-bottom:8px;">
                             <input type="file" id="comm-edit-img-file" accept="image/*" style="display:none;" onchange="uploadHubBanner(this,'comm-edit-img','comm-edit-banner-thumb','comm-edit-banner-wrap','comm-edit-banner-progress')">
                             <button type="button" class="btn" onclick="document.getElementById('comm-edit-img-file').click()" style="width:100%;margin-bottom:6px;font-size:0.73rem;">📷 Upload Banner Image</button>
-                            <div id="comm-edit-banner-wrap" style="display:none;margin-bottom:6px;">
-                                <img id="comm-edit-banner-thumb" src="" style="width:100%;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);">
+                            <div id="comm-edit-banner-wrap" class="banner-drag-wrap" onmousedown="_bannerDragStart(event,'comm-edit-banner-thumb','comm-edit-img-position')" ontouchstart="_bannerDragStart(event,'comm-edit-banner-thumb','comm-edit-img-position')" style="margin-bottom:6px;">
+                                <img id="comm-edit-banner-thumb" src="" style="width:100%;height:180px;object-fit:cover;object-position:50% 50%;display:block;pointer-events:none;">
+                                <div class="banner-drag-hint">↔ Drag to reposition</div>
                             </div>
+                            <input type="hidden" id="comm-edit-img-position" value="50% 50%">
                             <div id="comm-edit-banner-progress" style="display:none;font-size:0.7rem;color:var(--teal);margin-bottom:6px;"></div>
                             <input type="text" id="comm-edit-img" class="field" placeholder="Or paste image URL" style="font-size:0.72rem;">
                         </div>
@@ -11584,9 +11589,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div style="margin-bottom:12px;">
                             <input type="file" id="comm-create-img-file" accept="image/*" style="display:none;" onchange="uploadHubBanner(this,'comm-img-input','comm-create-banner-thumb','comm-create-banner-wrap','comm-create-banner-progress')">
                             <button type="button" class="btn" onclick="document.getElementById('comm-create-img-file').click()" style="width:100%;margin-bottom:6px;font-size:0.73rem;">📷 Upload Banner Image</button>
-                            <div id="comm-create-banner-wrap" style="display:none;margin-bottom:6px;">
-                                <img id="comm-create-banner-thumb" src="" style="width:100%;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);">
+                            <div id="comm-create-banner-wrap" class="banner-drag-wrap" onmousedown="_bannerDragStart(event,'comm-create-banner-thumb','comm-create-img-position')" ontouchstart="_bannerDragStart(event,'comm-create-banner-thumb','comm-create-img-position')" style="margin-bottom:6px;">
+                                <img id="comm-create-banner-thumb" src="" style="width:100%;height:180px;object-fit:cover;object-position:50% 50%;display:block;pointer-events:none;">
+                                <div class="banner-drag-hint">↔ Drag to reposition</div>
                             </div>
+                            <input type="hidden" id="comm-create-img-position" value="50% 50%">
                             <div id="comm-create-banner-progress" style="display:none;font-size:0.7rem;color:var(--teal);margin-bottom:6px;"></div>
                             <input type="text" id="comm-img-input" class="field" placeholder="Or paste image URL" style="font-size:0.72rem;">
                         </div>
@@ -14486,15 +14493,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     function _previewBannerUrl(url) {
         const img  = document.getElementById('banner-preview-img');
         const hint = document.getElementById('banner-preview-hint');
+        const dragHint = document.getElementById('profile-banner-drag-hint');
         if (!img || !hint) return;
         if (url && url.trim()) {
             img.src = url.trim();
             img.style.display = '';
             hint.style.display = 'none';
+            if (dragHint) dragHint.style.display = 'block';
         } else {
             img.src = '';
             img.style.display = 'none';
             hint.style.display = '';
+            if (dragHint) dragHint.style.display = 'none';
         }
     }
 
@@ -14545,6 +14555,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const picVal    = document.getElementById('avatar-input').value.trim();
         const bannerVal = (document.getElementById('banner-input') || {}).value || '';
         const bannerUrl = bannerVal.trim();
+        const bannerPos = ((document.getElementById('banner-position-input') || {}).value || '50% 50%').trim();
         const bioVal    = (document.getElementById('bio-input') || {}).value || '';
         const bio       = bioVal.trim().slice(0, 160);
         const links = [];
@@ -14560,9 +14571,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (picVal) localStorage.setItem('hub_userPic', picVal);
         userHandle = nameVal;
         if (picVal) userAvatar = picVal;
-        window.userBannerUrl = bannerUrl;
-        window.userBio       = bio;
-        window.userLinks     = links;
+        window.userBannerUrl      = bannerUrl;
+        window.userBannerPosition = bannerPos;
+        window.userBio            = bio;
+        window.userLinks          = links;
+        var _heroBannerEl = document.getElementById('hero-banner-img');
+        if (_heroBannerEl) _heroBannerEl.style.objectPosition = bannerPos;
         _applyHeroBanner(bannerUrl);
         _renderHeroLinks(links);
 
@@ -14573,8 +14587,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 await window.fs.setDoc(userRef, {
                     displayName:   nameVal,
                     avatarUrl:     picVal || userAvatar,
-                    bannerUrl:     bannerUrl,
-                    bannerStyle:   _pendingBannerStyle,
+                    bannerUrl:      bannerUrl,
+                    bannerPosition: bannerPos,
+                    bannerStyle:    _pendingBannerStyle,
                     bio:           bio,
                     links:         links,
                     walletAddress: userAddress.toLowerCase(),
@@ -14630,6 +14645,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     window.userBannerUrl = data.bannerUrl || '';
                     const bannerInp = document.getElementById('banner-input');
                     if (bannerInp) bannerInp.value = data.bannerUrl || '';
+                }
+                if (data.bannerPosition !== undefined) {
+                    window.userBannerPosition = data.bannerPosition || '50% 50%';
+                    const heroBannerEl = document.getElementById('hero-banner-img');
+                    if (heroBannerEl) heroBannerEl.style.objectPosition = window.userBannerPosition;
                 }
                 if (data.bio !== undefined) {
                     window.userBio = data.bio || '';
@@ -16813,6 +16833,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (ai)     ai.value     = userAvatar || '';
         if (bi)     bi.value     = window.userBannerUrl || '';
         if (bioInp) { bioInp.value = window.userBio || ''; if (ctr) ctr.textContent = bioInp.value.length; }
+        var _bannerPosInp = document.getElementById('banner-position-input');
+        if (_bannerPosInp) _bannerPosInp.value = window.userBannerPosition || '50% 50%';
+        var _bannerPrevImg = document.getElementById('banner-preview-img');
+        if (_bannerPrevImg) _bannerPrevImg.style.objectPosition = window.userBannerPosition || '50% 50%';
         _previewBannerUrl(window.userBannerUrl || '');
         // Initialize living banner picker
         const _curPreset = window._activeBannerStyle || '';
@@ -21523,7 +21547,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var nameEl    = document.getElementById('comm-feed-name');
         var descEl    = document.getElementById('comm-feed-desc');
         if (bannerImg) {
-            if (comm.headerImg) { bannerImg.src = comm.headerImg; bannerImg.style.display = 'block'; }
+            if (comm.headerImg) { bannerImg.src = comm.headerImg; bannerImg.style.objectPosition = comm.headerImgPosition || '50% 50%'; bannerImg.style.display = 'block'; }
             else bannerImg.style.display = 'none';
         }
         if (nameEl) nameEl.textContent = comm.name || 'Hub';
@@ -22119,12 +22143,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 i.value = _activeCommunity.headerImg || '';
                 var _bw = document.getElementById('comm-edit-banner-wrap');
                 var _bt = document.getElementById('comm-edit-banner-thumb');
+                var _bp = document.getElementById('comm-edit-img-position');
+                var _savedPos = _activeCommunity.headerImgPosition || '50% 50%';
                 if (_activeCommunity.headerImg && _bw && _bt) {
                     _bt.src = _activeCommunity.headerImg;
+                    _bt.style.objectPosition = _savedPos;
                     _bw.style.display = 'block';
                 } else if (_bw) {
                     _bw.style.display = 'none';
                 }
+                if (_bp) _bp.value = _savedPos;
             }
             var _se  = document.getElementById('comm-edit-sub-enabled');
             var _sp  = document.getElementById('comm-edit-sub-price');
@@ -22154,6 +22182,41 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         } catch(e) { console.warn('[togglePinHubPost]', e); showToast('Failed to pin post.'); }
     }
     window.togglePinHubPost = togglePinHubPost;
+
+    // ─── Banner drag-to-reposition ────────────────────────────────────────────────
+    (function() {
+        var _dragImg = null, _dragPosId = null, _dragging = false;
+        function _applyPos(clientX, clientY, el, container) {
+            var rect = container.getBoundingClientRect();
+            var x = Math.max(0, Math.min(100, (clientX - rect.left) / rect.width * 100));
+            var y = Math.max(0, Math.min(100, (clientY - rect.top)  / rect.height * 100));
+            var val = x.toFixed(1) + '% ' + y.toFixed(1) + '%';
+            if (el) el.style.objectPosition = val;
+            var inp = document.getElementById(_dragPosId);
+            if (inp) inp.value = val;
+        }
+        window._bannerDragStart = function(e, imgId, posInputId) {
+            _dragging  = true;
+            _dragImg   = document.getElementById(imgId);
+            _dragPosId = posInputId;
+            var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            _applyPos(clientX, clientY, _dragImg, e.currentTarget);
+            e.preventDefault();
+        };
+        document.addEventListener('mousemove', function(e) {
+            if (!_dragging || !_dragImg) return;
+            var container = _dragImg.closest('.banner-drag-wrap') || document.getElementById('banner-preview-wrap');
+            if (container) _applyPos(e.clientX, e.clientY, _dragImg, container);
+        });
+        document.addEventListener('touchmove', function(e) {
+            if (!_dragging || !_dragImg) return;
+            var container = _dragImg.closest('.banner-drag-wrap') || document.getElementById('banner-preview-wrap');
+            if (container) _applyPos(e.touches[0].clientX, e.touches[0].clientY, _dragImg, container);
+        }, { passive: false });
+        document.addEventListener('mouseup',  function() { _dragging = false; });
+        document.addEventListener('touchend', function() { _dragging = false; });
+    })();
 
     // ─── Upload hub banner to Firebase Storage ────────────────────────────────────
     async function uploadHubBanner(input, urlFieldId, thumbId, wrapId, progressId) {
@@ -22205,6 +22268,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var name       = (document.getElementById('comm-edit-name')?.value || '').trim();
         var desc       = (document.getElementById('comm-edit-desc')?.value || '').trim();
         var img        = (document.getElementById('comm-edit-img')?.value  || '').trim();
+        var imgPos     = (document.getElementById('comm-edit-img-position')?.value || '50% 50%').trim();
         var rules      = (document.getElementById('comm-edit-rules')?.value || '').trim();
         var subEnabled = !!(document.getElementById('comm-edit-sub-enabled')?.checked);
         var subPrice   = parseInt(document.getElementById('comm-edit-sub-price')?.value || '20', 10);
@@ -22216,9 +22280,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         try {
             await window.fs.updateDoc(
                 window.fs.doc(window.db, 'communities', _activeCommunity.id),
-                { name: name, description: desc, headerImg: img, rulesText: rules, subscriptionsEnabled: subEnabled, subscriptionPrice: subPrice, coMods: coMods }
+                { name: name, description: desc, headerImg: img, headerImgPosition: imgPos, rulesText: rules, subscriptionsEnabled: subEnabled, subscriptionPrice: subPrice, coMods: coMods }
             );
-            var _updFields = { name: name, description: desc, headerImg: img, rulesText: rules, subscriptionsEnabled: subEnabled, subscriptionPrice: subPrice, coMods: coMods };
+            var _updFields = { name: name, description: desc, headerImg: img, headerImgPosition: imgPos, rulesText: rules, subscriptionsEnabled: subEnabled, subscriptionPrice: subPrice, coMods: coMods };
             _activeCommunity = Object.assign({}, _activeCommunity, _updFields);
             var nameEl    = document.getElementById('comm-feed-name');
             var descEl    = document.getElementById('comm-feed-desc');
@@ -22228,7 +22292,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (nameEl)    nameEl.textContent = name;
             if (descEl)    descEl.textContent = desc;
             if (bannerImg) {
-                if (img) { bannerImg.src = img; bannerImg.style.display = 'block'; }
+                if (img) { bannerImg.src = img; bannerImg.style.objectPosition = imgPos; bannerImg.style.display = 'block'; }
                 else       bannerImg.style.display = 'none';
             }
             if (rulesEl)  rulesEl.textContent = rules;
@@ -22744,7 +22808,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         var name   = (document.getElementById('comm-name-input')?.value  || '').trim();
         var desc   = (document.getElementById('comm-desc-input')?.value  || '').trim();
-        var imgUrl = (document.getElementById('comm-img-input')?.value   || '').trim();
+        var imgUrl = (document.getElementById('comm-img-input')?.value        || '').trim();
+        var imgPos = (document.getElementById('comm-create-img-position')?.value || '50% 50%').trim();
         var alias  = (document.getElementById('comm-alias-input')?.value || '').trim().toLowerCase();
 
         if (!name) return showToast('Please enter a community name.');
@@ -22833,8 +22898,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var commData = {
                 name:        name,
                 description: desc,
-                headerImg:   imgUrl,
-                ownerId:     userAddress,
+                headerImg:         imgUrl,
+                headerImgPosition: imgPos,
+                ownerId:           userAddress,
                 ownerName:   ownerName,
                 createdAt:   Date.now(),
                 postCount:   0
@@ -27787,10 +27853,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         <div style="font-size:0.67rem;color:var(--text-muted);opacity:0.7;margin-bottom:8px;">Recommended size: 1500 × 500 px — wide landscape images work best.</div>
 
         <!-- Banner live preview -->
-        <div id="banner-preview-wrap" style="width:100%;height:90px;border-radius:10px;overflow:hidden;margin-bottom:10px;background:linear-gradient(135deg,#0f0a2a,#1a0a3a);border:1px solid var(--border);position:relative;display:flex;align-items:center;justify-content:center;">
-            <img id="banner-preview-img" src="" alt="" style="width:100%;height:100%;object-fit:cover;display:none;" onerror="this.style.display='none'">
+        <div id="banner-preview-wrap" onmousedown="_bannerDragStart(event,'banner-preview-img','banner-position-input')" ontouchstart="_bannerDragStart(event,'banner-preview-img','banner-position-input')" style="width:100%;height:90px;border-radius:10px;overflow:hidden;margin-bottom:10px;background:linear-gradient(135deg,#0f0a2a,#1a0a3a);border:1px solid var(--border);position:relative;cursor:grab;display:flex;align-items:center;justify-content:center;">
+            <img id="banner-preview-img" src="" alt="" style="width:100%;height:100%;object-fit:cover;object-position:50% 50%;display:none;pointer-events:none;" onerror="this.style.display='none'">
             <span id="banner-preview-hint" style="font-size:0.7rem;color:var(--text-muted);position:absolute;">No banner set</span>
+            <div class="banner-drag-hint" id="profile-banner-drag-hint" style="display:none;">↔ Drag to reposition</div>
         </div>
+        <input type="hidden" id="banner-position-input" value="50% 50%">
 
         <!-- Banner upload button -->
         <input type="file" id="banner-file-input" accept="image/*" style="display:none;" onchange="_uploadBannerFile(this)">
