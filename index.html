@@ -18045,7 +18045,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const cfData = await cfResp.json();
 
             if (!cfData.success) {
-                return _wdFail('Server authorization failed: ' + (cfData.error || 'Unknown error'), _clickedBtn);
+                var _wdErrMsg = cfData.error || 'Unknown error';
+                if (cfData.code === 'bnb_low' && (userAddress || '').toLowerCase() === CONFIG.OWNER_ADDRESS.toLowerCase()) {
+                    _wdErrMsg = '⚠️ Admin: Settlement wallet BNB is critically low. Check Firebase logs for wallet address and top up.';
+                }
+                return _wdFail(_wdErrMsg, _clickedBtn);
             }
             _wdStatus('Step 5/7 — Permit received ✓');
 
