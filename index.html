@@ -15756,10 +15756,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;
             }
 
-            // User liability: total USDT deposited minus USDT value of stars spent
+            // User liability: net deposits + earned stars owed to creators
             const totalDepositedUsdt = window._mcdTotalDepositedUsdt || 0;
             const totalSpentStars    = window._mcdSpentStars          || 0;
-            const userLiabilityUsdt  = Math.max(0, totalDepositedUsdt - (totalSpentStars * CONFIG.STAR_USD));
+            const totalEarnedStars   = window._mcdEarned              || 0;
+            const depositLiability   = Math.max(0, totalDepositedUsdt - (totalSpentStars * CONFIG.STAR_USD));
+            const earnedLiability    = totalEarnedStars * CONFIG.STAR_USD;
+            const userLiabilityUsdt  = depositLiability + earnedLiability;
             const adminRevUsdt       = adminRevStars * CONFIG.STAR_USD;
 
             const isSolvent      = contractBalUsdt >= userLiabilityUsdt;
@@ -15779,7 +15782,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (statusEl) statusEl.textContent = 'SYSTEM SOLVENT';
                 if (detailEl) detailEl.textContent =
                     'Coverage: ' + coverageRatio + '% · Surplus: $' + discrepancyUsd.toFixed(2) +
-                    ' · Users owed: $' + userLiabilityUsdt.toFixed(2) + ' USDT' +
+                    ' · Deposits owed: $' + depositLiability.toFixed(2) +
+                    ' · Earned owed: $' + earnedLiability.toFixed(2) +
                     ' · Admin rev: $' + adminRevUsdt.toFixed(2) + ' USDT';
             } else {
                 if (statusEl) statusEl.textContent = 'RESERVE DISCREPANCY';
