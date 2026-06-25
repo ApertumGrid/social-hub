@@ -13101,6 +13101,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         "function withdrawableUSDT(address user) view returns (uint256)",
         "function getBalance(address user) view returns (uint256 deposited, uint256 withdrawable, uint256 total)",
         "function adminWithdrawToTreasury() external",
+        "function adminAddPlatformFees(uint256 amount) external",
         "function platformPool() view returns (uint256)",
         "function nonces(address user) view returns (uint256)",
         "function paused() view returns (bool)",
@@ -15818,6 +15819,24 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             poolUsdt = parseFloat(ethers.utils.formatUnits(poolRaw, 18));
         } catch (e) {
             return alert("Could not read platformPool: " + e.message);
+        }
+
+        // If pool is empty, attribute Firestore-tracked revenue on-chain first
+        if (poolUsdt <= 0 && window.db) {
+            try {
+                const revSnap = await window.fs.getDoc(window.fs.doc(window.db, "admin_revenue", "global"));
+                const firestoreRev = revSnap.exists() ? (revSnap.data().total || 0) : 0;
+                if (firestoreRev > 0) {
+                    showToast("Attributing $" + firestoreRev.toFixed(2) + " USDT to on-chain platform pool…");
+                    const revWei = ethers.utils.parseUnits(firestoreRev.toFixed(6), 18);
+                    const addTx = await hubContract.adminAddPlatformFees(revWei, { gasLimit: 120000 });
+                    await addTx.wait();
+                    const poolRaw2 = await new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, getRpcProvider()).platformPool();
+                    poolUsdt = parseFloat(ethers.utils.formatUnits(poolRaw2, 18));
+                }
+            } catch (e) {
+                return alert("Failed to attribute platform fees on-chain:\n" + (e.reason || e.message || String(e)).slice(0, 300));
+            }
         }
 
         if (poolUsdt <= 0) {
@@ -34558,7 +34577,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     const _origSendGift = window.sendGift;
     window.sendGift = async function(tierKey) {
         await _origSendGift(tierKey);
-        const tier = { spark:1, fire:5, diamond:20, rocket:50 }[tierKey] || 0;
+        const tier = { bloom:1, blaze:5, rush:10, crown:25, burst:50, storm:100, dragon:250, comet:500, fortune:1000, phoenix:5000, eclipse:10000, aurora:25000, cosmos:35000, reign:45000, genesis:50000 }[tierKey] || 0;
         if (tier > 0) {
             const handle = window._liveUserHandle || 'Viewer';
             _updateLeaderboard(handle, tier);
@@ -38248,7 +38267,7 @@ window.sendGift = async function(tierKey){
     await _origSendGiftBattle(tierKey);
     if (window._triggerGiftCombo) window._triggerGiftCombo(tierKey);
     if(!_bid||!_bdata) return;
-    var costs={spark:1,fire:5,diamond:20,rocket:50};
+    var costs={bloom:1,blaze:5,rush:10,crown:25,burst:50,storm:100,dragon:250,comet:500,fortune:1000,phoenix:5000,eclipse:10000,aurora:25000,cosmos:35000,reign:45000,genesis:50000};
     var stars=costs[tierKey]||1;
     var field=null;
     if(_bRole==='viewer-a'||_bRole==='challenger') field='scoreChallenger';
