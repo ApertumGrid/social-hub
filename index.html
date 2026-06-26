@@ -2807,6 +2807,22 @@
         .ch-badge-name{font-size:.78rem;font-weight:800;color:rgba(255,210,60,1);}
         .ch-badge-desc{font-size:.65rem;color:rgba(255,255,255,.45);}
         /* ── First Earnings Modal ── */
+        /* ── Styled alert/confirm dialog (replaces native alert/confirm) ── */
+        #sh-dialog-overlay{position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,0.72);display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);}
+        #sh-dialog-card{background:linear-gradient(160deg,#0f0b20,#0a0d18);border:1px solid rgba(124,92,191,0.35);border-radius:18px;padding:24px 24px 20px;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.6);}
+        #sh-dialog-msg{color:#e8e0ff;font-size:0.88rem;line-height:1.65;white-space:pre-wrap;margin-bottom:20px;word-break:break-word;}
+        #sh-dialog-btns{display:flex;gap:10px;justify-content:flex-end;}
+        .sh-dialog-btn{padding:9px 22px;border-radius:10px;border:none;font-size:0.84rem;font-weight:700;cursor:pointer;transition:all 0.15s;font-family:var(--font-body);}
+        .sh-dialog-ok{background:rgba(124,92,191,0.85);color:#fff;}
+        .sh-dialog-ok:hover{background:rgba(124,92,191,1);}
+        .sh-dialog-cancel{background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.12);}
+        .sh-dialog-cancel:hover{background:rgba(255,255,255,0.12);}
+        .sh-dialog-confirm{background:rgba(124,92,191,0.85);color:#fff;}
+        .sh-dialog-confirm:hover{background:rgba(124,92,191,1);}
+        /* ── Following feed empty banner ── */
+        #following-empty-banner{display:none;background:rgba(124,92,191,0.08);border:1px solid rgba(124,92,191,0.2);border-radius:14px;padding:18px 20px;margin-bottom:14px;text-align:center;}
+        #following-empty-banner p{color:rgba(255,255,255,0.55);font-size:0.83rem;margin:0 0 12px;}
+        #following-empty-banner button{padding:8px 20px;border-radius:20px;border:1px solid rgba(124,92,191,0.5);background:rgba(124,92,191,0.15);color:#c4b5fd;font-size:0.8rem;font-weight:700;cursor:pointer;}
         #first-earnings-modal{position:fixed;inset:0;z-index:12000;display:none;align-items:center;justify-content:center;padding:24px;}
         #first-earnings-modal.open{display:flex;}
         #first-earnings-modal .fem-scrim{position:absolute;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);}
@@ -10657,6 +10673,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <span style="font-size:0.72rem; color:var(--text-muted); flex:1;">— showing all posts with this tag</span>
                     <button onclick="clearHashtagFilter()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.9rem;padding:2px 6px;" title="Clear filter">✕</button>
                 </div>
+                <div id="following-empty-banner">
+                    <p>You're not following anyone yet.<br>Discover creators and follow them to see their posts here.</p>
+                    <button onclick="document.getElementById('search-input').focus();document.getElementById('search-input').dispatchEvent(new Event('focus'))">Browse Members →</button>
+                </div>
                 <div id="feed-items"></div>
 
                 <!-- Persistent post button — always visible in Flicks mode, opens modal -->
@@ -15873,7 +15893,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
 
         const revenueStars = Math.floor(poolUsdt / CONFIG.STAR_USD);
-        const confirmed = confirm(
+        const confirmed = await _shConfirm(
             `Treasury Withdrawal\n` +
             `${'─'.repeat(30)}\n` +
             `Platform Pool:  $${poolUsdt.toFixed(4)} USDT (${revenueStars} ★)\n` +
@@ -16397,7 +16417,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 ' safeWithdrawAptm=' + safeWithdrawAptm.toFixed(8) +
                 ' @ $' + livePrice.toFixed(4));
 
-            var confirmed = confirm(
+            var confirmed = await _shConfirm(
                 'Settle Stars to Wallet\n\n' +
                 'Total Stars:      ' + totalStarsDisplay.toFixed(2) + ' ★\n' +
                 '  Deposit Stars:  ' + depositStarsDisplay.toFixed(2) + ' ★\n' +
@@ -16591,6 +16611,40 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const t = document.getElementById('toast');
         if (t) { t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2800); }
     }
+
+    // ── Styled alert / confirm — replaces jarring native browser dialogs ──────
+    function _shDialog(msg, btns) {
+        return new Promise(function(resolve) {
+            var o = document.getElementById('sh-dialog-overlay');
+            var m = document.getElementById('sh-dialog-msg');
+            var b = document.getElementById('sh-dialog-btns');
+            if (!o || !m || !b) { resolve(false); return; }
+            m.textContent = String(msg || '');
+            b.innerHTML = '';
+            btns.forEach(function(cfg) {
+                var el = document.createElement('button');
+                el.className = 'sh-dialog-btn ' + cfg.cls;
+                el.textContent = cfg.label;
+                el.onclick = function() { o.style.display = 'none'; resolve(cfg.val); };
+                b.appendChild(el);
+            });
+            o.onclick = function(e) { if (e.target === o) { o.style.display = 'none'; resolve(false); } };
+            o.style.display = 'flex';
+        });
+    }
+    function _shAlert(msg) {
+        return _shDialog(msg, [{ label: 'OK', cls: 'sh-dialog-ok', val: true }]);
+    }
+    function _shConfirm(msg) {
+        return _shDialog(msg, [
+            { label: 'Cancel',  cls: 'sh-dialog-cancel',  val: false },
+            { label: 'Confirm', cls: 'sh-dialog-confirm', val: true  }
+        ]);
+    }
+    window._shAlert   = _shAlert;
+    window._shConfirm = _shConfirm;
+    // Override native alert so all existing alert() calls get the styled version automatically
+    window.alert = function(msg) { _shAlert(msg); };
 
     // ─── INDEX 28: Global Activity Pulse ─────────────────────────────────────────
     // Shows bottom-left teal notification to ALL visitors simultaneously
@@ -18368,7 +18422,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             ? ("⚠ " + fbCreatorStars.toFixed(2) + " earned ★ KEPT — platform reserve is currently empty.\n" +
                "  Your stars are safe and payable once the platform is funded.\n\n")
             : "";
-        const confirmed = confirm(
+        const confirmed = await _shConfirm(
             "Settle Balance to Wallet\n\n" +
             "Purchased Balance:  " + fbAptmBalance.toFixed(6) + " USDT\n" +
             (fbCreatorStars > 0
@@ -23533,6 +23587,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // ═══════════════════════════════════════════════════════════════════
     async function setFeedMode(mode) {
         _followMode = mode;
+        // Hide following banner when switching away from following mode
+        var _feb = document.getElementById('following-empty-banner');
+        if (_feb && mode !== 'following') _feb.style.display = 'none';
 
         const globalBtn    = document.getElementById('feed-toggle-global');
         const followingBtn = document.getElementById('feed-toggle-following');
@@ -23606,8 +23663,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;
             }
             loadFollowingSet().then(() => {
+                var _feb = document.getElementById('following-empty-banner');
                 if (_followingSet.size === 0) {
-                    showToast('Follow creators or hubs to populate your Following Feed.');
+                    if (_feb) _feb.style.display = 'block';
+                } else {
+                    if (_feb) _feb.style.display = 'none';
                 }
                 visibleCount = 10;
                 if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
@@ -23823,7 +23883,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             );
         }
 
-        const confirmed = confirm(
+        const confirmed = await _shConfirm(
             'Post Flick\n' +
             '──────────────────────────\n' +
             'Fee: ' + CONFIG.FEES.FLICK + '★  ($' + (CONFIG.FEES.FLICK * CONFIG.STAR_USD).toFixed(2) + ' USDT)\n' +
@@ -23925,6 +23985,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             closeFlickComposer();
             showToast('Flick posted! ▶');
+            if (typeof window.tickerLog === 'function') window.tickerLog('info', 'New Flick posted', CONFIG.FEES.FLICK, '▶');
             loadFlicksFeed();
         } catch (e) {
             alert('Failed to post Flick: ' + e.message);
@@ -27442,7 +27503,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         _srTab_ = 'people';
         var prefix = isMob ? 'mob-tab-' : 'sr-tab-';
         ['people','posts','hubs'].forEach(function(t){
-            var el=document.getElementById(prefix+t); if(el) el.classList.toggle('active', t==='people');
+            var el=document.getElementById(prefix+t);
+            if(el) { el.classList.toggle('active', t==='people'); if(t!=='people') el.textContent=t.charAt(0).toUpperCase()+t.slice(1); }
         });
         _srSetBody('<div class="sr-spin">Loading members…</div>', isMob);
         try {
@@ -39384,6 +39446,14 @@ window.toggleCreatorAnalytics = function() {
     }
 })();
 </script>
+
+<!-- Styled alert/confirm dialog — replaces native browser alert() and confirm() -->
+<div id="sh-dialog-overlay">
+    <div id="sh-dialog-card">
+        <div id="sh-dialog-msg"></div>
+        <div id="sh-dialog-btns"></div>
+    </div>
+</div>
 
 <!-- Global withdrawal status overlay — fixed position, visible over any tab/page -->
 <div id="wd-global-overlay" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:99999;padding:14px 16px 28px;background:linear-gradient(to top,rgba(10,12,18,0.98) 80%,rgba(10,12,18,0));pointer-events:none;">
