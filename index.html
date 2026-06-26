@@ -10986,6 +10986,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         ↻ Recalculate Hub Post Counts
                     </button>
 
+                    <button id="admin-retranscode-btn" onclick="adminRetranscodeFlicks()"
+                            style="display:flex;align-items:center;justify-content:center;gap:8px;
+                                   width:100%;margin-top:8px;padding:10px 18px;
+                                   background:rgba(124,92,191,0.08);border:1px solid rgba(124,92,191,0.4);
+                                   border-radius:var(--radius-md);color:#c4b5fd;
+                                   font-family:var(--font-body);font-size:0.78rem;font-weight:700;
+                                   cursor:pointer;letter-spacing:0.3px;"
+                            title="Re-encode all existing Flick videos to H.264 so they play on all devices">
+                        ▶ Fix Broken Flicks (Re-encode to H.264)
+                    </button>
+
                     <!-- ── SEED PROTOCOL VAULT ─────────────────────────────────────── -->
                     <!-- Sends APTM directly to the contract WITHOUT minting stars.      -->
                     <!-- Use this to cover reserve shortfalls without inflating supply.  -->
@@ -23952,7 +23963,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         try {
             const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
             const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
-            await window.fs.addDoc(window.fs.collection(window.db, 'posts'), {
+            const docRef = await window.fs.addDoc(window.fs.collection(window.db, 'posts'), {
                 text:       caption,
                 media:      mediaUrl,
                 firebase:   true,
@@ -23968,6 +23979,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 category:   'Global',
                 hashtags:   _extractHashtags(caption)
             });
+
+            // Transcode to H.264 so HEVC/H.265 videos play on all browsers
+            if (_fpLabel) _fpLabel.textContent = 'Optimizing for all devices…';
+            if (_fpWrap)  _fpWrap.style.display = 'block';
+            if (_fpBar)   _fpBar.style.width = '100%';
+            try {
+                await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/transcodeFlick', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mediaUrl: mediaUrl, postId: docRef.id })
+                });
+            } catch (_e) { /* transcode failure is non-fatal — original URL stays in Firestore */ }
 
             // Reset composer
             _flickSelectedFile = null;
@@ -27031,6 +27054,79 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (btn) { btn.disabled = false; btn.textContent = '\u26a0 Run Balance Reconciliation'; }
     }
     window.adminReconcile = adminReconcile;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // ADMIN: RE-ENCODE ALL FLICKS TO H.264
+    // Finds every type-4 post whose media URL is NOT already in
+    // flicks_transcoded/ and calls transcodeFlick for each one.
+    // Firestore `media` field is updated by the CF itself.
+    // ═══════════════════════════════════════════════════════════════════
+    async function adminRetranscodeFlicks() {
+        const btn = document.getElementById('admin-retranscode-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Working…'; }
+
+        try {
+            const snap = await window.fs.getDocs(
+                window.fs.query(
+                    window.fs.collection(window.db, 'posts'),
+                    window.fs.where('type', '==', 4),
+                    window.fs.where('isVisible', '==', true)
+                )
+            );
+
+            const toFix = [];
+            snap.forEach(doc => {
+                const d = doc.data();
+                if (d.media && !d.media.includes('flicks_transcoded/')) {
+                    toFix.push({ id: doc.id, media: d.media });
+                }
+            });
+
+            if (toFix.length === 0) {
+                await _shAlert('All Flicks are already transcoded.');
+                if (btn) { btn.disabled = false; btn.textContent = '▶ Fix Broken Flicks (Re-encode to H.264)'; }
+                return;
+            }
+
+            const ok = await _shConfirm(
+                'Re-encode Flicks to H.264\n\n' +
+                'Found ' + toFix.length + ' Flick(s) to re-encode.\n' +
+                'This runs in the background — each takes ~20-40 seconds.\n' +
+                'Proceed?'
+            );
+            if (!ok) {
+                if (btn) { btn.disabled = false; btn.textContent = '▶ Fix Broken Flicks (Re-encode to H.264)'; }
+                return;
+            }
+
+            let done = 0, failed = 0;
+            for (const post of toFix) {
+                if (btn) btn.textContent = 'Processing ' + (done + failed + 1) + ' / ' + toFix.length + '…';
+                try {
+                    const r = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/transcodeFlick', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mediaUrl: post.media, postId: post.id })
+                    });
+                    if (r.ok) done++; else failed++;
+                } catch (_e) { failed++; }
+            }
+
+            await _shAlert(
+                'Re-encoding complete!\n\n' +
+                '✓ Success: ' + done + '\n' +
+                '✗ Failed:  ' + failed + '\n\n' +
+                'Reload the Flick feed to see updated videos.'
+            );
+            loadFlicksFeed();
+
+        } catch (e) {
+            alert('Re-encode failed: ' + e.message);
+        }
+
+        if (btn) { btn.disabled = false; btn.textContent = '▶ Fix Broken Flicks (Re-encode to H.264)'; }
+    }
+    window.adminRetranscodeFlicks = adminRetranscodeFlicks;
 
     // ═══════════════════════════════════════════════════════════════════
     // ADMIN: RECALCULATE HUB POST COUNTS
