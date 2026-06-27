@@ -19662,8 +19662,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     //  SUPPORT SYSTEM
     // ════════════════════════════════════════════════════════════════
 
-    var _SUPPORT_BOT   = '8713457403:AAEi7pVxsKOyu4GEL1ubrrOe9u2A7czIXQM';
-    var _SUPPORT_CHAT  = '-1003717881722';
+    var _SUPPORT_CF_URL = 'https://us-central1-socialhub-33014.cloudfunctions.net/sendSupportMessage';
 
     function openSupport() {
         var modal = document.getElementById('support-modal');
@@ -19709,17 +19708,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var btn = document.getElementById('support-submit-btn');
         if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
 
-        var now = new Date().toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
-        var text = '🆘 Support Request\n👤 Name: ' + name + '\n👛 Wallet: ' + wallet + '\n📝 Issue: ' + issue + '\n🕐 ' + now;
-
         try {
-            var resp = await fetch('https://api.telegram.org/bot' + _SUPPORT_BOT + '/sendMessage', {
+            var resp = await fetch(_SUPPORT_CF_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: _SUPPORT_CHAT, text: text })
+                body: JSON.stringify({ name: name, wallet: wallet, issue: issue })
             });
             var data = await resp.json();
-            if (!resp.ok || !data.ok) throw new Error(data.description || 'Telegram error');
+            if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to send');
 
             // Replace form with success message
             var inner = document.getElementById('support-inner');
