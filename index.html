@@ -1011,7 +1011,7 @@
         #replay-modal-info { font-size:0.68rem; color:var(--text-muted); font-family:var(--font-mono); display:flex; gap:14px; flex-wrap:wrap; }
 
         /* ── Stream Mode Selector (setup panel) ──────────────────────── */
-        .mode-selector { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+        .mode-selector { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
         .mode-card {
             border:1.5px solid rgba(255,255,255,0.1); border-radius:12px;
             padding:12px 8px; cursor:pointer; transition:all 0.15s;
@@ -12039,56 +12039,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div style="padding:28px 24px; border-right:1px solid rgba(255,255,255,0.05); display:flex; flex-direction:column; gap:0;">
                                 <div style="font-size:1.4rem; font-weight:700; color:#fff; margin-bottom:24px; letter-spacing:-0.3px;">Stream Setup</div>
 
-                                <div style="margin-bottom:18px;">
+                                <div style="margin-bottom:20px;">
                                     <div style="font-size:0.68rem; font-weight:600; color:rgba(255,255,255,0.4); letter-spacing:0.8px; margin-bottom:8px;">STREAM TITLE</div>
                                     <input type="text" id="live-stream-title-input" placeholder="e.g. Building the future of Web3 live…" style="
                                         width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
                                         border-radius:10px; padding:11px 14px; font-size:0.82rem; color:#fff;
                                         outline:none; box-sizing:border-box;
                                         transition:border-color 0.2s;
-                                    " onfocus="this.style.borderColor='rgba(224,62,62,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
-                                </div>
-
-                                <div style="margin-bottom:24px;">
-                                    <div style="font-size:0.68rem; font-weight:600; color:rgba(255,255,255,0.4); letter-spacing:0.8px; margin-bottom:8px;">CATEGORY</div>
-                                    <select id="live-stream-category" style="
-                                        width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
-                                        border-radius:10px; padding:11px 14px; font-size:0.82rem; color:#fff;
-                                        outline:none; box-sizing:border-box; cursor:pointer;
-                                        -webkit-appearance:none; appearance:none;
-                                        background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%228%22 viewBox=%220 0 12 8%22><path d=%22M1 1l5 5 5-5%22 stroke=%22rgba(255,255,255,0.4)%22 stroke-width=%221.5%22 fill=%22none%22/></svg>');
-                                        background-repeat:no-repeat; background-position:right 14px center;
-                                    " onfocus="this.style.borderColor='rgba(224,62,62,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
-                                        <option value="" disabled selected style="color:#888;">Select a category…</option>
-                                        <option value="Crypto">🪙 Crypto &amp; Web3</option>
-                                        <option value="Creative">🎨 Creative</option>
-                                        <option value="Gaming">🎮 Gaming</option>
-                                        <option value="Education">📚 Education</option>
-                                        <option value="Lifestyle">🌿 Lifestyle</option>
-                                        <option value="Music">🎵 Music</option>
-                                    </select>
-                                </div>
-
-                                <!-- Stream Mode -->
-                                <div style="margin-bottom:20px;">
-                                    <div style="font-size:0.68rem; font-weight:600; color:rgba(255,255,255,0.4); letter-spacing:0.8px; margin-bottom:10px;">STREAM MODE</div>
-                                    <div class="mode-selector">
-                                        <div class="mode-card active" data-mode="social" onclick="selectStreamMode('social',this)">
-                                            <span class="mode-card-icon">📱</span>
-                                            <div class="mode-card-name">Social</div>
-                                            <div class="mode-card-desc">Camera · Chat overlay · Gifts &amp; polls</div>
-                                        </div>
-                                        <div class="mode-card" data-mode="presentation" onclick="selectStreamMode('presentation',this)">
-                                            <span class="mode-card-icon">🖥</span>
-                                            <div class="mode-card-name">Presentation</div>
-                                            <div class="mode-card-desc">Screen share · Side chat · Demos &amp; teaching</div>
-                                        </div>
-                                        <div class="mode-card mode-coming-soon" title="Hub Conference — coming soon">
-                                            <span class="mode-card-icon">🤝</span>
-                                            <div class="mode-card-name">Conference</div>
-                                            <div class="mode-card-desc">Group calls · Grid layout · DAO &amp; team calls</div>
-                                        </div>
-                                    </div>
+                                    " onfocus="this.style.borderColor='rgba(224,62,62,0.5)'; document.getElementById('live-title-error').style.display='none';" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+                                    <div id="live-title-error" style="display:none; font-size:0.7rem; color:#e8415a; margin-top:6px; font-weight:600;">⚠ Please enter a stream title before going live.</div>
                                 </div>
 
                                 <!-- Toggle switches -->
@@ -29717,27 +29676,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         const _titleInput = $('live-stream-title-input');
         const _catSelect  = $('live-stream-category');
-        const title       = _titleInput ? _titleInput.value.trim() : '';
-        const category    = _catSelect  ? _catSelect.value         : '';
-        const _modeEl     = document.querySelector('.mode-card.active');
-        const streamMode  = (_modeEl && _modeEl.dataset.mode) || 'social';
+        const title      = _titleInput ? _titleInput.value.trim() : '';
+        const category   = '';
+        const streamMode = 'social';
         window._currentStreamMode = streamMode;
 
         if (!title) {
-            showToast('Enter a stream title before going live.');
             if (_titleInput) {
-                _titleInput.focus();
                 _titleInput.style.borderColor = 'rgba(224,62,62,0.75)';
-                setTimeout(() => { if (_titleInput) _titleInput.style.borderColor = 'rgba(255,255,255,0.1)'; }, 2500);
+                _titleInput.focus();
             }
-            return;
-        }
-        if (!category) {
-            showToast('Select a category before going live.');
-            if (_catSelect) {
-                _catSelect.style.borderColor = 'rgba(224,62,62,0.75)';
-                setTimeout(() => { if (_catSelect) _catSelect.style.borderColor = 'rgba(255,255,255,0.1)'; }, 2500);
-            }
+            var _titleErr = document.getElementById('live-title-error');
+            if (_titleErr) _titleErr.style.display = 'block';
             return;
         }
 
@@ -29948,20 +29898,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }).catch(e => console.warn('[CloudRec] Start error:', e));
             })(currentStreamId, _activeLiveChannel);
 
-            // Presentation mode: apply broadcaster layout + auto-trigger screen share picker
-            if (streamMode === 'presentation') {
-                const _bcCon = document.getElementById('live-broadcaster-video-container');
-                if (_bcCon) _bcCon.classList.add('layout-presentation');
-                const _apEl = document.getElementById('live-active-panel');
-                if (_apEl) _apEl.classList.add('pres-active');
-                // Suppress the floating chat toggle — panel chat is always visible
-                _showBcFloatingChat && _showBcFloatingChat(); // no-op if already handled; CSS hides it
-                showToast('📽 Presentation Mode — choose a window or tab to share');
-                // Slight delay so Agora has finished publishing audio/video before track swap
-                setTimeout(function() {
-                    if (isHosting) window.toggleScreenShare();
-                }, 1800);
-            }
 
         } catch(e) {
             console.error('[Live] Go live error:', e);
