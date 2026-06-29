@@ -11,6 +11,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>SOCIALHUB — The Future of Social</title>
 
+    <!-- Telegram Mini App SDK — loads only when running inside Telegram, no-op otherwise -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
     <!-- PWA: iOS -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -10091,14 +10094,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <!-- Shown when NOT connected -->
                     <div id="wdd-connect-section">
                         <div style="padding:8px 12px 6px;font-size:0.65rem;font-weight:700;color:var(--text-muted);letter-spacing:0.5px;text-transform:uppercase;">Choose Wallet</div>
-                        <button class="wdd-option" onclick="_connectWithProvider('metamask');toggleWalletDropdown()">
+                        <button id="wdd-mm-btn" class="wdd-option" onclick="_connectWithProvider('metamask');toggleWalletDropdown()">
                             <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" class="wdd-logo" onerror="this.style.display='none'">
                             <div class="wdd-option-text">
                                 <span class="wdd-name">MetaMask</span>
                                 <span class="wdd-sub" id="wdd-mm-status">Browser extension</span>
                             </div>
                         </button>
-                        <button class="wdd-option" onclick="_connectWithProvider('xova');toggleWalletDropdown()">
+                        <button id="wdd-xova-btn" class="wdd-option" onclick="_connectWithProvider('xova');toggleWalletDropdown()">
                             <img src="https://xova.app/favicon.ico"
                                  class="wdd-logo"
                                  alt="XOVA"
@@ -14760,6 +14763,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     lastConnectedAt:  Date.now()
                 });
                 console.log('[Firebase] New users doc created for', walletAddr.slice(0,8));
+                // If connecting from Telegram Mini App, pre-fill handle + avatar from Telegram identity
+                if (window._isTMA && window._tgSuggestedHandle) {
+                    var _hiEl = document.getElementById('handle-input');
+                    var _avEl = document.getElementById('avatar-input');
+                    if (_hiEl && !_hiEl.value) _hiEl.value = window._tgSuggestedHandle;
+                    if (_avEl && !_avEl.value && window._tgAvatarUrl) _avEl.value = window._tgAvatarUrl;
+                    userHandle = window._tgSuggestedHandle;
+                    if (window._tgAvatarUrl) userAvatar = window._tgAvatarUrl;
+                    updateUI();
+                }
                 // Send one-time welcome message from Ashley to the new user's inbox
                 if (typeof sendWelcomeMessage === 'function') sendWelcomeMessage(walletAddr);
             }
@@ -39614,6 +39627,119 @@ window.toggleCreatorAnalytics = function() {
         <div id="wd-global-status" style="background:var(--bg-card,#1a1d2e);border:1px solid rgba(45,212,191,0.3);border-radius:14px;padding:16px 18px 16px 18px;font-size:0.75rem;font-family:var(--font-mono,monospace);line-height:1.7;word-break:break-all;box-shadow:0 -4px 32px rgba(0,0,0,0.6);"></div>
     </div>
 </div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+// TELEGRAM MINI APP — init, expand, back button, wallet UI adaptation
+// Runs only when the page is loaded inside Telegram's WebView.
+// Safe no-op in all other environments.
+// ═══════════════════════════════════════════════════════════════════════
+(function _initTMA() {
+    var _tgWA = window.Telegram && window.Telegram.WebApp;
+
+    // Not inside Telegram — bail silently
+    var _isTMA = !!(_tgWA && _tgWA.initData && _tgWA.initData.length > 0);
+    window._isTMA = _isTMA;
+    if (!_isTMA) return;
+
+    // ── Tell Telegram we're ready + go full-screen ────────────────────
+    _tgWA.ready();
+    _tgWA.expand();
+
+    // ── Match Telegram's colour scheme ───────────────────────────────
+    if (_tgWA.colorScheme === 'light') {
+        try { localStorage.setItem('sh_theme', 'light'); } catch(_) {}
+        document.documentElement.classList.remove('dark');
+    }
+
+    // ── Extract Telegram user identity (may be empty if privacy setting) ──
+    var _tgUser = (_tgWA.initDataUnsafe && _tgWA.initDataUnsafe.user) || {};
+    window._tgSuggestedHandle = _tgUser.username
+        ? '@' + _tgUser.username
+        : (_tgUser.first_name || '');
+    window._tgAvatarUrl = _tgUser.photo_url || '';
+
+    // ── Hide extension-only wallets, flag WalletConnect as recommended ──
+    function _adaptWalletUI() {
+        var mmBtn  = document.getElementById('wdd-mm-btn');
+        var xoBtn  = document.getElementById('wdd-xova-btn');
+        var wcSub  = document.getElementById('wdd-wc-sub');
+        var hdr    = document.querySelector('#wdd-connect-section > div');
+
+        if (mmBtn)  mmBtn.style.display  = 'none';
+        if (xoBtn)  xoBtn.style.display  = 'none';
+        if (wcSub)  wcSub.textContent    = 'Recommended inside Telegram';
+
+        // Add a small Telegram notice above the wallet list
+        if (hdr && !document.getElementById('wdd-tma-notice')) {
+            var n = document.createElement('div');
+            n.id = 'wdd-tma-notice';
+            n.style.cssText = 'padding:5px 12px 2px;font-size:0.65rem;color:rgba(45,212,191,0.9);font-weight:600;display:flex;align-items:center;gap:5px;';
+            n.innerHTML = '<span>&#9992;</span> Running in Telegram &mdash; connect with WalletConnect';
+            hdr.after(n);
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _adaptWalletUI);
+    } else {
+        _adaptWalletUI();
+    }
+
+    // ── Telegram BackButton — mirrors in-app navigation ───────────────
+    var _tgBack = _tgWA.BackButton;
+
+    function _syncBackBtn() {
+        // Show back button if user is inside a Hub (URL has ?hub= or _activeCommunity is set)
+        var inHub = !!(window._activeCommunity ||
+            (window.location.search && new URLSearchParams(window.location.search).get('hub')));
+        if (inHub) { _tgBack.show(); } else { _tgBack.hide(); }
+    }
+    window._syncTgBackButton = _syncBackBtn;
+
+    _tgBack.onClick(function() {
+        if (window._activeCommunity && typeof commHandleBack === 'function') {
+            commHandleBack();
+        } else {
+            window.history.back();
+        }
+        setTimeout(_syncBackBtn, 300);
+    });
+
+    // Sync back button state whenever the URL changes
+    window.addEventListener('popstate', function() { setTimeout(_syncBackBtn, 150); });
+
+    // Also sync whenever openCommunityFeed / closeCommunityFeed is called
+    // — patch after window assigns so we don't race with IIFE closures
+    var _origOpenFeed  = null;
+    var _origCloseFeed = null;
+    function _patchFeedFns() {
+        if (window.openCommunityFeed && !window._tgFeedPatched) {
+            _origOpenFeed  = window.openCommunityFeed;
+            _origCloseFeed = window.closeCommunityFeed;
+            window.openCommunityFeed = function() {
+                var r = _origOpenFeed.apply(this, arguments);
+                setTimeout(_syncBackBtn, 200);
+                return r;
+            };
+            if (_origCloseFeed) {
+                window.closeCommunityFeed = function() {
+                    var r = _origCloseFeed.apply(this, arguments);
+                    setTimeout(_syncBackBtn, 200);
+                    return r;
+                };
+            }
+            window._tgFeedPatched = true;
+        }
+    }
+    // Patch immediately if already defined, or wait for DOMContentLoaded
+    _patchFeedFns();
+    document.addEventListener('DOMContentLoaded', _patchFeedFns);
+    setTimeout(_patchFeedFns, 1500); // fallback if IIFE runs after this block
+
+    console.log('[TMA] Telegram Mini App initialised. User:', window._tgSuggestedHandle || '(no username)');
+})();
+</script>
 </body>
 </html>
 
