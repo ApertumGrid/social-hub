@@ -99,6 +99,9 @@
             const body  = payload.notification?.body  || '';
             if (typeof showToast === 'function') showToast(title + (body ? ' — ' + body : ''));
         });
+
+        // Lottery card loads for all visitors (no wallet needed to see pot)
+        setTimeout(function() { if (typeof loadLottery === 'function') loadLottery(); }, 800);
     </script>
 
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -10292,6 +10295,54 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                 <div class="feed-heading">Signal Feed</div>
 
+                <!-- Star Lottery card — live via Firestore onSnapshot -->
+                <div id="lottery-card" style="display:none;margin-bottom:12px;border-radius:16px;background:linear-gradient(135deg,rgba(168,85,247,0.13) 0%,rgba(236,72,153,0.08) 100%);border:1px solid rgba(168,85,247,0.35);padding:18px 18px 14px;overflow:hidden;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:1.3rem;">🎰</span>
+                            <div>
+                                <div style="font-size:0.72rem;font-weight:800;color:rgba(168,85,247,0.95);letter-spacing:0.5px;text-transform:uppercase;">Star Lottery</div>
+                                <div style="font-size:0.62rem;color:var(--text-muted);">Daily draw · 80% to winner · 10★ per ticket</div>
+                            </div>
+                        </div>
+                        <div id="lottery-countdown" style="font-size:0.68rem;font-weight:800;color:rgba(168,85,247,0.9);background:rgba(168,85,247,0.12);padding:5px 11px;border-radius:20px;border:1px solid rgba(168,85,247,0.25);font-variant-numeric:tabular-nums;">--:--:--</div>
+                    </div>
+                    <div style="text-align:center;margin-bottom:14px;">
+                        <div id="lottery-pot" style="font-size:2.4rem;font-weight:900;color:#fff;letter-spacing:-1px;line-height:1.1;">0★</div>
+                        <div id="lottery-pot-sub" style="font-size:0.68rem;color:var(--teal);font-weight:600;margin-top:2px;">≈ $0.00 USDT · Winner gets 0★</div>
+                    </div>
+                    <div style="display:flex;justify-content:center;gap:24px;margin-bottom:14px;">
+                        <div style="text-align:center;">
+                            <div id="lottery-wallets" style="font-size:1rem;font-weight:800;color:#fff;">0</div>
+                            <div style="font-size:0.58rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Players</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div id="lottery-tickets" style="font-size:1rem;font-weight:800;color:#fff;">0</div>
+                            <div style="font-size:0.58rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Tickets</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:1rem;font-weight:800;color:rgba(168,85,247,0.9);">Max 50</div>
+                            <div style="font-size:0.58rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Per Wallet</div>
+                        </div>
+                    </div>
+                    <div id="lottery-my-tickets" style="display:none;text-align:center;margin-bottom:10px;font-size:0.68rem;color:rgba(168,85,247,0.95);font-weight:700;background:rgba(168,85,247,0.1);border-radius:8px;padding:5px 10px;"></div>
+                    <div id="lottery-rollover" style="display:none;text-align:center;margin-bottom:8px;font-size:0.65rem;color:var(--gold);font-weight:600;"></div>
+                    <div id="lottery-buy-section" style="display:none;">
+                        <div style="display:flex;gap:6px;margin-bottom:8px;justify-content:center;flex-wrap:wrap;">
+                            <button class="lqb" onclick="setLotteryQty(1)"  data-qty="1"  style="padding:5px 13px;border-radius:20px;border:1px solid rgba(168,85,247,0.4);background:rgba(168,85,247,0.2);color:rgba(200,160,255,0.95);font-size:0.7rem;font-weight:700;cursor:pointer;">1</button>
+                            <button class="lqb" onclick="setLotteryQty(5)"  data-qty="5"  style="padding:5px 13px;border-radius:20px;border:1px solid rgba(168,85,247,0.4);background:rgba(168,85,247,0.1);color:rgba(200,160,255,0.95);font-size:0.7rem;font-weight:700;cursor:pointer;">5</button>
+                            <button class="lqb" onclick="setLotteryQty(10)" data-qty="10" style="padding:5px 13px;border-radius:20px;border:1px solid rgba(168,85,247,0.4);background:rgba(168,85,247,0.1);color:rgba(200,160,255,0.95);font-size:0.7rem;font-weight:700;cursor:pointer;">10</button>
+                            <button class="lqb" onclick="setLotteryQty(25)" data-qty="25" style="padding:5px 13px;border-radius:20px;border:1px solid rgba(168,85,247,0.4);background:rgba(168,85,247,0.1);color:rgba(200,160,255,0.95);font-size:0.7rem;font-weight:700;cursor:pointer;">25</button>
+                            <button class="lqb" onclick="setLotteryQty(50)" data-qty="50" style="padding:5px 13px;border-radius:20px;border:1px solid rgba(168,85,247,0.4);background:rgba(168,85,247,0.1);color:rgba(200,160,255,0.95);font-size:0.7rem;font-weight:700;cursor:pointer;">50</button>
+                        </div>
+                        <button id="lottery-buy-btn" onclick="buyLotteryTickets()" style="width:100%;padding:12px;border-radius:12px;background:linear-gradient(135deg,rgba(168,85,247,0.85),rgba(236,72,153,0.75));border:none;color:#fff;font-size:0.8rem;font-weight:800;cursor:pointer;letter-spacing:0.3px;transition:opacity 0.15s;">Buy 1 Ticket · 10★</button>
+                    </div>
+                    <div id="lottery-connect-prompt" style="display:none;text-align:center;padding:8px 0 2px;">
+                        <span style="font-size:0.68rem;color:var(--text-muted);">Connect your wallet to enter the draw</span>
+                    </div>
+                    <div id="lottery-last-winner" style="display:none;margin-top:12px;padding-top:10px;border-top:1px solid rgba(168,85,247,0.2);text-align:center;font-size:0.65rem;color:var(--text-muted);"></div>
+                </div>
+
                 <!-- Telegram community banner — one-time dismissible -->
                 <div id="tg-community-banner" style="margin-bottom:12px;border-radius:14px;background:linear-gradient(135deg,rgba(36,161,222,0.13) 0%,rgba(45,212,191,0.08) 100%);border:1px solid rgba(36,161,222,0.35);padding:14px 16px;display:flex;align-items:center;gap:12px;">
                     <div style="font-size:1.4rem;flex-shrink:0;">&#9992;</div>
@@ -10977,6 +11028,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         font-weight: 700;
                     ">
                         ⚠ Platform Revenue — Separate Account · Source: admin_revenue/global · Contract: adminWithdraw()
+                    </div>
+                    <!-- Lottery admin controls -->
+                    <div style="margin-bottom:12px;padding:12px;background:rgba(168,85,247,0.07);border:1px solid rgba(168,85,247,0.25);border-radius:10px;">
+                        <div style="font-size:0.62rem;font-weight:800;color:rgba(168,85,247,0.9);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">🎰 Star Lottery Controls</div>
+                        <div id="lottery-admin-status" style="font-size:0.65rem;color:var(--text-muted);margin-bottom:8px;">Loading...</div>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                            <button onclick="adminInitLottery()" style="padding:7px 12px;border-radius:8px;background:rgba(168,85,247,0.2);border:1px solid rgba(168,85,247,0.4);color:rgba(168,85,247,0.9);font-size:0.68rem;font-weight:700;cursor:pointer;">Init Round</button>
+                            <button onclick="adminSeedLottery()" style="padding:7px 12px;border-radius:8px;background:rgba(45,212,191,0.1);border:1px solid rgba(45,212,191,0.3);color:var(--teal);font-size:0.68rem;font-weight:700;cursor:pointer;">Seed Pot</button>
+                            <button onclick="adminDrawLottery()" style="padding:7px 12px;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444;font-size:0.68rem;font-weight:700;cursor:pointer;">Force Draw</button>
+                        </div>
                     </div>
                     <button id="admin-withdraw-btn" onclick="adminWithdraw()">⬇ Withdraw Platform Fees → Treasury (adminWithdrawToTreasury)</button>
                     <button id="admin-reconcile-btn" onclick="adminReconcile()"
@@ -13595,6 +13656,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             address.toLowerCase() === CONFIG.OWNER_ADDRESS.toLowerCase() ? '' : 'none';
         // Start notification listener for this wallet
         try { if (typeof subscribeToNotifs === 'function') subscribeToNotifs(address); } catch(_) {}
+        // Show buy section on lottery card now that wallet is connected
+        if (_lotteryRound) _renderLotteryCard(_lotteryRound);
     }
 
     // ── Push Notification registration ────────────────────────────────────────
@@ -39750,6 +39813,173 @@ window.toggleCreatorAnalytics = function() {
 
     console.log('[TMA] Telegram Mini App initialised. User:', window._tgSuggestedHandle || '(no username)');
 })();
+
+// ═══════════════════════════════════════════════════════════════════════
+// STAR LOTTERY — frontend
+// ═══════════════════════════════════════════════════════════════════════
+var _lotteryQty        = 1;
+var _lotteryRound      = null;
+var _lotteryCountdownIv= null;
+var _lotteryUnsub      = null;
+var _LOTTERY_CF        = 'https://us-central1-socialhub-33014.cloudfunctions.net';
+
+function setLotteryQty(qty) {
+    _lotteryQty = qty;
+    document.querySelectorAll('.lqb').forEach(function(b) {
+        var active = parseInt(b.getAttribute('data-qty')) === qty;
+        b.style.background = active ? 'rgba(168,85,247,0.45)' : 'rgba(168,85,247,0.1)';
+        b.style.borderColor = active ? 'rgba(168,85,247,0.9)' : 'rgba(168,85,247,0.4)';
+    });
+    var btn = document.getElementById('lottery-buy-btn');
+    if (btn) btn.textContent = 'Buy ' + qty + ' Ticket' + (qty > 1 ? 's' : '') + ' · ' + (qty * 10) + '★';
+}
+
+function loadLottery() {
+    if (!window.db || !window.fs) return;
+    window.fs.onSnapshot(window.fs.doc(window.db, 'lottery_meta', 'config'), function(metaSnap) {
+        if (!metaSnap.exists()) { document.getElementById('lottery-card').style.display = 'none'; return; }
+        var meta    = metaSnap.data();
+        var roundId = meta.currentRoundId;
+        // Last winner display
+        if (meta.lastWinner) {
+            var lwEl = document.getElementById('lottery-last-winner');
+            if (lwEl) { lwEl.style.display = 'block'; lwEl.innerHTML = '🏆 Last winner: <strong>' + meta.lastWinner + '</strong> won ' + (meta.lastWinnerAmount || 0) + '★'; }
+        }
+        if (!roundId) return;
+        if (_lotteryUnsub) _lotteryUnsub();
+        _lotteryUnsub = window.fs.onSnapshot(window.fs.doc(window.db, 'lottery_rounds', roundId), function(rSnap) {
+            if (!rSnap.exists()) return;
+            _lotteryRound = Object.assign({ id: roundId }, rSnap.data());
+            _renderLotteryCard(_lotteryRound);
+        });
+        // Admin status
+        if (userAddress && userAddress.toLowerCase() === CONFIG.OWNER_ADDRESS.toLowerCase()) {
+            var el = document.getElementById('lottery-admin-status');
+            if (el) el.textContent = 'Round: ' + roundId.slice(0,10) + '… | Status: ' + (meta.currentRoundId ? 'active' : 'none');
+        }
+    });
+}
+
+function _renderLotteryCard(round) {
+    var card = document.getElementById('lottery-card');
+    if (!card) return;
+    if (round.status === 'complete') { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    var pot = round.pot || 0;
+    var el  = document.getElementById('lottery-pot');
+    if (el) el.textContent = pot.toLocaleString() + '★';
+    var sub = document.getElementById('lottery-pot-sub');
+    if (sub) sub.textContent = '≈ $' + (pot * 0.01).toFixed(2) + ' USDT · Winner gets ' + Math.round(pot * 0.8) + '★';
+    var wEl = document.getElementById('lottery-wallets');
+    var tEl = document.getElementById('lottery-tickets');
+    if (wEl) wEl.textContent = (round.walletCount || 0).toLocaleString();
+    if (tEl) tEl.textContent = (round.totalTickets || 0).toLocaleString();
+    // Rollover notice
+    var rvEl = document.getElementById('lottery-rollover');
+    if (rvEl) {
+        if ((round.rollovers || 0) > 0) {
+            rvEl.style.display = 'block';
+            rvEl.textContent = '🔄 Jackpot has rolled over ' + round.rollovers + 'x — pot keeps growing until 2+ players enter!';
+        } else { rvEl.style.display = 'none'; }
+    }
+    // Buy vs connect
+    var buyEl = document.getElementById('lottery-buy-section');
+    var conEl = document.getElementById('lottery-connect-prompt');
+    if (userAddress) {
+        if (buyEl) buyEl.style.display = 'block';
+        if (conEl) conEl.style.display = 'none';
+        _loadMyLotteryTickets(round.id, round.totalTickets || 1);
+    } else {
+        if (buyEl) buyEl.style.display = 'none';
+        if (conEl) conEl.style.display = 'block';
+    }
+    // Countdown
+    if (_lotteryCountdownIv) clearInterval(_lotteryCountdownIv);
+    _updateLotteryCountdown(round.endsAt);
+    _lotteryCountdownIv = setInterval(function() { _updateLotteryCountdown(round.endsAt); }, 1000);
+    setLotteryQty(_lotteryQty);
+}
+
+function _updateLotteryCountdown(endsAt) {
+    var el   = document.getElementById('lottery-countdown');
+    if (!el) return;
+    var rem  = Math.max(0, endsAt - Date.now());
+    var h    = Math.floor(rem / 3600000);
+    var m    = Math.floor((rem % 3600000) / 60000);
+    var s    = Math.floor((rem % 60000) / 1000);
+    el.textContent = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    el.style.color = rem < 3600000 ? 'rgba(239,68,68,0.95)' : 'rgba(168,85,247,0.9)';
+    if (rem === 0) el.textContent = 'Drawing...';
+}
+
+async function _loadMyLotteryTickets(roundId, totalTickets) {
+    if (!userAddress || !window.db) return;
+    try {
+        var snap = await window.fs.getDoc(window.fs.doc(window.db, 'lottery_entries', roundId + '_' + userAddress.toLowerCase()));
+        var myEl = document.getElementById('lottery-my-tickets');
+        if (snap.exists() && snap.data().tickets > 0) {
+            var t    = snap.data().tickets;
+            var pct  = totalTickets > 0 ? Math.round(t / totalTickets * 100) : 0;
+            if (myEl) { myEl.style.display = 'block'; myEl.textContent = '🎟 You have ' + t + ' ticket' + (t > 1 ? 's' : '') + ' — ' + pct + '% chance of winning'; }
+        } else {
+            if (myEl) myEl.style.display = 'none';
+        }
+    } catch(_) {}
+}
+
+async function buyLotteryTickets() {
+    if (!userAddress) return showToast('Connect your wallet first.');
+    if (!_lotteryRound || _lotteryRound.status !== 'open') return showToast('No active lottery round.');
+    var qty  = _lotteryQty || 1;
+    var cost = qty * 10;
+    var btn  = document.getElementById('lottery-buy-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Buying...'; }
+    try {
+        var resp = await fetch(_LOTTERY_CF + '/buyLotteryTickets', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userAddress: userAddress, userHandle: userHandle || 'Anonymous', quantity: qty })
+        });
+        var data = await resp.json();
+        if (data.error) { showToast(data.error); return; }
+        showToast('🎰 ' + qty + ' ticket' + (qty > 1 ? 's' : '') + ' bought! You have ' + data.tickets + ' in this round.');
+        if (typeof deductStars === 'function') deductStars(cost);
+    } catch(e) {
+        showToast('Network error. Try again.');
+    } finally {
+        if (btn) { btn.disabled = false; setLotteryQty(_lotteryQty); }
+    }
+}
+
+// Admin lottery helpers
+async function adminInitLottery() {
+    if (!userAddress) return;
+    var resp = await fetch(_LOTTERY_CF + '/createLotteryRound', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminAddress: userAddress })
+    });
+    var data = await resp.json();
+    showToast(data.ok ? '✅ Round created: ' + (data.roundId || '').slice(0,8) + '…' : (data.error || 'Error'));
+}
+async function adminSeedLottery() {
+    var amt = prompt('Seed pot with how many ★?', '200');
+    if (!amt || isNaN(parseFloat(amt))) return;
+    var resp = await fetch(_LOTTERY_CF + '/seedLotteryPot', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminAddress: userAddress, amount: parseFloat(amt) })
+    });
+    var data = await resp.json();
+    showToast(data.ok ? '✅ Pot seeded with ' + amt + '★' : (data.error || 'Error'));
+}
+async function adminDrawLottery() {
+    if (!await _shConfirm('Force draw the lottery now?')) return;
+    var resp = await fetch(_LOTTERY_CF + '/drawLottery', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminAddress: userAddress })
+    });
+    var data = await resp.json();
+    if (data.rolledOver) return showToast('⚠️ Rolled over — need 2+ players.');
+    showToast(data.ok ? '🏆 Winner: ' + data.winner + ' — ' + data.winnerAmount + '★' : (data.error || 'Error'));
+}
 
 // ── Telegram community banner helpers ────────────────────────────────
 function joinSocialHubTelegram() {
