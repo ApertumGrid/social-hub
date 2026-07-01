@@ -10296,8 +10296,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 <div class="feed-heading">Signal Feed</div>
 
                 <!-- Star Lottery card — live via Firestore onSnapshot -->
-                <div id="lottery-card" style="display:none;margin-bottom:12px;border-radius:16px;background:linear-gradient(135deg,rgba(168,85,247,0.13) 0%,rgba(236,72,153,0.08) 100%);border:1px solid rgba(168,85,247,0.35);padding:18px 18px 14px;overflow:hidden;">
-                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                <div id="lottery-card" style="display:none;margin-bottom:12px;border-radius:16px;background:linear-gradient(135deg,rgba(168,85,247,0.13) 0%,rgba(236,72,153,0.08) 100%);border:1px solid rgba(168,85,247,0.35);padding:18px 18px 14px;overflow:hidden;flex-shrink:0;">
+                    <div onclick="toggleLotteryCard()" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;cursor:pointer;">
                         <div style="display:flex;align-items:center;gap:8px;">
                             <span style="font-size:1.3rem;">🎰</span>
                             <div>
@@ -10305,8 +10305,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                 <div style="font-size:0.62rem;color:var(--text-muted);">Daily draw · 80% to winner · 10★ per ticket</div>
                             </div>
                         </div>
-                        <div id="lottery-countdown" style="font-size:0.68rem;font-weight:800;color:rgba(168,85,247,0.9);background:rgba(168,85,247,0.12);padding:5px 11px;border-radius:20px;border:1px solid rgba(168,85,247,0.25);font-variant-numeric:tabular-nums;">--:--:--</div>
+                        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                            <div id="lottery-countdown" style="font-size:0.68rem;font-weight:800;color:rgba(168,85,247,0.9);background:rgba(168,85,247,0.12);padding:5px 11px;border-radius:20px;border:1px solid rgba(168,85,247,0.25);font-variant-numeric:tabular-nums;">--:--:--</div>
+                            <span id="lottery-chevron" style="font-size:0.7rem;color:rgba(168,85,247,0.9);transition:transform 0.2s;">&#9660;</span>
+                        </div>
                     </div>
+                    <div id="lottery-body">
                     <div style="text-align:center;margin-bottom:14px;">
                         <div id="lottery-pot" style="font-size:2.4rem;font-weight:900;color:#fff;letter-spacing:-1px;line-height:1.1;">0★</div>
                         <div id="lottery-pot-sub" style="font-size:0.68rem;color:var(--teal);font-weight:600;margin-top:2px;">≈ $0.00 USDT · Winner gets 0★</div>
@@ -10341,6 +10345,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <span style="font-size:0.68rem;color:var(--text-muted);">Connect your wallet to enter the draw</span>
                     </div>
                     <div id="lottery-last-winner" style="display:none;margin-top:12px;padding-top:10px;border-top:1px solid rgba(168,85,247,0.2);text-align:center;font-size:0.65rem;color:var(--text-muted);"></div>
+                    </div>
                 </div>
 
                 <!-- Telegram community banner — one-time dismissible -->
@@ -39834,6 +39839,16 @@ function setLotteryQty(qty) {
     if (btn) btn.textContent = 'Buy ' + qty + ' Ticket' + (qty > 1 ? 's' : '') + ' · ' + (qty * 10) + '★';
 }
 
+function toggleLotteryCard() {
+    var body = document.getElementById('lottery-body');
+    var chev = document.getElementById('lottery-chevron');
+    if (!body) return;
+    var collapsed = body.style.display === 'none';
+    body.style.display = collapsed ? '' : 'none';
+    if (chev) chev.style.transform = collapsed ? '' : 'rotate(-90deg)';
+    try { localStorage.setItem('sh_lottery_collapsed', collapsed ? '0' : '1'); } catch(_) {}
+}
+
 function loadLottery() {
     if (!window.db || !window.fs) return;
     window.fs.onSnapshot(window.fs.doc(window.db, 'lottery_meta', 'config'), function(metaSnap) {
@@ -39898,6 +39913,15 @@ function _renderLotteryCard(round) {
     _updateLotteryCountdown(round.endsAt);
     _lotteryCountdownIv = setInterval(function() { _updateLotteryCountdown(round.endsAt); }, 1000);
     setLotteryQty(_lotteryQty);
+    // Respect saved collapse state (countdown stays visible in header either way)
+    try {
+        if (localStorage.getItem('sh_lottery_collapsed') === '1') {
+            var lb = document.getElementById('lottery-body');
+            var lc = document.getElementById('lottery-chevron');
+            if (lb) lb.style.display = 'none';
+            if (lc) lc.style.transform = 'rotate(-90deg)';
+        }
+    } catch(_) {}
 }
 
 function _updateLotteryCountdown(endsAt) {
