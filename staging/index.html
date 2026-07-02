@@ -13879,100 +13879,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
     }
 
-    // Reown AppKit init — cached + warmable. We call this early (when the wallet
-    // drawer opens) so AppKit's relay is fully connected before the user picks a
-    // wallet. Without the warm-up, opening the modal immediately after createAppKit
-    // sends a not-yet-live pairing URI → some wallets (e.g. Trust) open and hang.
-    // Promise-cached so a warm-up call and the real connect share one init.
-    window._initAppKit = function() {
-        if (window._appKitModal) return Promise.resolve(window._appKitModal);
-        if (window._appKitInitPromise) return window._appKitInitPromise;
-        window._appKitInitPromise = (async function() {
-            var _akCore         = await import('https://esm.sh/@reown/appkit');
-            var _akEth          = await import('https://esm.sh/@reown/appkit-adapter-ethers5');
-            var _createAppKit   = _akCore.createAppKit;
-            var _Ethers5Adapter = _akEth.Ethers5Adapter;
-            var _bscNet = {
-                id: 56,
-                name: 'BNB Smart Chain',
-                chainNamespace: 'eip155',
-                caipNetworkId: 'eip155:56',
-                nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
-                rpcUrls: { default: { http: [BSC_RPC] } },
-                blockExplorers: { default: { name: 'BscScan', url: 'https://bscscan.com' } }
-            };
-            window._appKitModal = _createAppKit({
-                adapters:       [ new _Ethers5Adapter() ],
-                networks:       [ _bscNet ],
-                defaultNetwork: _bscNet,
-                projectId:      '422b74ec70be253bbdc47a7479725899',
-                metadata: {
-                    name:        'SocialHub',
-                    description: 'Web3 Social Platform on BSC',
-                    url:         'https://socialhubglobal.com',
-                    icons:       ['https://socialhubglobal.com/favicon.ico']
-                },
-                features: { analytics: false, email: false, socials: [] }
-            });
-            // Subscribe at INIT — exactly like the working appkit-test2 harness. This is
-            // what forces AppKit's WC connector/relay to fully initialize NOW (at warm-up)
-            // rather than lazily at connect-click. Keep a live reference to the connected
-            // provider/address so the connect flow can read it.
-            try {
-                window._appKitModal.subscribeProviders(function(s) {
-                    window._appkitProvider = s && s['eip155'];
-                });
-                window._appKitModal.subscribeAccount(function(s) {
-                    window._appkitAddress   = s && s.address;
-                    window._appkitConnected = !!(s && s.address && s.isConnected);
-                    if (window._wcDbg && s && s.address) window._wcDbg('WC(init-sub): ' + String(s.address).slice(0,10) + ' conn=' + s.isConnected);
-                });
-            } catch(_) {}
-            return window._appKitModal;
-        })();
-        return window._appKitInitPromise;
-    };
-
-    // Warm AppKit shortly after page load so its relay WebSocket is fully connected
-    // before ANY connect attempt (independent of which button opens the wallet drawer).
-    // A cold init-then-open publishes the pairing to a not-yet-ready relay, so the
-    // wallet opens but never receives the proposal (Trust: no approval popup).
-    setTimeout(function() { try { window._initAppKit().then(function(){ if (window._wcDbg) window._wcDbg('WC: page-load warm-up done'); }).catch(function(){}); } catch(_){} }, 1500);
-
-    // On-screen WalletConnect debug log (STAGING ONLY) — surfaces each connect
-    // milestone on the phone so we can see exactly where a hang occurs.
-    window._wcDbg = function(msg) {
-        try {
-            var box = document.getElementById('wc-dbg');
-            if (!box) {
-                box = document.createElement('div');
-                box.id = 'wc-dbg';
-                box.style.cssText = 'position:fixed;left:0;right:0;bottom:0;max-height:45vh;overflow:auto;z-index:2147483600;background:rgba(0,0,0,0.94);color:#8ef;font:11px/1.5 ui-monospace,monospace;padding:8px 10px;white-space:pre-wrap;word-break:break-all;border-top:2px solid #a855f7;';
-                var btn = document.createElement('div');
-                btn.textContent = '✕ close debug';
-                btn.style.cssText = 'color:#f87171;text-align:right;font-weight:700;margin-bottom:4px;cursor:pointer;';
-                btn.onclick = function(){ box.remove(); };
-                box.appendChild(btn);
-                document.body.appendChild(box);
-            }
-            var line = document.createElement('div');
-            line.textContent = new Date().toLocaleTimeString() + '  ' + msg;
-            box.appendChild(line);
-            box.scrollTop = box.scrollHeight;
-        } catch(_) {}
-    };
-
-    // STAGING DIAGNOSTIC: tee WalletConnect/AppKit-related console errors, warnings
-    // and unhandled promise rejections to the on-screen debug bar, so we can see the
-    // REAL failure that's normally hidden in the phone's console.
-    (function(){
-        var _rx = /wc|walletconnect|relay|pairing|appkit|reown|proposal|session|expired|topic|subscri|verify|crypto|socket/i;
-        var _ce = console.error.bind(console), _cw = console.warn.bind(console);
-        console.error = function(){ var m = Array.prototype.slice.call(arguments).map(String).join(' '); if (_rx.test(m) && window._wcDbg) { try { window._wcDbg('ERR: ' + m.slice(0,200)); } catch(_){} } return _ce.apply(null, arguments); };
-        console.warn  = function(){ var m = Array.prototype.slice.call(arguments).map(String).join(' '); if (_rx.test(m) && window._wcDbg) { try { window._wcDbg('WARN: ' + m.slice(0,200)); } catch(_){} } return _cw.apply(null, arguments); };
-        window.addEventListener('unhandledrejection', function(e){ var m = String(e && e.reason && (e.reason.message||e.reason)); if (_rx.test(m) && window._wcDbg) { try { window._wcDbg('REJECT: ' + m.slice(0,200)); } catch(_){} } });
-    })();
-
     async function _connectWithProvider(walletType) {
         var dd = document.getElementById('wallet-dropdown');
         if (dd) dd.style.display = 'none';
@@ -14005,104 +13911,149 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 const _xovaOnBSC = await _ensureBSCChain(eth);
                 if (!_xovaOnBSC) return;
             } else if (walletType === 'walletconnect') {
-                // ── WalletConnect via Reown AppKit ───────────────────────────
-                // AppKit (maintained successor to the deprecated @walletconnect/modal)
-                // handles wallet selection + deep-linking natively for ALL wallets.
-                // We use it ONLY to obtain an EIP-1193 provider, then converge with the
-                // shared ethers setup below (eth → Web3Provider). Everything downstream
-                // (deposit / withdraw / gift) is unchanged. Foundation proven on the
-                // staging harness 2026-07-02: esm.sh load + connect + ethers read on
-                // BSC 56 all pass. See appkit-test.html.
-                window._wcDbg('WC: start (warm=' + !!window._appKitModal + ')');
-                var _modal = window._appKitModal;
-                if (!_modal) {
-                    // Cold path (rare — user tapped connect before the page-load warm-up
-                    // finished). This awaits init, which loses the user gesture; normally
-                    // the modal is already warm so we never take this branch.
+                // ── WalletConnect v2 ─────────────────────────────────────
+                // Lazily import WalletConnect EthereumProvider from CDN
+                const WC_PROJECT_ID = '422b74ec70be253bbdc47a7479725899';
+                if (!window._WCEthProviderClass) {
                     showToast('Loading WalletConnect…');
-                    try { _modal = await window._initAppKit(); }
-                    catch (_akErr) {
-                        window._wcDbg('WC: init ERROR ' + (_akErr && _akErr.message ? _akErr.message : _akErr));
-                        showToast('WalletConnect failed to load. Please try again.');
-                        return;
-                    }
+                    const mod = await import('https://esm.sh/@walletconnect/ethereum-provider@2.17.3');
+                    window._WCEthProviderClass = mod.default || mod.EthereumProvider || mod;
                 }
-
-                // CRITICAL (mobile): open AppKit SYNCHRONOUSLY inside the user's tap.
-                // Any `await` between the tap and open() consumes the browser's user
-                // activation, after which mobile WalletConnect fails to deliver the
-                // pairing (wallet opens but shows no approval popup). So there are NO
-                // awaits before open() here — the modal is pre-warmed at page load, and
-                // the old patience gate (which broke the gesture) is removed since AppKit
-                // shows its own UI. `new Promise(...)` runs its executor synchronously,
-                // so open() fires while the gesture is still live; we then await the result.
-                var _wcProvider = await new Promise(function(resolve, reject) {
-                    var _resolved = false, _curProv = null, _curAddr = null;
-                    var _unsubP = null, _unsubA = null;
-                    var _cleanup = function() {
-                        try { _unsubP && _unsubP(); } catch(_){}
-                        try { _unsubA && _unsubA(); } catch(_){}
-                    };
-                    var _akTo = setTimeout(function() {
-                        if (_resolved) return;
-                        _resolved = true; _cleanup();
-                        window._wcDbg('WC: TIMEOUT after 180s (prov=' + !!_curProv + ' addr=' + !!_curAddr + ')');
-                        reject(new Error('WalletConnect timed out. Please try again.'));
-                    }, 180000);
-                    var _finish = function(prov, addr) {
-                        if (_resolved) return;
-                        _resolved = true; clearTimeout(_akTo); _cleanup();
-                        window._wcDbg('WC: RESOLVED addr=' + addr);
-                        resolve({ provider: prov, address: addr });
-                    };
-                    var _tryResolve = function() { if (_curProv && _curAddr) _finish(_curProv, _curAddr); };
-                    _unsubP = _modal.subscribeProviders(function(state) {
-                        window._wcDbg('WC: providers cb eip155=' + !!(state && state['eip155']));
-                        if (state && state['eip155']) { _curProv = state['eip155']; _tryResolve(); }
-                    });
-                    _unsubA = _modal.subscribeAccount(function(state) {
-                        window._wcDbg('WC: account cb addr=' + (state && state.address ? state.address.slice(0,10) : 'none') + ' conn=' + (state && state.isConnected));
-                        if (state && state.address && state.isConnected) { _curAddr = state.address; _tryResolve(); }
-                    });
-                    // Already connected (persisted session)? resolve without reopening.
-                    try {
-                        if (_modal.getIsConnectedState && _modal.getIsConnectedState()) {
-                            var _p0 = _modal.getProvider && _modal.getProvider('eip155');
-                            var _a0 = _modal.getAddress && _modal.getAddress();
-                            window._wcDbg('WC: fast-path connected p=' + !!_p0 + ' a=' + !!_a0);
-                            if (_p0 && _a0) { _finish(_p0, _a0); return; }
-                        }
-                    } catch(_) {}
-                    try { _modal.open(); window._wcDbg('WC: modal.open() called (in-gesture, no pre-awaits)'); }
-                    catch (e) { window._wcDbg('WC: modal.open() ERROR ' + (e && e.message ? e.message : e)); }
-                });
-
-                try { _modal.close && _modal.close(); } catch(_) {}
-
-                eth = _wcProvider.provider;
-                window._wcResolvedAddress = _wcProvider.address;   // AppKit already established the account
-                window._activeWCProvider = eth;
-                window._wcSessionAlive   = true;
-                window._wcConnecting     = false;
-                window._wcWalletName     = 'WalletConnect';
-                window._wcWalletDeepLink = '';   // AppKit re-opens the wallet for signing itself
-
-                // Disconnect detection via AppKit account state (replaces the old
-                // relay disconnect/session_delete/session_expire listeners).
+                if (window._activeWCProvider) {
+                    try { await window._activeWCProvider.disconnect(); } catch(_) {}
+                    window._activeWCProvider = null;
+                }
+                // Clear stale WC session/pairing keys from localStorage before every
+                // connect. Stale keys cause WC to resume a dead session — MetaMask
+                // opens but shows nothing because the pairing is expired on its end.
                 try {
-                    var _akSessionDead = function() {
-                        window._activeWCProvider = null;
-                        window._shLastWalletType = '';
-                        window._wcSessionAlive   = false;
-                        showToast('WalletConnect session ended — tap Reconnect to resume.');
-                        var _b = document.getElementById('wc-reconnect-banner');
-                        if (_b) _b.style.display = 'block';
-                    };
-                    window._wcSessionDeadFn = _akSessionDead;
-                    _modal.subscribeAccount(function(state) {
-                        if (!state || !state.address || state.isConnected === false) _akSessionDead();
+                    Object.keys(localStorage).forEach(function(k) {
+                        if (k.startsWith('wc@2:') || k.startsWith('walletconnect')) {
+                            localStorage.removeItem(k);
+                        }
                     });
                 } catch(_) {}
+                // Detect mobile. On mobile we take over deep-linking to the wallet:
+                // the deprecated @walletconnect/modal was handing MetaMask a DOUBLE-
+                // encoded wc: URI, producing "Invalid deeplink / Invalid URL: wc%3A…"
+                // on the phone. On mobile we disable the modal and open MetaMask
+                // ourselves with a correctly SINGLE-encoded universal link.
+                var _wcIsMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
+                const wcProv = await window._WCEthProviderClass.init({
+                    projectId:      WC_PROJECT_ID,
+                    showQrModal:    !_wcIsMobile,           // desktop: WC QR modal; mobile: our own deep link
+                    chains:         [56],                   // BSC mainnet
+                    optionalChains: [1],
+                    rpcMap: {
+                        56: BSC_RPC,
+                        1:  'https://cloudflare-eth.com'
+                    },
+                    metadata: {
+                        name:        'SocialHub',
+                        description: 'Web3 Social Platform on BSC',
+                        url:         'https://socialhubglobal.com',
+                        icons:       ['https://socialhubglobal.com/favicon.ico'],
+                        redirect: {
+                            universal: 'https://socialhubglobal.com'
+                        }
+                    }
+                });
+                // Mobile wallet chooser — replaces the deprecated WC modal's broken
+                // deep-linking. Named wallets open via their SINGLE-encoded universal
+                // link (encodeURIComponent exactly once — double-encoding was the bug
+                // behind "Invalid deeplink"). "Other wallet" uses the RAW wc: URI so the
+                // phone opens whichever WalletConnect wallet is installed (Bitget, OKX,
+                // Rainbow, Binance, etc.). Pure UI — no money/wallet logic touched.
+                window._wcOpenWalletSheet = function(wcUri) {
+                    var old = document.getElementById('wc-wallet-sheet');
+                    if (old) old.remove();
+                    var enc = encodeURIComponent(wcUri);
+                    var wallets = [
+                        { name: 'MetaMask',        link: 'https://metamask.app.link/wc?uri=' + enc },
+                        { name: 'Trust Wallet',    link: 'https://link.trustwallet.com/wc?uri=' + enc },
+                        { name: 'Coinbase Wallet', link: 'https://go.cb-w.com/wc?uri=' + enc },
+                        { name: 'Other wallet',    link: wcUri }   // raw wc: → OS opens the default WC wallet
+                    ];
+                    var ov = document.createElement('div');
+                    ov.id = 'wc-wallet-sheet';
+                    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,0.72);display:flex;align-items:flex-end;justify-content:center;';
+                    var card = document.createElement('div');
+                    card.style.cssText = 'width:100%;max-width:460px;background:#14121c;border:1px solid rgba(168,85,247,0.35);border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -8px 40px rgba(0,0,0,0.5);';
+                    var html = '<div style="text-align:center;font-size:0.8rem;font-weight:800;color:#fff;letter-spacing:0.3px;margin-bottom:4px;">Open your wallet</div>' +
+                               '<div style="text-align:center;font-size:0.66rem;color:rgba(255,255,255,0.5);margin-bottom:14px;">Choose the wallet app you use to connect</div>';
+                    wallets.forEach(function(w) {
+                        html += '<a href="' + w.link + '" style="display:block;text-align:center;background:rgba(168,85,247,0.16);border:1px solid rgba(168,85,247,0.4);color:#fff;font-weight:700;font-size:0.85rem;text-decoration:none;padding:14px;border-radius:12px;margin-bottom:8px;">' + w.name + ' →</a>';
+                    });
+                    html += '<button id="wc-sheet-copy" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);font-size:0.72rem;font-weight:600;padding:11px;border-radius:12px;margin-bottom:8px;cursor:pointer;">Copy connection link</button>' +
+                            '<button id="wc-sheet-cancel" style="width:100%;background:transparent;border:none;color:rgba(255,255,255,0.4);font-size:0.72rem;padding:8px;cursor:pointer;">Cancel</button>';
+                    card.innerHTML = html;
+                    ov.appendChild(card);
+                    document.body.appendChild(ov);
+                    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+                    var copyBtn = document.getElementById('wc-sheet-copy');
+                    if (copyBtn) copyBtn.onclick = function() {
+                        try { navigator.clipboard.writeText(wcUri); showToast('Connection link copied — paste it into your wallet’s WalletConnect scanner.'); } catch(_) {}
+                    };
+                    var cancelBtn = document.getElementById('wc-sheet-cancel');
+                    if (cancelBtn) cancelBtn.onclick = function() { ov.remove(); };
+                };
+                if (_wcIsMobile) {
+                    wcProv.on('display_uri', function(_wcUri) {
+                        try { window._wcOpenWalletSheet(_wcUri); }
+                        catch (_e) {
+                            console.error('[WC] wallet sheet failed:', _e);
+                            // Last-resort: raw wc: redirect opens the default WC wallet
+                            try { window.location.href = _wcUri; } catch(__e) {}
+                        }
+                    });
+                }
+                await _wcPatienceGate();
+                await Promise.race([
+                    wcProv.enable(),
+                    new Promise(function(_, rej) { setTimeout(function() { rej(new Error('WalletConnect timed out after 2 minutes. Clear MetaMask connections (Settings → Connections → remove SocialHub) and try again.')); }, 120000); })
+                ]);
+                // Connection completed — dismiss the mobile wallet chooser if still open
+                var _wcSheetDone = document.getElementById('wc-wallet-sheet');
+                if (_wcSheetDone) _wcSheetDone.remove();
+                window._activeWCProvider = wcProv;
+                // Extract wallet name + deep link from WC session metadata so we can
+                // show a wallet-specific "Open [WalletName]" button when signing is needed.
+                try {
+                    var _wcMeta = wcProv.session && wcProv.session.peer && wcProv.session.peer.metadata;
+                    if (_wcMeta) {
+                        window._wcWalletName     = _wcMeta.name || '';
+                        var _wcRedir             = _wcMeta.redirect || {};
+                        window._wcWalletDeepLink = _wcRedir.native || _wcRedir.universal || '';
+                    }
+                } catch(_) {}
+                // ── WC relay event listeners — detect drops + session expiry ──
+                // Guard: WC fires transient `disconnect` during the handshake itself.
+                // Don't nuke the session while we're still inside _connectWithProvider.
+                window._wcConnecting = true;
+                var _wcSessionDead = function(reason) {
+                    if (window._wcConnecting) {
+                        console.warn('[WC] Ignoring transient', reason, 'during handshake');
+                        return;
+                    }
+                    console.warn('[WC] Session ended:', reason);
+                    window._activeWCProvider = null;
+                    window._shLastWalletType = '';
+                    window._wcSessionAlive = false;
+                    try {
+                        Object.keys(localStorage).forEach(function(k) {
+                            if (k.startsWith('wc@2:') || k.startsWith('walletconnect')) localStorage.removeItem(k);
+                        });
+                    } catch(_) {}
+                    showToast('WalletConnect session dropped — tap Reconnect to resume.');
+                    var _wcBanner = document.getElementById('wc-reconnect-banner');
+                    if (_wcBanner) _wcBanner.style.display = 'block';
+                };
+                window._wcSessionDeadFn = _wcSessionDead;
+                wcProv.on('disconnect', function() { _wcSessionDead('relay disconnect'); });
+                wcProv.on('session_delete', function() { _wcSessionDead('session deleted by wallet'); });
+                wcProv.on('session_expire', function() { _wcSessionDead('session expired'); });
+                window._wcSessionAlive = true;
+                eth = wcProv;
             } else {
                 // When multiple wallets are installed (e.g. XOVA + MetaMask), one of them
                 // takes over window.ethereum. Look for MetaMask specifically in the
@@ -14115,18 +14066,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
 
             provider    = new ethers.providers.Web3Provider(eth);
-            // For WalletConnect (AppKit) the account is already established — re-requesting
-            // via eth_requestAccounts round-trips to the wallet and HANGS some wallets
-            // (e.g. Trust). Use the address AppKit already gave us. MetaMask/XOVA (injected)
-            // still request accounts normally.
-            let userAddrResolved;
-            if (walletType === 'walletconnect' && window._wcResolvedAddress) {
-                userAddrResolved = window._wcResolvedAddress;
-            } else {
-                const accts = await provider.send("eth_requestAccounts", []);
-                userAddrResolved = accts[0];
-            }
-            userAddress = userAddrResolved;
+            const accts = await provider.send("eth_requestAccounts", []);
+            userAddress = accts[0];
             window.userAddress = userAddress;
             signer      = provider.getSigner();
             hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
@@ -14331,9 +14272,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.closeOnboardingModal = closeOnboardingModal;
 
     async function connectWallet() {
-        // Warm up AppKit (import + relay connect) the moment the drawer opens, so
-        // WalletConnect pairing is ready by the time the user picks a wallet.
-        try { if (window._initAppKit) window._initAppKit().catch(function(){}); } catch(_) {}
         toggleWalletDropdown();
     }
 
