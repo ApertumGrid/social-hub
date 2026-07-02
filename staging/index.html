@@ -13968,34 +13968,58 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     var old = document.getElementById('wc-wallet-sheet');
                     if (old) old.remove();
                     var enc = encodeURIComponent(wcUri);
+                    // Official wallet logos via WalletConnect's logo API (same source
+                    // their modal uses). If any image fails, we fall back to a branded
+                    // letter tile so the sheet always looks clean.
+                    var _wcLogo = function(id){ return 'https://explorer-api.walletconnect.com/v3/logo/md/' + id + '?projectId=422b74ec70be253bbdc47a7479725899'; };
+                    var _linkSvg = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
                     var wallets = [
-                        { name: 'MetaMask',        link: 'https://metamask.app.link/wc?uri=' + enc },
-                        { name: 'Trust Wallet',    link: 'https://link.trustwallet.com/wc?uri=' + enc },
-                        { name: 'Coinbase Wallet', link: 'https://go.cb-w.com/wc?uri=' + enc },
-                        { name: 'Other wallet',    link: wcUri }   // raw wc: → OS opens the default WC wallet
+                        { name: 'MetaMask',        link: 'https://metamask.app.link/wc?uri=' + enc,    img: _wcLogo('5195e9db-94d8-4579-6f11-ef553be95100'), letter: 'M', bg: '#f6851b' },
+                        { name: 'Trust Wallet',    link: 'https://link.trustwallet.com/wc?uri=' + enc,  img: _wcLogo('0528ee7e-16d1-4089-21e3-bbfb7a0e3600'), letter: 'T', bg: '#3375bb' },
+                        { name: 'Coinbase Wallet', link: 'https://go.cb-w.com/wc?uri=' + enc,           img: _wcLogo('a5ebc364-8f91-4200-fcc6-be81310a0000'), letter: 'C', bg: '#0052ff' },
+                        { name: 'Other wallet',    link: wcUri, svg: _linkSvg, bg: '#4b5563', sub: 'Open your default WalletConnect wallet' }   // raw wc:
                     ];
                     var ov = document.createElement('div');
                     ov.id = 'wc-wallet-sheet';
-                    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,0.72);display:flex;align-items:flex-end;justify-content:center;';
+                    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,0.6);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:flex;align-items:flex-end;justify-content:center;opacity:0;transition:opacity 0.2s ease;';
                     var card = document.createElement('div');
-                    card.style.cssText = 'width:100%;max-width:460px;background:#14121c;border:1px solid rgba(168,85,247,0.35);border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -8px 40px rgba(0,0,0,0.5);';
-                    var html = '<div style="text-align:center;font-size:0.8rem;font-weight:800;color:#fff;letter-spacing:0.3px;margin-bottom:4px;">Open your wallet</div>' +
-                               '<div style="text-align:center;font-size:0.66rem;color:rgba(255,255,255,0.5);margin-bottom:14px;">Choose the wallet app you use to connect</div>';
+                    card.style.cssText = 'width:100%;max-width:480px;background:#17141f;border-top:1px solid rgba(255,255,255,0.08);border-radius:22px 22px 0 0;padding:14px 16px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -10px 50px rgba(0,0,0,0.6);transform:translateY(100%);transition:transform 0.28s cubic-bezier(0.22,1,0.36,1);';
+                    var html =
+                        '<div style="width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,0.18);margin:2px auto 16px;"></div>' +
+                        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">' +
+                            '<div style="font-size:1.05rem;font-weight:800;color:#fff;">Connect a wallet</div>' +
+                            '<div id="wc-sheet-cancel" style="width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.55);font-size:0.85rem;cursor:pointer;">✕</div>' +
+                        '</div>' +
+                        '<div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:16px;">Choose the app you\'ll approve the connection in.</div>';
                     wallets.forEach(function(w) {
-                        html += '<a href="' + w.link + '" style="display:block;text-align:center;background:rgba(168,85,247,0.16);border:1px solid rgba(168,85,247,0.4);color:#fff;font-weight:700;font-size:0.85rem;text-decoration:none;padding:14px;border-radius:12px;margin-bottom:8px;">' + w.name + ' →</a>';
+                        var _iconInner = w.svg ? w.svg
+                            : '<img src="' + w.img + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display=\'none\';this.parentNode.textContent=\'' + w.letter + '\';" />';
+                        html +=
+                            '<a href="' + w.link + '" style="display:flex;align-items:center;gap:13px;padding:11px 13px;border-radius:14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);text-decoration:none;margin-bottom:9px;">' +
+                                '<span style="width:42px;height:42px;border-radius:12px;overflow:hidden;background:' + w.bg + ';display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;flex-shrink:0;">' + _iconInner + '</span>' +
+                                '<span style="flex:1;min-width:0;">' +
+                                    '<span style="display:block;color:#fff;font-weight:700;font-size:0.92rem;">' + w.name + '</span>' +
+                                    (w.sub ? '<span style="display:block;color:rgba(255,255,255,0.4);font-size:0.68rem;margin-top:1px;">' + w.sub + '</span>' : '') +
+                                '</span>' +
+                                '<span style="color:rgba(255,255,255,0.28);font-size:1.3rem;flex-shrink:0;">›</span>' +
+                            '</a>';
                     });
-                    html += '<button id="wc-sheet-copy" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);font-size:0.72rem;font-weight:600;padding:11px;border-radius:12px;margin-bottom:8px;cursor:pointer;">Copy connection link</button>' +
-                            '<button id="wc-sheet-cancel" style="width:100%;background:transparent;border:none;color:rgba(255,255,255,0.4);font-size:0.72rem;padding:8px;cursor:pointer;">Cancel</button>';
+                    html += '<button id="wc-sheet-copy" style="width:100%;background:transparent;border:none;color:rgba(168,85,247,0.85);font-size:0.72rem;font-weight:600;padding:13px 0 3px;cursor:pointer;">Copy connection link instead</button>';
                     card.innerHTML = html;
                     ov.appendChild(card);
                     document.body.appendChild(ov);
-                    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+                    requestAnimationFrame(function(){ ov.style.opacity = '1'; card.style.transform = 'translateY(0)'; });
+                    var _closeSheet = function() {
+                        ov.style.opacity = '0'; card.style.transform = 'translateY(100%)';
+                        setTimeout(function(){ if (ov && ov.parentNode) ov.remove(); }, 280);
+                    };
+                    ov.addEventListener('click', function(e) { if (e.target === ov) _closeSheet(); });
                     var copyBtn = document.getElementById('wc-sheet-copy');
                     if (copyBtn) copyBtn.onclick = function() {
                         try { navigator.clipboard.writeText(wcUri); showToast('Connection link copied — paste it into your wallet’s WalletConnect scanner.'); } catch(_) {}
                     };
                     var cancelBtn = document.getElementById('wc-sheet-cancel');
-                    if (cancelBtn) cancelBtn.onclick = function() { ov.remove(); };
+                    if (cancelBtn) cancelBtn.onclick = function() { _closeSheet(); };
                 };
                 if (_wcIsMobile) {
                     wcProv.on('display_uri', function(_wcUri) {
