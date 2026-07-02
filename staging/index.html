@@ -13927,6 +13927,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         return window._appKitInitPromise;
     };
 
+    // Warm AppKit shortly after page load so its relay WebSocket is fully connected
+    // before ANY connect attempt (independent of which button opens the wallet drawer).
+    // A cold init-then-open publishes the pairing to a not-yet-ready relay, so the
+    // wallet opens but never receives the proposal (Trust: no approval popup).
+    setTimeout(function() { try { window._initAppKit().then(function(){ if (window._wcDbg) window._wcDbg('WC: page-load warm-up done'); }).catch(function(){}); } catch(_){} }, 1500);
+
     // On-screen WalletConnect debug log (STAGING ONLY) — surfaces each connect
     // milestone on the phone so we can see exactly where a hang occurs.
     window._wcDbg = function(msg) {
