@@ -3,130 +3,92 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>AppKit Test — SocialHub</title>
-<!-- ethers v5 UMD (same major version the app uses) -->
-<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+<title>AppKit Test 2 (+Agora +Firebase) — SocialHub</title>
+
+<!-- ethers v5 UMD (same as full app) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+
+<!-- Agora RTC SDK — SAME as full app (prime suspect: may wrap global WebSocket) -->
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.2.js"></script>
+<script src="https://download.agora.io/sdk/release/agora-extension-virtual-background-1.3.1.js"></script>
+
+<!-- Firebase — SAME as full app -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getFirestore, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  const app = initializeApp({
+    apiKey: "AIzaSyANZhaAodV4TvfLk84dzwscI7cSSiwyyv4",
+    authDomain: "socialhub-33014.firebaseapp.com",
+    projectId: "socialhub-33014",
+    storageBucket: "socialhub-33014.firebasestorage.app",
+    messagingSenderId: "864088350104",
+    appId: "1:864088350104:web:9a5044bd40c6621fa7dfed"
+  });
+  const db = getFirestore(app);
+  // Open a live Firestore listener like the full app does (uses a persistent connection)
+  try { onSnapshot(collection(db, 'posts'), function(){ window._fbLive = true; }); } catch(e) {}
+  window._fbReady = true;
+</script>
+
 <style>
-  body { margin:0; font-family:system-ui,-apple-system,'Segoe UI',sans-serif; background:#0d0b14; color:#eee; padding:18px; }
-  h1 { font-size:1.1rem; color:#c8a0ff; }
-  button { display:block; width:100%; padding:15px; margin:10px 0; border:none; border-radius:12px;
-           font-size:1rem; font-weight:700; cursor:pointer; }
+  body { margin:0; font-family:system-ui,sans-serif; background:#0d0b14; color:#eee; padding:18px; }
+  h1 { font-size:1.05rem; color:#c8a0ff; }
+  button { display:block; width:100%; padding:15px; margin:10px 0; border:none; border-radius:12px; font-size:1rem; font-weight:700; }
   #connect { background:linear-gradient(135deg,#a855f7,#ec4899); color:#fff; }
-  #read    { background:rgba(45,212,191,0.18); border:1px solid rgba(45,212,191,0.5); color:#2dd4bf; }
+  #read { background:rgba(45,212,191,0.18); border:1px solid rgba(45,212,191,0.5); color:#2dd4bf; }
   #log { background:#000; border:1px solid #333; border-radius:10px; padding:12px; margin-top:14px;
          font-family:ui-monospace,monospace; font-size:0.72rem; white-space:pre-wrap; word-break:break-all;
-         min-height:220px; line-height:1.5; }
-  .ok  { color:#4ade80; } .err { color:#f87171; } .info { color:#8ab4ff; }
+         min-height:200px; line-height:1.5; }
+  .ok{color:#4ade80;} .err{color:#f87171;} .info{color:#8ab4ff;}
 </style>
 </head>
 <body>
-  <h1>🧪 Reown AppKit Test</h1>
-  <p style="font-size:0.8rem;color:#999;">Tests: (1) CDN load, (2) connect + deep-link, (3) get provider/address, (4) ethers read on BSC.</p>
+  <h1>🧪 AppKit Test 2 — with Agora + Firebase loaded</h1>
+  <p style="font-size:0.8rem;color:#999;">Same AppKit as the working harness, but this page also loads Agora + Firebase (like the real app). If Trust hangs HERE, one of those SDKs is the culprit.</p>
   <button id="connect">Connect Wallet</button>
   <button id="read">Test Read (chainId + address)</button>
   <div id="log">Booting…</div>
 
 <script type="module">
   const logEl = document.getElementById('log');
-  function log(msg, cls) {
-    const line = document.createElement('div');
-    if (cls) line.className = cls;
-    line.textContent = (new Date().toLocaleTimeString()) + '  ' + msg;
-    logEl.appendChild(line);
-    logEl.scrollTop = logEl.scrollHeight;
-  }
-  logEl.textContent = '';
+  function log(m, c){ const d=document.createElement('div'); if(c)d.className=c; d.textContent=new Date().toLocaleTimeString()+'  '+m; logEl.appendChild(d); logEl.scrollTop=logEl.scrollHeight; }
+  logEl.textContent='';
 
-  const PROJECT_ID = '422b74ec70be253bbdc47a7479725899'; // existing WalletConnect/Reown projectId
-  const BSC_RPC    = 'https://bsc-dataseed.binance.org';
-
-  let modal = null;
-
-  // 1) Load AppKit from CDN
-  let createAppKit, Ethers5Adapter;
+  // Detect whether Agora wrapped the global WebSocket
   try {
-    log('Importing @reown/appkit from esm.sh…', 'info');
+    const wsStr = String(window.WebSocket);
+    log('WebSocket native? ' + (wsStr.indexOf('[native code]') > -1 ? 'YES (native)' : 'NO — WRAPPED! ' + wsStr.slice(0,60)), wsStr.indexOf('[native code]')>-1 ? 'ok' : 'err');
+  } catch(e){}
+
+  const PROJECT_ID='422b74ec70be253bbdc47a7479725899';
+  const BSC_RPC='https://bsc-dataseed.binance.org';
+  let modal=null, createAppKit, Ethers5Adapter;
+
+  try {
+    log('Importing AppKit from esm.sh…','info');
     ({ createAppKit } = await import('https://esm.sh/@reown/appkit'));
-    log('✓ @reown/appkit loaded', 'ok');
-    log('Importing @reown/appkit-adapter-ethers5 from esm.sh…', 'info');
     ({ Ethers5Adapter } = await import('https://esm.sh/@reown/appkit-adapter-ethers5'));
-    log('✓ ethers5 adapter loaded', 'ok');
-  } catch (e) {
-    log('✗ CDN import FAILED: ' + (e && e.message ? e.message : e), 'err');
-    log('→ If this failed, the CDN path is the blocker. Report this line.', 'err');
-  }
+    log('✓ AppKit loaded','ok');
+  } catch(e){ log('✗ import failed: '+(e&&e.message||e),'err'); }
 
-  // 2) Custom BSC network object
-  const bscNetwork = {
-    id: 56,
-    name: 'BNB Smart Chain',
-    chainNamespace: 'eip155',
-    caipNetworkId: 'eip155:56',
-    nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
-    rpcUrls: { default: { http: [BSC_RPC] } },
-    blockExplorers: { default: { name: 'BscScan', url: 'https://bscscan.com' } }
-  };
+  const bscNetwork={ id:56, name:'BNB Smart Chain', chainNamespace:'eip155', caipNetworkId:'eip155:56',
+    nativeCurrency:{name:'BNB',symbol:'BNB',decimals:18}, rpcUrls:{default:{http:[BSC_RPC]}},
+    blockExplorers:{default:{name:'BscScan',url:'https://bscscan.com'}} };
 
-  // 3) Create the AppKit instance
   try {
-    if (createAppKit && Ethers5Adapter) {
-      modal = createAppKit({
-        adapters: [ new Ethers5Adapter() ],
-        networks: [ bscNetwork ],
-        defaultNetwork: bscNetwork,
-        projectId: PROJECT_ID,
-        metadata: {
-          name: 'SocialHub',
-          description: 'Web3 Social Platform on BSC',
-          url: 'https://socialhubglobal.com',
-          icons: ['https://socialhubglobal.com/favicon.ico']
-        },
-        features: { analytics: false, email: false, socials: [] }
-      });
-      log('✓ createAppKit() succeeded — modal ready', 'ok');
-      log('modal methods: ' + Object.keys(modal).filter(k => typeof modal[k] === 'function').join(', '), 'info');
-
-      // Subscribe to account + provider changes and report them on screen
-      if (modal.subscribeAccount) {
-        modal.subscribeAccount(function(state) {
-          log('subscribeAccount → ' + JSON.stringify({ address: state && state.address, isConnected: state && state.isConnected }), 'info');
-        });
-      }
-      if (modal.subscribeProviders) {
-        modal.subscribeProviders(function(state) {
-          log('subscribeProviders → eip155 present: ' + !!(state && state['eip155']), 'info');
-          window._appkitProvider = state && state['eip155'];
-        });
-      }
-    } else {
-      log('✗ Skipping createAppKit — imports missing', 'err');
+    if(createAppKit&&Ethers5Adapter){
+      modal=createAppKit({ adapters:[new Ethers5Adapter()], networks:[bscNetwork], defaultNetwork:bscNetwork,
+        projectId:PROJECT_ID, metadata:{name:'SocialHub',description:'Web3 Social Platform on BSC',url:'https://socialhubglobal.com',icons:['https://socialhubglobal.com/favicon.ico']},
+        features:{analytics:false,email:false,socials:[]} });
+      log('✓ createAppKit OK','ok');
+      if(modal.subscribeProviders) modal.subscribeProviders(s=>{ log('providers eip155='+!!(s&&s['eip155']),'info'); window._p=s&&s['eip155']; });
+      if(modal.subscribeAccount) modal.subscribeAccount(s=>{ log('account addr='+(s&&s.address?s.address.slice(0,10):'none')+' conn='+(s&&s.isConnected),'info'); });
     }
-  } catch (e) {
-    log('✗ createAppKit FAILED: ' + (e && e.message ? e.message : e), 'err');
-  }
+  } catch(e){ log('✗ createAppKit failed: '+(e&&e.message||e),'err'); }
 
-  // 4) Connect button
-  document.getElementById('connect').addEventListener('click', function() {
-    if (!modal) { log('No modal — CDN/init failed above.', 'err'); return; }
-    try { log('Opening AppKit modal…', 'info'); modal.open(); }
-    catch (e) { log('✗ modal.open() failed: ' + e.message, 'err'); }
-  });
-
-  // 5) Test read — prove the provider works with ethers v5 on BSC
-  document.getElementById('read').addEventListener('click', async function() {
-    try {
-      const p = window._appkitProvider;
-      if (!p) { log('No provider yet — connect first.', 'err'); return; }
-      const web3 = new ethers.providers.Web3Provider(p);
-      const net  = await web3.getNetwork();
-      const signer = web3.getSigner();
-      const addr = await signer.getAddress();
-      log('✓ ethers read OK — chainId=' + net.chainId + ' address=' + addr, 'ok');
-      if (net.chainId === 56) log('✓ On BNB Smart Chain (56) — perfect.', 'ok');
-      else log('⚠ Not on chain 56 (got ' + net.chainId + ') — switch network in wallet.', 'err');
-    } catch (e) {
-      log('✗ read failed: ' + (e && e.message ? e.message : e), 'err');
-    }
+  document.getElementById('connect').addEventListener('click',()=>{ if(!modal){log('no modal','err');return;} try{log('opening…','info');modal.open();}catch(e){log('open err '+e.message,'err');} });
+  document.getElementById('read').addEventListener('click',async()=>{
+    try{ if(!window._p){log('connect first','err');return;} const w=new ethers.providers.Web3Provider(window._p); const n=await w.getNetwork(); const a=await w.getSigner().getAddress(); log('✓ read chainId='+n.chainId+' addr='+a,'ok'); }catch(e){log('✗ '+(e&&e.message||e),'err');}
   });
 </script>
 </body>
