@@ -13888,14 +13888,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (window._appKitModal) return Promise.resolve(window._appKitModal);
         if (window._appKitInitPromise) return window._appKitInitPromise;
         window._appKitInitPromise = (async function() {
-            // Clear stale WalletConnect session/pairing keys left by the OLD
-            // ethereum-provider. AppKit's SignClient reads the same wc@2: keys, and a
-            // stale/expired pairing makes wallets open to a dead session (Trust hangs).
-            try {
-                Object.keys(localStorage).forEach(function(k) {
-                    if (k.indexOf('wc@2:') === 0 || k.indexOf('walletconnect') === 0) localStorage.removeItem(k);
-                });
-            } catch(_) {}
             var _akCore         = await import('https://esm.sh/@reown/appkit');
             var _akEth          = await import('https://esm.sh/@reown/appkit-adapter-ethers5');
             var _createAppKit   = _akCore.createAppKit;
@@ -13922,6 +13914,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 },
                 features: { analytics: false, email: false, socials: [] }
             });
+            // Subscribe at INIT — exactly like the working appkit-test2 harness. This is
+            // what forces AppKit's WC connector/relay to fully initialize NOW (at warm-up)
+            // rather than lazily at connect-click. Keep a live reference to the connected
+            // provider/address so the connect flow can read it.
+            try {
+                window._appKitModal.subscribeProviders(function(s) {
+                    window._appkitProvider = s && s['eip155'];
+                });
+                window._appKitModal.subscribeAccount(function(s) {
+                    window._appkitAddress   = s && s.address;
+                    window._appkitConnected = !!(s && s.address && s.isConnected);
+                    if (window._wcDbg && s && s.address) window._wcDbg('WC(init-sub): ' + String(s.address).slice(0,10) + ' conn=' + s.isConnected);
+                });
+            } catch(_) {}
             return window._appKitModal;
         })();
         return window._appKitInitPromise;
