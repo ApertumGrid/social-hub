@@ -13933,9 +13933,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         }
                     });
                 } catch(_) {}
+                // Detect mobile. On mobile we take over deep-linking to the wallet:
+                // the deprecated @walletconnect/modal was handing MetaMask a DOUBLE-
+                // encoded wc: URI, producing "Invalid deeplink / Invalid URL: wc%3A…"
+                // on the phone. On mobile we disable the modal and open MetaMask
+                // ourselves with a correctly SINGLE-encoded universal link.
+                var _wcIsMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
                 const wcProv = await window._WCEthProviderClass.init({
                     projectId:      WC_PROJECT_ID,
-                    showQrModal:    true,
+                    showQrModal:    !_wcIsMobile,           // desktop: WC QR modal; mobile: our own deep link
                     chains:         [56],                   // BSC mainnet
                     optionalChains: [1],
                     rpcMap: {
@@ -13952,6 +13958,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         }
                     }
                 });
+                // Mobile: the instant WalletConnect emits the pairing URI, open MetaMask
+                // with a deep link we build ourselves. encodeURIComponent EXACTLY ONCE —
+                // MetaMask's universal-link handler decodes once, so a single encode is
+                // correct. (Double-encoding is the bug that caused "Invalid deeplink".)
+                if (_wcIsMobile) {
+                    wcProv.on('display_uri', function(_wcUri) {
+                        try {
+                            var _mmDeepLink = 'https://metamask.app.link/wc?uri=' + encodeURIComponent(_wcUri);
+                            window.location.href = _mmDeepLink;
+                        } catch (_e) { console.error('[WC] mobile deep link failed:', _e); }
+                    });
+                }
                 await _wcPatienceGate();
                 await Promise.race([
                     wcProv.enable(),
