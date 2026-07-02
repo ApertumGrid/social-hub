@@ -13927,6 +13927,29 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         return window._appKitInitPromise;
     };
 
+    // On-screen WalletConnect debug log (STAGING ONLY) — surfaces each connect
+    // milestone on the phone so we can see exactly where a hang occurs.
+    window._wcDbg = function(msg) {
+        try {
+            var box = document.getElementById('wc-dbg');
+            if (!box) {
+                box = document.createElement('div');
+                box.id = 'wc-dbg';
+                box.style.cssText = 'position:fixed;left:0;right:0;bottom:0;max-height:45vh;overflow:auto;z-index:2147483600;background:rgba(0,0,0,0.94);color:#8ef;font:11px/1.5 ui-monospace,monospace;padding:8px 10px;white-space:pre-wrap;word-break:break-all;border-top:2px solid #a855f7;';
+                var btn = document.createElement('div');
+                btn.textContent = '✕ close debug';
+                btn.style.cssText = 'color:#f87171;text-align:right;font-weight:700;margin-bottom:4px;cursor:pointer;';
+                btn.onclick = function(){ box.remove(); };
+                box.appendChild(btn);
+                document.body.appendChild(box);
+            }
+            var line = document.createElement('div');
+            line.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+            box.appendChild(line);
+            box.scrollTop = box.scrollHeight;
+        } catch(_) {}
+    };
+
     async function _connectWithProvider(walletType) {
         var dd = document.getElementById('wallet-dropdown');
         if (dd) dd.style.display = 'none';
@@ -13968,16 +13991,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 // staging harness 2026-07-02: esm.sh load + connect + ethers read on
                 // BSC 56 all pass. See appkit-test.html.
                 showToast('Loading WalletConnect…');
+                window._wcDbg('WC: start (warm=' + !!window._appKitModal + ')');
                 var _modal;
                 try {
                     _modal = await window._initAppKit();   // returns the warm instance if drawer already kicked it off
+                    window._wcDbg('WC: appkit init OK');
                 } catch (_akErr) {
                     console.error('[AppKit] load/init failed:', _akErr);
+                    window._wcDbg('WC: init ERROR ' + (_akErr && _akErr.message ? _akErr.message : _akErr));
                     showToast('WalletConnect failed to load. Please try again.');
                     return;
                 }
 
                 await _wcPatienceGate();
+                window._wcDbg('WC: patience done, opening modal');
 
                 // Open the modal and wait for a connected eip155 provider + address.
                 var _wcProvider = await new Promise(function(resolve, reject) {
@@ -13990,18 +14017,22 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     var _akTo = setTimeout(function() {
                         if (_resolved) return;
                         _resolved = true; _cleanup();
+                        window._wcDbg('WC: TIMEOUT after 180s (prov=' + !!_curProv + ' addr=' + !!_curAddr + ')');
                         reject(new Error('WalletConnect timed out. Please try again.'));
                     }, 180000);
                     var _finish = function(prov, addr) {
                         if (_resolved) return;
                         _resolved = true; clearTimeout(_akTo); _cleanup();
+                        window._wcDbg('WC: RESOLVED addr=' + addr);
                         resolve({ provider: prov, address: addr });
                     };
                     var _tryResolve = function() { if (_curProv && _curAddr) _finish(_curProv, _curAddr); };
                     _unsubP = _modal.subscribeProviders(function(state) {
+                        window._wcDbg('WC: providers cb eip155=' + !!(state && state['eip155']));
                         if (state && state['eip155']) { _curProv = state['eip155']; _tryResolve(); }
                     });
                     _unsubA = _modal.subscribeAccount(function(state) {
+                        window._wcDbg('WC: account cb addr=' + (state && state.address ? state.address.slice(0,10) : 'none') + ' conn=' + (state && state.isConnected));
                         if (state && state.address && state.isConnected) { _curAddr = state.address; _tryResolve(); }
                     });
                     // Already connected (persisted session)? resolve without reopening.
@@ -14009,10 +14040,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         if (_modal.getIsConnectedState && _modal.getIsConnectedState()) {
                             var _p0 = _modal.getProvider && _modal.getProvider('eip155');
                             var _a0 = _modal.getAddress && _modal.getAddress();
+                            window._wcDbg('WC: fast-path connected p=' + !!_p0 + ' a=' + !!_a0);
                             if (_p0 && _a0) { _finish(_p0, _a0); return; }
                         }
                     } catch(_) {}
-                    try { _modal.open(); } catch (e) { /* subscriptions still resolve on connect */ }
+                    try { _modal.open(); window._wcDbg('WC: modal.open() called'); }
+                    catch (e) { window._wcDbg('WC: modal.open() ERROR ' + (e && e.message ? e.message : e)); }
                 });
 
                 try { _modal.close && _modal.close(); } catch(_) {}
