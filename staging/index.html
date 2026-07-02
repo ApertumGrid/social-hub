@@ -13879,6 +13879,54 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
     }
 
+    // Reown AppKit init — cached + warmable. We call this early (when the wallet
+    // drawer opens) so AppKit's relay is fully connected before the user picks a
+    // wallet. Without the warm-up, opening the modal immediately after createAppKit
+    // sends a not-yet-live pairing URI → some wallets (e.g. Trust) open and hang.
+    // Promise-cached so a warm-up call and the real connect share one init.
+    window._initAppKit = function() {
+        if (window._appKitModal) return Promise.resolve(window._appKitModal);
+        if (window._appKitInitPromise) return window._appKitInitPromise;
+        window._appKitInitPromise = (async function() {
+            // Clear stale WalletConnect session/pairing keys left by the OLD
+            // ethereum-provider. AppKit's SignClient reads the same wc@2: keys, and a
+            // stale/expired pairing makes wallets open to a dead session (Trust hangs).
+            try {
+                Object.keys(localStorage).forEach(function(k) {
+                    if (k.indexOf('wc@2:') === 0 || k.indexOf('walletconnect') === 0) localStorage.removeItem(k);
+                });
+            } catch(_) {}
+            var _akCore         = await import('https://esm.sh/@reown/appkit');
+            var _akEth          = await import('https://esm.sh/@reown/appkit-adapter-ethers5');
+            var _createAppKit   = _akCore.createAppKit;
+            var _Ethers5Adapter = _akEth.Ethers5Adapter;
+            var _bscNet = {
+                id: 56,
+                name: 'BNB Smart Chain',
+                chainNamespace: 'eip155',
+                caipNetworkId: 'eip155:56',
+                nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+                rpcUrls: { default: { http: [BSC_RPC] } },
+                blockExplorers: { default: { name: 'BscScan', url: 'https://bscscan.com' } }
+            };
+            window._appKitModal = _createAppKit({
+                adapters:       [ new _Ethers5Adapter() ],
+                networks:       [ _bscNet ],
+                defaultNetwork: _bscNet,
+                projectId:      '422b74ec70be253bbdc47a7479725899',
+                metadata: {
+                    name:        'SocialHub',
+                    description: 'Web3 Social Platform on BSC',
+                    url:         'https://socialhubglobal.com',
+                    icons:       ['https://socialhubglobal.com/favicon.ico']
+                },
+                features: { analytics: false, email: false, socials: [] }
+            });
+            return window._appKitModal;
+        })();
+        return window._appKitInitPromise;
+    };
+
     async function _connectWithProvider(walletType) {
         var dd = document.getElementById('wallet-dropdown');
         if (dd) dd.style.display = 'none';
@@ -13920,41 +13968,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 // staging harness 2026-07-02: esm.sh load + connect + ethers read on
                 // BSC 56 all pass. See appkit-test.html.
                 showToast('Loading WalletConnect…');
-                var _modal = window._appKitModal;
-                if (!_modal) {
-                    try {
-                        var _akCore         = await import('https://esm.sh/@reown/appkit');
-                        var _akEth          = await import('https://esm.sh/@reown/appkit-adapter-ethers5');
-                        var _createAppKit   = _akCore.createAppKit;
-                        var _Ethers5Adapter = _akEth.Ethers5Adapter;
-                        var _bscNet = {
-                            id: 56,
-                            name: 'BNB Smart Chain',
-                            chainNamespace: 'eip155',
-                            caipNetworkId: 'eip155:56',
-                            nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
-                            rpcUrls: { default: { http: [BSC_RPC] } },
-                            blockExplorers: { default: { name: 'BscScan', url: 'https://bscscan.com' } }
-                        };
-                        _modal = _createAppKit({
-                            adapters:       [ new _Ethers5Adapter() ],
-                            networks:       [ _bscNet ],
-                            defaultNetwork: _bscNet,
-                            projectId:      '422b74ec70be253bbdc47a7479725899',
-                            metadata: {
-                                name:        'SocialHub',
-                                description: 'Web3 Social Platform on BSC',
-                                url:         'https://socialhubglobal.com',
-                                icons:       ['https://socialhubglobal.com/favicon.ico']
-                            },
-                            features: { analytics: false, email: false, socials: [] }
-                        });
-                        window._appKitModal = _modal;
-                    } catch (_akErr) {
-                        console.error('[AppKit] load/init failed:', _akErr);
-                        showToast('WalletConnect failed to load. Please try again.');
-                        return;
-                    }
+                var _modal;
+                try {
+                    _modal = await window._initAppKit();   // returns the warm instance if drawer already kicked it off
+                } catch (_akErr) {
+                    console.error('[AppKit] load/init failed:', _akErr);
+                    showToast('WalletConnect failed to load. Please try again.');
+                    return;
                 }
 
                 await _wcPatienceGate();
@@ -14249,6 +14269,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.closeOnboardingModal = closeOnboardingModal;
 
     async function connectWallet() {
+        // Warm up AppKit (import + relay connect) the moment the drawer opens, so
+        // WalletConnect pairing is ready by the time the user picks a wallet.
+        try { if (window._initAppKit) window._initAppKit().catch(function(){}); } catch(_) {}
         toggleWalletDropdown();
     }
 
