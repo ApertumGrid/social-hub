@@ -13998,6 +13998,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 try { _modal.close && _modal.close(); } catch(_) {}
 
                 eth = _wcProvider.provider;
+                window._wcResolvedAddress = _wcProvider.address;   // AppKit already established the account
                 window._activeWCProvider = eth;
                 window._wcSessionAlive   = true;
                 window._wcConnecting     = false;
@@ -14032,8 +14033,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
 
             provider    = new ethers.providers.Web3Provider(eth);
-            const accts = await provider.send("eth_requestAccounts", []);
-            userAddress = accts[0];
+            // For WalletConnect (AppKit) the account is already established — re-requesting
+            // via eth_requestAccounts round-trips to the wallet and HANGS some wallets
+            // (e.g. Trust). Use the address AppKit already gave us. MetaMask/XOVA (injected)
+            // still request accounts normally.
+            let userAddrResolved;
+            if (walletType === 'walletconnect' && window._wcResolvedAddress) {
+                userAddrResolved = window._wcResolvedAddress;
+            } else {
+                const accts = await provider.send("eth_requestAccounts", []);
+                userAddrResolved = accts[0];
+            }
+            userAddress = userAddrResolved;
             window.userAddress = userAddress;
             signer      = provider.getSigner();
             hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
