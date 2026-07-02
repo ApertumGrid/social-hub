@@ -2,6 +2,7 @@
 
 
 
+
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -13994,7 +13995,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         '<div style="font-size:0.72rem;color:rgba(255,255,255,0.45);margin-bottom:16px;">Choose the app you\'ll approve the connection in.</div>';
                     wallets.forEach(function(w) {
                         html +=
-                            '<a href="' + w.link + '" style="display:flex;align-items:center;gap:13px;padding:11px 13px;border-radius:14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);text-decoration:none;margin-bottom:9px;">' +
+                            '<a href="' + w.link + '" class="wc-wallet-opt" data-wclink="' + w.link + '" style="display:flex;align-items:center;gap:13px;padding:11px 13px;border-radius:14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);text-decoration:none;margin-bottom:9px;">' +
                                 '<span style="width:42px;height:42px;border-radius:12px;overflow:hidden;background:' + w.bg + ';display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + w.svg + '</span>' +
                                 '<span style="flex:1;min-width:0;">' +
                                     '<span style="display:block;color:#fff;font-weight:700;font-size:0.92rem;">' + w.name + '</span>' +
@@ -14007,6 +14008,24 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     card.innerHTML = html;
                     ov.appendChild(card);
                     document.body.appendChild(ov);
+                    // Telegram Mini App: a plain <a href> deep link opens INSIDE Telegram's
+                    // in-app browser instead of launching the wallet app. Route wallet opens
+                    // through Telegram.WebApp.openLink(), which escapes the WebView to the
+                    // system so the wallet actually opens. Only runs inside Telegram — the
+                    // normal browser flow (confirmed working) is untouched.
+                    if (window._isTMA && window.Telegram && window.Telegram.WebApp) {
+                        Array.prototype.forEach.call(card.querySelectorAll('.wc-wallet-opt'), function(a) {
+                            a.addEventListener('click', function(e) {
+                                var link = a.getAttribute('data-wclink') || '';
+                                if (link.indexOf('http') === 0) {
+                                    e.preventDefault();
+                                    try { window.Telegram.WebApp.openLink(link); }
+                                    catch(_) { try { window.open(link, '_blank'); } catch(__) {} }
+                                }
+                                // raw wc: (Other wallet) falls through to default navigation
+                            });
+                        });
+                    }
                     requestAnimationFrame(function(){ ov.style.opacity = '1'; card.style.transform = 'translateY(0)'; });
                     var _closeSheet = function() {
                         ov.style.opacity = '0'; card.style.transform = 'translateY(100%)';
