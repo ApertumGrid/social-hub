@@ -13956,6 +13956,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         } catch(_) {}
     };
 
+    // STAGING DIAGNOSTIC: tee WalletConnect/AppKit-related console errors, warnings
+    // and unhandled promise rejections to the on-screen debug bar, so we can see the
+    // REAL failure that's normally hidden in the phone's console.
+    (function(){
+        var _rx = /wc|walletconnect|relay|pairing|appkit|reown|proposal|session|expired|topic|subscri|verify|crypto|socket/i;
+        var _ce = console.error.bind(console), _cw = console.warn.bind(console);
+        console.error = function(){ var m = Array.prototype.slice.call(arguments).map(String).join(' '); if (_rx.test(m) && window._wcDbg) { try { window._wcDbg('ERR: ' + m.slice(0,200)); } catch(_){} } return _ce.apply(null, arguments); };
+        console.warn  = function(){ var m = Array.prototype.slice.call(arguments).map(String).join(' '); if (_rx.test(m) && window._wcDbg) { try { window._wcDbg('WARN: ' + m.slice(0,200)); } catch(_){} } return _cw.apply(null, arguments); };
+        window.addEventListener('unhandledrejection', function(e){ var m = String(e && e.reason && (e.reason.message||e.reason)); if (_rx.test(m) && window._wcDbg) { try { window._wcDbg('REJECT: ' + m.slice(0,200)); } catch(_){} } });
+    })();
+
     async function _connectWithProvider(walletType) {
         var dd = document.getElementById('wallet-dropdown');
         if (dd) dd.style.display = 'none';
