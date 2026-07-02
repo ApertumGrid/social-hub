@@ -14007,23 +14007,29 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 // (deposit / withdraw / gift) is unchanged. Foundation proven on the
                 // staging harness 2026-07-02: esm.sh load + connect + ethers read on
                 // BSC 56 all pass. See appkit-test.html.
-                showToast('Loading WalletConnect…');
                 window._wcDbg('WC: start (warm=' + !!window._appKitModal + ')');
-                var _modal;
-                try {
-                    _modal = await window._initAppKit();   // returns the warm instance if drawer already kicked it off
-                    window._wcDbg('WC: appkit init OK');
-                } catch (_akErr) {
-                    console.error('[AppKit] load/init failed:', _akErr);
-                    window._wcDbg('WC: init ERROR ' + (_akErr && _akErr.message ? _akErr.message : _akErr));
-                    showToast('WalletConnect failed to load. Please try again.');
-                    return;
+                var _modal = window._appKitModal;
+                if (!_modal) {
+                    // Cold path (rare — user tapped connect before the page-load warm-up
+                    // finished). This awaits init, which loses the user gesture; normally
+                    // the modal is already warm so we never take this branch.
+                    showToast('Loading WalletConnect…');
+                    try { _modal = await window._initAppKit(); }
+                    catch (_akErr) {
+                        window._wcDbg('WC: init ERROR ' + (_akErr && _akErr.message ? _akErr.message : _akErr));
+                        showToast('WalletConnect failed to load. Please try again.');
+                        return;
+                    }
                 }
 
-                await _wcPatienceGate();
-                window._wcDbg('WC: patience done, opening modal');
-
-                // Open the modal and wait for a connected eip155 provider + address.
+                // CRITICAL (mobile): open AppKit SYNCHRONOUSLY inside the user's tap.
+                // Any `await` between the tap and open() consumes the browser's user
+                // activation, after which mobile WalletConnect fails to deliver the
+                // pairing (wallet opens but shows no approval popup). So there are NO
+                // awaits before open() here — the modal is pre-warmed at page load, and
+                // the old patience gate (which broke the gesture) is removed since AppKit
+                // shows its own UI. `new Promise(...)` runs its executor synchronously,
+                // so open() fires while the gesture is still live; we then await the result.
                 var _wcProvider = await new Promise(function(resolve, reject) {
                     var _resolved = false, _curProv = null, _curAddr = null;
                     var _unsubP = null, _unsubA = null;
@@ -14061,7 +14067,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             if (_p0 && _a0) { _finish(_p0, _a0); return; }
                         }
                     } catch(_) {}
-                    try { _modal.open(); window._wcDbg('WC: modal.open() called'); }
+                    try { _modal.open(); window._wcDbg('WC: modal.open() called (in-gesture, no pre-awaits)'); }
                     catch (e) { window._wcDbg('WC: modal.open() ERROR ' + (e && e.message ? e.message : e)); }
                 });
 
