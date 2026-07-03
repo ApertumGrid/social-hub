@@ -10297,6 +10297,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                 <div class="feed-heading">Signal Feed</div>
 
+                <!-- Compact pills — tap to expand Lottery / Founders Season -->
+                <div id="feed-pills" style="display:flex;gap:8px;margin-bottom:12px;">
+                    <button id="pill-lottery" onclick="togglePill('lottery')" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:11px 6px;border-radius:14px;background:linear-gradient(135deg,rgba(168,85,247,0.16),rgba(236,72,153,0.08));border:1px solid rgba(168,85,247,0.4);color:#fff;font-size:0.74rem;font-weight:700;cursor:pointer;transition:box-shadow 0.15s;">
+                        🎰 Lottery <span id="pill-lottery-val" style="color:rgba(200,160,255,0.95);font-weight:800;">–</span>
+                    </button>
+                    <button id="pill-founders" onclick="togglePill('founders')" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:11px 6px;border-radius:14px;background:linear-gradient(135deg,rgba(240,180,41,0.16),rgba(236,72,153,0.06));border:1px solid rgba(240,180,41,0.4);color:#fff;font-size:0.74rem;font-weight:700;cursor:pointer;transition:box-shadow 0.15s;">
+                        🏆 Season <span id="pill-founders-val" style="color:#f0b429;font-weight:800;">–</span>
+                    </button>
+                </div>
+
                 <!-- Founders Season card — points toward future $SHB allocation -->
                 <div id="founders-card" style="display:none;margin-bottom:12px;border-radius:16px;background:linear-gradient(135deg,rgba(240,180,41,0.14) 0%,rgba(236,72,153,0.06) 100%);border:1px solid rgba(240,180,41,0.4);padding:18px;overflow:hidden;flex-shrink:0;">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
@@ -40056,6 +40066,8 @@ function _renderFounders() {
     if (cd) cd.textContent = rem > 0 ? (days + 'd ' + hrs + 'h left') : 'Season ended';
     var p = _computeFounderPoints();
     var connected = !!window.userAddress;
+    var fpv = document.getElementById('pill-founders-val');
+    if (fpv) fpv.textContent = connected ? (p.total.toLocaleString() + ' pts') : (rem > 0 ? (days + 'd') : 'ended');
     var ptsWrap = document.getElementById('founders-points-wrap');
     var ptsEl   = document.getElementById('founders-points');
     var bkEl    = document.getElementById('founders-breakdown');
@@ -40080,12 +40092,34 @@ function _renderFounders() {
 function loadFounders() {
     var card = document.getElementById('founders-card');
     if (!card) return;
-    card.style.display = 'block';
+    // Card stays collapsed; the compact pill (updated in _renderFounders) expands it.
     _renderFounders();
     if (_foundersIv) clearInterval(_foundersIv);
     _foundersIv = setInterval(_renderFounders, 1000);
 }
 window.loadFounders = loadFounders;
+
+// Compact pill toggle — one card open at a time (or none, so the feed shows).
+function togglePill(which) {
+    var map = { lottery:  { card: 'lottery-card',  pill: 'pill-lottery',  glow: '0 0 0 2px rgba(168,85,247,0.55)' },
+                founders: { card: 'founders-card', pill: 'pill-founders', glow: '0 0 0 2px rgba(240,180,41,0.55)' } };
+    var t = map[which]; if (!t) return;
+    var card = document.getElementById(t.card); if (!card) return;
+    var willOpen = card.getAttribute('data-open') !== '1';
+    Object.keys(map).forEach(function(k) {
+        var c = document.getElementById(map[k].card);
+        if (c) { c.style.display = 'none'; c.setAttribute('data-open', '0'); }
+        var pl = document.getElementById(map[k].pill);
+        if (pl) pl.style.boxShadow = 'none';
+    });
+    if (willOpen) {
+        card.style.display = 'block';
+        card.setAttribute('data-open', '1');
+        var pill = document.getElementById(t.pill);
+        if (pill) pill.style.boxShadow = t.glow;
+    }
+}
+window.togglePill = togglePill;
 
 function _founderRefLink() {
     return 'https://socialhubglobal.com?ref=' + (window.userAddress ? window.userAddress.toLowerCase() : '');
@@ -40188,7 +40222,7 @@ function _maybeAttributeReferral() {
 function loadLottery() {
     if (!window.db || !window.fs) return;
     window.fs.onSnapshot(window.fs.doc(window.db, 'lottery_meta', 'config'), function(metaSnap) {
-        if (!metaSnap.exists()) { document.getElementById('lottery-card').style.display = 'none'; return; }
+        if (!metaSnap.exists()) { document.getElementById('lottery-card').style.display = 'none'; var _lp0 = document.getElementById('pill-lottery'); if (_lp0) _lp0.style.display = 'none'; return; }
         var meta    = metaSnap.data();
         var roundId = meta.currentRoundId;
         // Last winner display
@@ -40215,8 +40249,13 @@ function _renderLotteryCard(round) {
     var card = document.getElementById('lottery-card');
     if (!card) return;
     if (round.status === 'complete') { card.style.display = 'none'; return; }
-    card.style.display = 'block';
     var pot = round.pot || 0;
+    // Feed the compact pill; only expand the full card when its pill is tapped.
+    var _lpv = document.getElementById('pill-lottery-val');
+    if (_lpv) _lpv.textContent = pot.toLocaleString() + '★';
+    var _lp = document.getElementById('pill-lottery');
+    if (_lp) _lp.style.display = '';
+    card.style.display = (card.getAttribute('data-open') === '1') ? 'block' : 'none';
     var el  = document.getElementById('lottery-pot');
     if (el) el.textContent = pot.toLocaleString() + '★';
     var sub = document.getElementById('lottery-pot-sub');
