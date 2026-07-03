@@ -2,7 +2,6 @@
 
 
 
-
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -103,6 +102,8 @@
 
         // Lottery card loads for all visitors (no wallet needed to see pot)
         setTimeout(function() { if (typeof loadLottery === 'function') loadLottery(); }, 800);
+        // Founders Season card loads for all visitors too
+        setTimeout(function() { if (typeof loadFounders === 'function') loadFounders(); }, 900);
     </script>
 
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -10296,6 +10297,53 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                 <div class="feed-heading">Signal Feed</div>
 
+                <!-- Compact pills — tap to expand Lottery / Founders Season -->
+                <div id="feed-pills" style="display:flex;gap:8px;margin-bottom:12px;">
+                    <button id="pill-lottery" onclick="togglePill('lottery')" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:11px 6px;border-radius:14px;background:linear-gradient(135deg,rgba(168,85,247,0.16),rgba(236,72,153,0.08));border:1px solid rgba(168,85,247,0.4);color:#fff;font-size:0.74rem;font-weight:700;cursor:pointer;transition:box-shadow 0.15s;">
+                        🎰 Lottery <span id="pill-lottery-val" style="color:rgba(200,160,255,0.95);font-weight:800;">–</span>
+                    </button>
+                    <button id="pill-founders" onclick="togglePill('founders')" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:11px 6px;border-radius:14px;background:linear-gradient(135deg,rgba(240,180,41,0.16),rgba(236,72,153,0.06));border:1px solid rgba(240,180,41,0.4);color:#fff;font-size:0.74rem;font-weight:700;cursor:pointer;transition:box-shadow 0.15s;">
+                        🏆 Season <span id="pill-founders-val" style="color:#f0b429;font-weight:800;">–</span>
+                    </button>
+                </div>
+
+                <!-- Founders Season card — points toward future $SHB allocation -->
+                <div id="founders-card" style="display:none;margin-bottom:12px;border-radius:16px;background:linear-gradient(135deg,rgba(240,180,41,0.14) 0%,rgba(236,72,153,0.06) 100%);border:1px solid rgba(240,180,41,0.4);padding:18px;overflow:hidden;flex-shrink:0;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:1.3rem;">🏆</span>
+                            <div>
+                                <div style="font-size:0.72rem;font-weight:800;color:#f0b429;letter-spacing:0.5px;text-transform:uppercase;">Founders Season 1</div>
+                                <div style="font-size:0.62rem;color:var(--text-muted);">Earn points now → your share of the future $SHB coin</div>
+                            </div>
+                        </div>
+                        <div id="founders-countdown" style="font-size:0.68rem;font-weight:800;color:#f0b429;background:rgba(240,180,41,0.12);padding:5px 11px;border-radius:20px;border:1px solid rgba(240,180,41,0.25);white-space:nowrap;">--d --h left</div>
+                    </div>
+                    <div id="founders-points-wrap" style="text-align:center;margin-bottom:10px;">
+                        <div style="font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:2px;">Your Founder Points</div>
+                        <div id="founders-points" style="font-size:2.4rem;font-weight:900;color:#fff;letter-spacing:-1px;line-height:1.1;">0</div>
+                        <div id="founders-breakdown" style="font-size:0.64rem;color:rgba(240,180,41,0.9);font-weight:600;margin-top:2px;"></div>
+                    </div>
+                    <div id="founders-connect" style="display:none;text-align:center;padding:6px 0 8px;">
+                        <span style="font-size:0.68rem;color:var(--text-muted);">Connect your wallet to start earning Founder Points</span>
+                    </div>
+                    <div id="founders-referral" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(240,180,41,0.15);">
+                        <div style="font-size:0.62rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;text-align:center;">Invite friends — earn <span style="color:#f0b429;font-weight:700;">+100 pts</span> each</div>
+                        <div style="display:flex;gap:6px;">
+                            <input id="founders-ref-input" readonly style="flex:1;min-width:0;background:rgba(255,255,255,0.05);border:1px solid rgba(240,180,41,0.3);border-radius:9px;color:#fff;font-size:0.66rem;padding:8px 10px;" value="" />
+                            <button onclick="copyFounderRef()" style="padding:8px 13px;border-radius:9px;background:rgba(240,180,41,0.2);border:1px solid rgba(240,180,41,0.5);color:#f0b429;font-size:0.68rem;font-weight:700;cursor:pointer;white-space:nowrap;">Copy</button>
+                        </div>
+                        <div style="display:flex;gap:6px;margin-top:6px;">
+                            <button onclick="shareFounderRef('x')" style="flex:1;padding:8px;border-radius:9px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:#fff;font-size:0.66rem;font-weight:600;cursor:pointer;">Share on X</button>
+                            <button onclick="shareFounderRef('tg')" style="flex:1;padding:8px;border-radius:9px;background:rgba(45,212,191,0.12);border:1px solid rgba(45,212,191,0.35);color:var(--teal);font-size:0.66rem;font-weight:600;cursor:pointer;">Share on Telegram</button>
+                        </div>
+                    </div>
+                    <button onclick="openFoundersLeaderboard()" style="width:100%;margin-top:10px;padding:10px;border-radius:11px;background:rgba(240,180,41,0.14);border:1px solid rgba(240,180,41,0.4);color:#f0b429;font-size:0.72rem;font-weight:700;cursor:pointer;">🏆 Founders Leaderboard →</button>
+                    <div style="text-align:center;font-size:0.62rem;color:var(--text-muted);line-height:1.55;border-top:1px solid rgba(240,180,41,0.15);padding-top:9px;margin-top:10px;">
+                        Every ★ you spend = 1 point · Complete profile +200 · First deposit +500.<br><strong style="color:#f0b429;">The more you do now, the bigger your $SHB allocation.</strong>
+                    </div>
+                </div>
+
                 <!-- Star Lottery card — live via Firestore onSnapshot -->
                 <div id="lottery-card" style="display:none;margin-bottom:12px;border-radius:16px;background:linear-gradient(135deg,rgba(168,85,247,0.13) 0%,rgba(236,72,153,0.08) 100%);border:1px solid rgba(168,85,247,0.35);padding:18px 18px 14px;overflow:hidden;flex-shrink:0;">
                     <div onclick="toggleLotteryCard()" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;cursor:pointer;">
@@ -15110,6 +15158,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 currentUsdtBalance = Math.max(0, _depUsdt - (_spent * CONFIG.STAR_USD));
                 window._totalSpentStars       = _spent;
                 window._firestoreDepositedUsdt = _depUsdt;
+                window._founderReferralPoints  = parseInt(snap.data().founderReferralPoints || 0) || 0;
                 const _fbEarned            = Math.max(0, parseFloat(snap.data().creatorStars || 0));
                 window._firestoreCreatorStars = _fbEarned;
                 // Combine Firestore unsettled + on-chain settled (withdrawableUSDT)
@@ -39977,10 +40026,203 @@ function toggleLotteryCard() {
     try { localStorage.setItem('sh_lottery_collapsed', collapsed ? '0' : '1'); } catch(_) {}
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// FOUNDERS SEASON — points engine (Phase 1). Points = future $SHB allocation.
+// Points are DERIVED from spentStarsTotal (bot-proof: earning points requires
+// spending stars, which requires a funded wallet) + one-time bonuses.
+// ═══════════════════════════════════════════════════════════════════════
+var _FOUNDER_SEASON_END      = Date.UTC(2026, 8, 1, 0, 0, 0); // 1 Sep 2026 ≈ 60 days from 3 Jul launch
+var _FOUNDER_POINTS_PER_STAR = 1;
+var _FOUNDER_PROFILE_BONUS   = 200;
+var _FOUNDER_DEPOSIT_BONUS   = 500;
+var _FOUNDER_CF              = 'https://us-central1-socialhub-33014.cloudfunctions.net';
+var _foundersIv             = null;
+
+// Capture a referral code (?ref=0x…) on load — first-touch, stored until the
+// referred user makes their first star-spend (then attributed server-side).
+(function _captureRef(){
+    try {
+        var m = (location.search || '').match(/[?&]ref=(0x[0-9a-fA-F]{40})/);
+        if (m && m[1] && !localStorage.getItem('sh_ref')) localStorage.setItem('sh_ref', m[1].toLowerCase());
+    } catch(_){}
+})();
+
+function _computeFounderPoints() {
+    var spent = Math.floor(parseFloat(window._totalSpentStars || 0));
+    var dep   = parseFloat(window._firestoreDepositedUsdt || 0);
+    var hasProfile = !!(window.userHandle || localStorage.getItem('hub_userName'));
+    var base = Math.max(0, spent) * _FOUNDER_POINTS_PER_STAR;
+    var pB   = hasProfile ? _FOUNDER_PROFILE_BONUS : 0;
+    var dB   = dep > 0 ? _FOUNDER_DEPOSIT_BONUS : 0;
+    var ref  = parseInt(window._founderReferralPoints || 0) || 0;   // Phase 2
+    return { base: base, profile: pB, deposit: dB, referral: ref, total: base + pB + dB + ref };
+}
+
+function _renderFounders() {
+    var rem  = Math.max(0, _FOUNDER_SEASON_END - Date.now());
+    var days = Math.floor(rem / 86400000);
+    var hrs  = Math.floor((rem % 86400000) / 3600000);
+    var cd   = document.getElementById('founders-countdown');
+    if (cd) cd.textContent = rem > 0 ? (days + 'd ' + hrs + 'h left') : 'Season ended';
+    var p = _computeFounderPoints();
+    var connected = !!window.userAddress;
+    var fpv = document.getElementById('pill-founders-val');
+    if (fpv) fpv.textContent = connected ? (p.total.toLocaleString() + ' pts') : (rem > 0 ? (days + 'd') : 'ended');
+    var ptsWrap = document.getElementById('founders-points-wrap');
+    var ptsEl   = document.getElementById('founders-points');
+    var bkEl    = document.getElementById('founders-breakdown');
+    var conEl   = document.getElementById('founders-connect');
+    var refWrap  = document.getElementById('founders-referral');
+    var refInput = document.getElementById('founders-ref-input');
+    if (connected) {
+        if (conEl)   conEl.style.display = 'none';
+        if (ptsWrap) ptsWrap.style.display = 'block';
+        if (ptsEl)   ptsEl.textContent = p.total.toLocaleString();
+        if (bkEl)    bkEl.textContent = 'Activity ' + p.base.toLocaleString() + ' · Profile ' + p.profile + ' · Deposit ' + p.deposit + (p.referral ? ' · Referrals ' + p.referral : '');
+        if (refWrap)  refWrap.style.display = 'block';
+        if (refInput && !refInput.value) refInput.value = _founderRefLink();
+        _maybeAttributeReferral();
+    } else {
+        if (conEl)   conEl.style.display = 'block';
+        if (ptsWrap) ptsWrap.style.display = 'none';
+        if (refWrap) refWrap.style.display = 'none';
+    }
+}
+
+function loadFounders() {
+    var card = document.getElementById('founders-card');
+    if (!card) return;
+    // Card stays collapsed; the compact pill (updated in _renderFounders) expands it.
+    _renderFounders();
+    if (_foundersIv) clearInterval(_foundersIv);
+    _foundersIv = setInterval(_renderFounders, 1000);
+}
+window.loadFounders = loadFounders;
+
+// Compact pill toggle — one card open at a time (or none, so the feed shows).
+function togglePill(which) {
+    var map = { lottery:  { card: 'lottery-card',  pill: 'pill-lottery',  glow: '0 0 0 2px rgba(168,85,247,0.55)' },
+                founders: { card: 'founders-card', pill: 'pill-founders', glow: '0 0 0 2px rgba(240,180,41,0.55)' } };
+    var t = map[which]; if (!t) return;
+    var card = document.getElementById(t.card); if (!card) return;
+    var willOpen = card.getAttribute('data-open') !== '1';
+    Object.keys(map).forEach(function(k) {
+        var c = document.getElementById(map[k].card);
+        if (c) { c.style.display = 'none'; c.setAttribute('data-open', '0'); }
+        var pl = document.getElementById(map[k].pill);
+        if (pl) pl.style.boxShadow = 'none';
+    });
+    if (willOpen) {
+        card.style.display = 'block';
+        card.setAttribute('data-open', '1');
+        var pill = document.getElementById(t.pill);
+        if (pill) pill.style.boxShadow = t.glow;
+    }
+}
+window.togglePill = togglePill;
+
+function _founderRefLink() {
+    return 'https://socialhubglobal.com?ref=' + (window.userAddress ? window.userAddress.toLowerCase() : '');
+}
+function copyFounderRef() {
+    try { navigator.clipboard.writeText(_founderRefLink()); showToast('Referral link copied! Share it to earn +100 pts per friend.'); } catch(_) {}
+}
+function shareFounderRef(where) {
+    var url  = _founderRefLink();
+    var text = 'Join me on SocialHub — post, earn USDT, and farm your $SHB Founder allocation. Zero bots. 🚀';
+    if (where === 'x') window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(text) + '&url=' + encodeURIComponent(url), '_blank');
+    else               window.open('https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(text), '_blank');
+}
+window.copyFounderRef = copyFounderRef;
+window.shareFounderRef = shareFounderRef;
+
+function openFoundersLeaderboard() {
+    var old = document.getElementById('founders-lb-modal');
+    if (old) old.remove();
+    var ov = document.createElement('div');
+    ov.id = 'founders-lb-modal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483200;background:rgba(0,0,0,0.7);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:flex;align-items:flex-end;justify-content:center;opacity:0;transition:opacity 0.2s;';
+    var card = document.createElement('div');
+    card.style.cssText = 'width:100%;max-width:520px;max-height:82vh;background:#17141f;border-top:1px solid rgba(240,180,41,0.25);border-radius:22px 22px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -10px 50px rgba(0,0,0,0.6);display:flex;flex-direction:column;transform:translateY(100%);transition:transform 0.28s cubic-bezier(0.22,1,0.36,1);';
+    card.innerHTML =
+        '<div style="width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,0.18);margin:2px auto 14px;flex-shrink:0;"></div>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-shrink:0;">' +
+            '<div style="font-size:1.05rem;font-weight:800;color:#f0b429;">🏆 Founders Leaderboard</div>' +
+            '<div id="founders-lb-close" style="width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.55);font-size:0.85rem;cursor:pointer;">✕</div>' +
+        '</div>' +
+        '<div id="founders-lb-sub" style="font-size:0.66rem;color:var(--text-muted);margin-bottom:12px;flex-shrink:0;">Loading…</div>' +
+        '<div id="founders-lb-list" style="overflow-y:auto;flex:1;"></div>';
+    ov.appendChild(card);
+    document.body.appendChild(ov);
+    requestAnimationFrame(function(){ ov.style.opacity = '1'; card.style.transform = 'translateY(0)'; });
+    var _close = function(){ ov.style.opacity = '0'; card.style.transform = 'translateY(100%)'; setTimeout(function(){ if (ov && ov.parentNode) ov.remove(); }, 280); };
+    ov.addEventListener('click', function(e){ if (e.target === ov) _close(); });
+    var x = document.getElementById('founders-lb-close'); if (x) x.onclick = _close;
+    try {
+        window.fs.getDoc(window.fs.doc(window.db, 'founder_meta', 'leaderboard')).then(function(snap){
+            _renderFoundersLeaderboard(snap.exists() ? snap.data() : null);
+        }).catch(function(){ _renderFoundersLeaderboard(null); });
+    } catch(_) { _renderFoundersLeaderboard(null); }
+}
+function closeFoundersLeaderboard(){ var ov = document.getElementById('founders-lb-modal'); if (ov) ov.remove(); }
+function _renderFoundersLeaderboard(data){
+    var sub  = document.getElementById('founders-lb-sub');
+    var list = document.getElementById('founders-lb-list');
+    if (!list) return;
+    if (!data || !data.top || !data.top.length) {
+        if (sub) sub.textContent = 'Leaderboard is updating — check back shortly.';
+        list.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.78rem;padding:30px 0;">No founders ranked yet. Earn points to be the first! 🚀</div>';
+        return;
+    }
+    var me = window.userAddress ? window.userAddress.toLowerCase() : '';
+    if (sub) {
+        var ago = data.updatedAt ? Math.max(1, Math.round((Date.now() - data.updatedAt) / 60000)) : null;
+        sub.textContent = (data.totalFounders || data.top.length) + ' founders' + (ago ? ' · updated ' + ago + 'm ago' : '');
+    }
+    var html = '';
+    data.top.forEach(function(u){
+        var mine  = (u.addr && u.addr.toLowerCase() === me);
+        var medal = u.rank === 1 ? '🥇' : u.rank === 2 ? '🥈' : u.rank === 3 ? '🥉' : ('#' + u.rank);
+        var av    = u.avatar ? ('<img src="' + u.avatar + '" style="width:34px;height:34px;border-radius:50%;object-fit:cover;" onerror="this.style.display=\'none\'"/>') : '';
+        html += '<div style="display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:11px;margin-bottom:6px;background:' + (mine ? 'rgba(240,180,41,0.16)' : 'rgba(255,255,255,0.03)') + ';border:1px solid ' + (mine ? 'rgba(240,180,41,0.5)' : 'rgba(255,255,255,0.06)') + ';">' +
+            '<div style="width:30px;text-align:center;font-weight:800;font-size:0.82rem;color:' + (u.rank <= 3 ? '#f0b429' : 'var(--text-muted)') + ';flex-shrink:0;">' + medal + '</div>' +
+            '<div style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;">' + (av || '<span style="font-size:0.9rem;">👤</span>') + '</div>' +
+            '<div style="flex:1;min-width:0;color:#fff;font-weight:600;font-size:0.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (u.handle || 'Anon') + (mine ? ' <span style="color:#f0b429;font-size:0.66rem;">(you)</span>' : '') + '</div>' +
+            '<div style="color:#f0b429;font-weight:800;font-size:0.82rem;flex-shrink:0;">' + (u.points || 0).toLocaleString() + '</div>' +
+        '</div>';
+    });
+    list.innerHTML = html;
+}
+window.openFoundersLeaderboard = openFoundersLeaderboard;
+window.closeFoundersLeaderboard = closeFoundersLeaderboard;
+
+// Attribute a stored referral once the referred user has real activity (a star
+// spend). Server validates everything (no self-ref, one referrer per user, must
+// have spent) — the client just triggers it and clears the code when resolved.
+function _maybeAttributeReferral() {
+    if (!window.userAddress) return;
+    var ref = null; try { ref = localStorage.getItem('sh_ref'); } catch(_) {}
+    if (!ref) return;
+    if (ref.toLowerCase() === window.userAddress.toLowerCase()) { try { localStorage.removeItem('sh_ref'); } catch(_) {} return; }
+    if (parseFloat(window._totalSpentStars || 0) <= 0) return;   // wait for skin in the game
+    if (window._refInFlight) return;
+    window._refInFlight = true;
+    fetch(_FOUNDER_CF + '/attributeReferral', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referee: window.userAddress, referrer: ref })
+    }).then(function(r){ return r.json(); }).then(function(d){
+        window._refInFlight = false;
+        if (d && (d.status === 'awarded' || d.status === 'already' || d.status === 'no_referrer' || d.status === 'self')) {
+            try { localStorage.removeItem('sh_ref'); } catch(_) {}
+            if (d.status === 'awarded') showToast('🎉 Referral bonus! You earned +50 Founder Points.');
+        }
+    }).catch(function(){ window._refInFlight = false; });
+}
+
 function loadLottery() {
     if (!window.db || !window.fs) return;
     window.fs.onSnapshot(window.fs.doc(window.db, 'lottery_meta', 'config'), function(metaSnap) {
-        if (!metaSnap.exists()) { document.getElementById('lottery-card').style.display = 'none'; return; }
+        if (!metaSnap.exists()) { document.getElementById('lottery-card').style.display = 'none'; var _lp0 = document.getElementById('pill-lottery'); if (_lp0) _lp0.style.display = 'none'; return; }
         var meta    = metaSnap.data();
         var roundId = meta.currentRoundId;
         // Last winner display
@@ -40007,8 +40249,13 @@ function _renderLotteryCard(round) {
     var card = document.getElementById('lottery-card');
     if (!card) return;
     if (round.status === 'complete') { card.style.display = 'none'; return; }
-    card.style.display = 'block';
     var pot = round.pot || 0;
+    // Feed the compact pill; only expand the full card when its pill is tapped.
+    var _lpv = document.getElementById('pill-lottery-val');
+    if (_lpv) _lpv.textContent = pot.toLocaleString() + '★';
+    var _lp = document.getElementById('pill-lottery');
+    if (_lp) _lp.style.display = '';
+    card.style.display = (card.getAttribute('data-open') === '1') ? 'block' : 'none';
     var el  = document.getElementById('lottery-pot');
     if (el) el.textContent = pot.toLocaleString() + '★';
     var sub = document.getElementById('lottery-pot-sub');
