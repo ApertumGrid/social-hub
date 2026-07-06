@@ -11625,6 +11625,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <img id="comm-feed-banner-img" class="comm-feed-banner" src="" alt="" crossorigin="anonymous" style="display:none;">
                     <div class="comm-feed-name" id="comm-feed-name"></div>
                     <div class="comm-feed-desc" id="comm-feed-desc"></div>
+                    <div class="comm-feed-website" id="comm-feed-website" style="display:none; margin-bottom:10px; font-size:0.8rem;"></div>
 
                     <!-- Community Header V2: member count, creator, follow button -->
                     <div class="comm-header-v2" id="comm-header-v2">
@@ -11656,6 +11657,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:12px;">✎ Edit Hub Details</div>
                         <input type="text" id="comm-edit-name" class="field" placeholder="Hub Name" style="margin-bottom:8px;">
                         <textarea id="comm-edit-desc" class="field" rows="3" placeholder="Description" style="margin-bottom:8px; resize:none; overflow:hidden;" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,400)+'px';"></textarea>
+                        <input type="url" id="comm-edit-website" class="field" placeholder="Website URL (optional)" style="margin-bottom:8px; font-size:0.73rem;">
                         <div style="margin-bottom:8px;">
                             <input type="file" id="comm-edit-img-file" accept="image/*" style="display:none;" onchange="uploadHubBanner(this,'comm-edit-img','comm-edit-banner-thumb','comm-edit-banner-wrap','comm-edit-banner-progress')">
                             <button type="button" class="btn" onclick="document.getElementById('comm-edit-img-file').click()" style="width:100%;margin-bottom:6px;font-size:0.73rem;">📷 Upload Banner Image</button>
@@ -11846,6 +11848,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div class="alias-hint" id="alias-hint">
                             Optional. Creates a shareable link like <strong>?hub=your-handle</strong>.
                             Letters, numbers, and hyphens only. Free for all Hub creators.
+                        </div>
+                        <input type="url" id="comm-website-input" class="field"
+                               placeholder="Website URL (optional) — e.g. yoursite.com"
+                               style="margin-bottom:4px; font-size:0.78rem;">
+                        <div style="font-size:0.66rem; color:var(--text-muted); margin-bottom:12px;">
+                            Optional. Shown as a clickable link on your Hub.
                         </div>
                         <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:10px;">
                             Not sure yet? <a href="hub-owner.html" target="_blank" rel="noopener" style="color:var(--teal);text-decoration:none;font-weight:600;">See how Hub earnings work &#8599;</a>
@@ -16775,11 +16783,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
-        // URLs first
-        let out = escaped.replace(
-            /(https?:\/\/[^\s<>"]+)/g,
-            '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-        );
+        // URLs first — match full http(s), www.-prefixed, and bare domains (with a valid-looking TLD)
+        const _URL_RE = /(^|[^\/@.\w])((?:https?:\/\/|www\.)[^\s<>"]+|(?:[a-z0-9-]+\.)+(?:com|net|org|io|ai|co|dev|app|xyz|me|info|biz|gg|club|online|site|link|shop|store|tech|finance|eth|sol|us|uk|ca|au|de|fr|nl|ly|to|so)(?:\/[^\s<>"]*)?)/gi;
+        let out = escaped.replace(_URL_RE, function(match, pre, url) {
+            // Trim trailing sentence punctuation so it isn't swallowed into the link
+            let trail = '';
+            const m2 = url.match(/[.,!?;:)\]]+$/);
+            if (m2) { trail = m2[0]; url = url.slice(0, url.length - trail.length); }
+            const href = /^https?:\/\//i.test(url) ? url : 'https://' + url;
+            return pre + '<a href="' + href + '" target="_blank" rel="noopener noreferrer">' + url + '</a>' + trail;
+        });
         // Hashtags — only match #word at start of string or after whitespace/punctuation
         out = out.replace(/((?:^|[\s.,!?()\[\]]))#([a-zA-Z0-9_]+)/g, function(match, pre, tag) {
             return pre + '<span class="post-hashtag" onclick="filterByHashtag(\'' +
@@ -22076,6 +22089,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
         if (nameEl) nameEl.textContent = comm.name || 'Hub';
         if (descEl) descEl.textContent = comm.description || '';
+        _setHubWebsiteDisplay(comm.website || '');
         // Hub Rules display
         var _rulesSec  = document.getElementById('comm-rules-section');
         var _rulesText = document.getElementById('comm-rules-text');
@@ -22657,6 +22671,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var n = document.getElementById('comm-edit-name');
             var d = document.getElementById('comm-edit-desc');
             var i = document.getElementById('comm-edit-img');
+            var w = document.getElementById('comm-edit-website');
+            if (w) w.value = _activeCommunity.website || '';
             if (n) n.value = _activeCommunity.name || '';
             if (d) {
                 d.value = _activeCommunity.description || '';
@@ -22794,6 +22810,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
         var name       = (document.getElementById('comm-edit-name')?.value || '').trim();
         var desc       = (document.getElementById('comm-edit-desc')?.value || '').trim();
+        var website    = _normalizeWebsiteUrl(document.getElementById('comm-edit-website')?.value || '');
         var img        = (document.getElementById('comm-edit-img')?.value  || '').trim();
         var imgPos     = (document.getElementById('comm-edit-img-position')?.value || '50% 50%').trim();
         var rules      = (document.getElementById('comm-edit-rules')?.value || '').trim();
@@ -22810,9 +22827,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         try {
             await window.fs.updateDoc(
                 window.fs.doc(window.db, 'communities', _activeCommunity.id),
-                { name: name, description: desc, headerImg: img, headerImgPosition: imgPos, rulesText: rules, subscriptionsEnabled: subEnabled, subscriptionPrice: subPrice, coMods: coMods, postingMode: postingMode, postingFee: postingFee }
+                { name: name, description: desc, website: website, headerImg: img, headerImgPosition: imgPos, rulesText: rules, subscriptionsEnabled: subEnabled, subscriptionPrice: subPrice, coMods: coMods, postingMode: postingMode, postingFee: postingFee }
             );
-            var _updFields = { name: name, description: desc, headerImg: img, headerImgPosition: imgPos, rulesText: rules, subscriptionsEnabled: subEnabled, subscriptionPrice: subPrice, coMods: coMods, postingMode: postingMode, postingFee: postingFee };
+            var _updFields = { name: name, description: desc, website: website, headerImg: img, headerImgPosition: imgPos, rulesText: rules, subscriptionsEnabled: subEnabled, subscriptionPrice: subPrice, coMods: coMods, postingMode: postingMode, postingFee: postingFee };
             _activeCommunity = Object.assign({}, _activeCommunity, _updFields);
             var nameEl    = document.getElementById('comm-feed-name');
             var descEl    = document.getElementById('comm-feed-desc');
@@ -22821,6 +22838,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var rulesSec  = document.getElementById('comm-rules-section');
             if (nameEl)    nameEl.textContent = name;
             if (descEl)    descEl.textContent = desc;
+            _setHubWebsiteDisplay(website);
             if (bannerImg) {
                 if (img) { bannerImg.src = img; bannerImg.style.objectPosition = imgPos; bannerImg.style.display = 'block'; }
                 else       bannerImg.style.display = 'none';
@@ -23331,6 +23349,31 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
     }
 
+    // ─── Website URL helpers (Hub website field) ─────────────────────────────────
+    function _normalizeWebsiteUrl(raw) {
+        var u = (raw || '').trim();
+        if (!u) return '';
+        if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+        try {
+            var parsed = new URL(u);
+            if (!/\./.test(parsed.hostname)) return '';   // must look like a real domain
+            return parsed.href;
+        } catch (_) { return ''; }
+    }
+    function _setHubWebsiteDisplay(url) {
+        var el = document.getElementById('comm-feed-website');
+        if (!el) return;
+        if (url) {
+            var label = url.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+            el.innerHTML = '🔗 <a href="' + escHtml(url) + '" target="_blank" rel="noopener noreferrer" ' +
+                'style="color:var(--teal); text-decoration:none; font-weight:600;">' + escHtml(label) + '</a>';
+            el.style.display = 'block';
+        } else {
+            el.innerHTML = '';
+            el.style.display = 'none';
+        }
+    }
+
     // ─── Submit: create a new Community Hub ──────────────────────────────────────
     async function submitStartCommunity() {
         if (!userAddress) return showToast('Connect your wallet first!');
@@ -23341,6 +23384,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var imgUrl      = (document.getElementById('comm-img-input')?.value        || '').trim();
         var imgPos      = (document.getElementById('comm-create-img-position')?.value || '50% 50%').trim();
         var alias       = (document.getElementById('comm-alias-input')?.value || '').trim().toLowerCase();
+        var website     = _normalizeWebsiteUrl(document.getElementById('comm-website-input')?.value || '');
         var postingMode = (document.getElementById('comm-create-posting-mode')?.value || 'open');
         var postingFee  = parseFloat(document.getElementById('comm-create-posting-fee')?.value || '0');
         if (isNaN(postingFee) || postingFee < 0) postingFee = 0;
@@ -23443,7 +23487,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 postingFee:  postingFee
             };
             // Only write alias field if one was provided (keeps doc clean for hubs without one)
-            if (alias) commData.alias = alias;
+            if (alias)   commData.alias   = alias;
+            if (website) commData.website = website;
 
             await window.fs.addDoc(window.fs.collection(window.db, 'communities'), commData);
 
@@ -23455,6 +23500,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var n  = document.getElementById('comm-name-input');  if (n)  n.value = '';
             var d2 = document.getElementById('comm-desc-input');  if (d2) d2.value = '';
             var im = document.getElementById('comm-img-input');   if (im) im.value = '';
+            var wb = document.getElementById('comm-website-input'); if (wb) wb.value = '';
             var al = document.getElementById('comm-alias-input'); if (al) { al.value = ''; al.dataset.userEdited = 'false'; }
             var hint = document.getElementById('alias-hint');
             if (hint) { hint.className = 'alias-hint'; hint.innerHTML = 'Optional. Creates a shareable link like <strong>?hub=your-handle</strong>. Letters, numbers, and hyphens only. Free for all Hub creators.'; }
