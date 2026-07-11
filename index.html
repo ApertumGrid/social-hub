@@ -2,7 +2,6 @@
 
 
 
-
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -40388,7 +40387,28 @@ async function buyLotteryTickets() {
         var data = await resp.json();
         if (data.error) { showToast(data.error); return; }
         showToast('🎰 ' + qty + ' ticket' + (qty > 1 ? 's' : '') + ' bought! You have ' + data.tickets + ' in this round.');
-        if (typeof deductStars === 'function') deductStars(cost);
+        // Stars were ALREADY deducted server-side by the buyLotteryTickets CF.
+        // Do NOT deduct again here (that caused a double charge) — just refresh
+        // the displayed balance from Firestore using the canonical derivation.
+        try {
+            var _lbref  = window.fs.doc(window.db, 'user_balances', userAddress.toLowerCase());
+            var _lbsnap = await window.fs.getDoc(_lbref);
+            if (_lbsnap.exists()) {
+                var _lbd    = _lbsnap.data();
+                var _lbdep  = Math.max(0, parseFloat(_lbd.depositedUsdt || _lbd.depositedAptm || 0));
+                var _lbspent= Math.max(0, parseFloat(_lbd.spentStarsTotal || 0));
+                var _lbgross= Math.round(_lbdep / CONFIG.STAR_USD * 10) / 10;
+                purchasedStars     = Math.max(0, Math.floor((_lbgross - _lbspent) * 10) / 10);
+                currentUsdtBalance = Math.max(0, _lbdep - (_lbspent * CONFIG.STAR_USD));
+                currentAptmBalance = currentUsdtBalance;
+                window._totalSpentStars        = _lbspent;
+                window._firestoreDepositedUsdt = _lbdep;
+                creatorEarnings   = Math.max(0, parseFloat(_lbd.creatorStars || 0)) + (window._onChainEarned || 0);
+                currentEarnedUsdt = creatorEarnings * CONFIG.STAR_USD;
+                if (typeof updateUI === 'function') updateUI();
+                if (typeof updateDrawerUI === 'function') updateDrawerUI();
+            }
+        } catch(_) {}
     } catch(e) {
         showToast('Network error. Try again.');
     } finally {
