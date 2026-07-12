@@ -2991,6 +2991,16 @@
             letter-spacing:0.5px; display:none; z-index:12;
         }
 
+        /* Screen-share letterbox — when the host shares a (landscape) screen, the
+           viewer plays with object-fit:contain, leaving bars. Give the container a
+           subtle black background on mobile so those bars read as clean letterbox. */
+        @media (max-width: 700px) {
+            #live-remote-video-container.screen-share-active,
+            #live-remote-video-container.screen-share-active #live-remote-video {
+                background:#000 !important;
+            }
+        }
+
         .live-stream-card {
             border:1px solid var(--border);
             border-radius:var(--radius-md);
@@ -29839,6 +29849,30 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     let _watchingStreamId = null;
     let _activeLiveChannel = null;
 
+    // ── Screen-share fit state ─────────────────────────────────────
+    // Host camera = portrait-friendly → viewers use object-fit:cover (fills).
+    // Host screen share = landscape → viewers must use object-fit:contain so the
+    // whole screen is visible. Default-safe: missing/false → 'cover' (unchanged).
+    window._hostScreenSharing = false;
+    window._hostVideoFit = function() { return window._hostScreenSharing ? 'contain' : 'cover'; };
+
+    // Apply a screen-share state change on the viewer side: flip the global fit
+    // mode, toggle the mobile letterbox background, and re-play the currently
+    // playing host track so the new fit takes effect immediately — this covers
+    // both the race with Agora's camera↔screen track swap and no-swap changes.
+    function _applyScreenShareFit(isSharing) {
+        if (isSharing === window._hostScreenSharing) return; // no change
+        window._hostScreenSharing = isSharing;
+        var _vc = document.getElementById('live-remote-video-container');
+        if (_vc) _vc.classList.toggle('screen-share-active', isSharing);
+        try {
+            var _rel = document.getElementById('live-remote-video');
+            if (_rel && window._liveHostVideoTrack) {
+                window._liveHostVideoTrack.play(_rel, { fit: window._hostVideoFit() });
+            }
+        } catch (_) {}
+    }
+
     // ── Helpers ───────────────────────────────────────────────────
     function $(id) { return document.getElementById(id); }
     function setText(id, val) { const el = $(id); if (el) el.textContent = val; }
@@ -30391,6 +30425,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         _activeLiveChannel    = null;
         _watchingStreamId     = null;
         window._watchingStreamId = null;
+        // Reset screen-share fit state so it never leaks into the next stream
+        window._hostScreenSharing = false;
+        var _rvcReset = document.getElementById('live-remote-video-container');
+        if (_rvcReset) _rvcReset.classList.remove('screen-share-active');
         cohostRequests        = {};
         peakViewers           = 0;
         starGoalTarget        = 0;
@@ -30583,7 +30621,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                 if (hasSize) {
                                     // Play track — don't pre-set pixel dimensions; let _applyViewerLayout
                                     // handle sizing so Agora initialises at the correct layout size.
-                                    remoteUser.videoTrack.play(remoteEl, { fit: 'cover' });
+                                    remoteUser.videoTrack.play(remoteEl, { fit: window._hostVideoFit() });
                                     var _wr = document.getElementById('live-waiting-room');
                                     if (_wr) { _wr.style.transition = 'opacity 0.6s ease'; _wr.style.opacity = '0'; setTimeout(function() { _wr.style.display = 'none'; }, 650); }
                                     window._liveHostVideoTrack = remoteUser.videoTrack;
@@ -32540,6 +32578,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 window._applyHostCamOffOverlay(!!d.hostCamOff, d.hostAvatar || '');
             }
 
+            // Host screen-share: landscape screen → viewers use object-fit:contain
+            if (!isHosting) _applyScreenShareFit(!!d.screenSharing);
+
             if (!isHosting && d.streamLayout) {
                 _applyViewerLayout(d.streamLayout);
                 // Update Join Stage button availability
@@ -32628,7 +32669,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             setTimeout(function() {
                 var _remEl = document.getElementById('live-remote-video');
                 if (_remEl && window._liveHostVideoTrack) {
-                    try { window._liveHostVideoTrack.play(_remEl, { fit: 'cover' }); } catch(_) {}
+                    try { window._liveHostVideoTrack.play(_remEl, { fit: window._hostVideoFit() }); } catch(_) {}
                 }
                 window._syncAgoraToSlots && window._syncAgoraToSlots(window._currentCoSlots || [], false);
             }, 250);
@@ -34045,6 +34086,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 // Labels
                 const lbl = $('screen-share-label'); if (lbl) lbl.style.display = 'none';
 
+                // Signal viewers to revert to object-fit:cover (camera)
+                if (currentStreamId && window.db && window.fs) {
+                    window.fs.updateDoc(window.fs.doc(window.db, LIVE_COL, currentStreamId), { screenSharing: false }).catch(function(){});
+                }
+
                 if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🖥</span> Share Screen'; btn.classList.remove('active'); }
                 showToast('📷 Back to camera.');
             } catch(e) {
@@ -34097,6 +34143,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                 const lbl = $('screen-share-label'); if (lbl) lbl.style.display = 'block';
                 isScreenSharing = true;
+                // Signal viewers to switch to object-fit:contain so they see the full screen
+                if (currentStreamId && window.db && window.fs) {
+                    window.fs.updateDoc(window.fs.doc(window.db, LIVE_COL, currentStreamId), { screenSharing: true }).catch(function(){});
+                }
                 if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🖥</span> Stop Sharing'; btn.classList.add('active'); }
 
                 // Handle user clicking "Stop" in browser's native share dialog
@@ -34924,6 +34974,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (!isHosting && typeof window._applyHostCamOffOverlay === 'function') {
                 window._applyHostCamOffOverlay(!!d.hostCamOff, d.hostAvatar || '');
             }
+
+            // Host screen-share: landscape screen → viewers use object-fit:contain
+            if (!isHosting) _applyScreenShareFit(!!d.screenSharing);
 
             if (!isHosting && d.streamLayout) {
                 if (typeof _applyViewerLayout === 'function') {
@@ -35901,7 +35954,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     var h = col ? col.offsetHeight : 240;
                     remoteEl.style.width  = w + 'px';
                     remoteEl.style.height = h + 'px';
-                    try { window._liveHostVideoTrack.play(remoteEl, { fit: 'cover' }); } catch(_) {}
+                    try { window._liveHostVideoTrack.play(remoteEl, { fit: window._hostVideoFit() }); } catch(_) {}
                 }
             }
         }, 300);
