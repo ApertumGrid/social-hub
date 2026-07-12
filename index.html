@@ -29856,10 +29856,23 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window._hostScreenSharing = false;
     window._hostVideoFit = function() { return window._hostScreenSharing ? 'contain' : 'cover'; };
 
+    // Force the correct object-fit DIRECTLY on the Agora-rendered <video> element.
+    // Agora sets object-fit inline based on the play() `fit` config, but it will NOT
+    // re-apply it when a track is already rendering, and its resize observer can
+    // revert CSS. Setting the inline style with !important beats both.
+    function _forceRemoteVideoFit() {
+        try {
+            var host = document.getElementById('live-remote-video');
+            if (!host) return;
+            var v = host.querySelector('video');
+            if (v) v.style.setProperty('object-fit', window._hostVideoFit(), 'important');
+        } catch (_) {}
+    }
+    window._forceRemoteVideoFit = _forceRemoteVideoFit;
+
     // Apply a screen-share state change on the viewer side: flip the global fit
-    // mode, toggle the mobile letterbox background, and re-play the currently
-    // playing host track so the new fit takes effect immediately — this covers
-    // both the race with Agora's camera↔screen track swap and no-swap changes.
+    // mode, toggle the mobile letterbox background, re-play the host track, and force
+    // the object-fit on the actual video element (Agora won't re-apply it on replay).
     function _applyScreenShareFit(isSharing) {
         if (isSharing === window._hostScreenSharing) return; // no change
         window._hostScreenSharing = isSharing;
@@ -29871,6 +29884,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 window._liveHostVideoTrack.play(_rel, { fit: window._hostVideoFit() });
             }
         } catch (_) {}
+        // Force the inline object-fit with a few retries to win against Agora's
+        // resize observer, which re-fires shortly after (re)render.
+        _forceRemoteVideoFit();
+        setTimeout(_forceRemoteVideoFit, 150);
+        setTimeout(_forceRemoteVideoFit, 400);
+        setTimeout(_forceRemoteVideoFit, 900);
     }
 
     // ── Helpers ───────────────────────────────────────────────────
@@ -30622,6 +30641,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                     // Play track — don't pre-set pixel dimensions; let _applyViewerLayout
                                     // handle sizing so Agora initialises at the correct layout size.
                                     remoteUser.videoTrack.play(remoteEl, { fit: window._hostVideoFit() });
+                                    if (window._forceRemoteVideoFit) { setTimeout(window._forceRemoteVideoFit, 120); }
                                     var _wr = document.getElementById('live-waiting-room');
                                     if (_wr) { _wr.style.transition = 'opacity 0.6s ease'; _wr.style.opacity = '0'; setTimeout(function() { _wr.style.display = 'none'; }, 650); }
                                     window._liveHostVideoTrack = remoteUser.videoTrack;
@@ -32670,6 +32690,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 var _remEl = document.getElementById('live-remote-video');
                 if (_remEl && window._liveHostVideoTrack) {
                     try { window._liveHostVideoTrack.play(_remEl, { fit: window._hostVideoFit() }); } catch(_) {}
+                    if (window._forceRemoteVideoFit) window._forceRemoteVideoFit();
                 }
                 window._syncAgoraToSlots && window._syncAgoraToSlots(window._currentCoSlots || [], false);
             }, 250);
