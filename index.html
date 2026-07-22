@@ -2922,16 +2922,19 @@
         #following-empty-banner{display:none;background:rgba(124,92,191,0.08);border:1px solid rgba(124,92,191,0.2);border-radius:14px;padding:18px 20px;margin-bottom:14px;text-align:center;}
         #following-empty-banner p{color:rgba(255,255,255,0.55);font-size:0.83rem;margin:0 0 12px;}
         #following-empty-banner button{padding:8px 20px;border-radius:20px;border:1px solid rgba(124,92,191,0.5);background:rgba(124,92,191,0.15);color:#c4b5fd;font-size:0.8rem;font-weight:700;cursor:pointer;}
-        #first-earnings-modal{position:fixed;inset:0;z-index:12000;display:none;align-items:center;justify-content:center;padding:24px;}
-        #first-earnings-modal.open{display:flex;}
-        #first-earnings-modal .fem-scrim{position:absolute;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);}
-        #first-earnings-modal .fem-box{position:relative;z-index:1;background:linear-gradient(160deg,#0f0b20,#0a0d18);border:1px solid rgba(240,180,41,.45);border-radius:24px;padding:32px 28px 28px;max-width:360px;width:100%;text-align:center;box-shadow:0 0 60px rgba(240,180,41,.18),0 20px 60px rgba(0,0,0,.6);}
+        #first-earnings-modal,#deposit-welcome-modal{position:fixed;inset:0;z-index:12000;display:none;align-items:center;justify-content:center;padding:24px;}
+        #first-earnings-modal.open,#deposit-welcome-modal.open{display:flex;}
+        #first-earnings-modal .fem-scrim,#deposit-welcome-modal .fem-scrim{position:absolute;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);}
+        #first-earnings-modal .fem-box,#deposit-welcome-modal .fem-box{position:relative;z-index:1;background:linear-gradient(160deg,#0f0b20,#0a0d18);border:1px solid rgba(240,180,41,.45);border-radius:24px;padding:32px 28px 28px;max-width:360px;width:100%;text-align:center;box-shadow:0 0 60px rgba(240,180,41,.18),0 20px 60px rgba(0,0,0,.6);}
         .fem-trophy{font-size:3.2rem;margin-bottom:10px;animation:fem-bounce .5s ease;}
         @keyframes fem-bounce{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
         .fem-title{font-size:1.2rem;font-weight:900;color:#fff;margin-bottom:6px;}
         .fem-amount{font-family:var(--font-mono);font-size:1.5rem;font-weight:900;color:var(--gold);margin:12px 0;}
         .fem-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);border-radius:20px;padding:6px 14px;font-size:.72rem;font-weight:800;color:#4ade80;margin-bottom:18px;text-transform:uppercase;letter-spacing:.5px;}
         .fem-close-btn{width:100%;padding:14px;background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;font-size:1rem;font-weight:800;border-radius:14px;cursor:pointer;}
+        .fem-challenge-btn{width:100%;padding:14px;background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;color:#fff;font-size:1rem;font-weight:800;border-radius:14px;cursor:pointer;margin-bottom:10px;}
+        .fem-explore-btn{width:100%;padding:10px;background:transparent;border:none;color:rgba(255,255,255,0.5);font-size:0.88rem;font-weight:600;cursor:pointer;text-decoration:none;}
+        .fem-explore-btn:hover{color:rgba(255,255,255,0.75);}
         /* ── Viewer Rankings sheet ── */
         #vr-scrim{position:fixed;inset:0;z-index:8996;background:rgba(0,0,0,0.6);display:none;backdrop-filter:blur(2px);}
         #vr-scrim.open{display:block;}
@@ -14430,8 +14433,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             showToast('Connected via ' + (walletType === 'xova' ? 'XOVA Wallet' : walletType === 'walletconnect' ? 'WalletConnect' : 'MetaMask') + ' ✓');
             window._wcConnecting = false;
-            // Prompt for push notifications (delayed slightly so connect toast shows first)
-            setTimeout(function() { initPushNotifications(userAddress); }, 2500);
         } catch(err) {
             window._wcConnecting = false;
             console.error(err);
@@ -16619,7 +16620,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 description: `Deposited $${usdtAmount.toFixed(2)} USDT → ${starsReceived} Stars`
             });
             _dpStatus('✅ Deposit complete! ' + starsReceived + ' Stars added to your balance.');
-            showToast(`Deposit Successful ✓ — ${starsReceived} Stars added`);
+
             // Firebase Analytics: Track deposit
             try {
                 if (window.analytics && window.logEvent) {
@@ -16631,7 +16632,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     });
                 }
             } catch(e) { console.warn('[Analytics] deposit error:', e); }
-            setTimeout(function() { if (_dpOverlay) _dpOverlay.style.display = 'none'; }, 5000);
+
+            // Hide deposit overlay and show celebration modal
+            setTimeout(function() {
+                if (_dpOverlay) _dpOverlay.style.display = 'none';
+                window._showDepositWelcome();
+                // Prompt for push notifications after first deposit
+                if (typeof initPushNotifications === 'function') {
+                    setTimeout(function() { initPushNotifications(userAddress); }, 2000);
+                }
+            }, 1500);
             setTimeout(function() { syncData(); }, 2000);
         } catch (e) {
             console.error("[Deposit] Failed:", e);
@@ -20132,9 +20142,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var now        = Date.now();
             var welcomeText =
                 '👋 Welcome to SocialHub!\n\n' +
-                "I'm Ashley, the founder. Thanks for joining.\n\n" +
-                'Start by depositing a small amount and making your first post — you\'ll start earning Stars immediately.\n\n' +
-                'Need help with anything? Tap the ? button anytime.\n\n' +
+                "I'm Ashley, the founder. Thanks for joining the future of social.\n\n" +
+                '🚀 Start the 7-Day Creator Challenge in Creator Studio — earn the Verified Creator badge and unlock your earning potential.\n\n' +
+                '🏆 You\'re Genesis 50 eligible! The first 50 wallets to deposit and create a Hub earn a permanent Genesis badge.\n\n' +
+                '⭐ Founder Season is live — earn points for every action. Points convert to $SHB tokens when we launch the coin.\n\n' +
+                'Deposit a small amount to get started. Every Star you earn is real USDT you can withdraw anytime.\n\n' +
+                'Need help? Tap the ? button.\n\n' +
                 '— Ashley';
 
             // Create / update the thread doc
@@ -20155,6 +20168,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 window.fs.collection(window.db, 'messages', threadId, 'msgs'),
                 { from: adminAddr, to: userAddr, text: welcomeText, ts: now, platform: true }
             );
+
+            // Write notification to light up the bell
+            await window.fs.addDoc(
+                window.fs.collection(window.db, 'notifications', userAddr, 'items'),
+                {
+                    type:      'message',
+                    actorAddr: adminAddr,
+                    actorName: 'Ashley | SocialHub',
+                    text:      '👋 Welcome to SocialHub!',
+                    read:      false,
+                    timestamp: now,
+                    platform:  true
+                }
+            );
+
             console.log('[Support] Welcome message sent to', userAddr.slice(0,8));
         } catch(e) {
             console.warn('[Support] Welcome message failed:', e.message);
@@ -23755,18 +23783,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             d.classList.toggle('active', i === idx);
         });
         _hiwScene = idx;
-        // Show CTA on last scene, skip on others
+        // Always show Get Started button, hide Skip button
         var skip = document.getElementById('hiw-skip-btn');
         var cta  = document.getElementById('hiw-cta-btn');
-        if (skip && cta) {
-            if (idx === _hiwTotal - 1) {
-                skip.style.display = 'none';
-                cta.style.display  = 'inline-block';
-            } else {
-                skip.style.display = 'inline-block';
-                cta.style.display  = 'none';
-            }
-        }
+        if (skip) skip.style.display = 'none';
+        if (cta) cta.style.display = 'inline-block';
     }
 
     function _hiwTick() {
@@ -23781,11 +23802,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // Advance scene every 10 seconds
         var sceneIdx = Math.min(Math.floor(_hiwElapsed / 10), _hiwTotal - 1);
         if (sceneIdx !== _hiwScene) _hiwSetScene(sceneIdx);
-        // Auto-close when done
-        if (_hiwElapsed >= _hiwDuration) {
+        // Stop timer on last scene, don't auto-close
+        if (sceneIdx === _hiwTotal - 1 && _hiwElapsed >= (_hiwTotal - 1) * 10) {
             clearInterval(_hiwTimer);
             _hiwTimer = null;
-            setTimeout(closeHIW, 600);
+            // Keep Get Started button visible, no auto-close
         }
     }
 
@@ -37864,6 +37885,18 @@ body.is-watching #cmd-orb, body.is-watching #cmd-wheel, body.is-watching #cmd-sc
     </div>
 </div>
 
+<!-- ── DEPOSIT WELCOME CELEBRATION MODAL ── -->
+<div id="deposit-welcome-modal">
+    <div class="fem-scrim" onclick="window._closeDepositWelcome()"></div>
+    <div class="fem-box">
+        <div class="fem-trophy">🎉</div>
+        <div class="fem-title">Welcome to SocialHub!</div>
+        <div style="font-size:.88rem;color:rgba(255,255,255,.65);margin-bottom:24px;line-height:1.5;">You're all set! Start earning by completing the 7-Day Creator Challenge.</div>
+        <button class="fem-challenge-btn" onclick="window._openCreatorChallenge()">Start the 7 Day Challenge →</button>
+        <button class="fem-explore-btn" onclick="window._closeDepositWelcome()">Explore the feed</button>
+    </div>
+</div>
+
 <script>
 (function(){
   var orb   = document.getElementById('cmd-orb');
@@ -39829,6 +39862,34 @@ function _cgFmt(n) {
 window._closeFEModal = function() {
     var m = document.getElementById('first-earnings-modal');
     if (m) m.classList.remove('open');
+};
+
+// ── Deposit Welcome Celebration ────────────────────────────────────────
+window._showDepositWelcome = function() {
+    var m = document.getElementById('deposit-welcome-modal');
+    if (m) m.classList.add('open');
+};
+
+window._closeDepositWelcome = function() {
+    var m = document.getElementById('deposit-welcome-modal');
+    if (m) m.classList.remove('open');
+};
+
+window._openCreatorChallenge = function() {
+    // Close the welcome modal
+    window._closeDepositWelcome();
+    // Switch to Creator Studio page
+    _activateTab('earnings', document.getElementById('nav-earnings'));
+    // Set mobile bottom nav if function exists
+    if (typeof setBnav === 'function') setBnav('studio');
+    // Show the creator challenge card
+    setTimeout(function() {
+        var challengeCard = document.getElementById('creator-challenge-card');
+        if (challengeCard) {
+            challengeCard.style.display = 'block';
+            challengeCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, 200);
 };
 
 window._checkFirstEarnings = async function(addr, amountLabel) {
