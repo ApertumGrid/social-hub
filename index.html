@@ -2,6 +2,7 @@
 
 
 
+
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -17658,112 +17659,40 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const senderAddr   = userAddress.toLowerCase();
             const recipientNorm = recipientAddress ? recipientAddress.toLowerCase() : null;
 
-            if (isComment) {
-                await window.fs.updateDoc(window.fs.doc(window.db, "comments", entityId), { hypes: window.fs.increment(1) });
-            } else {
-                await window.fs.updateDoc(window.fs.doc(window.db, "posts", entityId), { hypes: window.fs.increment(1) });
+            // ── Call hypePost Cloud Function ──────────────────────────────────────────────
+            const hubId = _activeCommunity ? _activeCommunity.id : null;
+            const hubOwnerAddr = _activeCommunity ? _activeCommunity.ownerId : null;
+
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/hypePost', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: senderAddr,
+                    recipientAddr: recipientNorm,
+                    targetId: entityId,
+                    targetType: isComment ? 'comment' : 'post',
+                    hubId: hubId,
+                    hubOwnerAddr: hubOwnerAddr
+                })
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Hype failed');
             }
 
-            // ── STEP A: Log spend FIRST — no spend record = no deduction ─────────────────
-            // Satisfies the log-before-deduct contract. The spend is permanently
-            // in Firestore before any balance change, so the ledger always shows
-            // the debit regardless of what happens next. Also fixes self-hype
-            // direction rendering: stored type='spend' is used by renderLedger.
-            await window.fs.addDoc(
-                window.fs.collection(window.db, 'user_transactions'),
-                {
-                    type:           'spend',
-                    amount:         1,
-                    fromAddress:    senderAddr,
-                    toAddress:      recipientNorm || CONFIG.ADMIN_ADDRESS,
-                    address:        senderAddr,
-                    description:    isComment ? "Spent 1★ on Comment Hype" : (_followMode === 'flicks' ? "Spent 1★ on Flick Hype" : "Spent 1★ on Post Hype"),
-                    postId:         isComment ? null : entityId,
-                    timestamp:      Date.now(),
-                    schema_version: 2
-                }
-            );
-
-            // ── STEP B: Deduct 1★ from sender (spend is now in Firestore) ────────────
-            await deductStars(1);
+            // Update local balance state after CF confirms
             if (typeof window.tickerLog === 'function') window.tickerLog('spend', isComment ? 'Comment Like' : 'Post Like', 1, '❤');
 
-            // ── STEP C: Revenue split ─────────────────────────────────────────────────────
-            if (isComment) {
-                if (recipientNorm && recipientNorm !== "unknown") {
-                    if (_activeCommunity) {
-                        await creditCreatorStars(recipientNorm, 0.4);
-                        logTransaction('earn', 0.4, {
-                            from: senderAddr, to: recipientNorm,
-                            description: "Earnings from " + _activeCommunity.name + " Hub (comment hype)",
-                            communityId: _activeCommunity.id
-                        });
-                        await creditCreatorStars(_activeCommunity.ownerId, 0.4);
-                        logTransaction('earn', 0.4, {
-                            from: senderAddr, to: (_activeCommunity.ownerId || '').toLowerCase(),
-                            description: "Landlord Earnings from " + _activeCommunity.name + " Hub (comment hype)",
-                            communityId: _activeCommunity.id
-                        });
-                        // Track real Stars flowing through this Hub
-                        window.fs.updateDoc(
-                            window.fs.doc(window.db, 'communities', _activeCommunity.id),
-                            { totalStarsEarned: window.fs.increment(0.8) }
-                        ).catch(function(){});
-                    } else {
-                        await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
-                        logTransaction('earn', CONFIG.CREATOR_CUT, {
-                            from: senderAddr, to: recipientNorm,
-                            description: "Earnings from Global Feed"
-                        });
-                    }
-                }
-            } else if (_activeCommunity && recipientNorm &&
-                       recipientNorm !== _activeCommunity.ownerId.toLowerCase()) {
-                await creditCreatorStars(recipientNorm, 0.4);
-                logTransaction('earn', 0.4, {
-                    from: senderAddr, to: recipientNorm,
-                    description: "Earnings from " + _activeCommunity.name + " Hub (guest post)",
-                    postId: entityId, communityId: _activeCommunity.id
-                });
-                await creditCreatorStars(_activeCommunity.ownerId, 0.4);
-                logTransaction('earn', 0.4, {
-                    from: senderAddr, to: (_activeCommunity.ownerId || '').toLowerCase(),
-                    description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
-                    postId: entityId, communityId: _activeCommunity.id
-                });
-                // Track real Stars flowing through this Hub
+            // Track hub stars if applicable (client-side stat only)
+            if (_activeCommunity) {
                 window.fs.updateDoc(
                     window.fs.doc(window.db, 'communities', _activeCommunity.id),
-                    { totalStarsEarned: window.fs.increment(0.8) }
+                    { totalStarsEarned: window.fs.increment(result.hubOwnerCut ? 0.8 : result.creatorCut) }
                 ).catch(function(){});
-            } else {
-                if (recipientNorm && recipientNorm !== "unknown") {
-                    const lbl = _activeCommunity
-                        ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
-                        : "Earnings from Global Feed";
-                    await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
-                    logTransaction('earn', CONFIG.CREATOR_CUT, {
-                        from: senderAddr, to: recipientNorm,
-                        description: lbl, postId: entityId,
-                        communityId: _activeCommunity ? _activeCommunity.id : null
-                    });
-                    if (_activeCommunity) {
-                        window.fs.updateDoc(
-                            window.fs.doc(window.db, 'communities', _activeCommunity.id),
-                            { totalStarsEarned: window.fs.increment(CONFIG.CREATOR_CUT) }
-                        ).catch(function(){});
-                    }
-                }
             }
 
-            // ── STEP D: Platform revenue ──────────────────────────────────────────────────
-            logAdminRevenue(senderAddr, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
-
-            // ── Release spend lock NOW — all credits are fully written ────────────────────
-            // The lock was armed by deductStars to stop the onSnapshot rubber-banding the
-            // balance back to the pre-deduction value. All creditCreatorStars writes are now
-            // complete so it's safe to let the snapshot through — this makes the earned 0.8★
-            // appear immediately in the UI instead of being silently dropped.
+            // ── Release spend lock NOW — CF has completed all balance writes ──────────────
             isSpending = false;
             if (_spendLockTimer) { clearTimeout(_spendLockTimer); _spendLockTimer = null; }
 
