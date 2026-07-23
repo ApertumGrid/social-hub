@@ -14540,23 +14540,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 } else {
                     const d = snap.data();
 
-                    // If on-chain is completely empty but Firestore still shows a balance,
+                    // If on-chain deposited is zero but Firestore still shows deposited balance,
                     // the withdrawal succeeded but the Firestore zero-write didn't complete.
-                    // Zero Firestore now so the UI reflects reality.
+                    // Zero the DEPOSITED fields only — creatorStars is independent.
                     var _fbStars   = parseFloat(d.stars        || 0);
                     var _fbCreator = parseFloat(d.creatorStars || 0);
                     var _fbDep     = parseFloat(d.depositedUsdt|| 0);
-                    var _hadBal    = _fbStars > 0 || _fbCreator > 0 || _fbDep > 0;
-                    if (depositedHuman === 0 && withdrawableHuman === 0 && _hadBal) {
-                        console.log('[syncData] on-chain zero but Firestore non-zero — zeroing Firestore');
-                        await window.fs.setDoc(userRef, { stars: 0, creatorStars: 0, depositedUsdt: 0, lastWithdraw: Date.now(), lastSync: Date.now() }, { merge: true }).catch(() => {});
-                        creatorEarnings = 0; currentEarnedUsdt = 0;
-                        window._firestoreCreatorStars = 0;
-                        window._onChainEarned = 0;
-                        window._onChainWithdrawableUsdt = 0;
-                    } else {
+                    var _hadDepositedBal = _fbStars > 0 || _fbDep > 0;
+                    if (depositedHuman === 0 && _hadDepositedBal) {
+                        console.log('[syncData] on-chain deposited zero but Firestore non-zero — zeroing deposited fields only');
+                        await window.fs.setDoc(userRef, { stars: 0, depositedUsdt: 0, lastWithdraw: Date.now(), lastSync: Date.now() }, { merge: true }).catch(() => {});
+                        // creatorStars untouched — read it from Firestore
+                    }
+                    // Always read creatorStars from Firestore (whether we just zeroed deposited or not)
+                    {
+                        // Re-read the doc to get latest creatorStars after potential deposited-zero
+                        const freshSnap = await window.fs.getDoc(userRef);
+                        const freshData = freshSnap.data();
                         // Combine: Firestore unsettled + on-chain settled (withdrawableUSDT)
-                        const fbCreatorStars = Math.max(0, parseFloat(d.creatorStars || 0));
+                        const fbCreatorStars = Math.max(0, parseFloat(freshData.creatorStars || 0));
                         window._firestoreCreatorStars = fbCreatorStars;
                         const onChainSettled = Math.floor(withdrawableHuman / CONFIG.STAR_USD * 10) / 10;
                         window._onChainEarned = onChainSettled;
@@ -17830,85 +17832,42 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
 
         try {
-            const authorName  = userAddress ? (userHandle || 'Anonymous') : '';
-            const authorPic   = userAddress ? (userAvatar || '') : '';
             const senderAddr  = userAddress.toLowerCase();
             const recipientNorm = recipientAddress ? recipientAddress.toLowerCase() : null;
 
-            const commentData = {
-                text: commentText, author: authorName,
-                authorAddr: userAddress || "unknown", avatar: authorPic,
-                postId: String(postId), parentId: parentId || null,
-                isReply, timestamp: Date.now(), hypes: 0, likes: 0
-            };
+            // ── Call postComment Cloud Function ───────────────────────────────────────────
+            const hubId = _activeCommunity ? _activeCommunity.id : null;
+            const hubOwnerAddr = _activeCommunity ? _activeCommunity.ownerId : null;
 
-            await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/postComment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: senderAddr,
+                    recipientAddr: recipientNorm,
+                    targetId: String(postId),
+                    hubId: hubId,
+                    hubOwnerAddr: hubOwnerAddr,
+                    text: commentText
+                })
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Comment failed');
+            }
+
             // Notify post author (fire-and-forget)
             writeNotif(recipientNorm, 'comment', { postId: String(postId), text: commentText.slice(0, 80) });
 
-            // ── STEP A: Log spend FIRST — no spend record = no deduction ─────────────────
-            await window.fs.addDoc(
-                window.fs.collection(window.db, 'user_transactions'),
-                {
-                    type:           'spend',
-                    amount:         1,
-                    fromAddress:    senderAddr,
-                    toAddress:      recipientNorm || CONFIG.ADMIN_ADDRESS,
-                    address:        senderAddr,
-                    description:    isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment",
-                    postId:         postId,
-                    timestamp:      Date.now(),
-                    schema_version: 2
-                }
-            );
-
-            // ── STEP B: Deduct 1★ from commenter (spend is now in Firestore) ────────────
-            await deductStars(1);
-
-            // ── STEP C: Revenue split ─────────────────────────────────────────────────────
-            if (isReply) {
-                if (recipientNorm && recipientNorm !== "unknown") {
-                    await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
-                    logTransaction('earn', CONFIG.CREATOR_CUT, {
-                        from: senderAddr, to: recipientNorm,
-                        description: "Earnings from Global Feed", postId: postId
-                    });
-                }
-            } else if (_activeCommunity && recipientNorm &&
-                       recipientNorm !== _activeCommunity.ownerId.toLowerCase()) {
-                await creditCreatorStars(recipientNorm, 0.4);
-                logTransaction('earn', 0.4, {
-                    from: senderAddr, to: recipientNorm,
-                    description: "Earnings from " + _activeCommunity.name + " Hub (guest post)",
-                    postId: postId, communityId: _activeCommunity.id
-                });
-                await creditCreatorStars(_activeCommunity.ownerId, 0.4);
-                logTransaction('earn', 0.4, {
-                    from: senderAddr, to: (_activeCommunity.ownerId || '').toLowerCase(),
-                    description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
-                    postId: postId, communityId: _activeCommunity.id
-                });
-                // Track real Stars flowing through this Hub
+            // Track hub stars if applicable (client-side stat only)
+            if (_activeCommunity) {
                 window.fs.updateDoc(
                     window.fs.doc(window.db, 'communities', _activeCommunity.id),
-                    { totalStarsEarned: window.fs.increment(0.8) }
+                    { totalStarsEarned: window.fs.increment(result.hubOwnerCut ? 0.8 : result.creatorCut) }
                 ).catch(function(){});
-            } else {
-                if (recipientNorm && recipientNorm !== "unknown") {
-                    const lbl = _activeCommunity
-                        ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
-                        : "Earnings from Global Feed";
-                    await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
-                    logTransaction('earn', CONFIG.CREATOR_CUT, {
-                        from: senderAddr, to: recipientNorm,
-                        description: lbl, postId: postId,
-                        communityId: _activeCommunity ? _activeCommunity.id : null
-                    });
-                }
             }
 
-            // ── STEP D: Platform revenue ──────────────────────────────────────────────────
-            logAdminRevenue(senderAddr, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
             updateUI();
             updateDrawerUI();
             if (input) input.value = "";
@@ -34700,6 +34659,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const localContainer = isHosting ? 'live-broadcaster-video' : 'live-remote-video-container';
         _spawnReaction(emoji, localContainer);
         // Write to Firestore so OTHER people see it (tag with sender so we can skip our own)
+
         const streamId = isHosting ? currentStreamId : _watchingStreamId;
         if (!streamId || !window.db) return;
         const { collection, addDoc, serverTimestamp } = window.fs;
