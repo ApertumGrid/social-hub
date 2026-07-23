@@ -2,7 +2,6 @@
 
 
 
-
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -25708,37 +25707,27 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return showToast('Not enough Stars! Need ' + amount + '★, have ' + total.toFixed(2) + '★.');
             }
 
-            // 90/10 split
-            const creatorCut  = parseFloat((amount * 0.9).toFixed(4));
-            const platformCut = parseFloat((amount * 0.1).toFixed(4));
-            const senderAddr  = userAddress.toLowerCase();
+            const senderAddr = userAddress.toLowerCase();
 
-            // STEP A: Log spend FIRST — no spend record = no deduction
-            await window.fs.addDoc(
-                window.fs.collection(window.db, 'user_transactions'),
-                {
-                    type:           'spend',
-                    amount:         amount,
-                    fromAddress:    senderAddr,
-                    toAddress:      _heroTargetAddr,
-                    address:        senderAddr,
-                    description:    'Profile Tip to ' + _heroTargetAddr.slice(0,8) + '… (' + amount + '★)',
-                    timestamp:      Date.now(),
-                    schema_version: 2
-                }
-            );
-
-            // STEP B: Deduct stars from sender
-            await deductStars(amount);
-            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Tip', amount, '✦');
-
-            // STEP C: 90% to creator
-            await creditCreatorStars(_heroTargetAddr, creatorCut);
-            logTransaction('earn', creatorCut, {
-                from: senderAddr, to: _heroTargetAddr,
-                description: 'Profile Tip from ' + senderAddr.slice(0,8) + '… (' + amount + '★ → ' + creatorCut.toFixed(2) + '★ after split)'
+            // Call Cloud Function
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/sendProfileTip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: senderAddr,
+                    recipientAddr: _heroTargetAddr,
+                    amount: amount
+                })
             });
-            logAdminRevenue(senderAddr, 'profile_tip', platformCut);
+
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Tip failed');
+            }
+
+            // Update local UI state
+            const creatorCut = result.creatorReceived || (amount * 0.9);
+            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Tip', amount, '✦');
 
             // Star shower — intensity scales with amount
             const tipBtn = document.getElementById('hero-tip-btn');
@@ -25754,6 +25743,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             showToast('★ Sent ' + amount + '★! Creator receives ' + creatorCut.toFixed(2) + '★.');
             writeNotif(_heroTargetAddr, 'tip', { amount: amount });
             if (typeof window._challengeMarkDone === 'function') window._challengeMarkDone(4);
+
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
+
         } catch (e) {
             console.error('[sendHeroTip]', e);
             showToast('Tip failed. Please try again.');
@@ -34659,7 +34654,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const localContainer = isHosting ? 'live-broadcaster-video' : 'live-remote-video-container';
         _spawnReaction(emoji, localContainer);
         // Write to Firestore so OTHER people see it (tag with sender so we can skip our own)
-
         const streamId = isHosting ? currentStreamId : _watchingStreamId;
         if (!streamId || !window.db) return;
         const { collection, addDoc, serverTimestamp } = window.fs;
