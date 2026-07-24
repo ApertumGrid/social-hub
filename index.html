@@ -28371,11 +28371,34 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (picker) picker.classList.remove('open');
 
         try {
-            var senderAddr   = userAddress.toLowerCase();
-            var creatorCut   = parseFloat((amount * 0.9).toFixed(4));
-            var platformCut  = parseFloat((amount * 0.1).toFixed(4));
+            var senderAddr = userAddress.toLowerCase();
 
-            // ── STEP A: Log spend FIRST ───────────────────────────────
+            // ── Call rainOnPost Cloud Function ────────────────────────────────────────────
+            const hubId = _activeCommunity ? _activeCommunity.id : null;
+            const hubOwnerAddr = _activeCommunity ? _activeCommunity.ownerId : null;
+
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/rainOnPost', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: senderAddr,
+                    recipientAddr: recipient,
+                    postId: postId,
+                    amount: amount,
+                    hubId: hubId,
+                    hubOwnerAddr: hubOwnerAddr
+                })
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Rain failed');
+            }
+
+            var creatorCut = result.creatorCut;
+            var platformCut = result.platformCut;
+
+            // Update local balance state after CF confirms
             await window.fs.addDoc(
                 window.fs.collection(window.db, 'user_transactions'),
                 {
