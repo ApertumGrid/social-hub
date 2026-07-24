@@ -21762,83 +21762,46 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
         }
 
-        // ── Deduct stars (skipped for admin) ─────────────────────────────────
-        if (!isAdmin) {
-            try {
-                await deductSpendableStars(userAddress, _totalFee);
-            } catch (e) {
-                console.error('[handleCommBroadcast] deduction failed:', e);
-                return alert('Failed to deduct stars. Please try again.');
-            }
-        }
+        // Call Cloud Function
+        try {
+            const _subsOnly = !!(document.getElementById('comm-visibility-btn') &&
+                                 document.getElementById('comm-visibility-btn').classList.contains('locked'));
 
-        // ── Log revenue & ledger ──────────────────────────────────────────────
-        const firestoreLabel = postType === 1 ? 'text_post' : postType === 2 ? 'photo_post' : 'video_post';
-        const senderAddrComm = userAddress.toLowerCase();
-        if (!isAdmin) {
-            // Guest posts: 50% to hub owner, 50% platform. Owner posts: 100% platform.
-            var _isGuestBroadcast = senderAddrComm !== (_activeCommunity.ownerId || '').toLowerCase();
-            var _hubOwnerCut = _isGuestBroadcast ? Math.round(feeAmount * 0.5 * 100) / 100 : 0;
-            var _platBroadcastCut = Math.round((feeAmount - _hubOwnerCut) * 100) / 100;
-            var _hubOwnerAddr = (_activeCommunity.ownerId || '').toLowerCase();
-
-            logAdminRevenue(senderAddrComm, firestoreLabel, _platBroadcastCut);
-            logTransaction('spend', feeAmount, {
-                from: senderAddrComm, to: CONFIG.ADMIN_ADDRESS.toLowerCase(),
-                description: postTypeLabel + ' Broadcast in ' + _activeCommunity.name + ' Hub — ' + feeAmount.toFixed(1) + '★' + (_isGuestBroadcast ? ' (50% Hub Owner · 50% Platform)' : ' (100% Platform)'),
-                communityId: _activeCommunity.id
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/hubBroadcast', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: userAddress.toLowerCase(),
+                    text: txt,
+                    mediaUrl: mediaUrl,
+                    isFirebase: isFirebase,
+                    postType: postType,
+                    communityId: _activeCommunity.id,
+                    communityName: _activeCommunity.name,
+                    subscribersOnly: _subsOnly
+                })
             });
-            // Credit hub owner their 50% cut of broadcast fee
-            if (_isGuestBroadcast && _hubOwnerCut > 0 && _hubOwnerAddr) {
-                creditCreatorStars(_hubOwnerAddr, _hubOwnerCut).catch(function(){});
-                logTransaction('earn', _hubOwnerCut, {
-                    from: senderAddrComm, to: _hubOwnerAddr,
-                    description: 'Hub Broadcast fee — ' + _activeCommunity.name + ' (' + feeAmount.toFixed(1) + '★ post · 50% to Hub)',
-                    communityId: _activeCommunity.id
-                });
+
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Failed to broadcast');
             }
-            // ── Hub posting fee: 90% owner, 10% platform ──────────────────────
-            if (_chargeHubFee && _hubOwnerAddr) {
-                var _pfOwnerCut = Math.round(_hubPostingFee * 0.9 * 100) / 100;
-                var _pfPlatCut  = Math.round((_hubPostingFee - _pfOwnerCut) * 100) / 100;
-                creditCreatorStars(_hubOwnerAddr, _pfOwnerCut).catch(function(){});
-                logTransaction('earn', _pfOwnerCut, {
-                    from: senderAddrComm, to: _hubOwnerAddr,
-                    description: 'Hub Posting fee — ' + _activeCommunity.name + ' (' + _hubPostingFee.toFixed(1) + '★ · 90% to Hub)',
-                    communityId: _activeCommunity.id
-                });
-                logAdminRevenue(senderAddrComm, 'hub_posting_fee', _pfPlatCut);
-            }
+
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
+
             // ── Live Activity ticker ──────────────────────────────────────────
             if (typeof window.tickerLog === 'function') {
                 window.tickerLog('spend', postTypeLabel + ' in ' + _activeCommunity.name, _totalFee, '◈');
             }
+        } catch (e) {
+            console.error('[handleCommBroadcast] CF call failed:', e);
+            return alert('Failed to post. Please try again.');
         }
 
-        // ── Write post to Firestore with communityId ─────────────────────────
         try {
-            const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
-            const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
-            var _subsOnly = !!(document.getElementById('comm-visibility-btn') &&
-                               document.getElementById('comm-visibility-btn').classList.contains('locked'));
-            await window.fs.addDoc(window.fs.collection(window.db, 'posts'), {
-                text:            txt,
-                media:           mediaUrl,
-                firebase:        isFirebase,
-                author:          postAuthorName,
-                authorAddr:      userAddress,
-                avatar:          postAuthorPic,
-                timestamp:       Date.now(),
-                hypes:           0,
-                type:            postType,
-                feePaid:         isAdmin ? 0 : _totalFee,
-                isBoosted:       false,
-                category:        'Global',
-                communityId:     _activeCommunity.id,
-                communityName:   _activeCommunity.name,
-                isVisible:       true,
-                subscribersOnly: _subsOnly
-            });
 
             // ── Reset composer ────────────────────────────────────────────────
             const textEl   = document.getElementById('comm-post-text');
@@ -23541,37 +23504,32 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!confirmed) return;
 
         try {
-            // Deduct startup cost (skipped for admin)
-            if (effectiveCost > 0) {
-                await deductSpendableStars(userAddress, effectiveCost);
-            }
-            if (effectiveCost > 0) {
-                logAdminRevenue(userAddress, 'community_startup', effectiveCost);
-            }
-            logTransaction('spend', effectiveCost, {
-                from: userAddress, to: CONFIG.ADMIN_ADDRESS,
-                description: 'Launched Community Hub: "' + name + '" — ' + (effectiveCost > 0 ? effectiveCost.toLocaleString() + '★ startup cost (100% platform)' : 'FREE (admin bypass)')
+            // Call Cloud Function
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/createHub', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: userAddress.toLowerCase(),
+                    name: name,
+                    description: desc,
+                    headerImg: imgUrl,
+                    headerImgPosition: imgPos,
+                    alias: alias,
+                    website: website,
+                    postingMode: postingMode,
+                    postingFee: postingFee
+                })
             });
 
-            // Write community doc to Firestore
-            var ownerName = userAddress ? (userHandle || 'Anonymous') : '';
-            var commData = {
-                name:        name,
-                description: desc,
-                headerImg:         imgUrl,
-                headerImgPosition: imgPos,
-                ownerId:           userAddress,
-                ownerName:   ownerName,
-                createdAt:   Date.now(),
-                postCount:   0,
-                postingMode: postingMode,
-                postingFee:  postingFee
-            };
-            // Only write alias field if one was provided (keeps doc clean for hubs without one)
-            if (alias)   commData.alias   = alias;
-            if (website) commData.website = website;
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Failed to create hub');
+            }
 
-            await window.fs.addDoc(window.fs.collection(window.db, 'communities'), commData);
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
 
             showToast('Community Hub "' + name + '" is live!' + (alias ? ' Handle: ?' + 'hub=' + alias : '') + ' \u2713');
             // Challenge Day 6: Created a Hub
@@ -24378,39 +24336,37 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             return alert('Upload failed: ' + e.message);
         }
 
-        if (!_freePost) {
-            try {
-                await deductSpendableStars(userAddress, CONFIG.FEES.FLICK);
-            } catch (e) {
-                return alert('Failed to deduct stars. Try again.');
+        // Call Cloud Function
+        let docRef;
+        try {
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/postFlick', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: userAddress.toLowerCase(),
+                    caption: caption,
+                    mediaUrl: mediaUrl
+                })
+            });
+
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Failed to post Flick');
             }
 
-            logAdminRevenue(userAddress, 'flick_post', CONFIG.FEES.FLICK);
-            logTransaction('spend', CONFIG.FEES.FLICK, {
-                from: userAddress, to: CONFIG.ADMIN_ADDRESS,
-                description: 'Flick Broadcast — ' + CONFIG.FEES.FLICK + '★ creation fee (100% platform)'
-            });
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
+
+            docRef = { id: result.postId };
+        } catch (e) {
+            if (_fpWrap) _fpWrap.style.display = 'none';
+            if (_fpBtn)  { _fpBtn.disabled = false; _fpBtn.textContent = '▶ Post Flick'; }
+            return alert('Failed to post Flick: ' + e.message);
         }
 
         try {
-            const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
-            const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
-            const docRef = await window.fs.addDoc(window.fs.collection(window.db, 'posts'), {
-                text:       caption,
-                media:      mediaUrl,
-                firebase:   true,
-                author:     postAuthorName,
-                authorAddr: userAddress,
-                avatar:     postAuthorPic,
-                timestamp:  Date.now(),
-                hypes:      0,
-                type:       4,
-                feePaid:    _freePost ? 0 : CONFIG.FEES.FLICK,
-                isBoosted:  false,
-                isVisible:  true,
-                category:   'Global',
-                hashtags:   _extractHashtags(caption)
-            });
 
             // Transcode to H.264 so HEVC/H.265 videos play on all browsers
             if (_fpLabel) _fpLabel.textContent = 'Optimizing for all devices…';
