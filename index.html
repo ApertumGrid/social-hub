@@ -33663,79 +33663,36 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
 
         try {
-            const { doc, addDoc, collection, serverTimestamp, updateDoc, increment, setDoc, getDoc, runTransaction } = window.fs;
+            // Call Cloud Function
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/payStreamEntry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: userAddress.toLowerCase(),
+                    streamId: _watchingStreamId,
+                    entryFee: streamEntryFee
+                })
+            });
 
-            // Fetch stream doc to get host address
-            const streamSnap = await getDoc(doc(window.db, LIVE_COL, _watchingStreamId));
-            if (!streamSnap.exists() || !streamSnap.data().active) {
-                showToast('Stream has ended.'); return;
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                if (result.error === 'Stream has ended.') {
+                    showToast('Stream has ended.');
+                    return;
+                }
+                throw new Error(result.error || 'Failed to pay entry fee');
             }
-            const hostAddr = streamSnap.data().hostAddr;
 
-            // ── SAME SPLIT AS sendGift: 80% creator · 20% platform ──────
-            const creatorCut  = parseFloat((streamEntryFee * 0.8).toFixed(4));
-            const platformCut = parseFloat((streamEntryFee * 0.2).toFixed(4));
-
-            // 1. Deduct full fee from viewer via canonical spend waterfall.
-            await deductSpendableStars(userAddress.toLowerCase(), streamEntryFee);
-            // Keep in-memory bridge in sync so UI reflects deduction immediately
+            // Update local bridge balance
             if (typeof window._liveTotalSpendable === 'number') {
                 window._liveTotalSpendable = Math.max(0, window._liveTotalSpendable - streamEntryFee);
                 window._liveAvailableStars = window._liveTotalSpendable;
             }
 
-            // 2. Credit 80% to creator's creatorStars balance (same mechanism as gift)
-            if (hostAddr) {
-                await updateDoc(doc(window.db, 'user_balances', hostAddr.toLowerCase()), {
-                    creatorStars: increment(creatorCut)
-                }).catch(() => {});
-            }
-
-            // 3. Credit 20% to platform — routes through logAdminRevenue (same as gift)
-            if (typeof window.logAdminRevenue === 'function') {
-                window.logAdminRevenue(userAddress.toLowerCase(), 'live_entry_fee', platformCut);
-            } else {
-                addDoc(collection(window.db, 'platform_revenue'), {
-                    sourceAddress: userAddress.toLowerCase(),
-                    actionType:    'live_entry_fee',
-                    amount:        platformCut,
-                    timestamp:     Date.now()
-                }).catch(() => {});
-                updateDoc(doc(window.db, 'admin_revenue', 'global'), {
-                    total: increment(platformCut)
-                }).catch(() => {});
-            }
-
-            // 4. Write spend record to viewer's transaction ledger
-            await addDoc(collection(window.db, 'user_transactions'), {
-                type:           'spend',
-                amount:         streamEntryFee,
-                fromAddress:    userAddress.toLowerCase(),
-                toAddress:      hostAddr || '',
-                address:        userAddress.toLowerCase(),
-                description:    `⭐ Stream entry fee — ${streamEntryFee}★ (creator gets ${creatorCut.toFixed(1)}★)`,
-                timestamp:      Date.now(),
-                schema_version: 2
-            }).catch(() => {});
-
-            // 5. Write earn record to host's transaction ledger
-            if (hostAddr) {
-                addDoc(collection(window.db, 'user_transactions'), {
-                    type:           'earn',
-                    amount:         creatorCut,
-                    fromAddress:    userAddress.toLowerCase(),
-                    toAddress:      hostAddr.toLowerCase(),
-                    address:        hostAddr.toLowerCase(),
-                    description:    `⭐ Stream entry fee from ${userHandle} (+${creatorCut.toFixed(1)}★)`,
-                    timestamp:      Date.now(),
-                    schema_version: 2
-                }).catch(() => {});
-            }
-
-            // 6. Update stream's starsEarned counter so leaderboard + goal bar reflect it
-            await updateDoc(doc(window.db, LIVE_COL, _watchingStreamId), {
-                starsEarned: increment(streamEntryFee)
-            }).catch(() => {});
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
 
             // 7. Mark viewer as paid in paid_viewers subcollection (gate check on rejoin)
             const gateRef = doc(window.db, 'live_streams', _watchingStreamId, 'paid_viewers', userAddress.toLowerCase());
