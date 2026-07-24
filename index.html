@@ -17588,28 +17588,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         try {
             showToast("Boosting post…");
 
-            // Deduct 10★ (purchased first via waterfall)
-            await deductSpendableStars(userAddress, boostCost);
-
-            // 100% of boost fee → platform_revenue
-            logAdminRevenue(userAddress, "boost_post", boostCost);
-
-            // Log to private ledger with clear description
-            logTransaction('spend', boostCost, {
-                from: userAddress, to: CONFIG.ADMIN_ADDRESS,
-                description: `Post Boosted — ${boostCost}★ fee (100% platform) · Post ID: ${postId.slice(0, 8)}…`
+            // Call Cloud Function
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/boostPost', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: userAddress.toLowerCase(),
+                    postId: postId
+                })
             });
 
-            // Update post: mark as boosted WITHOUT touching the original timestamp.
-            // The feed sorts by priority key: max(boostedAt, timestamp) desc, so
-            // any new broadcast with a newer timestamp always appears above older
-            // boosted posts, while boosted posts float above pre-boost content.
-            const postRef = window.fs.doc(window.db, "posts", postId);
-            await window.fs.updateDoc(postRef, {
-                isBoosted: true,
-                boostedAt: Date.now(),
-                boostedBy: userAddress.toLowerCase()
-            });
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Boost failed');
+            }
+
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
 
             updateUI();
             updateDrawerUI();
@@ -23120,58 +23117,43 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     async function commSubscribeToHub() {
         if (!userAddress) return showToast('Connect your wallet to subscribe.');
         if (!_activeCommunity || !_activeCommunity.subscriptionsEnabled) return;
-        var price     = _activeCommunity.subscriptionPrice || 20;
+
         var ownerAddr = (_activeCommunity.ownerId || '').toLowerCase();
-        // Deduct stars from subscriber's spendable balance
+
         try {
-            await deductSpendableStars(userAddress, price);
-        } catch (e) {
-            console.error('[commSubscribeToHub] deduction failed:', e);
-            return showToast('Not enough stars. You need ' + price + '★ to subscribe.');
-        }
-        var creatorCut  = Math.round(price * 0.9 * 100) / 100;  // 90% to hub owner
-        var platformCut = Math.round((price - creatorCut) * 100) / 100; // 10% platform
-        var now         = Date.now();
-        var expiryDate  = now + (30 * 24 * 60 * 60 * 1000); // 30 days
-        // Credit 90% to hub owner
-        try {
-            await creditCreatorStars(ownerAddr, creatorCut);
-        } catch (e) {
-            console.warn('[commSubscribeToHub] creditCreatorStars failed:', e);
-        }
-        // Log ledger entries
-        logTransaction('spend', price, {
-            from:        userAddress.toLowerCase(),
-            to:          ownerAddr,
-            description: 'Hub Subscription — ' + (_activeCommunity.name || _activeCommunity.id),
-            communityId: _activeCommunity.id
-        });
-        logTransaction('earn', creatorCut, {
-            from:        userAddress.toLowerCase(),
-            to:          ownerAddr,
-            description: 'Hub Subscription income — ' + (_activeCommunity.name || _activeCommunity.id),
-            communityId: _activeCommunity.id
-        });
-        logAdminRevenue(userAddress, 'hub_subscription_fee', platformCut);
-        // Write subscription document
-        try {
-            await window.fs.addDoc(window.fs.collection(window.db, 'subscriptions'), {
-                subscriberWallet: userAddress.toLowerCase(),
-                communityId:      _activeCommunity.id,
-                hubOwnerWallet:   ownerAddr,
-                startDate:        now,
-                expiryDate:       expiryDate,
-                price:            price,
-                status:           'active'
+            // Call Cloud Function
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/subscribeToHub', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: userAddress.toLowerCase(),
+                    communityId: _activeCommunity.id,
+                    communityName: _activeCommunity.name || _activeCommunity.id
+                })
             });
+
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Subscription failed');
+            }
+
+            const price = result.price;
+
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
+
+            showToast('Subscribed! ✓ Access granted for 30 days.');
+            writeNotif(ownerAddr, 'subscribe', { hubName: _activeCommunity.name || _activeCommunity.id, communityId: _activeCommunity.id, amount: price });
+
+            // Refresh hub to unblur subscriber-only posts
+            await openCommunityFeed(_activeCommunity, { updateUrl: false });
+
         } catch (e) {
-            console.error('[commSubscribeToHub] write sub doc failed:', e);
-            return showToast('Subscription failed — please try again.');
+            console.error('[commSubscribeToHub]', e);
+            showToast(e.message || 'Subscription failed — please try again.');
         }
-        showToast('Subscribed! ✓ Access granted for 30 days.');
-        writeNotif(ownerAddr, 'subscribe', { hubName: _activeCommunity.name || _activeCommunity.id, communityId: _activeCommunity.id, amount: price });
-        // Refresh hub to unblur subscriber-only posts
-        await openCommunityFeed(_activeCommunity, { updateUrl: false });
     }
     window.commSubscribeToHub = commSubscribeToHub;
 
@@ -26361,110 +26343,48 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
 
         try {
-            const docId  = senderAddr + '_' + commId;
-            const docRef = window.fs.doc(window.db, 'social_graph', docId);
-            const snap   = await window.fs.getDoc(docRef);
+            // Call Cloud Function to handle follow/unfollow toggle
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/followHub', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: senderAddr,
+                    communityId: commId,
+                    communityName: _activeCommunity.name || commId
+                })
+            });
 
-            if (snap.exists()) {
-                // ── UNFOLLOW ──────────────────────────────────────────────
-                await window.fs.deleteDoc(docRef);
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Follow action failed');
+            }
+
+            const action = result.action; // 'followed' or 'unfollowed'
+
+            if (action === 'unfollowed') {
+                // ── UNFOLLOW ───────────────────────────────
                 _followingSet.delete(commId);
                 if (followBtn) { followBtn.textContent = '+ Follow Hub'; followBtn.classList.remove('following'); }
                 showToast('Unfollowed ' + (_activeCommunity.name || 'Hub') + '.');
-                window.fs.updateDoc(
-                    window.fs.doc(window.db, 'communities', commId),
-                    { memberCount: window.fs.increment(-1) }
-                ).catch(function(){});
                 if (typeof loadMyNetwork === 'function') loadMyNetwork();
 
-            } else {
-                // ── FOLLOW — atomic 90/10 split ───────────────────────────
-
-                // STEP A: Validate sender has >= 1 Star
-                const total = getTotalSpendableStars();
-                if (total < 1) {
-                    isActionPending = false;
-                    if (followBtn) followBtn.disabled = false;
-                    return showToast('Not enough Stars to follow! Tap Buy Stars to top up.');
-                }
-
-                // ── SELF-DEALING GUARD ───────────────────────────────────────
-                // When senderAddr === creatorAddr (creator follows their own Hub),
-                // the spend and earn are two SEPARATE database writes to the same
-                // document. We must sequence them carefully:
-                //   1. Log the spend entry first (pre-deduct contract)
-                //   2. Deduct 1★ from balance
-                //   3. Credit 0.9★ back as a SEPARATE write (never skip this)
-                //   4. Log the earn entry
-                // This order ensures the ledger always shows both sides, and the
-                // net balance change is -0.1★ regardless of who owns the community.
-                const isSelfDeal = (senderAddr === creatorAddr);
-
-                // STEP B: Log the spend entry BEFORE deducting.
-                // "No spend record = no deduction" — if this write fails, abort.
-                const spendDocRef = await new Promise((resolve, reject) => {
-                    window.fs.addDoc(
-                        window.fs.collection(window.db, 'user_transactions'),
-                        {
-                            type:           'spend',
-                            amount:         1,
-                            fromAddress:    senderAddr,
-                            toAddress:      creatorAddr || CONFIG.ADMIN_ADDRESS,
-                            address:        senderAddr,
-                            description:    'Followed Hub: ' + (_activeCommunity.name || commId)
-                                            + (isSelfDeal ? ' [self]' : ''),
-                            communityId:    commId,
-                            timestamp:      Date.now(),
-                            schema_version: 2
-                        }
-                    ).then(resolve).catch(reject);
-                });
-                console.log('[commFollowHub] Spend logged:', spendDocRef.id, '— proceeding to deduct.');
-
-                // STEP C: Deduct 1★ from sender (now that spend is in Firestore)
-                await deductStars(1);
+            } else if (action === 'followed') {
+                // ── FOLLOW ───────────────────────────────
                 if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Hub Follow', 1, '■');
-
-                // STEP D: Credit 0.9★ to community creator.
-                // On self-deal this is a SEPARATE write — must always run.
-                // creditCreatorStars uses its own runTransaction, so it reads the
-                // post-deduct value of the doc and increments creatorStars atomically.
-                if (creatorAddr) {
-                    await creditCreatorStars(creatorAddr, 0.9);
-                }
-
-                // STEP E: Route 0.1★ to platform revenue
-                logAdminRevenue(senderAddr, 'community_follow_fee', 0.1);
-                window.fs.updateDoc(
-                    window.fs.doc(window.db, 'communities', commId),
-                    { totalStarsEarned: window.fs.increment(0.9), memberCount: window.fs.increment(1) }
-                ).catch(function(){});
-
-                // STEP F: Log the earn entry with the CORRECT 90% amount (0.9, not 1.0)
-                if (creatorAddr) {
-                    logTransaction('earn', 0.9, {
-                        from: senderAddr, to: creatorAddr,
-                        description: 'Hub Follow Earnings — ' + (_activeCommunity.name || commId)
-                                     + ' (from ' + senderAddr.slice(0, 8) + '…)'
-                                     + (isSelfDeal ? ' [self-deal: separate credit applied]' : ''),
-                        communityId: commId
-                    });
-                }
-
-                // Write social_graph entry — community ID is the 'following' value
-                await window.fs.setDoc(docRef, {
-                    follower:  senderAddr,
-                    following: commId,
-                    type:      'community',
-                    timestamp: Date.now()
-                });
 
                 _followingSet.add(commId);
                 if (followBtn) { followBtn.textContent = '✓ Following Hub'; followBtn.classList.add('following'); }
                 showToast('Following ' + (_activeCommunity.name || 'Hub') + '! 0.9★ sent to creator.');
                 writeNotif(creatorAddr, 'follow', { hubName: _activeCommunity.name || commId, communityId: commId });
                 if (typeof loadMyNetwork === 'function') loadMyNetwork();
+            } else {
+                throw new Error('Unexpected action: ' + action);
             }
+
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
 
             // Refresh member count display
             if (window.db) {
