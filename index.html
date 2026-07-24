@@ -2,6 +2,7 @@
 
 
 
+
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -20333,28 +20334,28 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (!sSnap.exists()) return showToast('Signal no longer exists.');
             const sData = sSnap.data();
 
-            // Call Cloud Function to handle hype
-            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/hypeSignal', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    senderAddr: userAddress.toLowerCase(),
-                    signalId: _currentSignalId,
-                    creatorAddr: sData.authorAddr
-                })
-            });
+            // Increment hypes on signal
+            await window.fs.updateDoc(sRef, { hypes: window.fs.increment(1) });
 
-            const result = await response.json();
-            if (!response.ok || !result.ok) {
-                throw new Error(result.error || 'Failed to hype signal');
+            // 80% → creator's creatorStars
+            if (sData.authorAddr && sData.authorAddr !== 'unknown') {
+                await creditCreatorStars(sData.authorAddr, CONFIG.CREATOR_CUT);
+                logTransaction('earn', CONFIG.CREATOR_CUT, {
+                    from: userAddress, to: sData.authorAddr,
+                    description: 'Earned 0.8★ — someone hyped your Daily Signal'
+                });
             }
 
-            // Refresh balances from Firestore
-            try {
-                await syncData();
-            } catch (_) {}
-
+            // Deduct 1★ from sender
+            await deductStars(1);
             if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Signal Hype', 1, '⚡');
+
+            // 20% → platform_revenue
+            logAdminRevenue(userAddress, 'signal_hype', CONFIG.PLATFORM_CUT);
+            logTransaction('spend', 1, {
+                from: userAddress, to: sData.authorAddr || CONFIG.ADMIN_ADDRESS,
+                description: 'Hyped a Daily Signal (1★ → 0.8 creator, 0.2 platform)'
+            });
 
             // ── Fix 2B: Do NOT manually patch the meta line count here.
             // sData.hypes is a point-in-time read taken BEFORE the increment write,
@@ -21023,54 +21024,50 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
             }
 
-            // Call Cloud Function (skipped for free posters)
+            // Deduct exactly 1★ (waterfall: purchased first) — skipped for free posters
             if (!_freePost) {
                 try {
-                    const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/postSignal', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            senderAddr: userAddress.toLowerCase(),
-                            text: txt,
-                            mediaUrl: signalMedia,
-                            isFirebase: isFirebase,
-                            signalType: signalType
-                        })
-                    });
+                    await deductSpendableStars(userAddress, SIGNAL_FEE);
+                } catch (e) {
+                    console.error('Signal star deduction failed:', e);
+                    return alert('Failed to deduct stars. Please try again.');
+                }
 
-                    const result = await response.json();
-                    if (!response.ok || !result.ok) {
-                        throw new Error(result.error || 'Failed to post signal');
-                    }
+                // 100% of signal fee → platform revenue
+                logAdminRevenue(userAddress, 'daily_signal_post', SIGNAL_FEE);
+                logTransaction('spend', SIGNAL_FEE, {
+                    from: userAddress, to: CONFIG.ADMIN_ADDRESS,
+                    description: `Daily Signal posted (24h) — ${SIGNAL_FEE.toFixed(1)}★ fee (100% platform)`
+                });
+            }
 
-                    // Refresh balances from Firestore
+            // Write to `signals` collection
+            try {
+                const authorName = localStorage.getItem('hub_userName') || userHandle;
+                const authorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
+                await window.fs.addDoc(window.fs.collection(window.db, 'signals'), {
+                    text:       txt,
+                    media:      signalMedia,
+                    type:       signalType,
+                    firebase:   isFirebase,
+                    author:     authorName,
+                    authorAddr: userAddress.toLowerCase(),
+                    avatar:     authorPic,
+                    timestamp:  Date.now(),
+                    hypes:      0
+                });
+            } catch (e) {
+                console.error('Signal write failed:', e);
+                // ── STAR REFUND: signal write failed after deduction ──
+                if (!_freePost) {
                     try {
-                        await syncData();
-                    } catch (_) {}
-                } catch (e) {
-                    console.error('Signal post failed:', e);
-                    return alert('Failed to post signal. Please try again.');
+                        await creditPurchasedStars(userAddress, SIGNAL_FEE);
+                        console.warn('[Signal] Refunded ' + SIGNAL_FEE + '★ after signal write failure.');
+                    } catch (refundErr) {
+                        console.error('[Signal] CRITICAL: refund also failed:', refundErr);
+                    }
                 }
-            } else {
-                // Free poster path: write signal directly (legacy path for whitelisted)
-                try {
-                    const authorName = localStorage.getItem('hub_userName') || userHandle;
-                    const authorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
-                    await window.fs.addDoc(window.fs.collection(window.db, 'signals'), {
-                        text:       txt,
-                        media:      signalMedia,
-                        type:       signalType,
-                        firebase:   isFirebase,
-                        author:     authorName,
-                        authorAddr: userAddress.toLowerCase(),
-                        avatar:     authorPic,
-                        timestamp:  Date.now(),
-                        hypes:      0
-                    });
-                } catch (e) {
-                    console.error('Signal write failed:', e);
-                    return alert('Signal post failed: ' + e.message);
-                }
+                return alert('Signal post failed' + (_freePost ? '.' : ' — your 1★ has been refunded.') + '\n\n' + e.message);
             }
 
             // Reset composer
