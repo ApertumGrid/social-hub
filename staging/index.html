@@ -2,6 +2,7 @@
 
 
 
+
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -14539,23 +14540,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 } else {
                     const d = snap.data();
 
-                    // If on-chain is completely empty but Firestore still shows a balance,
+                    // If on-chain deposited is zero but Firestore still shows deposited balance,
                     // the withdrawal succeeded but the Firestore zero-write didn't complete.
-                    // Zero Firestore now so the UI reflects reality.
+                    // Zero the DEPOSITED fields only — creatorStars is independent.
                     var _fbStars   = parseFloat(d.stars        || 0);
                     var _fbCreator = parseFloat(d.creatorStars || 0);
                     var _fbDep     = parseFloat(d.depositedUsdt|| 0);
-                    var _hadBal    = _fbStars > 0 || _fbCreator > 0 || _fbDep > 0;
-                    if (depositedHuman === 0 && withdrawableHuman === 0 && _hadBal) {
-                        console.log('[syncData] on-chain zero but Firestore non-zero — zeroing Firestore');
-                        await window.fs.setDoc(userRef, { stars: 0, creatorStars: 0, depositedUsdt: 0, lastWithdraw: Date.now(), lastSync: Date.now() }, { merge: true }).catch(() => {});
-                        creatorEarnings = 0; currentEarnedUsdt = 0;
-                        window._firestoreCreatorStars = 0;
-                        window._onChainEarned = 0;
-                        window._onChainWithdrawableUsdt = 0;
-                    } else {
+                    var _hadDepositedBal = _fbStars > 0 || _fbDep > 0;
+                    if (depositedHuman === 0 && _hadDepositedBal) {
+                        console.log('[syncData] on-chain deposited zero but Firestore non-zero — zeroing deposited fields only');
+                        await window.fs.setDoc(userRef, { stars: 0, depositedUsdt: 0, lastWithdraw: Date.now(), lastSync: Date.now() }, { merge: true }).catch(() => {});
+                        // creatorStars untouched — read it from Firestore
+                    }
+                    // Always read creatorStars from Firestore (whether we just zeroed deposited or not)
+                    {
+                        // Re-read the doc to get latest creatorStars after potential deposited-zero
+                        const freshSnap = await window.fs.getDoc(userRef);
+                        const freshData = freshSnap.data();
                         // Combine: Firestore unsettled + on-chain settled (withdrawableUSDT)
-                        const fbCreatorStars = Math.max(0, parseFloat(d.creatorStars || 0));
+                        const fbCreatorStars = Math.max(0, parseFloat(freshData.creatorStars || 0));
                         window._firestoreCreatorStars = fbCreatorStars;
                         const onChainSettled = Math.floor(withdrawableHuman / CONFIG.STAR_USD * 10) / 10;
                         window._onChainEarned = onChainSettled;
@@ -17586,28 +17589,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         try {
             showToast("Boosting post…");
 
-            // Deduct 10★ (purchased first via waterfall)
-            await deductSpendableStars(userAddress, boostCost);
-
-            // 100% of boost fee → platform_revenue
-            logAdminRevenue(userAddress, "boost_post", boostCost);
-
-            // Log to private ledger with clear description
-            logTransaction('spend', boostCost, {
-                from: userAddress, to: CONFIG.ADMIN_ADDRESS,
-                description: `Post Boosted — ${boostCost}★ fee (100% platform) · Post ID: ${postId.slice(0, 8)}…`
+            // Call Cloud Function
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/boostPost', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: userAddress.toLowerCase(),
+                    postId: postId
+                })
             });
 
-            // Update post: mark as boosted WITHOUT touching the original timestamp.
-            // The feed sorts by priority key: max(boostedAt, timestamp) desc, so
-            // any new broadcast with a newer timestamp always appears above older
-            // boosted posts, while boosted posts float above pre-boost content.
-            const postRef = window.fs.doc(window.db, "posts", postId);
-            await window.fs.updateDoc(postRef, {
-                isBoosted: true,
-                boostedAt: Date.now(),
-                boostedBy: userAddress.toLowerCase()
-            });
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Boost failed');
+            }
+
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
 
             updateUI();
             updateDrawerUI();
@@ -17658,112 +17658,40 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const senderAddr   = userAddress.toLowerCase();
             const recipientNorm = recipientAddress ? recipientAddress.toLowerCase() : null;
 
-            if (isComment) {
-                await window.fs.updateDoc(window.fs.doc(window.db, "comments", entityId), { hypes: window.fs.increment(1) });
-            } else {
-                await window.fs.updateDoc(window.fs.doc(window.db, "posts", entityId), { hypes: window.fs.increment(1) });
+            // ── Call hypePost Cloud Function ──────────────────────────────────────────────
+            const hubId = _activeCommunity ? _activeCommunity.id : null;
+            const hubOwnerAddr = _activeCommunity ? _activeCommunity.ownerId : null;
+
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/hypePost', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: senderAddr,
+                    recipientAddr: recipientNorm,
+                    targetId: entityId,
+                    targetType: isComment ? 'comment' : 'post',
+                    hubId: hubId,
+                    hubOwnerAddr: hubOwnerAddr
+                })
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Hype failed');
             }
 
-            // ── STEP A: Log spend FIRST — no spend record = no deduction ─────────────────
-            // Satisfies the log-before-deduct contract. The spend is permanently
-            // in Firestore before any balance change, so the ledger always shows
-            // the debit regardless of what happens next. Also fixes self-hype
-            // direction rendering: stored type='spend' is used by renderLedger.
-            await window.fs.addDoc(
-                window.fs.collection(window.db, 'user_transactions'),
-                {
-                    type:           'spend',
-                    amount:         1,
-                    fromAddress:    senderAddr,
-                    toAddress:      recipientNorm || CONFIG.ADMIN_ADDRESS,
-                    address:        senderAddr,
-                    description:    isComment ? "Spent 1★ on Comment Hype" : (_followMode === 'flicks' ? "Spent 1★ on Flick Hype" : "Spent 1★ on Post Hype"),
-                    postId:         isComment ? null : entityId,
-                    timestamp:      Date.now(),
-                    schema_version: 2
-                }
-            );
-
-            // ── STEP B: Deduct 1★ from sender (spend is now in Firestore) ────────────
-            await deductStars(1);
+            // Update local balance state after CF confirms
             if (typeof window.tickerLog === 'function') window.tickerLog('spend', isComment ? 'Comment Like' : 'Post Like', 1, '❤');
 
-            // ── STEP C: Revenue split ─────────────────────────────────────────────────────
-            if (isComment) {
-                if (recipientNorm && recipientNorm !== "unknown") {
-                    if (_activeCommunity) {
-                        await creditCreatorStars(recipientNorm, 0.4);
-                        logTransaction('earn', 0.4, {
-                            from: senderAddr, to: recipientNorm,
-                            description: "Earnings from " + _activeCommunity.name + " Hub (comment hype)",
-                            communityId: _activeCommunity.id
-                        });
-                        await creditCreatorStars(_activeCommunity.ownerId, 0.4);
-                        logTransaction('earn', 0.4, {
-                            from: senderAddr, to: (_activeCommunity.ownerId || '').toLowerCase(),
-                            description: "Landlord Earnings from " + _activeCommunity.name + " Hub (comment hype)",
-                            communityId: _activeCommunity.id
-                        });
-                        // Track real Stars flowing through this Hub
-                        window.fs.updateDoc(
-                            window.fs.doc(window.db, 'communities', _activeCommunity.id),
-                            { totalStarsEarned: window.fs.increment(0.8) }
-                        ).catch(function(){});
-                    } else {
-                        await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
-                        logTransaction('earn', CONFIG.CREATOR_CUT, {
-                            from: senderAddr, to: recipientNorm,
-                            description: "Earnings from Global Feed"
-                        });
-                    }
-                }
-            } else if (_activeCommunity && recipientNorm &&
-                       recipientNorm !== _activeCommunity.ownerId.toLowerCase()) {
-                await creditCreatorStars(recipientNorm, 0.4);
-                logTransaction('earn', 0.4, {
-                    from: senderAddr, to: recipientNorm,
-                    description: "Earnings from " + _activeCommunity.name + " Hub (guest post)",
-                    postId: entityId, communityId: _activeCommunity.id
-                });
-                await creditCreatorStars(_activeCommunity.ownerId, 0.4);
-                logTransaction('earn', 0.4, {
-                    from: senderAddr, to: (_activeCommunity.ownerId || '').toLowerCase(),
-                    description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
-                    postId: entityId, communityId: _activeCommunity.id
-                });
-                // Track real Stars flowing through this Hub
+            // Track hub stars if applicable (client-side stat only)
+            if (_activeCommunity) {
                 window.fs.updateDoc(
                     window.fs.doc(window.db, 'communities', _activeCommunity.id),
-                    { totalStarsEarned: window.fs.increment(0.8) }
+                    { totalStarsEarned: window.fs.increment(result.hubOwnerCut ? 0.8 : result.creatorCut) }
                 ).catch(function(){});
-            } else {
-                if (recipientNorm && recipientNorm !== "unknown") {
-                    const lbl = _activeCommunity
-                        ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
-                        : "Earnings from Global Feed";
-                    await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
-                    logTransaction('earn', CONFIG.CREATOR_CUT, {
-                        from: senderAddr, to: recipientNorm,
-                        description: lbl, postId: entityId,
-                        communityId: _activeCommunity ? _activeCommunity.id : null
-                    });
-                    if (_activeCommunity) {
-                        window.fs.updateDoc(
-                            window.fs.doc(window.db, 'communities', _activeCommunity.id),
-                            { totalStarsEarned: window.fs.increment(CONFIG.CREATOR_CUT) }
-                        ).catch(function(){});
-                    }
-                }
             }
 
-            // ── STEP D: Platform revenue ──────────────────────────────────────────────────
-            logAdminRevenue(senderAddr, isComment ? "hype_comment" : "hype_post", CONFIG.PLATFORM_CUT);
-
-            // ── Release spend lock NOW — all credits are fully written ────────────────────
-            // The lock was armed by deductStars to stop the onSnapshot rubber-banding the
-            // balance back to the pre-deduction value. All creditCreatorStars writes are now
-            // complete so it's safe to let the snapshot through — this makes the earned 0.8★
-            // appear immediately in the UI instead of being silently dropped.
+            // ── Release spend lock NOW — CF has completed all balance writes ──────────────
             isSpending = false;
             if (_spendLockTimer) { clearTimeout(_spendLockTimer); _spendLockTimer = null; }
 
@@ -17901,85 +17829,42 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
 
         try {
-            const authorName  = userAddress ? (userHandle || 'Anonymous') : '';
-            const authorPic   = userAddress ? (userAvatar || '') : '';
             const senderAddr  = userAddress.toLowerCase();
             const recipientNorm = recipientAddress ? recipientAddress.toLowerCase() : null;
 
-            const commentData = {
-                text: commentText, author: authorName,
-                authorAddr: userAddress || "unknown", avatar: authorPic,
-                postId: String(postId), parentId: parentId || null,
-                isReply, timestamp: Date.now(), hypes: 0, likes: 0
-            };
+            // ── Call postComment Cloud Function ───────────────────────────────────────────
+            const hubId = _activeCommunity ? _activeCommunity.id : null;
+            const hubOwnerAddr = _activeCommunity ? _activeCommunity.ownerId : null;
 
-            await window.fs.addDoc(window.fs.collection(window.db, "comments"), commentData);
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/postComment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: senderAddr,
+                    recipientAddr: recipientNorm,
+                    targetId: String(postId),
+                    hubId: hubId,
+                    hubOwnerAddr: hubOwnerAddr,
+                    text: commentText
+                })
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Comment failed');
+            }
+
             // Notify post author (fire-and-forget)
             writeNotif(recipientNorm, 'comment', { postId: String(postId), text: commentText.slice(0, 80) });
 
-            // ── STEP A: Log spend FIRST — no spend record = no deduction ─────────────────
-            await window.fs.addDoc(
-                window.fs.collection(window.db, 'user_transactions'),
-                {
-                    type:           'spend',
-                    amount:         1,
-                    fromAddress:    senderAddr,
-                    toAddress:      recipientNorm || CONFIG.ADMIN_ADDRESS,
-                    address:        senderAddr,
-                    description:    isReply ? "Spent 1★ on a Reply" : "Spent 1★ on a Comment",
-                    postId:         postId,
-                    timestamp:      Date.now(),
-                    schema_version: 2
-                }
-            );
-
-            // ── STEP B: Deduct 1★ from commenter (spend is now in Firestore) ────────────
-            await deductStars(1);
-
-            // ── STEP C: Revenue split ─────────────────────────────────────────────────────
-            if (isReply) {
-                if (recipientNorm && recipientNorm !== "unknown") {
-                    await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
-                    logTransaction('earn', CONFIG.CREATOR_CUT, {
-                        from: senderAddr, to: recipientNorm,
-                        description: "Earnings from Global Feed", postId: postId
-                    });
-                }
-            } else if (_activeCommunity && recipientNorm &&
-                       recipientNorm !== _activeCommunity.ownerId.toLowerCase()) {
-                await creditCreatorStars(recipientNorm, 0.4);
-                logTransaction('earn', 0.4, {
-                    from: senderAddr, to: recipientNorm,
-                    description: "Earnings from " + _activeCommunity.name + " Hub (guest post)",
-                    postId: postId, communityId: _activeCommunity.id
-                });
-                await creditCreatorStars(_activeCommunity.ownerId, 0.4);
-                logTransaction('earn', 0.4, {
-                    from: senderAddr, to: (_activeCommunity.ownerId || '').toLowerCase(),
-                    description: "Landlord Earnings from " + _activeCommunity.name + " Hub (guest post)",
-                    postId: postId, communityId: _activeCommunity.id
-                });
-                // Track real Stars flowing through this Hub
+            // Track hub stars if applicable (client-side stat only)
+            if (_activeCommunity) {
                 window.fs.updateDoc(
                     window.fs.doc(window.db, 'communities', _activeCommunity.id),
-                    { totalStarsEarned: window.fs.increment(0.8) }
+                    { totalStarsEarned: window.fs.increment(result.hubOwnerCut ? 0.8 : result.creatorCut) }
                 ).catch(function(){});
-            } else {
-                if (recipientNorm && recipientNorm !== "unknown") {
-                    const lbl = _activeCommunity
-                        ? "Earnings from " + _activeCommunity.name + " Hub (owner post)"
-                        : "Earnings from Global Feed";
-                    await creditCreatorStars(recipientNorm, CONFIG.CREATOR_CUT);
-                    logTransaction('earn', CONFIG.CREATOR_CUT, {
-                        from: senderAddr, to: recipientNorm,
-                        description: lbl, postId: postId,
-                        communityId: _activeCommunity ? _activeCommunity.id : null
-                    });
-                }
             }
 
-            // ── STEP D: Platform revenue ──────────────────────────────────────────────────
-            logAdminRevenue(senderAddr, isReply ? "reply" : "comment", CONFIG.PLATFORM_CUT);
             updateUI();
             updateDrawerUI();
             if (input) input.value = "";
@@ -20449,28 +20334,28 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (!sSnap.exists()) return showToast('Signal no longer exists.');
             const sData = sSnap.data();
 
-            // Increment hypes on signal
-            await window.fs.updateDoc(sRef, { hypes: window.fs.increment(1) });
+            // Call Cloud Function to handle hype
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/hypeSignal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: userAddress.toLowerCase(),
+                    signalId: _currentSignalId,
+                    creatorAddr: sData.authorAddr
+                })
+            });
 
-            // 80% → creator's creatorStars
-            if (sData.authorAddr && sData.authorAddr !== 'unknown') {
-                await creditCreatorStars(sData.authorAddr, CONFIG.CREATOR_CUT);
-                logTransaction('earn', CONFIG.CREATOR_CUT, {
-                    from: userAddress, to: sData.authorAddr,
-                    description: 'Earned 0.8★ — someone hyped your Daily Signal'
-                });
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Failed to hype signal');
             }
 
-            // Deduct 1★ from sender
-            await deductStars(1);
-            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Signal Hype', 1, '⚡');
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
 
-            // 20% → platform_revenue
-            logAdminRevenue(userAddress, 'signal_hype', CONFIG.PLATFORM_CUT);
-            logTransaction('spend', 1, {
-                from: userAddress, to: sData.authorAddr || CONFIG.ADMIN_ADDRESS,
-                description: 'Hyped a Daily Signal (1★ → 0.8 creator, 0.2 platform)'
-            });
+            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Signal Hype', 1, '⚡');
 
             // ── Fix 2B: Do NOT manually patch the meta line count here.
             // sData.hypes is a point-in-time read taken BEFORE the increment write,
@@ -21139,50 +21024,68 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
             }
 
-            // Deduct exactly 1★ (waterfall: purchased first) — skipped for free posters
+            // Call Cloud Function (skipped for free posters)
             if (!_freePost) {
                 try {
-                    await deductSpendableStars(userAddress, SIGNAL_FEE);
-                } catch (e) {
-                    console.error('Signal star deduction failed:', e);
-                    return alert('Failed to deduct stars. Please try again.');
-                }
+                    const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/postSignal', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            senderAddr: userAddress.toLowerCase(),
+                            text: txt,
+                            mediaUrl: signalMedia,
+                            isFirebase: isFirebase,
+                            signalType: signalType
+                        })
+                    });
 
-                // 100% of signal fee → platform revenue
-                logAdminRevenue(userAddress, 'daily_signal_post', SIGNAL_FEE);
-                logTransaction('spend', SIGNAL_FEE, {
-                    from: userAddress, to: CONFIG.ADMIN_ADDRESS,
-                    description: `Daily Signal posted (24h) — ${SIGNAL_FEE.toFixed(1)}★ fee (100% platform)`
-                });
-            }
-
-            // Write to `signals` collection
-            try {
-                const authorName = localStorage.getItem('hub_userName') || userHandle;
-                const authorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
-                await window.fs.addDoc(window.fs.collection(window.db, 'signals'), {
-                    text:       txt,
-                    media:      signalMedia,
-                    type:       signalType,
-                    firebase:   isFirebase,
-                    author:     authorName,
-                    authorAddr: userAddress.toLowerCase(),
-                    avatar:     authorPic,
-                    timestamp:  Date.now(),
-                    hypes:      0
-                });
-            } catch (e) {
-                console.error('Signal write failed:', e);
-                // ── STAR REFUND: signal write failed after deduction ──
-                if (!_freePost) {
-                    try {
-                        await creditPurchasedStars(userAddress, SIGNAL_FEE);
-                        console.warn('[Signal] Refunded ' + SIGNAL_FEE + '★ after signal write failure.');
-                    } catch (refundErr) {
-                        console.error('[Signal] CRITICAL: refund also failed:', refundErr);
+                    const result = await response.json();
+                    if (!response.ok || !result.ok) {
+                        throw new Error(result.error || 'Failed to post signal');
                     }
+
+                    // Enrich signal with author/avatar (cosmetic fields only)
+                    if (result.signalId) {
+                        try {
+                            const authorName = localStorage.getItem('hub_userName') || userHandle;
+                            const authorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
+                            await window.fs.updateDoc(
+                                window.fs.doc(window.db, 'signals', result.signalId),
+                                { author: authorName, avatar: authorPic }
+                            );
+                        } catch (enrichErr) {
+                            console.warn('[postSignal] Enrichment failed (signal still posted):', enrichErr);
+                        }
+                    }
+
+                    // Refresh balances from Firestore
+                    try {
+                        await syncData();
+                    } catch (_) {}
+                } catch (e) {
+                    console.error('Signal post failed:', e);
+                    return alert('Failed to post signal. Please try again.');
                 }
-                return alert('Signal post failed' + (_freePost ? '.' : ' — your 1★ has been refunded.') + '\n\n' + e.message);
+            } else {
+                // Free poster path: write signal directly (legacy path for whitelisted)
+                try {
+                    const authorName = localStorage.getItem('hub_userName') || userHandle;
+                    const authorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
+                    await window.fs.addDoc(window.fs.collection(window.db, 'signals'), {
+                        text:       txt,
+                        media:      signalMedia,
+                        type:       signalType,
+                        firebase:   isFirebase,
+                        author:     authorName,
+                        authorAddr: userAddress.toLowerCase(),
+                        avatar:     authorPic,
+                        timestamp:  Date.now(),
+                        hypes:      0
+                    });
+                } catch (e) {
+                    console.error('Signal write failed:', e);
+                    return alert('Signal post failed: ' + e.message);
+                }
             }
 
             // Reset composer
@@ -21878,83 +21781,46 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
         }
 
-        // ── Deduct stars (skipped for admin) ─────────────────────────────────
-        if (!isAdmin) {
-            try {
-                await deductSpendableStars(userAddress, _totalFee);
-            } catch (e) {
-                console.error('[handleCommBroadcast] deduction failed:', e);
-                return alert('Failed to deduct stars. Please try again.');
-            }
-        }
+        // Call Cloud Function
+        try {
+            const _subsOnly = !!(document.getElementById('comm-visibility-btn') &&
+                                 document.getElementById('comm-visibility-btn').classList.contains('locked'));
 
-        // ── Log revenue & ledger ──────────────────────────────────────────────
-        const firestoreLabel = postType === 1 ? 'text_post' : postType === 2 ? 'photo_post' : 'video_post';
-        const senderAddrComm = userAddress.toLowerCase();
-        if (!isAdmin) {
-            // Guest posts: 50% to hub owner, 50% platform. Owner posts: 100% platform.
-            var _isGuestBroadcast = senderAddrComm !== (_activeCommunity.ownerId || '').toLowerCase();
-            var _hubOwnerCut = _isGuestBroadcast ? Math.round(feeAmount * 0.5 * 100) / 100 : 0;
-            var _platBroadcastCut = Math.round((feeAmount - _hubOwnerCut) * 100) / 100;
-            var _hubOwnerAddr = (_activeCommunity.ownerId || '').toLowerCase();
-
-            logAdminRevenue(senderAddrComm, firestoreLabel, _platBroadcastCut);
-            logTransaction('spend', feeAmount, {
-                from: senderAddrComm, to: CONFIG.ADMIN_ADDRESS.toLowerCase(),
-                description: postTypeLabel + ' Broadcast in ' + _activeCommunity.name + ' Hub — ' + feeAmount.toFixed(1) + '★' + (_isGuestBroadcast ? ' (50% Hub Owner · 50% Platform)' : ' (100% Platform)'),
-                communityId: _activeCommunity.id
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/hubBroadcast', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: userAddress.toLowerCase(),
+                    text: txt,
+                    mediaUrl: mediaUrl,
+                    isFirebase: isFirebase,
+                    postType: postType,
+                    communityId: _activeCommunity.id,
+                    communityName: _activeCommunity.name,
+                    subscribersOnly: _subsOnly
+                })
             });
-            // Credit hub owner their 50% cut of broadcast fee
-            if (_isGuestBroadcast && _hubOwnerCut > 0 && _hubOwnerAddr) {
-                creditCreatorStars(_hubOwnerAddr, _hubOwnerCut).catch(function(){});
-                logTransaction('earn', _hubOwnerCut, {
-                    from: senderAddrComm, to: _hubOwnerAddr,
-                    description: 'Hub Broadcast fee — ' + _activeCommunity.name + ' (' + feeAmount.toFixed(1) + '★ post · 50% to Hub)',
-                    communityId: _activeCommunity.id
-                });
+
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Failed to broadcast');
             }
-            // ── Hub posting fee: 90% owner, 10% platform ──────────────────────
-            if (_chargeHubFee && _hubOwnerAddr) {
-                var _pfOwnerCut = Math.round(_hubPostingFee * 0.9 * 100) / 100;
-                var _pfPlatCut  = Math.round((_hubPostingFee - _pfOwnerCut) * 100) / 100;
-                creditCreatorStars(_hubOwnerAddr, _pfOwnerCut).catch(function(){});
-                logTransaction('earn', _pfOwnerCut, {
-                    from: senderAddrComm, to: _hubOwnerAddr,
-                    description: 'Hub Posting fee — ' + _activeCommunity.name + ' (' + _hubPostingFee.toFixed(1) + '★ · 90% to Hub)',
-                    communityId: _activeCommunity.id
-                });
-                logAdminRevenue(senderAddrComm, 'hub_posting_fee', _pfPlatCut);
-            }
+
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
+
             // ── Live Activity ticker ──────────────────────────────────────────
             if (typeof window.tickerLog === 'function') {
                 window.tickerLog('spend', postTypeLabel + ' in ' + _activeCommunity.name, _totalFee, '◈');
             }
+        } catch (e) {
+            console.error('[handleCommBroadcast] CF call failed:', e);
+            return alert('Failed to post. Please try again.');
         }
 
-        // ── Write post to Firestore with communityId ─────────────────────────
         try {
-            const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
-            const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
-            var _subsOnly = !!(document.getElementById('comm-visibility-btn') &&
-                               document.getElementById('comm-visibility-btn').classList.contains('locked'));
-            await window.fs.addDoc(window.fs.collection(window.db, 'posts'), {
-                text:            txt,
-                media:           mediaUrl,
-                firebase:        isFirebase,
-                author:          postAuthorName,
-                authorAddr:      userAddress,
-                avatar:          postAuthorPic,
-                timestamp:       Date.now(),
-                hypes:           0,
-                type:            postType,
-                feePaid:         isAdmin ? 0 : _totalFee,
-                isBoosted:       false,
-                category:        'Global',
-                communityId:     _activeCommunity.id,
-                communityName:   _activeCommunity.name,
-                isVisible:       true,
-                subscribersOnly: _subsOnly
-            });
 
             // ── Reset composer ────────────────────────────────────────────────
             const textEl   = document.getElementById('comm-post-text');
@@ -23233,58 +23099,43 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     async function commSubscribeToHub() {
         if (!userAddress) return showToast('Connect your wallet to subscribe.');
         if (!_activeCommunity || !_activeCommunity.subscriptionsEnabled) return;
-        var price     = _activeCommunity.subscriptionPrice || 20;
+
         var ownerAddr = (_activeCommunity.ownerId || '').toLowerCase();
-        // Deduct stars from subscriber's spendable balance
+
         try {
-            await deductSpendableStars(userAddress, price);
-        } catch (e) {
-            console.error('[commSubscribeToHub] deduction failed:', e);
-            return showToast('Not enough stars. You need ' + price + '★ to subscribe.');
-        }
-        var creatorCut  = Math.round(price * 0.9 * 100) / 100;  // 90% to hub owner
-        var platformCut = Math.round((price - creatorCut) * 100) / 100; // 10% platform
-        var now         = Date.now();
-        var expiryDate  = now + (30 * 24 * 60 * 60 * 1000); // 30 days
-        // Credit 90% to hub owner
-        try {
-            await creditCreatorStars(ownerAddr, creatorCut);
-        } catch (e) {
-            console.warn('[commSubscribeToHub] creditCreatorStars failed:', e);
-        }
-        // Log ledger entries
-        logTransaction('spend', price, {
-            from:        userAddress.toLowerCase(),
-            to:          ownerAddr,
-            description: 'Hub Subscription — ' + (_activeCommunity.name || _activeCommunity.id),
-            communityId: _activeCommunity.id
-        });
-        logTransaction('earn', creatorCut, {
-            from:        userAddress.toLowerCase(),
-            to:          ownerAddr,
-            description: 'Hub Subscription income — ' + (_activeCommunity.name || _activeCommunity.id),
-            communityId: _activeCommunity.id
-        });
-        logAdminRevenue(userAddress, 'hub_subscription_fee', platformCut);
-        // Write subscription document
-        try {
-            await window.fs.addDoc(window.fs.collection(window.db, 'subscriptions'), {
-                subscriberWallet: userAddress.toLowerCase(),
-                communityId:      _activeCommunity.id,
-                hubOwnerWallet:   ownerAddr,
-                startDate:        now,
-                expiryDate:       expiryDate,
-                price:            price,
-                status:           'active'
+            // Call Cloud Function
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/subscribeToHub', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: userAddress.toLowerCase(),
+                    communityId: _activeCommunity.id,
+                    communityName: _activeCommunity.name || _activeCommunity.id
+                })
             });
+
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Subscription failed');
+            }
+
+            const price = result.price;
+
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
+
+            showToast('Subscribed! ✓ Access granted for 30 days.');
+            writeNotif(ownerAddr, 'subscribe', { hubName: _activeCommunity.name || _activeCommunity.id, communityId: _activeCommunity.id, amount: price });
+
+            // Refresh hub to unblur subscriber-only posts
+            await openCommunityFeed(_activeCommunity, { updateUrl: false });
+
         } catch (e) {
-            console.error('[commSubscribeToHub] write sub doc failed:', e);
-            return showToast('Subscription failed — please try again.');
+            console.error('[commSubscribeToHub]', e);
+            showToast(e.message || 'Subscription failed — please try again.');
         }
-        showToast('Subscribed! ✓ Access granted for 30 days.');
-        writeNotif(ownerAddr, 'subscribe', { hubName: _activeCommunity.name || _activeCommunity.id, communityId: _activeCommunity.id, amount: price });
-        // Refresh hub to unblur subscriber-only posts
-        await openCommunityFeed(_activeCommunity, { updateUrl: false });
     }
     window.commSubscribeToHub = commSubscribeToHub;
 
@@ -23672,37 +23523,32 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!confirmed) return;
 
         try {
-            // Deduct startup cost (skipped for admin)
-            if (effectiveCost > 0) {
-                await deductSpendableStars(userAddress, effectiveCost);
-            }
-            if (effectiveCost > 0) {
-                logAdminRevenue(userAddress, 'community_startup', effectiveCost);
-            }
-            logTransaction('spend', effectiveCost, {
-                from: userAddress, to: CONFIG.ADMIN_ADDRESS,
-                description: 'Launched Community Hub: "' + name + '" — ' + (effectiveCost > 0 ? effectiveCost.toLocaleString() + '★ startup cost (100% platform)' : 'FREE (admin bypass)')
+            // Call Cloud Function
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/createHub', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: userAddress.toLowerCase(),
+                    name: name,
+                    description: desc,
+                    headerImg: imgUrl,
+                    headerImgPosition: imgPos,
+                    alias: alias,
+                    website: website,
+                    postingMode: postingMode,
+                    postingFee: postingFee
+                })
             });
 
-            // Write community doc to Firestore
-            var ownerName = userAddress ? (userHandle || 'Anonymous') : '';
-            var commData = {
-                name:        name,
-                description: desc,
-                headerImg:         imgUrl,
-                headerImgPosition: imgPos,
-                ownerId:           userAddress,
-                ownerName:   ownerName,
-                createdAt:   Date.now(),
-                postCount:   0,
-                postingMode: postingMode,
-                postingFee:  postingFee
-            };
-            // Only write alias field if one was provided (keeps doc clean for hubs without one)
-            if (alias)   commData.alias   = alias;
-            if (website) commData.website = website;
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Failed to create hub');
+            }
 
-            await window.fs.addDoc(window.fs.collection(window.db, 'communities'), commData);
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
 
             showToast('Community Hub "' + name + '" is live!' + (alias ? ' Handle: ?' + 'hub=' + alias : '') + ' \u2713');
             // Challenge Day 6: Created a Hub
@@ -24007,67 +23853,33 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (followBtn) followBtn.disabled = true;
 
         try {
-            const docId  = senderAddr + '_' + recipientAddr;
-            const docRef = window.fs.doc(window.db, 'social_graph', docId);
-            const snap   = await window.fs.getDoc(docRef);
+            // Call Cloud Function to handle follow/unfollow toggle
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/followUser', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: senderAddr,
+                    recipientAddr: recipientAddr
+                })
+            });
 
-            if (snap.exists()) {
-                // ── UNFOLLOW — no star cost ───────────────────────────────
-                await window.fs.deleteDoc(docRef);
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Follow action failed');
+            }
+
+            const action = result.action; // 'followed' or 'unfollowed'
+
+            if (action === 'unfollowed') {
+                // ── UNFOLLOW ───────────────────────────────
                 _followingSet.delete(recipientAddr);
                 if (followBtn) { followBtn.textContent = '+ Follow'; followBtn.classList.remove('following'); }
                 showToast('Unfollowed.');
                 if (typeof loadMyNetwork === 'function') loadMyNetwork();
 
-            } else {
-                // ── FOLLOW — atomic 90/10 split ───────────────────────────
-
-                // STEP A: Validate sender has >= 1 Star
-                const total = getTotalSpendableStars();
-                if (total < 1) {
-                    isActionPending = false;
-                    if (followBtn) followBtn.disabled = false;
-                    return showToast('Not enough Stars to follow! Tap Buy Stars to top up.');
-                }
-
-                // STEP B: Log the spend entry BEFORE deducting.
-                // "No spend record = no deduction" contract — abort if write fails.
-                await window.fs.addDoc(
-                    window.fs.collection(window.db, 'user_transactions'),
-                    {
-                        type:           'spend',
-                        amount:         1,
-                        fromAddress:    senderAddr,
-                        toAddress:      recipientAddr,
-                        address:        senderAddr,
-                        description:    'Followed ' + recipientAddr.slice(0, 8) + '…',
-                        timestamp:      Date.now(),
-                        schema_version: 2
-                    }
-                );
-
-                // STEP C: Deduct 1★ from sender (spend is now in Firestore)
-                await deductStars(1);
+            } else if (action === 'followed') {
+                // ── FOLLOW ───────────────────────────────
                 if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Follow', 1, '+');
-
-                // STEP D: Credit 0.9★ to recipient
-                await creditCreatorStars(recipientAddr, 0.9);
-
-                // STEP E: Route 0.1★ to platform revenue
-                logAdminRevenue(senderAddr, 'follow_fee', 0.1);
-
-                // STEP F: Log earn entry with the correct 90% amount
-                logTransaction('earn', 0.9, {
-                    from: senderAddr, to: recipientAddr,
-                    description: 'Follow Earnings from ' + senderAddr.slice(0, 8) + '…'
-                });
-
-                // Write the social_graph document AFTER payment succeeds
-                await window.fs.setDoc(docRef, {
-                    follower:  senderAddr,
-                    following: recipientAddr,
-                    timestamp: Date.now()
-                });
 
                 _followingSet.add(recipientAddr);
                 if (followBtn) { followBtn.textContent = '✓ Following'; followBtn.classList.add('following'); }
@@ -24076,10 +23888,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (typeof loadMyNetwork === 'function') loadMyNetwork();
                 // Challenge Day 3: Check if now following 5+ creators
                 if (_followingSet.size >= 5) window._challengeMarkDone && window._challengeMarkDone(3);
+            } else {
+                throw new Error('Unexpected action: ' + action);
             }
 
             // Refresh follower/following counts on the hero
             await _loadHeroSocialGraph(recipientAddr, false);
+
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
 
         } catch (e) {
             console.error('[heroFollow]', e);
@@ -24536,39 +24355,37 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             return alert('Upload failed: ' + e.message);
         }
 
-        if (!_freePost) {
-            try {
-                await deductSpendableStars(userAddress, CONFIG.FEES.FLICK);
-            } catch (e) {
-                return alert('Failed to deduct stars. Try again.');
+        // Call Cloud Function
+        let docRef;
+        try {
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/postFlick', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: userAddress.toLowerCase(),
+                    caption: caption,
+                    mediaUrl: mediaUrl
+                })
+            });
+
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Failed to post Flick');
             }
 
-            logAdminRevenue(userAddress, 'flick_post', CONFIG.FEES.FLICK);
-            logTransaction('spend', CONFIG.FEES.FLICK, {
-                from: userAddress, to: CONFIG.ADMIN_ADDRESS,
-                description: 'Flick Broadcast — ' + CONFIG.FEES.FLICK + '★ creation fee (100% platform)'
-            });
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
+
+            docRef = { id: result.postId };
+        } catch (e) {
+            if (_fpWrap) _fpWrap.style.display = 'none';
+            if (_fpBtn)  { _fpBtn.disabled = false; _fpBtn.textContent = '▶ Post Flick'; }
+            return alert('Failed to post Flick: ' + e.message);
         }
 
         try {
-            const postAuthorName = localStorage.getItem('hub_userName') || userHandle;
-            const postAuthorPic  = localStorage.getItem('hub_userPic')  || userAvatar;
-            const docRef = await window.fs.addDoc(window.fs.collection(window.db, 'posts'), {
-                text:       caption,
-                media:      mediaUrl,
-                firebase:   true,
-                author:     postAuthorName,
-                authorAddr: userAddress,
-                avatar:     postAuthorPic,
-                timestamp:  Date.now(),
-                hypes:      0,
-                type:       4,
-                feePaid:    _freePost ? 0 : CONFIG.FEES.FLICK,
-                isBoosted:  false,
-                isVisible:  true,
-                category:   'Global',
-                hashtags:   _extractHashtags(caption)
-            });
 
             // Transcode to H.264 so HEVC/H.265 videos play on all browsers
             if (_fpLabel) _fpLabel.textContent = 'Optimizing for all devices…';
@@ -25820,37 +25637,27 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return showToast('Not enough Stars! Need ' + amount + '★, have ' + total.toFixed(2) + '★.');
             }
 
-            // 90/10 split
-            const creatorCut  = parseFloat((amount * 0.9).toFixed(4));
-            const platformCut = parseFloat((amount * 0.1).toFixed(4));
-            const senderAddr  = userAddress.toLowerCase();
+            const senderAddr = userAddress.toLowerCase();
 
-            // STEP A: Log spend FIRST — no spend record = no deduction
-            await window.fs.addDoc(
-                window.fs.collection(window.db, 'user_transactions'),
-                {
-                    type:           'spend',
-                    amount:         amount,
-                    fromAddress:    senderAddr,
-                    toAddress:      _heroTargetAddr,
-                    address:        senderAddr,
-                    description:    'Profile Tip to ' + _heroTargetAddr.slice(0,8) + '… (' + amount + '★)',
-                    timestamp:      Date.now(),
-                    schema_version: 2
-                }
-            );
-
-            // STEP B: Deduct stars from sender
-            await deductStars(amount);
-            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Tip', amount, '✦');
-
-            // STEP C: 90% to creator
-            await creditCreatorStars(_heroTargetAddr, creatorCut);
-            logTransaction('earn', creatorCut, {
-                from: senderAddr, to: _heroTargetAddr,
-                description: 'Profile Tip from ' + senderAddr.slice(0,8) + '… (' + amount + '★ → ' + creatorCut.toFixed(2) + '★ after split)'
+            // Call Cloud Function
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/sendProfileTip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: senderAddr,
+                    recipientAddr: _heroTargetAddr,
+                    amount: amount
+                })
             });
-            logAdminRevenue(senderAddr, 'profile_tip', platformCut);
+
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Tip failed');
+            }
+
+            // Update local UI state
+            const creatorCut = result.creatorReceived || (amount * 0.9);
+            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Tip', amount, '✦');
 
             // Star shower — intensity scales with amount
             const tipBtn = document.getElementById('hero-tip-btn');
@@ -25866,6 +25673,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             showToast('★ Sent ' + amount + '★! Creator receives ' + creatorCut.toFixed(2) + '★.');
             writeNotif(_heroTargetAddr, 'tip', { amount: amount });
             if (typeof window._challengeMarkDone === 'function') window._challengeMarkDone(4);
+
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
+
         } catch (e) {
             console.error('[sendHeroTip]', e);
             showToast('Tip failed. Please try again.');
@@ -26132,11 +25945,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // ── Module-level mutex: prevents any re-entry before the first call finishes ──
     let _mailboxActivating = false;
 
-    // NEW VERSION - Calls Cloud Function instead of direct Firestore writes
-    // Lines 26135-26291 in index.html
     
     async function activateMailbox() {
-        // â”€â”€ 1. BUTTON LOCK: block re-entry immediately, before any await â”€â”€
+        // ── 1. BUTTON LOCK: block re-entry immediately, before any await ──
         if (_mailboxActivating) return;
         _mailboxActivating = true;
     
@@ -26147,9 +25958,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             el.disabled = loading;
             if (loading) {
                 el.dataset.origText = el.textContent;
-                el.textContent = 'â³ Activatingâ€¦';
+                el.textContent = '⏳ Activating…';
             } else {
-                el.textContent = el.dataset.origText || 'ðŸ“« Activate Mailbox (25 â˜…)';
+                el.textContent = el.dataset.origText || '📫 Activate Mailbox (25 ★)';
             }
         };
         _lockBtn(btn,      true);
@@ -26158,7 +25969,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         try {
             if (!userAddress) throw new Error('Connect your wallet first.');
     
-            // â”€â”€ 2. Call Cloud Function â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── 2. Call Cloud Function ────────────────────────────────────
             const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/activateMailbox', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -26171,7 +25982,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 throw new Error(result.error || 'Activation failed');
             }
     
-            // â”€â”€ 3. Handle response â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── 3. Handle response ─────────────────────────────────────────
             if (result.alreadyActive) {
                 userHasMailbox = true;
                 showToast('Your mailbox is already active!');
@@ -26181,28 +25992,28 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;
             }
     
-            // â”€â”€ 4. Success: update local state and UI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── 4. Success: update local state and UI ─────────────────────
             userHasMailbox = true;
     
             if (btn) {
                 btn.disabled      = false;
-                btn.textContent   = 'ðŸ“« Mailbox Active';
+                btn.textContent   = '📫 Mailbox Active';
                 btn.className     = 'mailbox-active-badge';
                 btn.onclick       = null;
                 btn.style.cursor  = 'default';
             }
             if (inboxBtn) {
                 inboxBtn.disabled     = false;
-                inboxBtn.textContent  = 'ðŸ“« Mailbox Active';
+                inboxBtn.textContent  = '📫 Mailbox Active';
                 inboxBtn.className    = 'mailbox-active-badge';
                 inboxBtn.onclick      = null;
                 inboxBtn.style.cursor = 'default';
             }
     
-            showToast('ðŸ“« Mailbox activated! You can now send and receive messages.');
+            showToast('📫 Mailbox activated! You can now send and receive messages.');
             _activateTab('inbox', document.getElementById('nav-inbox'));
     
-            // â”€â”€ 5. Refresh balance from server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── 5. Refresh balance from server ────────────────────────────
             // The Cloud Function updated the balance, so re-read it
             if (window.db && userAddress) {
                 try {
@@ -26227,7 +26038,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     
         } catch (e) {
             console.error('[activateMailbox]', e);
-            showToast(e.message || 'Activation failed â€” try again.');
+            showToast(e.message || 'Activation failed — try again.');
         } finally {
             _lockBtn(btn,      false);
             _lockBtn(inboxBtn, false);
@@ -26236,7 +26047,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     }
     window.activateMailbox = activateMailbox;
 
-    window.activateMailbox = activateMailbox;
 
     // ── loadInbox — show splash or dual-pane based on mailbox status ────────────
     async function loadInbox() {
@@ -26508,110 +26318,48 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
 
         try {
-            const docId  = senderAddr + '_' + commId;
-            const docRef = window.fs.doc(window.db, 'social_graph', docId);
-            const snap   = await window.fs.getDoc(docRef);
+            // Call Cloud Function to handle follow/unfollow toggle
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/followHub', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: senderAddr,
+                    communityId: commId,
+                    communityName: _activeCommunity.name || commId
+                })
+            });
 
-            if (snap.exists()) {
-                // ── UNFOLLOW ──────────────────────────────────────────────
-                await window.fs.deleteDoc(docRef);
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Follow action failed');
+            }
+
+            const action = result.action; // 'followed' or 'unfollowed'
+
+            if (action === 'unfollowed') {
+                // ── UNFOLLOW ───────────────────────────────
                 _followingSet.delete(commId);
                 if (followBtn) { followBtn.textContent = '+ Follow Hub'; followBtn.classList.remove('following'); }
                 showToast('Unfollowed ' + (_activeCommunity.name || 'Hub') + '.');
-                window.fs.updateDoc(
-                    window.fs.doc(window.db, 'communities', commId),
-                    { memberCount: window.fs.increment(-1) }
-                ).catch(function(){});
                 if (typeof loadMyNetwork === 'function') loadMyNetwork();
 
-            } else {
-                // ── FOLLOW — atomic 90/10 split ───────────────────────────
-
-                // STEP A: Validate sender has >= 1 Star
-                const total = getTotalSpendableStars();
-                if (total < 1) {
-                    isActionPending = false;
-                    if (followBtn) followBtn.disabled = false;
-                    return showToast('Not enough Stars to follow! Tap Buy Stars to top up.');
-                }
-
-                // ── SELF-DEALING GUARD ───────────────────────────────────────
-                // When senderAddr === creatorAddr (creator follows their own Hub),
-                // the spend and earn are two SEPARATE database writes to the same
-                // document. We must sequence them carefully:
-                //   1. Log the spend entry first (pre-deduct contract)
-                //   2. Deduct 1★ from balance
-                //   3. Credit 0.9★ back as a SEPARATE write (never skip this)
-                //   4. Log the earn entry
-                // This order ensures the ledger always shows both sides, and the
-                // net balance change is -0.1★ regardless of who owns the community.
-                const isSelfDeal = (senderAddr === creatorAddr);
-
-                // STEP B: Log the spend entry BEFORE deducting.
-                // "No spend record = no deduction" — if this write fails, abort.
-                const spendDocRef = await new Promise((resolve, reject) => {
-                    window.fs.addDoc(
-                        window.fs.collection(window.db, 'user_transactions'),
-                        {
-                            type:           'spend',
-                            amount:         1,
-                            fromAddress:    senderAddr,
-                            toAddress:      creatorAddr || CONFIG.ADMIN_ADDRESS,
-                            address:        senderAddr,
-                            description:    'Followed Hub: ' + (_activeCommunity.name || commId)
-                                            + (isSelfDeal ? ' [self]' : ''),
-                            communityId:    commId,
-                            timestamp:      Date.now(),
-                            schema_version: 2
-                        }
-                    ).then(resolve).catch(reject);
-                });
-                console.log('[commFollowHub] Spend logged:', spendDocRef.id, '— proceeding to deduct.');
-
-                // STEP C: Deduct 1★ from sender (now that spend is in Firestore)
-                await deductStars(1);
+            } else if (action === 'followed') {
+                // ── FOLLOW ───────────────────────────────
                 if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Hub Follow', 1, '■');
-
-                // STEP D: Credit 0.9★ to community creator.
-                // On self-deal this is a SEPARATE write — must always run.
-                // creditCreatorStars uses its own runTransaction, so it reads the
-                // post-deduct value of the doc and increments creatorStars atomically.
-                if (creatorAddr) {
-                    await creditCreatorStars(creatorAddr, 0.9);
-                }
-
-                // STEP E: Route 0.1★ to platform revenue
-                logAdminRevenue(senderAddr, 'community_follow_fee', 0.1);
-                window.fs.updateDoc(
-                    window.fs.doc(window.db, 'communities', commId),
-                    { totalStarsEarned: window.fs.increment(0.9), memberCount: window.fs.increment(1) }
-                ).catch(function(){});
-
-                // STEP F: Log the earn entry with the CORRECT 90% amount (0.9, not 1.0)
-                if (creatorAddr) {
-                    logTransaction('earn', 0.9, {
-                        from: senderAddr, to: creatorAddr,
-                        description: 'Hub Follow Earnings — ' + (_activeCommunity.name || commId)
-                                     + ' (from ' + senderAddr.slice(0, 8) + '…)'
-                                     + (isSelfDeal ? ' [self-deal: separate credit applied]' : ''),
-                        communityId: commId
-                    });
-                }
-
-                // Write social_graph entry — community ID is the 'following' value
-                await window.fs.setDoc(docRef, {
-                    follower:  senderAddr,
-                    following: commId,
-                    type:      'community',
-                    timestamp: Date.now()
-                });
 
                 _followingSet.add(commId);
                 if (followBtn) { followBtn.textContent = '✓ Following Hub'; followBtn.classList.add('following'); }
                 showToast('Following ' + (_activeCommunity.name || 'Hub') + '! 0.9★ sent to creator.');
                 writeNotif(creatorAddr, 'follow', { hubName: _activeCommunity.name || commId, communityId: commId });
                 if (typeof loadMyNetwork === 'function') loadMyNetwork();
+            } else {
+                throw new Error('Unexpected action: ' + action);
             }
+
+            // Refresh balances from Firestore
+            try {
+                await syncData();
+            } catch (_) {}
 
             // Refresh member count display
             if (window.db) {
@@ -28491,11 +28239,34 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (picker) picker.classList.remove('open');
 
         try {
-            var senderAddr   = userAddress.toLowerCase();
-            var creatorCut   = parseFloat((amount * 0.9).toFixed(4));
-            var platformCut  = parseFloat((amount * 0.1).toFixed(4));
+            var senderAddr = userAddress.toLowerCase();
 
-            // ── STEP A: Log spend FIRST ───────────────────────────────
+            // ── Call rainOnPost Cloud Function ────────────────────────────────────────────
+            const hubId = _activeCommunity ? _activeCommunity.id : null;
+            const hubOwnerAddr = _activeCommunity ? _activeCommunity.ownerId : null;
+
+            const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/rainOnPost', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderAddr: senderAddr,
+                    recipientAddr: recipient,
+                    postId: postId,
+                    amount: amount,
+                    hubId: hubId,
+                    hubOwnerAddr: hubOwnerAddr
+                })
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || 'Rain failed');
+            }
+
+            var creatorCut = result.creatorCut;
+            var platformCut = result.platformCut;
+
+            // Update local balance state after CF confirms
             await window.fs.addDoc(
                 window.fs.collection(window.db, 'user_transactions'),
                 {
@@ -40856,4 +40627,5 @@ function dismissTgBanner() {
 </script>
 </body>
 </html>
+
 
