@@ -30107,8 +30107,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             await new Promise(r => setTimeout(r, minDisplayMs - elapsed));
         }
 
-        // Hide test banner
-        if (banner) banner.style.display = 'none';
+        // Keep banner visible and continue showing live mic levels
+        // Start continuous volume monitoring
+        if (window._micMonitorInterval) clearInterval(window._micMonitorInterval);
+        window._micMonitorInterval = setInterval(() => {
+            if (!audioTrack) {
+                clearInterval(window._micMonitorInterval);
+                return;
+            }
+            try {
+                const volume = audioTrack.getVolumeLevel();
+                const indicator = document.getElementById('mic-test-indicator');
+                if (indicator) {
+                    const percent = Math.min(100, volume * 200);
+                    indicator.style.width = percent + '%';
+                }
+            } catch (e) {
+                clearInterval(window._micMonitorInterval);
+            }
+        }, 100);
 
         // Check 4: Detect in-app WebView (additional context)
         const isWebView = detectInAppBrowser();
@@ -30446,6 +30463,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // Guard 2: a call is already in flight (countdown fired twice, or patch chain re-entered)
         if (_isStartingLive) { console.warn('[Live] startLiveStream already in progress — ignoring duplicate call.'); return; }
         _isStartingLive = true;
+
+        // Stop mic volume monitoring and hide banner when going live
+        if (window._micMonitorInterval) {
+            clearInterval(window._micMonitorInterval);
+            window._micMonitorInterval = null;
+        }
+        const micBanner = document.getElementById('mic-test-banner');
+        if (micBanner) micBanner.style.display = 'none';
 
         // Read shared state from main IIFE bridge
         const userAddress = window._liveUserAddress || '';
