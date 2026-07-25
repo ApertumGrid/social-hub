@@ -30080,6 +30080,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (indicator) indicator.style.width = '0%';
         }
 
+        const bannerShowTime = Date.now();
+        const minDisplayMs = 1500; // Minimum 1.5 seconds so user can see it
+
         let maxVolume = 0;
         const samples = 10;
         const sampleInterval = 50; // ms
@@ -30101,6 +30104,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 console.warn('[verifyMic] getVolumeLevel failed:', e);
             }
             await new Promise(r => setTimeout(r, sampleInterval));
+        }
+
+        // Keep banner visible for minimum display time
+        const elapsed = Date.now() - bannerShowTime;
+        if (elapsed < minDisplayMs) {
+            await new Promise(r => setTimeout(r, minDisplayMs - elapsed));
         }
 
         // Hide test banner
@@ -33164,6 +33173,27 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (window._localAudioTrack_ref) { window._localAudioTrack_ref.stop(); window._localAudioTrack_ref.close(); window._localAudioTrack_ref = null; }
             } catch(_) {}
 
+            // Step 6: Reset UI to initial "Enable Camera & Mic" state
+            // (so next Go Live requires fresh permission verification)
+            const enableBtn = document.getElementById('enable-media-btn');
+            const goLiveBtn = document.getElementById('live-go-live-btn');
+            const placeholder = document.getElementById('live-preview-placeholder');
+
+            if (enableBtn) {
+                enableBtn.style.display = 'flex';
+                enableBtn.innerHTML = '<span style="font-size:1rem;">📹</span> Enable Camera &amp; Mic';
+                enableBtn.style.pointerEvents = '';
+                enableBtn.style.opacity = '';
+            }
+            if (goLiveBtn) {
+                goLiveBtn.style.display = 'none';
+            }
+            if (placeholder) {
+                placeholder.style.display = 'flex';
+            }
+
+            // Clear any permission error banners
+            hidePermissionError();
 
         } catch(e) { console.warn('[Live] Agora cleanup:', e); }
     }
