@@ -32321,16 +32321,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var addr = '';
             var handle = cohostHandle || 'Co-host';
             snap.forEach(function(d) {
-                // Match exact approved co-host UID when available, fallback to first approved.
+                // Match exact approved co-host UID — never fall back to first approved
                 var r = d.data() || {};
                 var reqUid = (r.uid == null ? '' : String(r.uid));
                 var uidMatch = String(cohostUid || '') !== '' && reqUid === String(cohostUid);
-                if (r.status === 'approved' && (uidMatch || !addr)) {
+                // ONLY accept exact UID match (no fallback)
+                if (r.status === 'approved' && uidMatch) {
                     addr = d.id; // docId IS the wallet address
                     handle = r.handle || handle;
                 }
             });
-            if (!addr) { showToast('Could not find co-host wallet. Try again in a moment.'); return; }
+            // Fail safely if no exact match found
+            if (!addr) { showToast('Could not identify this co-host. Please try again.'); return; }
             window.openGiftPickerDirect(addr, handle);
         }).catch(function(e) { showToast('Gift error: ' + e.message); });
     };
