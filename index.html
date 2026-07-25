@@ -1217,9 +1217,7 @@
             margin-bottom:12px;
         }
         /* Keep broadcaster preview slightly shorter */
-        #live-local-preview {
-            height:234px !important;
-        }
+        /* REMOVED: height:234px !important — conflicts with inline max-height:50vh */
         @media (max-width:768px) {
             .live-stream-box { height:50vw; min-height:200px; }
         }
@@ -1233,11 +1231,8 @@
             #live-setup-grid > div:first-child {
                 border-right: none !important;
             }
-            /* Preview: fixed height instead of flex:1 so it doesn't collapse */
-            #live-local-preview {
-                height: 220px !important;
-                flex: none !important;
-            }
+            /* Preview: let max-height:50vh control size responsively */
+            /* REMOVED: height: 220px !important; flex: none !important; — conflicts with inline max-height:50vh */
         }
         /* Force Agora-injected <video> and its wrapper div to fill the container */
         #live-broadcaster-video video,
@@ -10645,6 +10640,30 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     </div>
                 </div>
 
+                <!-- Co-host camera/mic permission modal -->
+                <div id="cohost-permission-modal" style="display:none;position:fixed;inset:0;z-index:10002;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:16px;">
+                    <div style="background:var(--bg-card);border:1.5px solid rgba(224,62,62,0.4);border-radius:20px;max-width:420px;width:100%;padding:28px 22px;text-align:center;">
+                        <div style="font-size:2.2rem;margin-bottom:12px;">🎙️</div>
+                        <div style="font-size:1.05rem;font-weight:800;color:var(--text-primary);margin-bottom:14px;">Join as Co-Host</div>
+                        <div style="font-size:0.85rem;color:var(--text-secondary);line-height:1.7;margin-bottom:20px;text-align:left;">
+                            To join the stream as a co-host, you need to grant camera and microphone access.<br><br>
+                            <strong style="color:#e03e3e;">Tap the button below</strong> to enable your camera and microphone, then you'll join the stage.
+                        </div>
+
+                        <!-- Permission error (shown if verification fails) -->
+                        <div id="cohost-permission-error" style="display:none;"></div>
+
+                        <div style="display:flex;gap:10px;">
+                            <button onclick="closeCohostPermissionModal()" style="flex:1;padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.7);font-size:0.85rem;font-weight:600;cursor:pointer;">
+                                Cancel
+                            </button>
+                            <button id="cohost-enable-btn" onclick="enableCohostMedia()" style="flex:2;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#e03e3e,#b02020);color:#fff;font-size:0.85rem;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(224,62,62,0.3);">
+                                📹 Enable Camera &amp; Mic
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Compose -->
                 <div class="card composer-collapsed" id="composer-card" style="border-color: rgba(124,92,191,0.25);">
                     <div class="composer-row" onclick="expandComposer()" title="Click to compose a signal">
@@ -12381,7 +12400,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div style="padding:28px 24px; display:flex; flex-direction:column;">
                                 <!-- Camera preview -->
                                 <div class="live-stream-box" id="live-local-preview" style="
-                                    flex:1; background:#060508;
+                                    flex:0 0 auto; height:50vh; max-height:400px; background:#060508;
                                     border-radius:14px; overflow:hidden; position:relative; margin-bottom:16px;
                                     border:1px solid rgba(255,255,255,0.07);
                                     box-shadow:inset 0 0 60px rgba(0,0,0,0.8);
@@ -12399,6 +12418,35 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                         <div style="font-size:0.72rem; color:rgba(255,255,255,0.2); position:relative; z-index:1;">Camera preview will appear here</div>
                                     </div>
                                     <video id="live-local-video" autoplay muted playsinline style="width:100%;height:100%;position:absolute;top:0;left:0;object-fit:cover;display:none;"></video>
+                                </div>
+
+                                <!-- Mic test feedback banner (shown during verification) -->
+                                <div id="mic-test-banner" style="
+                                    display:none;
+                                    background:rgba(224,62,62,0.1);
+                                    border:1px solid rgba(224,62,62,0.3);
+                                    border-radius:8px;
+                                    padding:12px 16px;
+                                    margin-bottom:12px;
+                                    flex-direction:column;
+                                    gap:8px;
+                                ">
+                                    <div style="color:#e03e3e; font-size:0.85rem; font-weight:600;">
+                                        🎙 Testing microphone - say something...
+                                    </div>
+                                    <div style="background:rgba(255,255,255,0.1); height:6px; border-radius:3px; overflow:hidden;">
+                                        <div id="mic-test-indicator" style="
+                                            background:linear-gradient(90deg,#4ade80,#22c55e);
+                                            height:100%;
+                                            width:0%;
+                                            transition:width 0.1s;
+                                        "></div>
+                                    </div>
+                                </div>
+
+                                <!-- Permission error banner (shown on verification failure) -->
+                                <div id="permission-error-banner" style="display:none;">
+                                    <!-- Content populated by showPermissionError() -->
                                 </div>
 
                                 <!-- Control buttons row -->
@@ -12427,21 +12475,23 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                     " title="Switch front/rear camera">
                                         <span style="font-size:1.2rem;">🔄</span> Flip
                                     </button>
-                                    <button id="live-preview-btn" onclick="startLocalPreview()" style="
-                                        background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.1);
-                                        border-radius:12px; padding:12px 6px 10px; color:rgba(255,255,255,0.6);
-                                        font-size:0.62rem; font-weight:600; cursor:pointer; display:flex; flex-direction:column;
-                                        align-items:center; gap:6px; transition:all 0.2s;
+                                    <button id="enable-media-btn" onclick="enableCameraAndMic()" style="
+                                        background:linear-gradient(135deg,#e03e3e,#b02020);
+                                        border:none; border-radius:12px; padding:12px 16px;
+                                        color:#fff; font-size:0.75rem; font-weight:700; cursor:pointer;
+                                        display:flex; align-items:center; justify-content:center; gap:8px;
+                                        box-shadow:0 4px 12px rgba(224,62,62,0.25);
+                                        letter-spacing:0.3px; transition:all 0.2s; grid-column:1 / -1;
                                     ">
-                                        <span style="font-size:1.2rem;">📷</span> Preview
+                                        <span style="font-size:1rem;">📹</span> Enable Camera &amp; Mic
                                     </button>
                                     <button id="live-go-live-btn" onclick="startLiveStream()" style="
                                         background:linear-gradient(135deg,#e03e3e,#b02020);
                                         border:none; border-radius:12px; padding:12px 16px;
                                         color:#fff; font-size:0.82rem; font-weight:700; cursor:pointer;
-                                        display:flex; align-items:center; justify-content:center; gap:8px;
+                                        display:none; align-items:center; justify-content:center; gap:8px;
                                         box-shadow:0 8px 24px rgba(224,62,62,0.35);
-                                        letter-spacing:0.3px; transition:all 0.2s;
+                                        letter-spacing:0.3px; transition:all 0.2s; grid-column:1 / -1;
                                     ">
                                         <span style="font-size:1rem;">🔴</span> Go Live
                                     </button>
@@ -29847,12 +29897,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (ph) ph.style.display = 'flex';
             }
         }
-        // Auto-start camera preview when switching to broadcast tab (not yet live)
-        if (tab === 'broadcast' && !isHosting && window.AgoraRTC) {
-            requestAnimationFrame(() => requestAnimationFrame(() => {
-                if (typeof window.startLocalPreview === 'function') window.startLocalPreview();
-            }));
-        }
+        // Camera preview is now triggered explicitly by "Enable Camera & Mic" button
+        // (removed auto-preview to ensure getUserMedia runs in user gesture)
         // Re-attach broadcaster video when switching back while actively hosting
         if (tab === 'broadcast' && isHosting) {
             show('live-active-panel');
@@ -29977,55 +30023,435 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
     }
 
-    // ── Local camera preview ──────────────────────────────────────
-    window.startLocalPreview = async function() {
-        try {
-            if (!window.AgoraRTC) { showToast('Agora SDK not loaded yet — please wait.'); return; }
+    // ── Track lifecycle cleanup (prevents leaks) ──────────────────────
+    async function closeExistingTracks() {
+        if (window.localVideoTrack) {
+            try {
+                window.localVideoTrack.close();
+            } catch (e) { console.warn('[closeTrack] video:', e); }
+            window.localVideoTrack = null;
+        }
+        if (window.localAudioTrack) {
+            try {
+                window.localAudioTrack.close();
+            } catch (e) { console.warn('[closeTrack] audio:', e); }
+            window.localAudioTrack = null;
+        }
+    }
 
-            // If we already have tracks and haven't gone live, just replay into preview box
-            if (localVideoTrack && !isHosting) {
-                const ph = $('live-preview-placeholder');
-                if (ph) ph.style.display = 'none';
-                _playInContainer(localVideoTrack, 'live-local-preview');
+    // ── Detect in-app WebView (for mic permission troubleshooting) ────
+    function detectInAppBrowser() {
+        const ua = navigator.userAgent || '';
+        // Telegram WebView
+        if (ua.includes('Telegram')) return true;
+        // Instagram/Facebook in-app
+        if (ua.includes('Instagram') || ua.includes('FBAN') || ua.includes('FBAV')) return true;
+        // Twitter/X in-app
+        if (ua.includes('Twitter')) return true;
+        // Generic WebView markers
+        if (ua.includes('wv') || ua.includes('WebView')) return true;
+        return false;
+    }
+
+    // ── Verify microphone track is actually live (with user feedback) ──
+    async function verifyMicTrack(audioTrack) {
+        // Check 1: Track exists
+        if (!audioTrack) {
+            return { ok: false, reason: 'no_track', message: 'Microphone track missing' };
+        }
+
+        // Check 2: MediaStreamTrack is live
+        const mediaTrack = audioTrack.getMediaStreamTrack();
+        if (!mediaTrack || mediaTrack.readyState !== 'live') {
+            return { ok: false, reason: 'not_live', message: 'Microphone track not active' };
+        }
+
+        // Check 3: Volume level verification with visible UI prompt
+        // Show "Say something to test your mic" banner
+        const banner = document.getElementById('mic-test-banner');
+        if (banner) {
+            banner.style.display = 'flex';
+            const indicator = document.getElementById('mic-test-indicator');
+            if (indicator) indicator.style.width = '0%';
+        }
+
+        const bannerShowTime = Date.now();
+        const minDisplayMs = 1500; // Minimum 1.5 seconds so user can see it
+
+        let maxVolume = 0;
+        const samples = 10;
+        const sampleInterval = 50; // ms
+
+        for (let i = 0; i < samples; i++) {
+            try {
+                const volume = audioTrack.getVolumeLevel();
+                if (volume > maxVolume) maxVolume = volume;
+
+                // Update visual indicator
+                const indicator = document.getElementById('mic-test-indicator');
+                if (indicator) {
+                    const percent = Math.min(100, volume * 200); // Scale 0-0.5 volume to 0-100%
+                    indicator.style.width = percent + '%';
+                }
+
+                if (maxVolume > 0.01) break; // Early exit if we detect sound
+            } catch (e) {
+                console.warn('[verifyMic] getVolumeLevel failed:', e);
+            }
+            await new Promise(r => setTimeout(r, sampleInterval));
+        }
+
+        // Keep banner visible for minimum display time
+        const elapsed = Date.now() - bannerShowTime;
+        if (elapsed < minDisplayMs) {
+            await new Promise(r => setTimeout(r, minDisplayMs - elapsed));
+        }
+
+        // Keep banner visible and continue showing live mic levels
+        // Start continuous volume monitoring
+        if (window._micMonitorInterval) clearInterval(window._micMonitorInterval);
+        window._micMonitorInterval = setInterval(() => {
+            if (!audioTrack) {
+                clearInterval(window._micMonitorInterval);
                 return;
             }
+            try {
+                const volume = audioTrack.getVolumeLevel();
+                const indicator = document.getElementById('mic-test-indicator');
+                if (indicator) {
+                    const percent = Math.min(100, volume * 200);
+                    indicator.style.width = percent + '%';
+                }
+            } catch (e) {
+                clearInterval(window._micMonitorInterval);
+            }
+        }, 100);
 
-            // Close old tracks cleanly (not publishing yet, safe to close)
-            if (localVideoTrack) { try { localVideoTrack.close(); } catch(_) {} localVideoTrack = null; }
-            if (localAudioTrack) { try { localAudioTrack.close(); } catch(_) {} localAudioTrack = null; }
+        // Check 4: Detect in-app WebView (additional context)
+        const isWebView = detectInAppBrowser();
 
+        if (maxVolume === 0) {
+            return {
+                ok: false,
+                reason: 'silent',
+                message: isWebView
+                    ? 'Microphone blocked by app. Please open this page in your system browser (Safari/Chrome).'
+                    : 'No sound detected. Please speak or make noise when testing your microphone, then try again.',
+                isWebView
+            };
+        }
+
+        return { ok: true, maxVolume };
+    }
+
+    // ── Show/hide permission error UI ─────────────────────────────────
+    var _permissionRetryHandler = null; // Store retry function reference
+
+    function showPermissionError(message, retryHandlerName) {
+        const banner = document.getElementById('permission-error-banner');
+        if (!banner) return;
+
+        // Store the handler name for retry button
+        _permissionRetryHandler = retryHandlerName;
+
+        banner.innerHTML = `
+            <div style="
+                background:rgba(224,62,62,0.15);
+                border:1px solid rgba(224,62,62,0.4);
+                border-radius:8px;
+                padding:16px;
+                margin-bottom:12px;
+            ">
+                <div style="color:#e03e3e; font-size:0.9rem; font-weight:600; margin-bottom:8px;">
+                    ⚠️ Camera/Microphone Error
+                </div>
+                <div style="color:rgba(255,255,255,0.8); font-size:0.8rem; line-height:1.5; margin-bottom:12px;">
+                    ${message}
+                </div>
+                <button onclick="_retryPermission()" style="
+                    background:rgba(224,62,62,0.2);
+                    border:1px solid rgba(224,62,62,0.5);
+                    border-radius:6px;
+                    padding:8px 16px;
+                    color:#e03e3e;
+                    font-size:0.8rem;
+                    font-weight:600;
+                    cursor:pointer;
+                ">
+                    Try Again
+                </button>
+            </div>
+        `;
+        banner.style.display = 'block';
+
+        // Keep "Go Live" button hidden on error
+        const goLiveBtn = document.getElementById('live-go-live-btn');
+        if (goLiveBtn) goLiveBtn.style.display = 'none';
+    }
+
+    function _retryPermission() {
+        hidePermissionError();
+        if (_permissionRetryHandler && typeof window[_permissionRetryHandler] === 'function') {
+            window[_permissionRetryHandler]();
+        } else {
+            console.error('[Permission] Invalid retry handler:', _permissionRetryHandler);
+        }
+    }
+
+    function hidePermissionError() {
+        const banner = document.getElementById('permission-error-banner');
+        if (banner) {
+            banner.style.display = 'none';
+            banner.innerHTML = '';
+        }
+        _permissionRetryHandler = null;
+    }
+
+    // ── Enable Camera & Mic (user-triggered permission flow) ─────────
+    window.enableCameraAndMic = async function() {
+        const enableBtn = document.getElementById('enable-media-btn');
+        const goLiveBtn = document.getElementById('live-go-live-btn');
+
+        // Show loading state
+        if (enableBtn) {
+            enableBtn.innerHTML = '<span style="font-size:1rem;">⏳</span> Requesting permissions...';
+            enableBtn.style.pointerEvents = 'none';
+            enableBtn.style.opacity = '0.6';
+        }
+
+        hidePermissionError();
+
+        try {
+            if (!window.AgoraRTC) {
+                throw new Error('Agora SDK not loaded yet — please wait a moment and try again.');
+            }
+
+            // Close any existing tracks first
+            await closeExistingTracks();
+
+            // Acquire tracks (synchronously in this click handler)
             [localAudioTrack, localVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
             window._localVideoTrack_ref = localVideoTrack;
             window._localAudioTrack_ref = localAudioTrack;
+
+            // Apply noise suppression if enabled
             if (noiseSuppressOn) {
                 try { await localAudioTrack.setAINSMode('AGGRESSIVE'); } catch(_) {}
             }
+
             // Re-apply muted state if it was set
             if (isMicMuted) {
                 try { await localAudioTrack.setEnabled(false); } catch(_) {}
             }
 
-            const ph = $('live-preview-placeholder');
+            // Show camera preview immediately (user sees themselves while mic test runs)
+            const ph = document.getElementById('live-preview-placeholder');
             if (ph) ph.style.display = 'none';
 
-            // Hide the static video placeholder — Agora will inject its own <video>
-            const staticVid = $('live-local-video');
+            const staticVid = document.getElementById('live-local-video');
             if (staticVid) staticVid.style.display = 'none';
 
-            // Play into the preview container div
             _playInContainer(localVideoTrack, 'live-local-preview');
-
-            // Enable the pre-live mic/cam toggle buttons now that tracks exist
             _enablePreLiveControls();
 
-        } catch(e) {
-            console.error('[Live] Preview error:', e);
+            // Now verify microphone while camera is visible (banner shows below preview)
+            const verification = await verifyMicTrack(localAudioTrack);
+
+            if (!verification.ok) {
+                // Verification failed - close tracks and show error
+                await closeExistingTracks();
+                showPermissionError(verification.message, 'enableCameraAndMic');
+
+                // Reset button
+                if (enableBtn) {
+                    enableBtn.innerHTML = '<span style="font-size:1rem;">📹</span> Enable Camera &amp; Mic';
+                    enableBtn.style.pointerEvents = '';
+                    enableBtn.style.opacity = '';
+                }
+                return;
+            }
+
+            // Mic verified - proceed to show Go Live button
+
+            // Hide "Enable Camera & Mic" button, show "Go Live" button
+            if (enableBtn) enableBtn.style.display = 'none';
+            if (goLiveBtn) goLiveBtn.style.display = 'flex';
+
+            console.log('[Live] Media verified - mic max volume:', verification.maxVolume);
+
+        } catch (e) {
+            console.error('[Live] Permission error:', e);
+            await closeExistingTracks();
+
             const msg = e.name === 'NotAllowedError' || e.message?.includes('Permission')
-                ? 'Camera permission denied — please allow camera access in your browser settings.'
-                : 'Camera error: ' + (e.message || String(e));
-            showToast(msg);
-            const ph = $('live-preview-placeholder');
+                ? 'Camera/microphone permission denied. Please allow access in your browser settings and try again.'
+                : e.message || 'Failed to access camera/microphone. Please try again.';
+
+            showPermissionError(msg, 'enableCameraAndMic');
+
+            // Reset button
+            if (enableBtn) {
+                enableBtn.innerHTML = '<span style="font-size:1rem;">📹</span> Enable Camera &amp; Mic';
+                enableBtn.style.pointerEvents = '';
+                enableBtn.style.opacity = '';
+            }
+
+            const ph = document.getElementById('live-preview-placeholder');
             if (ph) ph.style.display = '';
+        }
+    };
+
+    // ── Co-host permission modal controls ─────────────────────────────
+    var _cohostTargetSlot = null; // Store target slot for promotion
+
+    window.openCohostPermissionModal = function(targetSlot) {
+        _cohostTargetSlot = targetSlot;
+        const modal = document.getElementById('cohost-permission-modal');
+        if (modal) modal.style.display = 'flex';
+    };
+
+    window.closeCohostPermissionModal = function() {
+        const modal = document.getElementById('cohost-permission-modal');
+        if (modal) modal.style.display = 'none';
+        _cohostTargetSlot = null;
+
+        // Clear any error state
+        const errorDiv = document.getElementById('cohost-permission-error');
+        if (errorDiv) {
+            errorDiv.style.display = 'none';
+            errorDiv.innerHTML = '';
+        }
+
+        // Reset button
+        const enableBtn = document.getElementById('cohost-enable-btn');
+        if (enableBtn) {
+            enableBtn.innerHTML = '📹 Enable Camera &amp; Mic';
+            enableBtn.style.pointerEvents = '';
+            enableBtn.style.opacity = '';
+        }
+    };
+
+    // ── Enable Co-host Media (permission + verification flow) ────────
+    window.enableCohostMedia = async function() {
+        const enableBtn = document.getElementById('cohost-enable-btn');
+        const errorDiv = document.getElementById('cohost-permission-error');
+
+        // Show loading state
+        if (enableBtn) {
+            enableBtn.innerHTML = '<span style="font-size:1rem;">⏳</span> Requesting permissions...';
+            enableBtn.style.pointerEvents = 'none';
+            enableBtn.style.opacity = '0.6';
+        }
+
+        // Clear previous errors
+        if (errorDiv) {
+            errorDiv.style.display = 'none';
+            errorDiv.innerHTML = '';
+        }
+
+        try {
+            if (!window.AgoraRTC) {
+                throw new Error('Agora SDK not loaded yet — please wait a moment and try again.');
+            }
+
+            // Close any existing co-host tracks first
+            if (cohostVideoTrack) {
+                try { cohostVideoTrack.close(); } catch(_) {}
+                cohostVideoTrack = null;
+            }
+            if (cohostAudioTrack) {
+                try { cohostAudioTrack.close(); } catch(_) {}
+                cohostAudioTrack = null;
+            }
+
+            // Acquire tracks (synchronously in this click handler)
+            [cohostAudioTrack, cohostVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
+
+            // Verify microphone is actually working
+            const verification = await verifyMicTrack(cohostAudioTrack);
+
+            if (!verification.ok) {
+                // Verification failed - close tracks and show error in modal
+                if (cohostVideoTrack) { try { cohostVideoTrack.close(); } catch(_) {} cohostVideoTrack = null; }
+                if (cohostAudioTrack) { try { cohostAudioTrack.close(); } catch(_) {} cohostAudioTrack = null; }
+
+                if (errorDiv) {
+                    errorDiv.innerHTML = `
+                        <div style="
+                            background:rgba(224,62,62,0.15);
+                            border:1px solid rgba(224,62,62,0.4);
+                            border-radius:8px;
+                            padding:12px;
+                            margin-bottom:16px;
+                            text-align:left;
+                        ">
+                            <div style="color:#e03e3e; font-size:0.85rem; font-weight:600; margin-bottom:6px;">
+                                ⚠️ Microphone Error
+                            </div>
+                            <div style="color:rgba(255,255,255,0.8); font-size:0.8rem; line-height:1.5;">
+                                ${verification.message}
+                            </div>
+                        </div>
+                    `;
+                    errorDiv.style.display = 'block';
+                }
+
+                // Reset button
+                if (enableBtn) {
+                    enableBtn.innerHTML = '📹 Enable Camera &amp; Mic';
+                    enableBtn.style.pointerEvents = '';
+                    enableBtn.style.opacity = '';
+                }
+                return;
+            }
+
+            // Success - close modal and proceed with promotion
+            closeCohostPermissionModal();
+
+            if (_cohostTargetSlot !== null) {
+                await _promoteToCoHost(_cohostTargetSlot);
+            }
+
+            console.log('[CoHost] Media verified - mic max volume:', verification.maxVolume);
+
+        } catch (e) {
+            console.error('[CoHost] Permission error:', e);
+
+            // Close tracks on error
+            if (cohostVideoTrack) { try { cohostVideoTrack.close(); } catch(_) {} cohostVideoTrack = null; }
+            if (cohostAudioTrack) { try { cohostAudioTrack.close(); } catch(_) {} cohostAudioTrack = null; }
+
+            const msg = e.name === 'NotAllowedError' || e.message?.includes('Permission')
+                ? 'Camera/microphone permission denied. Please allow access in your browser settings and try again.'
+                : e.message || 'Failed to access camera/microphone. Please try again.';
+
+            if (errorDiv) {
+                errorDiv.innerHTML = `
+                    <div style="
+                        background:rgba(224,62,62,0.15);
+                        border:1px solid rgba(224,62,62,0.4);
+                        border-radius:8px;
+                        padding:12px;
+                        margin-bottom:16px;
+                        text-align:left;
+                    ">
+                        <div style="color:#e03e3e; font-size:0.85rem; font-weight:600; margin-bottom:6px;">
+                            ⚠️ Permission Error
+                        </div>
+                        <div style="color:rgba(255,255,255,0.8); font-size:0.8rem; line-height:1.5;">
+                            ${msg}
+                        </div>
+                    </div>
+                `;
+                errorDiv.style.display = 'block';
+            }
+
+            // Reset button
+            if (enableBtn) {
+                enableBtn.innerHTML = '📹 Enable Camera &amp; Mic';
+                enableBtn.style.pointerEvents = '';
+                enableBtn.style.opacity = '';
+            }
         }
     };
 
@@ -30037,6 +30463,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // Guard 2: a call is already in flight (countdown fired twice, or patch chain re-entered)
         if (_isStartingLive) { console.warn('[Live] startLiveStream already in progress — ignoring duplicate call.'); return; }
         _isStartingLive = true;
+
+        // Stop mic volume monitoring and hide banner when going live
+        if (window._micMonitorInterval) {
+            clearInterval(window._micMonitorInterval);
+            window._micMonitorInterval = null;
+        }
+        const micBanner = document.getElementById('mic-test-banner');
+        if (micBanner) micBanner.style.display = 'none';
 
         // Read shared state from main IIFE bridge
         const userAddress = window._liveUserAddress || '';
@@ -30173,11 +30607,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (curState === 'DISCONNECTED') showToast('Stream connection lost. Refresh to restart.');
             });
 
-            // 3. Publish tracks (create if not already previewed)
+            // 3. Publish tracks (require tracks to already exist, verified by enableCameraAndMic)
             if (!localVideoTrack || !localAudioTrack) {
-                [localAudioTrack, localVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
-                window._localVideoTrack_ref = localVideoTrack;
-                window._localAudioTrack_ref = localAudioTrack;
+                _isStartingLive = false;
+                showToast('Please enable camera & microphone first.');
+                return;
             }
             if (localVideoTrack && !localVideoTrack.enabled) { await localVideoTrack.setEnabled(true); }
             if (localAudioTrack && !localAudioTrack.enabled) { await localAudioTrack.setEnabled(true); }
@@ -31887,16 +32321,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var addr = '';
             var handle = cohostHandle || 'Co-host';
             snap.forEach(function(d) {
-                // Match exact approved co-host UID when available, fallback to first approved.
+                // Match exact approved co-host UID — never fall back to first approved
                 var r = d.data() || {};
                 var reqUid = (r.uid == null ? '' : String(r.uid));
                 var uidMatch = String(cohostUid || '') !== '' && reqUid === String(cohostUid);
-                if (r.status === 'approved' && (uidMatch || !addr)) {
+                // ONLY accept exact UID match (no fallback)
+                if (r.status === 'approved' && uidMatch) {
                     addr = d.id; // docId IS the wallet address
                     handle = r.handle || handle;
                 }
             });
-            if (!addr) { showToast('Could not find co-host wallet. Try again in a moment.'); return; }
+            // Fail safely if no exact match found
+            if (!addr) { showToast('Could not identify this co-host. Please try again.'); return; }
             window.openGiftPickerDirect(addr, handle);
         }).catch(function(e) { showToast('Gift error: ' + e.message); });
     };
@@ -32761,6 +33197,29 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (window._localAudioTrack_ref) { window._localAudioTrack_ref.stop(); window._localAudioTrack_ref.close(); window._localAudioTrack_ref = null; }
             } catch(_) {}
 
+            // Step 6: Reset UI to initial "Enable Camera & Mic" state
+            // (so next Go Live requires fresh permission verification)
+            const enableBtn = document.getElementById('enable-media-btn');
+            const goLiveBtn = document.getElementById('live-go-live-btn');
+            const placeholder = document.getElementById('live-preview-placeholder');
+
+            if (enableBtn) {
+                enableBtn.style.display = 'flex';
+                enableBtn.innerHTML = '<span style="font-size:1rem;">📹</span> Enable Camera &amp; Mic';
+                enableBtn.style.pointerEvents = '';
+                enableBtn.style.opacity = '';
+            }
+            if (goLiveBtn) {
+                goLiveBtn.style.display = 'none';
+            }
+            if (placeholder) {
+                placeholder.style.display = 'flex';
+            }
+
+            // Clear any permission error banners
+            hidePermissionError();
+            const micBanner = document.getElementById('mic-test-banner');
+            if (micBanner) micBanner.style.display = 'none';
 
         } catch(e) { console.warn('[Live] Agora cleanup:', e); }
     }
@@ -33298,7 +33757,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 const data = snap.data();
                 if (data.status === 'approved') {
                     unsub();
-                    await _promoteToCoHost(targetSlot);
+                    openCohostPermissionModal(targetSlot);
                 } else if (data.status === 'rejected') {
                     unsub();
                     // Clear our pending slot
@@ -33318,6 +33777,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     async function _promoteToCoHost(targetSlot) {
         if (!agoraClient || !window.AgoraRTC) return;
+
+        // Require tracks to already exist (verified by enableCohostMedia)
+        if (!cohostVideoTrack || !cohostAudioTrack) {
+            console.error('[CoHost] Cannot promote - tracks not verified. Call enableCohostMedia first.');
+            showToast('Please enable camera & microphone first.');
+            return;
+        }
+
         try {
             // Promote viewer to host role so they can publish
             await agoraClient.setClientRole('host');
@@ -33332,7 +33799,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Also keep _myViewerUid in sync with the new host UID so both guards match.
             _myViewerUid = agoraClient.uid;
 
-            [cohostAudioTrack, cohostVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
+            // Publish pre-verified tracks
             await agoraClient.publish([cohostAudioTrack, cohostVideoTrack]);
 
             // ── After setClientRole('host'), Agora internally unsubscribes all remote
@@ -36265,30 +36732,6 @@ document.addEventListener('change', function(e) {
         if (knob) knob.style.transform = e.target.checked ? 'translateX(20px)' : 'translateX(0)';
     }
 });
-// Unlock mic/cam buttons after preview starts + show flip if mobile
-var _origStartPreview = window.startLocalPreview;
-if (_origStartPreview) {
-    window.startLocalPreview = function() {
-        _origStartPreview.apply(this, arguments);
-        setTimeout(function() {
-            var m = document.getElementById('pre-btn-mic');
-            var cam = document.getElementById('pre-btn-cam');
-            var flip = document.getElementById('pre-btn-flip');
-            if (m)   { m.style.opacity='1';   m.style.pointerEvents='auto'; }
-            if (cam) { cam.style.opacity='1'; cam.style.pointerEvents='auto'; }
-            if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-                navigator.mediaDevices.enumerateDevices().then(function(devices) {
-                    var cams = devices.filter(function(d){ return d.kind === 'videoinput'; });
-                    if (cams.length >= 2 && flip) {
-                        flip.style.display = 'flex';
-                        flip.style.opacity = '1';
-                        flip.style.pointerEvents = 'auto';
-                    }
-                }).catch(function(){});
-            }
-        }, 800);
-    };
-}
 // Show studio flip button on page load if 2+ cameras available
 document.addEventListener('DOMContentLoaded', function() {
     if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
