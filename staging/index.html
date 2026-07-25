@@ -30232,7 +30232,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 try { await localAudioTrack.setEnabled(false); } catch(_) {}
             }
 
-            // Verify microphone is actually working
+            // Show camera preview immediately (user sees themselves while mic test runs)
+            const ph = document.getElementById('live-preview-placeholder');
+            if (ph) ph.style.display = 'none';
+
+            const staticVid = document.getElementById('live-local-video');
+            if (staticVid) staticVid.style.display = 'none';
+
+            _playInContainer(localVideoTrack, 'live-local-preview');
+            _enablePreLiveControls();
+
+            // Now verify microphone while camera is visible (banner shows below preview)
             const verification = await verifyMicTrack(localAudioTrack);
 
             if (!verification.ok) {
@@ -30249,15 +30259,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;
             }
 
-            // Success - show preview
-            const ph = document.getElementById('live-preview-placeholder');
-            if (ph) ph.style.display = 'none';
-
-            const staticVid = document.getElementById('live-local-video');
-            if (staticVid) staticVid.style.display = 'none';
-
-            _playInContainer(localVideoTrack, 'live-local-preview');
-            _enablePreLiveControls();
+            // Mic verified - proceed to show Go Live button
 
             // Hide "Enable Camera & Mic" button, show "Go Live" button
             if (enableBtn) enableBtn.style.display = 'none';
@@ -33194,6 +33196,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // Clear any permission error banners
             hidePermissionError();
+            const micBanner = document.getElementById('mic-test-banner');
+            if (micBanner) micBanner.style.display = 'none';
 
         } catch(e) { console.warn('[Live] Agora cleanup:', e); }
     }
