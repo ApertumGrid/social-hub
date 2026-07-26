@@ -17880,7 +17880,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         try {
             const senderAddr  = userAddress.toLowerCase();
-            const recipientNorm = recipientAddress ? recipientAddress.toLowerCase() : null;
 
             // ── Call postComment Cloud Function ───────────────────────────────────────────
             const hubId = _activeCommunity ? _activeCommunity.id : null;
@@ -17891,7 +17890,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     senderAddr: senderAddr,
-                    recipientAddr: recipientNorm,
                     targetId: String(postId),
                     hubId: hubId,
                     hubOwnerAddr: hubOwnerAddr,
@@ -17904,8 +17902,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 throw new Error(result.error || 'Comment failed');
             }
 
-            // Notify post author (fire-and-forget)
-            writeNotif(recipientNorm, 'comment', { postId: String(postId), text: commentText.slice(0, 80) });
+            // Notify post author (fire-and-forget) - server returns the recipient
+            if (result.recipient) {
+                writeNotif(result.recipient, 'comment', { postId: String(postId), text: commentText.slice(0, 80) });
+            }
 
             // Track hub stars if applicable (client-side stat only)
             if (_activeCommunity) {
