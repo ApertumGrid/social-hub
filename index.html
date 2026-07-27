@@ -30405,11 +30405,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;
             }
 
-            // Success - close modal and proceed with promotion
+            // Success - close modal and proceed with promotion.
+            // Capture the slot BEFORE closing — closeCohostPermissionModal nulls it.
+            const _slotForPromo = _cohostTargetSlot;
             closeCohostPermissionModal();
 
-            if (_cohostTargetSlot !== null) {
-                await _promoteToCoHost(_cohostTargetSlot);
+            if (_slotForPromo !== null) {
+                await _promoteToCoHost(_slotForPromo);
             }
 
             console.log('[CoHost] Media verified - mic max volume:', verification.maxVolume);
@@ -31044,8 +31046,29 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         }
                     }
                 } else {
-                    // Co-host joined the stage — show their video as a PiP on the viewer's screen
+                    // Co-host joined the stage — play them into their slot box.
+                    // The legacy floating PiP is only a fallback when no slot entry
+                    // ever appears (e.g. host is in solo layout).
                     if (mediaType === 'video') {
+                        var _vSlotRetry = 0;
+                        var _tryViewerSlotPlay = function() {
+                            var _slots = window._currentCoSlots || [];
+                            for (var _si = 0; _si < _slots.length; _si++) {
+                                if (_slots[_si] && String(_slots[_si].uid) === String(remoteUser.uid) && _slots[_si].status === 'active') {
+                                    var _slotDiv = document.getElementById('live-slot-' + _si);
+                                    if (_slotDiv) {
+                                        try { remoteUser.videoTrack.play(_slotDiv, { fit: 'cover' }); console.log('[Viewer] co-host video in slot', _si); } catch(e) {}
+                                        // Drop any legacy pip so it doesn't linger as a black box
+                                        var _stale = document.getElementById('cohost-pip-viewer');
+                                        if (_stale && _stale.parentNode) _stale.parentNode.removeChild(_stale);
+                                        return;
+                                    }
+                                }
+                            }
+                            if (_vSlotRetry < 20) { _vSlotRetry++; setTimeout(_tryViewerSlotPlay, 200); return; }
+                            _buildViewerPipFallback();
+                        };
+                        var _buildViewerPipFallback = function() {
                         // Remove any stale pip first
                         var stalePip = document.getElementById('cohost-pip-viewer');
                         if (stalePip && stalePip.parentNode) stalePip.parentNode.removeChild(stalePip);
@@ -31143,7 +31166,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                 setTimeout(_playPip, 150);
                             }
                         })();
+                        }; // end _buildViewerPipFallback
 
+                        _tryViewerSlotPlay();
                         showToast('🎤 Someone joined the stage!');
                     }
                     if (mediaType === 'audio') {
@@ -39693,6 +39718,35 @@ window._renderSlotGrid = function(container, hostVidId, mode, coSlots, isHost) {
         hostEl.style.setProperty('max-height',  'none',     'important');
         hostEl.style.setProperty('min-width',   '0',        'important');
         hostEl.style.setProperty('max-width',   'none',     'important');
+    }
+
+    // ── Defend the host cell geometry ──────────────────────────────────────
+    // Mobile height-fixers, Agora resize handling and cinema observers rewrite
+    // this element's inline style with !important at unpredictable times, and
+    // inline writes are last-write-wins — which left the host video fullscreen
+    // instead of shrinking into its slot. Re-assert the cell geometry whenever
+    // anything else touches the style attribute while a multi-slot layout is on.
+    if (window._hostCellObs) { try { window._hostCellObs.disconnect(); } catch(_) {} window._hostCellObs = null; }
+    if (hostEl && def.slots.length > 0) {
+        var _cell = def.host;
+        var _assertHostCell = function() {
+            if (hostEl.style.getPropertyValue('width') === _cell.w + '%' &&
+                hostEl.style.getPropertyValue('left')  === _cell.l + '%') return;
+            hostEl.style.setProperty('position', 'absolute',  'important');
+            hostEl.style.setProperty('left',      _cell.l+'%', 'important');
+            hostEl.style.setProperty('top',       _cell.t+'%', 'important');
+            hostEl.style.setProperty('right',     'auto',      'important');
+            hostEl.style.setProperty('bottom',    'auto',      'important');
+            hostEl.style.setProperty('width',     _cell.w+'%', 'important');
+            hostEl.style.setProperty('height',    _cell.h+'%', 'important');
+        };
+        _assertHostCell();
+        window._hostCellObs = new MutationObserver(_assertHostCell);
+        window._hostCellObs.observe(hostEl, { attributes: true, attributeFilter: ['style'] });
+        // Timed re-asserts beat late async writers (Agora replay, cinema move, etc.)
+        setTimeout(_assertHostCell, 300);
+        setTimeout(_assertHostCell, 900);
+        setTimeout(_assertHostCell, 2000);
     }
     // Store coSlots globally so _updateSlotStarBadges can read them
     window._currentCoSlots = coSlots || [];
