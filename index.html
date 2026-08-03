@@ -14059,7 +14059,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 metadata: {
                     name: 'SocialHub Global',
                     description: 'Web3 Social Platform',
-                    url: 'https://www.socialhubglobal.com',
+                    url: 'https://socialhubglobal.com',
                     icons: ['https://socialhubglobal.com/favicon.ico']
                 }
             });
@@ -30183,17 +30183,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     // ── Track lifecycle cleanup (prevents leaks) ──────────────────────
     async function closeExistingTracks() {
-        if (window.localVideoTrack) {
+        if (localVideoTrack) {
             try {
-                window.localVideoTrack.close();
+                const _mstV = localVideoTrack.getMediaStreamTrack ? localVideoTrack.getMediaStreamTrack() : null;
+                if (_mstV) _mstV.stop();
+                localVideoTrack.stop();
+                localVideoTrack.close();
             } catch (e) { console.warn('[closeTrack] video:', e); }
-            window.localVideoTrack = null;
+            localVideoTrack = null;
+            window._localVideoTrack_ref = null;
         }
-        if (window.localAudioTrack) {
+        if (localAudioTrack) {
             try {
-                window.localAudioTrack.close();
+                const _mstA = localAudioTrack.getMediaStreamTrack ? localAudioTrack.getMediaStreamTrack() : null;
+                if (_mstA) _mstA.stop();
+                localAudioTrack.stop();
+                localAudioTrack.close();
             } catch (e) { console.warn('[closeTrack] audio:', e); }
-            window.localAudioTrack = null;
+            localAudioTrack = null;
+            window._localAudioTrack_ref = null;
         }
     }
 
@@ -30674,6 +30682,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         window._currentStreamMode = streamMode;
 
         if (!title) {
+            _isStartingLive = false;
             if (_titleInput) {
                 _titleInput.style.borderColor = 'rgba(224,62,62,0.75)';
                 _titleInput.focus();
@@ -36770,6 +36779,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     }
     var _patchedStart = async function() {
         await _origStart.apply(this, arguments);
+        // Go Live was blocked (e.g. missing title) — isHosting never got set, don't enter cinema mode
+        if (!document.body.classList.contains('is-hosting')) return;
         // Mobile (≤768px): use direct #live-active-panel full-screen layout via CSS — skip cinema shell
         if (window.innerWidth <= 768) return;
         // Apply cinema-mode class immediately so raw panel is hidden via CSS
