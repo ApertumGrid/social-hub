@@ -11191,6 +11191,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             title="One-time: reset all balances to match actual USDT deposits">
                         ⚠ Run Balance Reconciliation
                     </button>
+
+                    <!-- 🔍 DIAGNOSTIC: SURPLUS RECONCILIATION — decomposes any contract/liability
+                         surplus into known reserve buckets (admin revenue, lottery pot) and flags
+                         whatever's left as UNEXPLAINED, instead of just reporting a solvency ratio. -->
+                    <div style="margin-top:12px;padding:16px;background:rgba(15,10,20,0.6);border:1px solid rgba(224,62,62,0.35);border-radius:12px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap;">
+                            <div style="font-size:0.85rem;font-weight:800;color:#e8415a;letter-spacing:0.3px;">🔍 DIAGNOSTIC: SURPLUS RECONCILIATION</div>
+                            <button onclick="runSurplusDiagnostic()" style="padding:6px 14px;border-radius:8px;background:rgba(224,62,62,0.12);border:1px solid rgba(224,62,62,0.4);color:#e8415a;font-size:0.68rem;font-weight:700;cursor:pointer;">Refresh</button>
+                        </div>
+                        <div id="surplus-diagnostic-output" style="font-family:var(--font-mono);font-size:0.72rem;line-height:1.7;color:rgba(255,255,255,0.75);white-space:pre-wrap;">Click Refresh to run diagnostic…</div>
+                    </div>
+
                     <button id="admin-recalc-posts-btn" onclick="adminRecalcPostCounts()"
                             style="display:flex;align-items:center;justify-content:center;gap:8px;
                                    width:100%;margin-top:8px;padding:10px 18px;
@@ -16428,6 +16440,91 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             );
         }
     }
+
+    // ── 🔍 Diagnostic: Surplus Reconciliation ───────────────────────────
+    // Decomposes any contract/liability surplus into known reserve buckets
+    // (admin revenue, lottery pot) and flags whatever's left as UNEXPLAINED,
+    // instead of just reporting a solvency ratio like the panel above.
+    window.runSurplusDiagnostic = async function() {
+        const out = document.getElementById('surplus-diagnostic-output');
+        if (!out) return;
+        out.textContent = 'Running…';
+        try {
+            // 1. Contract balance — fresh on-chain read (USDT is an ERC20 held by the contract)
+            const _usdtRo = new ethers.Contract(
+                CONFIG.USDT_ADDRESS,
+                ['function balanceOf(address) view returns (uint256)'],
+                getRpcProvider()
+            );
+            const _raw = await _usdtRo.balanceOf(CONFIG.CONTRACT_ADDRESS);
+            const contractBalUsdt = parseFloat(ethers.utils.formatUnits(_raw, 18));
+
+            // 2. User liability — reuse the live-aggregated globals _updateSolvency already keeps current
+            const totalDepositedUsdt = window._mcdTotalDepositedUsdt || 0;
+            const totalSpentStars    = window._mcdSpentStars          || 0;
+            const totalEarnedStars   = window._mcdEarned              || 0;
+            const depositLiability   = Math.max(0, totalDepositedUsdt - (totalSpentStars * CONFIG.STAR_USD));
+            const earnedLiability    = totalEarnedStars * CONFIG.STAR_USD;
+            const userLiabilityUsdt  = depositLiability + earnedLiability;
+
+            // 3. Admin revenue
+            const adminRevStars = window._mcdAdminRev || 0;
+            const adminRevUsdt  = adminRevStars * CONFIG.STAR_USD;
+
+            // 4. Lottery pot — current open round(s), field `pot` on lottery_rounds docs
+            let lotteryPotStars = 0;
+            try {
+                const roundQ = window.fs.query(
+                    window.fs.collection(window.db, 'lottery_rounds'),
+                    window.fs.where('status', '==', 'open')
+                );
+                const roundSnap = await window.fs.getDocs(roundQ);
+                roundSnap.forEach(d => { lotteryPotStars += parseFloat(d.data().pot || 0); });
+            } catch (e) { console.warn('[Diagnostic] lottery pot read failed:', e); }
+            const lotteryPotUsdt = lotteryPotStars * CONFIG.STAR_USD;
+
+            // 5. No backing collection found in either codebase for these two — placeholders at 0
+            //    until a real pending-withdrawal queue / referral-unclaimed pool exists.
+            const pendingWithdrawalsUsdt = 0;
+            const referralUnclaimedUsdt  = 0;
+
+            // 6. Surplus decomposition
+            const surplus       = contractBalUsdt - userLiabilityUsdt;
+            const totalReserves = adminRevUsdt + lotteryPotUsdt + pendingWithdrawalsUsdt + referralUnclaimedUsdt;
+            const unexplained   = surplus - totalReserves;
+
+            out.innerHTML =
+                'Lottery pot: ' + lotteryPotStars.toFixed(2) + '★ = $' + lotteryPotUsdt.toFixed(4) + ' USDT\n' +
+                'Contract balance: $' + contractBalUsdt.toFixed(4) + ' USDT (direct read)\n' +
+                'Admin revenue: ' + adminRevStars.toFixed(2) + '★ = $' + adminRevUsdt.toFixed(4) + ' USDT\n' +
+                'User liability: $' + userLiabilityUsdt.toFixed(4) + ' USDT (deposits - spent + earned)\n' +
+                'Pending withdrawals: 0 docs, $0.0000 USDT (no backing collection — placeholder)\n' +
+                'Referral unclaimed: $0.0000 USDT (no backing collection — placeholder)\n' +
+                '<div style="border-top:1px solid rgba(224,62,62,0.25);margin:10px 0;"></div>' +
+                '<strong>SURPLUS BREAKDOWN:</strong>\n' +
+                'Contract: $' + contractBalUsdt.toFixed(4) + ' USDT\n' +
+                'User liability: $' + userLiabilityUsdt.toFixed(4) + ' USDT\n' +
+                'Surplus: $' + surplus.toFixed(4) + ' USDT\n' +
+                '\n' +
+                '<strong>Known reserves:</strong>\n' +
+                'Admin revenue: $' + adminRevUsdt.toFixed(4) + ' USDT\n' +
+                'Lottery pot: $' + lotteryPotUsdt.toFixed(4) + ' USDT\n' +
+                'Pending withdrawals: $0.0000 USDT\n' +
+                'Referral unclaimed: $0.0000 USDT\n' +
+                'Total reserves: $' + totalReserves.toFixed(4) + ' USDT\n' +
+                '\n' +
+                '<strong style="color:#ef4444;">UNEXPLAINED: $' + unexplained.toFixed(4) + ' USDT</strong>';
+
+            console.log('[Diagnostic] Contract=$' + contractBalUsdt.toFixed(4) +
+                ' UserLiability=$' + userLiabilityUsdt.toFixed(4) +
+                ' Surplus=$' + surplus.toFixed(4) +
+                ' Reserves=$' + totalReserves.toFixed(4) +
+                ' Unexplained=$' + unexplained.toFixed(4));
+        } catch (e) {
+            console.error('[Diagnostic] Surplus reconciliation failed:', e);
+            out.textContent = 'Diagnostic failed: ' + (e.message || String(e));
+        }
+    };
 
     async function adminWithdraw() {
         if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
