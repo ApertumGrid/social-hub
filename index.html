@@ -10902,6 +10902,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             <div id="page-earnings" class="page">
                 <div class="page-heading">Creator <span>Studio</span></div>
 
+                <!-- Shown when the user has a settled-but-unclaimed on-chain balance — e.g. they
+                     clicked Withdraw, the platform settled it on-chain, but they never completed
+                     the wallet-confirmation step to actually receive it. Found 2026-08-03: this
+                     money sits in the contract, tied to their address, but with no proactive
+                     prompt telling them they still need to finish claiming it. -->
+                <div id="pending-withdrawal-banner" style="display:none; background:rgba(240,180,41,0.1); border:1px solid rgba(240,180,41,0.35); border-radius:12px; padding:14px 16px; margin-bottom:14px; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                    <div style="font-size:0.85rem; color:#f0b429; font-weight:600; line-height:1.5;">
+                        ⚠ You have <span id="pending-withdrawal-amount">$0.00</span> USDT from a previous withdrawal that was never completed. Your balance already includes it — click <strong>Withdraw</strong> below to finish sending it to your wallet.
+                    </div>
+                </div>
+
                 <div class="studio-tabs">
                     <div class="studio-tab active" onclick="setStudioTab('main',this)">Overview</div>
                     <div class="studio-tab" onclick="setStudioTab('recordings',this)">My Recordings</div>
@@ -14621,6 +14632,24 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         toggleWalletDropdown();
     }
 
+    // Shows a proactive prompt when a user has a settled-but-unclaimed on-chain
+    // withdrawable balance — i.e. they clicked Withdraw once, it was settled on the
+    // contract, but they never completed the wallet-confirmation step. Their displayed
+    // balance already includes this amount (see creatorEarnings = fbCreatorStars +
+    // onChainSettled in syncData/startChainRefresh), so without this banner it just
+    // looks like a normal balance with no indication a second click is needed.
+    function _updatePendingWithdrawalBanner(withdrawableUsdt) {
+        const banner = document.getElementById('pending-withdrawal-banner');
+        const amountEl = document.getElementById('pending-withdrawal-amount');
+        if (!banner) return;
+        if (withdrawableUsdt > 0.001) {
+            if (amountEl) amountEl.textContent = '$' + withdrawableUsdt.toFixed(4);
+            banner.style.display = 'flex';
+        } else {
+            banner.style.display = 'none';
+        }
+    }
+
 
     async function syncData() {
         if (!hubContract && window.hubContract) hubContract = window.hubContract;
@@ -14688,6 +14717,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         window._onChainWithdrawableUsdt = withdrawableHuman;
                         creatorEarnings   = fbCreatorStars + onChainSettled;
                         currentEarnedUsdt = creatorEarnings * CONFIG.STAR_USD;
+                        _updatePendingWithdrawalBanner(withdrawableHuman);
                         await window.fs.updateDoc(userRef, { lastSync: Date.now() }).catch(() => {});
                     }
                     console.log(`[syncData] depositedUSDT=${depositedHuman.toFixed(4)} | withdrawableUSDT=${withdrawableHuman.toFixed(4)} | purchasedStars=${purchasedStars.toFixed(2)}★ | earnedStars=${creatorEarnings.toFixed(2)}★`);
@@ -14722,6 +14752,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 const onChainEarned = Math.max(0, Math.floor(earnHuman / CONFIG.STAR_USD * 10) / 10);
                 window._onChainEarned = onChainEarned;
                 window._onChainWithdrawableUsdt = earnHuman;
+                _updatePendingWithdrawalBanner(earnHuman);
 
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
                 if (!spendLockActive) {
@@ -16393,14 +16424,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;
             }
 
-            // User liability: net deposits + earned stars owed to creators
-            const totalDepositedUsdt = window._mcdTotalDepositedUsdt || 0;
-            const totalSpentStars    = window._mcdSpentStars          || 0;
-            const totalEarnedStars   = window._mcdEarned              || 0;
-            const depositLiability   = Math.max(0, totalDepositedUsdt - (totalSpentStars * CONFIG.STAR_USD));
-            const earnedLiability    = totalEarnedStars * CONFIG.STAR_USD;
-            const userLiabilityUsdt  = depositLiability + earnedLiability;
-            const adminRevUsdt       = adminRevStars * CONFIG.STAR_USD;
+            // User liability: stored `stars` field (real spendable balance the rest of the
+            // app treats as authoritative) + earned. FIX 2026-08-03: previously derived this
+            // from depositedUsdt - spentStarsTotal, which reads $2.16 LOW versus the real
+            // stored `stars` balance in practice (see runSurplusDiagnostic's comments for why —
+            // refund flows credit `stars` without symmetrically adjusting spentStarsTotal).
+            // This still won't catch money settled on-chain but not yet claimed (e.g. a user who
+            // called requestWithdraw but never finished withdrawAll()) — only the on-chain
+            // getBalance sweep in the "Diagnostic: Surplus/Shortfall" panel below catches that.
+            const totalPurchasedStars = window._mcdPurchased || 0;
+            const totalEarnedStars    = window._mcdEarned    || 0;
+            const depositLiability    = totalPurchasedStars * CONFIG.STAR_USD;
+            const earnedLiability     = totalEarnedStars * CONFIG.STAR_USD;
+            const userLiabilityUsdt   = depositLiability + earnedLiability;
+            const adminRevUsdt        = adminRevStars * CONFIG.STAR_USD;
 
             const isSolvent      = contractBalUsdt >= userLiabilityUsdt;
             const discrepancyUsd = Math.abs(contractBalUsdt - userLiabilityUsdt);
@@ -18692,18 +18729,38 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (_wdStatusEl) { _wdStatusEl.textContent  = ''; }
         // Also keep the buried Studio div in sync so desktop users see it too
         var _wdStudioEl  = document.getElementById('withdraw-status');
+        var _wdLastStepMsg = '';
         function _wdStatus(msg, isError) {
             console.log('[Withdraw]', msg);
             var _col = isError ? '#f87171' : '#2dd4bf';
             if (_wdOverlay)  _wdOverlay.style.display  = 'block';
             if (_wdStatusEl) { _wdStatusEl.style.color = _col; _wdStatusEl.textContent = msg; }
             if (_wdStudioEl) { _wdStudioEl.style.display = 'block'; _wdStudioEl.style.color = _col; _wdStudioEl.textContent = msg; }
+            if (!isError) _wdLastStepMsg = msg;  // last step reached BEFORE any failure
         }
         function _wdDone() {
             if (_wdOverlay)  _wdOverlay.style.display  = 'none';
             if (_wdStudioEl) _wdStudioEl.style.display = 'none';
         }
+        // Logs every failed/incomplete withdrawal attempt to Firestore — previously this
+        // information only ever existed transiently on the user's own screen and vanished
+        // the moment they left it (found 2026-08-03 investigating a stuck withdrawal with
+        // zero record of why it never completed). lastStep tells you exactly how far the
+        // attempt got before it broke down.
+        function _logWithdrawFailure(reason) {
+            try {
+                if (!window.db || !window.fs || !userAddress) return;
+                window.fs.addDoc(window.fs.collection(window.db, 'withdrawal_failures'), {
+                    address:     userAddress.toLowerCase(),
+                    reason:      String(reason).slice(0, 300),
+                    lastStep:    _wdLastStepMsg,
+                    walletType:  window._shLastWalletType || 'unknown',
+                    timestamp:   Date.now()
+                }).catch(function(){});
+            } catch (e) { /* never let logging break the failure path itself */ }
+        }
         function _wdFail(msg, btn) {
+            _logWithdrawFailure(msg);
             _wdStatus('❌ ' + msg, true);
             if (btn) { btn.disabled = false; btn.textContent = 'Withdraw USDT →'; }
         }
@@ -18882,7 +18939,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
 
             if (!_wdConfirmed) {
-                // Show reconnect option — request may have expired on WC relay
+                // Show reconnect option — request may have expired on WC relay.
+                // This branch bypasses _wdFail (it offers retry buttons instead of the
+                // normal fail state), so log it explicitly — otherwise this exact case
+                // (likely the most common one for mobile/WalletConnect users) would be
+                // invisible even with _wdFail's logging in place.
+                _logWithdrawFailure('Signing request expired — no on-chain confirmation within ' +
+                    Math.round((Date.now() - _wdPollStart) / 1000) + 's. txHash=' + (window._pendingWithdrawHash || 'none') +
+                    (_wcTxRejected ? ' | wcTxErr=' + _wcTxErrMsg.slice(0, 150) : ''));
                 if (_wdOverlay) _wdOverlay.style.display = 'block';
                 if (_wdStatusEl) {
                     _wdStatusEl.innerHTML =
