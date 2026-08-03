@@ -16441,16 +16441,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
     }
 
-    // ── 🔍 Diagnostic: Surplus Reconciliation ───────────────────────────
-    // Decomposes any contract/liability surplus into known reserve buckets
-    // (admin revenue, lottery pot) and flags whatever's left as UNEXPLAINED,
-    // instead of just reporting a solvency ratio like the panel above.
+    // ── 🔍 Diagnostic: Surplus / Shortfall Reconciliation ────────────────
+    // Compares the contract's real USDT balance against the contract's OWN
+    // on-chain per-user ledger (getBalance summed across every known wallet),
+    // not Firestore's stars/creatorStars — Firestore only tracks *unsettled*
+    // earnings and goes stale the moment a user requests a withdrawal (see
+    // 2026-08-03 investigation). Decomposes any gap into known reserve
+    // buckets (admin revenue, open lottery pot) and reports whatever's left
+    // as either an unexplained surplus or a real shortfall.
     window.runSurplusDiagnostic = async function() {
         const out = document.getElementById('surplus-diagnostic-output');
         if (!out) return;
-        out.textContent = 'Running…';
         try {
             // 1. Contract balance — fresh on-chain read (USDT is an ERC20 held by the contract)
+            out.textContent = 'Running… (1/3) reading contract balance…';
             const _usdtRo = new ethers.Contract(
                 CONFIG.USDT_ADDRESS,
                 ['function balanceOf(address) view returns (uint256)'],
@@ -16459,19 +16463,54 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const _raw = await _usdtRo.balanceOf(CONFIG.CONTRACT_ADDRESS);
             const contractBalUsdt = parseFloat(ethers.utils.formatUnits(_raw, 18));
 
-            // 2. User liability — reuse the live-aggregated globals _updateSolvency already keeps current
-            const totalDepositedUsdt = window._mcdTotalDepositedUsdt || 0;
-            const totalSpentStars    = window._mcdSpentStars          || 0;
-            const totalEarnedStars   = window._mcdEarned              || 0;
-            const depositLiability   = Math.max(0, totalDepositedUsdt - (totalSpentStars * CONFIG.STAR_USD));
-            const earnedLiability    = totalEarnedStars * CONFIG.STAR_USD;
-            const userLiabilityUsdt  = depositLiability + earnedLiability;
+            // 2. User liability — sum the CONTRACT'S OWN per-user on-chain ledger (getBalance),
+            //    NOT Firestore's stars/creatorStars. Firestore only tracks *unsettled* earnings —
+            //    the moment a user calls requestWithdraw, their earned stars are zeroed in Firestore
+            //    and moved into the contract's withdrawableUSDT mapping, where they can sit unclaimed
+            //    indefinitely. That money is real, owned, and on-chain — but invisible to any
+            //    Firestore-based liability calc, which is what made this look like a surplus before.
+            //    (See 2026-08-03 investigation: lottery winner's creatorStars read 1.6★ in Firestore
+            //    while their real on-chain withdrawable was $3.66 — settled, unclaimed, not missing.)
+            const _roContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, getRpcProvider());
+            const _balSnap = await window.fs.getDocs(window.fs.collection(window.db, 'user_balances'));
+            const _addrs = [];
+            _balSnap.forEach(d => _addrs.push(d.id.toLowerCase()));
 
-            // 3. Admin revenue
-            const adminRevStars = window._mcdAdminRev || 0;
-            const adminRevUsdt  = adminRevStars * CONFIG.STAR_USD;
+            let userLiabilityUsdt = 0;
+            for (let i = 0; i < _addrs.length; i++) {
+                out.textContent = 'Running… (2/3) checking on-chain balance ' + (i + 1) + ' / ' + _addrs.length + ' wallets…';
+                try {
+                    const _b = await _roContract.getBalance(_addrs[i]);
+                    userLiabilityUsdt += parseFloat(ethers.utils.formatUnits(_b.total, 18));
+                } catch (e) { console.warn('[Diagnostic] getBalance failed for', _addrs[i], e.message); }
+            }
 
-            // 4. Lottery pot — current open round(s), field `pot` on lottery_rounds docs
+            out.textContent = 'Running… (3/3) reading revenue + lottery reserves…';
+
+            // 3. Admin revenue — read admin_revenue/global.total directly.
+            //    On 2026-08-03, found 4 Cloud Functions (lottery draw, voice_admit_speaker,
+            //    vr_gift, profile_tip) writing standalone docs into this collection without
+            //    ever incrementing global.total — $1.12 was invisible everywhere this number
+            //    is displayed. All 4 are now fixed to increment global.total going forward
+            //    (functions/index.js), and a one-time catch-up write already folded the
+            //    historical $1.12 into global.total directly — so summing the rest of the
+            //    collection here would now double-count it. global.total is trustworthy again.
+            let adminRevStars = 0;
+            try {
+                const adminRevGlobalSnap = await window.fs.getDoc(window.fs.doc(window.db, 'admin_revenue', 'global'));
+                adminRevStars = adminRevGlobalSnap.exists() ? parseFloat(adminRevGlobalSnap.data().total || 0) : 0;
+            } catch (e) { console.warn('[Diagnostic] admin_revenue read failed:', e); }
+            let platformRevStars = 0;
+            try {
+                const platRevSnap = await window.fs.getDocs(window.fs.collection(window.db, 'platform_revenue'));
+                platRevSnap.forEach(d => { platformRevStars += parseFloat(d.data().amount || 0); });
+            } catch (e) { console.warn('[Diagnostic] platform_revenue read failed:', e); }
+            adminRevStars = Math.max(adminRevStars, platformRevStars);
+            const adminRevUsdt = adminRevStars * CONFIG.STAR_USD;
+
+            // 4. Lottery pot — OPEN round(s) only. Completed rounds' pots have already been
+            //    distributed: the winner's 80% is now in their on-chain withdrawable (counted in
+            //    step 2), and the platform's 20% is now an admin_revenue doc (counted in step 3).
             let lotteryPotStars = 0;
             try {
                 const roundQ = window.fs.query(
@@ -16488,38 +16527,54 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const pendingWithdrawalsUsdt = 0;
             const referralUnclaimedUsdt  = 0;
 
-            // 6. Surplus decomposition
+            // 6. Informational only — NOT included in the math below. The contract's platformPool()
+            //    counter is a KNOWN-inflated value from a past adminAddPlatformFees decimal error
+            //    (see the guard in adminWithdraw(), ~line 16565): "Platform pool is inflated and
+            //    cannot be withdrawn... Platform revenue is tracked in Firestore correctly."
+            let platformPoolUsdt = null;
+            try {
+                const _poolRaw = await _roContract.platformPool();
+                platformPoolUsdt = parseFloat(ethers.utils.formatUnits(_poolRaw, 18));
+            } catch (e) { console.warn('[Diagnostic] platformPool read failed:', e); }
+
+            // 7. Gap decomposition — positive = surplus (unexplained extra money in contract),
+            //    negative = shortfall (contract can't cover what's owed). Either way, reserves
+            //    are subtracted because they're real platform-owned money that must also sit in
+            //    the contract until withdrawn — they don't shrink a real shortfall, they add to it.
             const surplus       = contractBalUsdt - userLiabilityUsdt;
             const totalReserves = adminRevUsdt + lotteryPotUsdt + pendingWithdrawalsUsdt + referralUnclaimedUsdt;
-            const unexplained   = surplus - totalReserves;
+            const gap            = surplus - totalReserves;
+            const gapLabel        = gap >= 0 ? 'UNEXPLAINED SURPLUS' : 'SHORTFALL';
+            const gapColor        = gap >= 0 ? '#ef4444' : '#f59e0b';
 
             out.innerHTML =
-                'Lottery pot: ' + lotteryPotStars.toFixed(2) + '★ = $' + lotteryPotUsdt.toFixed(4) + ' USDT\n' +
                 'Contract balance: $' + contractBalUsdt.toFixed(4) + ' USDT (direct read)\n' +
-                'Admin revenue: ' + adminRevStars.toFixed(2) + '★ = $' + adminRevUsdt.toFixed(4) + ' USDT\n' +
-                'User liability: $' + userLiabilityUsdt.toFixed(4) + ' USDT (deposits - spent + earned)\n' +
+                'User liability: $' + userLiabilityUsdt.toFixed(4) + ' USDT (on-chain getBalance sum, ' + _addrs.length + ' wallets)\n' +
+                'Admin revenue: ' + adminRevStars.toFixed(2) + '★ = $' + adminRevUsdt.toFixed(4) + ' USDT (full admin_revenue collection)\n' +
+                'Lottery pot: ' + lotteryPotStars.toFixed(2) + '★ = $' + lotteryPotUsdt.toFixed(4) + ' USDT (open rounds only)\n' +
                 'Pending withdrawals: 0 docs, $0.0000 USDT (no backing collection — placeholder)\n' +
                 'Referral unclaimed: $0.0000 USDT (no backing collection — placeholder)\n' +
+                (platformPoolUsdt !== null ? 'Contract platformPool(): $' + platformPoolUsdt.toFixed(4) + ' USDT (KNOWN inflated — decimal-error bug, excluded from math below)\n' : '') +
                 '<div style="border-top:1px solid rgba(224,62,62,0.25);margin:10px 0;"></div>' +
-                '<strong>SURPLUS BREAKDOWN:</strong>\n' +
+                '<strong>SURPLUS / SHORTFALL BREAKDOWN:</strong>\n' +
                 'Contract: $' + contractBalUsdt.toFixed(4) + ' USDT\n' +
-                'User liability: $' + userLiabilityUsdt.toFixed(4) + ' USDT\n' +
-                'Surplus: $' + surplus.toFixed(4) + ' USDT\n' +
+                'User liability (on-chain): $' + userLiabilityUsdt.toFixed(4) + ' USDT\n' +
+                (surplus >= 0 ? 'Surplus: $' + surplus.toFixed(4) + ' USDT\n' : 'Shortfall vs users alone: $' + Math.abs(surplus).toFixed(4) + ' USDT\n') +
                 '\n' +
-                '<strong>Known reserves:</strong>\n' +
+                '<strong>Known reserves (platform-owned, must also sit in contract):</strong>\n' +
                 'Admin revenue: $' + adminRevUsdt.toFixed(4) + ' USDT\n' +
                 'Lottery pot: $' + lotteryPotUsdt.toFixed(4) + ' USDT\n' +
                 'Pending withdrawals: $0.0000 USDT\n' +
                 'Referral unclaimed: $0.0000 USDT\n' +
                 'Total reserves: $' + totalReserves.toFixed(4) + ' USDT\n' +
                 '\n' +
-                '<strong style="color:#ef4444;">UNEXPLAINED: $' + unexplained.toFixed(4) + ' USDT</strong>';
+                '<strong style="color:' + gapColor + ';">' + gapLabel + ': $' + Math.abs(gap).toFixed(4) + ' USDT</strong>';
 
             console.log('[Diagnostic] Contract=$' + contractBalUsdt.toFixed(4) +
-                ' UserLiability=$' + userLiabilityUsdt.toFixed(4) +
+                ' UserLiability(onchain)=$' + userLiabilityUsdt.toFixed(4) +
                 ' Surplus=$' + surplus.toFixed(4) +
                 ' Reserves=$' + totalReserves.toFixed(4) +
-                ' Unexplained=$' + unexplained.toFixed(4));
+                ' Gap=$' + gap.toFixed(4) + ' (' + gapLabel + ')');
         } catch (e) {
             console.error('[Diagnostic] Surplus reconciliation failed:', e);
             out.textContent = 'Diagnostic failed: ' + (e.message || String(e));
@@ -27513,13 +27568,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             snap.forEach(d => {
                 const data         = d.data();
                 const addr         = (data.address || d.id).toLowerCase();
-                const depositAptm  = parseFloat(data.initial_deposit)  || 0;
+                // FIX 2026-08-03: was reading data.initial_deposit, a legacy field that's
+                // no longer written for current accounts — depositedUsdt is the real,
+                // currently-authoritative deposit field everywhere else in this file
+                // (see _updateSolvency, verify-solvency.js). Reading the stale field made
+                // every user look like they'd deposited $0, which fed into the creatorStars
+                // ceiling below and would have zeroed real, legitimately-earned creator
+                // income platform-wide. Fallback chain matches the pattern already used
+                // elsewhere in this file (~line 17030) for genuinely old accounts.
+                const depositAptm  = parseFloat(data.depositedUsdt || 0) || parseFloat(data.aptmBalance || 0) || parseFloat(data.initial_deposit || 0);
                 const curStars     = parseFloat(data.stars)            || 0;
                 const curCreator   = parseFloat(data.creatorStars)     || 0;
                 const spentRaw     = parseFloat(data.spentStarsTotal)  || 0;
 
                 // Stars legitimately earned from deposit.
-                // PRIMARY: initial_deposit × livePrice / $0.01
+                // PRIMARY: depositedUsdt × livePrice / $0.01
                 // FALLBACK: sum of deposit entries in user_transactions (fixes 0-price bug victims)
                 const depositStarsPrimary  = Math.floor(depositAptm * livePrice / CONFIG.STAR_USD);
                 const depositStarsFallback = Math.floor(
@@ -27533,15 +27596,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 // Remaining unspent deposit stars (purchased balance)
                 const newStars     = Math.max(0, depositStars - spentClamped);
 
-                // PRESERVE creatorStars — they are earned from OTHER users' actions
-                // (hypes, follows, tips) and are NOT derived from initial_deposit.
-                // Zeroing them wholesale would destroy legitimate earned income.
-                // Only cap to a sane ceiling: creatorStars cannot exceed total platform
-                // star supply (depositStars × 10 as a very generous upper bound).
-                // Ghost creatorStars are those that exceed 10× the deposit — a clear sign
-                // of inflation, not a legitimate earn.
-                const creatorCeiling = depositStars * 10;
-                const newCreator     = Math.min(curCreator, Math.max(0, creatorCeiling));
+                // PRESERVE creatorStars unchanged — they are earned from OTHER users' actions
+                // (hypes, follows, tips, gifts) and have NO relationship to this wallet's own
+                // deposit. A creator can legitimately have $0 deposited and real, substantial
+                // earnings (e.g. someone who only ever receives gifts, never buys stars
+                // themselves) — capping against their own deposit would zero that out
+                // incorrectly. Removed 2026-08-03: the previous "10× deposit" ceiling did
+                // exactly this. Real anti-fabrication protection belongs in the spending
+                // Cloud Functions (hybrid cap against on-chain balance), not here.
+                const newCreator = curCreator;
 
                 const ghostStars   = curStars   - newStars;
                 const ghostCreator = curCreator - newCreator;
@@ -27580,8 +27643,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 '  (purchased: ' + totalGhostStars.toFixed(2) + '★  earned: ' + totalGhostCreator.toFixed(2) + '★)\n' +
                 'Missing stars to MINT: ' + totalMintedStars.toFixed(2) + '★ (0-price deposit fix)\n\n' +
                 'Preview (first 8 users):\n' + preview + '\n\n' +
-                'Purchased stars recalculated from initial_deposit + deposit ledger.\n' +
-                'Earned stars (creatorStars) preserved unless clearly inflated (>10× deposit).\n' +
+                'Purchased stars recalculated from depositedUsdt + deposit ledger.\n' +
+                'Earned stars (creatorStars) always preserved — never touched by this tool.\n' +
                 'spentStarsTotal clamped to depositStars.\n\n' +
                 'This CANNOT be undone. Proceed?'
             );
