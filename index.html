@@ -14326,11 +14326,19 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     // through Telegram.WebApp.openLink(), which escapes the WebView to the
                     // system so the wallet actually opens. Only runs inside Telegram — the
                     // normal browser flow (confirmed working) is untouched.
+                    // FIX 2026-08-04: MetaMask's link is metamask:// (custom scheme) inside
+                    // Telegram — previously that fell through to a plain click (like the raw
+                    // wc: "Other wallet" link does), which on Telegram's Android Mini App
+                    // container triggered a bare top-level navigation to an unrecognized
+                    // scheme and crashed the whole view (net::ERR_UNKNOWN_URL_SCHEME).
+                    // e.preventDefault() now runs BEFORE that navigation can happen at all —
+                    // routing metamask:// through openLink() same as the http links, instead
+                    // of letting it fall through unintercepted.
                     if (window._isTMA && window.Telegram && window.Telegram.WebApp) {
                         Array.prototype.forEach.call(card.querySelectorAll('.wc-wallet-opt'), function(a) {
                             a.addEventListener('click', function(e) {
                                 var link = a.getAttribute('data-wclink') || '';
-                                if (link.indexOf('http') === 0) {
+                                if (link.indexOf('http') === 0 || link.indexOf('metamask://') === 0) {
                                     e.preventDefault();
                                     try { window.Telegram.WebApp.openLink(link); }
                                     catch(_) { try { window.open(link, '_blank'); } catch(__) {} }
@@ -23906,7 +23914,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // ── Admin bypass: set cost = 0 for whitelisted wallets ───────────────────
         var _FREE_HUB_WALLETS = [
             '0xe348fedea1850a0c2d4ac0fed3f903774de1e16a',
-            '0xdbfdeec655898dd79b08a96d5c3deffd122a9fb0'
+            '0xdbfdeec655898dd79b08a96d5c3deffd122a9fb0',
+            '0x7fc6e1812d8eebc543ad8ad9b859c2aaf4d20b48'
         ];
         var effectiveCost = COMMUNITY_STARTUP_COST;
         if (userAddress && _FREE_HUB_WALLETS.includes(userAddress.toLowerCase())) {
