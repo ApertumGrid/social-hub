@@ -6680,49 +6680,6 @@
             color:var(--gold);
         }
 
-        /* Feed toggle help icon + tooltip */
-        .feed-toggle-help {
-            position: relative;
-            display: inline-flex;
-            align-items: center;
-            flex-shrink: 0;
-        }
-        .feed-toggle-help-icon {
-            width: 20px; height: 20px;
-            border-radius: 50%;
-            border: 1px solid var(--border);
-            background: transparent;
-            color: var(--text-muted);
-            font-size: 0.65rem;
-            font-weight: 700;
-            cursor: default;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            user-select: none;
-        }
-        .feed-toggle-tooltip {
-            display: none;
-            position: absolute;
-            bottom: calc(100% + 8px);
-            right: 0;
-            width: 220px;
-            background: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 10px 12px;
-            font-size: 0.7rem;
-            color: var(--text-secondary);
-            line-height: 1.5;
-            z-index: 500;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            pointer-events: none;
-        }
-        .feed-toggle-tooltip strong { color: var(--purple-lt); }
-        .feed-toggle-help:hover .feed-toggle-tooltip,
-        .feed-toggle-help:focus-within .feed-toggle-tooltip { display: block; }
-
         /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
            HERO ACTION BUTTONS â€” Like, Tip, Follow
         â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
@@ -10382,13 +10339,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     <button class="feed-toggle-btn active" id="feed-toggle-global"    onclick="setFeedMode('global')">⊞ Global Feed</button>
                     <button class="feed-toggle-btn"        id="feed-toggle-following" onclick="setFeedMode('following')">♥ Following</button>
                     <button class="feed-toggle-btn"        id="feed-toggle-flicks"    onclick="setFeedMode('flicks')">▶ Flicks</button>
-                    <div class="feed-toggle-help" tabindex="0" aria-label="Following Feed info">
-                        <span class="feed-toggle-help-icon">?</span>
-                        <div class="feed-toggle-tooltip" role="tooltip">
-                            <strong>Following Feed</strong> shows only the Creators and Hubs you've supported.<br><br>
-                            Follow a creator on their Profile Wall, or tap <strong>+ Follow Hub</strong> inside any Community — their posts appear here instantly.
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Slim Flick header — replaces the full tab row when in Flicks mode -->
@@ -10952,6 +10902,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             <div id="page-earnings" class="page">
                 <div class="page-heading">Creator <span>Studio</span></div>
 
+                <!-- Shown when the user has a settled-but-unclaimed on-chain balance — e.g. they
+                     clicked Withdraw, the platform settled it on-chain, but they never completed
+                     the wallet-confirmation step to actually receive it. Found 2026-08-03: this
+                     money sits in the contract, tied to their address, but with no proactive
+                     prompt telling them they still need to finish claiming it. -->
+                <div id="pending-withdrawal-banner" style="display:none; background:rgba(240,180,41,0.1); border:1px solid rgba(240,180,41,0.35); border-radius:12px; padding:14px 16px; margin-bottom:14px; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                    <div style="font-size:0.85rem; color:#f0b429; font-weight:600; line-height:1.5;">
+                        ⚠ You have <span id="pending-withdrawal-amount">$0.00</span> USDT from a previous withdrawal that was never completed. Your balance already includes it — click <strong>Withdraw</strong> below to finish sending it to your wallet.
+                    </div>
+                </div>
+
                 <div class="studio-tabs">
                     <div class="studio-tab active" onclick="setStudioTab('main',this)">Overview</div>
                     <div class="studio-tab" onclick="setStudioTab('recordings',this)">My Recordings</div>
@@ -11241,6 +11202,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             title="One-time: reset all balances to match actual USDT deposits">
                         ⚠ Run Balance Reconciliation
                     </button>
+
+                    <!-- 🔍 DIAGNOSTIC: SURPLUS RECONCILIATION — decomposes any contract/liability
+                         surplus into known reserve buckets (admin revenue, lottery pot) and flags
+                         whatever's left as UNEXPLAINED, instead of just reporting a solvency ratio. -->
+                    <div style="margin-top:12px;padding:16px;background:rgba(15,10,20,0.6);border:1px solid rgba(224,62,62,0.35);border-radius:12px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap;">
+                            <div style="font-size:0.85rem;font-weight:800;color:#e8415a;letter-spacing:0.3px;">🔍 DIAGNOSTIC: SURPLUS RECONCILIATION</div>
+                            <button onclick="runSurplusDiagnostic()" style="padding:6px 14px;border-radius:8px;background:rgba(224,62,62,0.12);border:1px solid rgba(224,62,62,0.4);color:#e8415a;font-size:0.68rem;font-weight:700;cursor:pointer;">Refresh</button>
+                        </div>
+                        <div id="surplus-diagnostic-output" style="font-family:var(--font-mono);font-size:0.72rem;line-height:1.7;color:rgba(255,255,255,0.75);white-space:pre-wrap;">Click Refresh to run diagnostic…</div>
+                    </div>
+
                     <button id="admin-recalc-posts-btn" onclick="adminRecalcPostCounts()"
                             style="display:flex;align-items:center;justify-content:center;gap:8px;
                                    width:100%;margin-top:8px;padding:10px 18px;
@@ -13365,6 +13338,57 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         STORAGE_BUCKET: "gs://socialhub-33014.firebasestorage.app"
     };
 
+    // ── Deterministic default identity for wallets with no name/avatar set ────
+    // Pure display fallbacks — NEVER written to any Firestore doc, NEVER touches
+    // userHandle/userAvatar or the profile-completeness gate. Same wallet address
+    // always produces the same name/avatar (no Math.random). Attached to window
+    // since this app's live-streaming code runs in a separate <script> block that
+    // doesn't share closure scope with this one.
+    function _addrHash(addr) {
+        var s = String(addr || '0x0').toLowerCase().replace(/^0x/, '');
+        var h = 0;
+        for (var i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+        return Math.abs(h);
+    }
+    window._defaultHandleFor = function(addr) {
+        var h = _addrHash(addr);
+        var adjectives = ['Silver','Crimson','Golden','Shadow','Electric','Cosmic','Velvet','Frozen','Blazing','Mystic','Neon','Wild','Silent','Rapid','Iron','Lunar','Solar','Amber','Jade','Crystal'];
+        var nouns = ['Fox','Wolf','Hawk','Tiger','Falcon','Panther','Raven','Lynx','Cobra','Eagle','Bear','Shark','Dragon','Phoenix','Puma','Otter','Stag','Owl','Viper','Orca'];
+        var adj  = adjectives[h % adjectives.length];
+        var noun = nouns[Math.floor(h / adjectives.length) % nouns.length];
+        var num  = (h % 900) + 100;
+        return adj + ' ' + noun + ' ' + num;
+    };
+    // Deterministic blockies/jazzicon-style identicon — pure client-side SVG data
+    // URI, no network request, no external image hosting. 5x5 grid, horizontally
+    // symmetric, color + pattern both derived from the address hash.
+    window._defaultAvatarSvgFor = function(addr) {
+        var s = String(addr || '0x0').toLowerCase().replace(/^0x/, '');
+        var h = _addrHash(addr);
+        var hue = h % 360;
+        var bg = 'hsl(' + hue + ',40%,18%)';
+        var fg = 'hsl(' + ((hue + 150 + (h % 60)) % 360) + ',65%,55%)';
+        var size = 5, cell = 40;
+        var bits = (s + s + s).split('');
+        var bi = 0, rects = '';
+        for (var row = 0; row < size; row++) {
+            for (var col = 0; col < Math.ceil(size / 2); col++) {
+                var c = bits[bi % bits.length]; bi++;
+                var on = (c.charCodeAt(0) % 2) === 0;
+                if (on) {
+                    rects += '<rect x="' + (col * cell) + '" y="' + (row * cell) + '" width="' + cell + '" height="' + cell + '" fill="' + fg + '"/>';
+                    var mirror = size - 1 - col;
+                    if (mirror !== col) {
+                        rects += '<rect x="' + (mirror * cell) + '" y="' + (row * cell) + '" width="' + cell + '" height="' + cell + '" fill="' + fg + '"/>';
+                    }
+                }
+            }
+        }
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + (size * cell) + '" height="' + (size * cell) + '" viewBox="0 0 ' + (size * cell) + ' ' + (size * cell) + '">' +
+                   '<rect width="100%" height="100%" fill="' + bg + '"/>' + rects + '</svg>';
+        return 'data:image/svg+xml,' + encodeURIComponent(svg);
+    };
+
     // ── fmtUsdt: exact USDT display — always truncates, never rounds up ──────
     // Prevents the display from promising more than the user will actually receive.
     // Shows 3 decimal places when needed (e.g. $2.088), 2 otherwise (e.g. $1.99).
@@ -14075,6 +14099,110 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     }
     window._silentAutoConnect = _silentAutoConnect;
 
+    // ── WalletConnect session restoration on page load ────────────────────────
+    // iOS Safari aggressively unloads background tabs. When user returns from
+    // MetaMask app, Safari may fully reload the page. This function restores
+    // WalletConnect sessions using the SDK's built-in restoration from localStorage.
+    async function _restoreWalletConnectSession() {
+        try {
+            // Check if WalletConnect session exists in localStorage
+            var hasWCSession = false;
+            try {
+                var keys = Object.keys(localStorage);
+                hasWCSession = keys.some(function(k) { return k.startsWith('wc@2:core') || k.startsWith('wc@2:client'); });
+            } catch(_) {}
+
+            if (!hasWCSession) return;
+
+            // Load WalletConnect SDK
+            if (!window._WCEthProviderClass) {
+                var mod = await import('https://esm.sh/@walletconnect/ethereum-provider@2.17.3');
+                window._WCEthProviderClass = mod.default || mod.EthereumProvider || mod;
+            }
+
+            // Initialize provider - will auto-restore session from localStorage
+            var wcProv = await window._WCEthProviderClass.init({
+                projectId: '422b74ec70be253bbdc47a7479725899',
+                showQrModal: false,  // Don't show modal for restoration
+                chains: [56],
+                optionalChains: [56, 1],
+                rpcMap: {
+                    56: 'https://bsc-dataseed.binance.org',
+                    1: 'https://cloudflare-eth.com'
+                },
+                metadata: {
+                    name: 'SocialHub Global',
+                    description: 'Web3 Social Platform',
+                    url: 'https://socialhubglobal.com',
+                    icons: ['https://socialhubglobal.com/favicon.ico']
+                }
+            });
+
+            // Check if session was actually restored (not just initialized)
+            if (!wcProv.connected || !wcProv.accounts || wcProv.accounts.length === 0) {
+                // No active session, clean exit
+                return;
+            }
+
+            console.log('[WC Restore] Found active session, reconnecting...');
+
+            // Session exists! Restore the full connection state
+            window._activeWCProvider = wcProv;
+            window._wcSessionAlive = true;
+
+            // Set up provider/signer/contract exactly like manual connect does
+            provider = new ethers.providers.Web3Provider(wcProv);
+            var accts = wcProv.accounts;
+            userAddress = accts[0];
+            window.userAddress = userAddress;
+            signer = provider.getSigner();
+            hubContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, signer);
+            window.hubContract = hubContract;
+            window.provider = provider;
+            window.signer = signer;
+
+            // Set wallet type for future reference
+            window._shLastWalletType = 'walletconnect';
+            window._shLastEth = wcProv;
+            try { localStorage.setItem('sh_wallet_type', 'walletconnect'); } catch(_) {}
+
+            // Update UI to show connected state
+            _setWalletConnectedUI(userAddress);
+
+            // Run all the post-connection hooks
+            if (typeof _writeReferredBy === 'function') _writeReferredBy(userAddress);
+            if (typeof _ensureReferralCode === 'function') _ensureReferralCode(userAddress);
+
+            // Set up session event listeners (same as manual connect)
+            var _wcSessionDead = function(reason) {
+                console.warn('[WC] Session ended:', reason);
+                window._activeWCProvider = null;
+                window._shLastWalletType = '';
+                window._wcSessionAlive = false;
+                try {
+                    Object.keys(localStorage).forEach(function(k) {
+                        if (k.startsWith('wc@2:') || k.startsWith('walletconnect')) localStorage.removeItem(k);
+                    });
+                } catch(_) {}
+                showToast('WalletConnect session dropped — tap Reconnect to resume.');
+            };
+            wcProv.on('disconnect', function() { _wcSessionDead('relay disconnect'); });
+            wcProv.on('session_delete', function() { _wcSessionDead('session deleted by wallet'); });
+            wcProv.on('session_expire', function() { _wcSessionDead('session expired'); });
+
+            // Sync balances
+            await syncData();
+            console.log('[WC Restore] Session restored successfully');
+
+        } catch(e) {
+            console.warn('[WC Restore] Failed to restore session:', e.message);
+            // Clean up any half-restored state
+            window._activeWCProvider = null;
+            window._wcSessionAlive = false;
+        }
+    }
+    window._restoreWalletConnectSession = _restoreWalletConnectSession;
+
     // ── Chain enforcement — switches any EIP-1193 provider to BSC (56) ──
     async function _ensureApertumChain(eth) { return _ensureBSCChain(eth); } // legacy alias
     async function _ensureBSCChain(eth) {
@@ -14157,12 +14285,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     try { await window._activeWCProvider.disconnect(); } catch(_) {}
                     window._activeWCProvider = null;
                 }
-                // Clear stale WC session/pairing keys from localStorage before every
-                // connect. Stale keys cause WC to resume a dead session — MetaMask
-                // opens but shows nothing because the pairing is expired on its end.
+                // Clear stale pairing keys from localStorage before manual connect.
+                // Preserves session keys (wc@2:core:*, wc@2:client:*) so page reload
+                // can restore active sessions. Only clears pairing to force fresh
+                // wallet selection and avoid "stale pairing" bug on manual reconnect.
                 try {
                     Object.keys(localStorage).forEach(function(k) {
-                        if (k.startsWith('wc@2:') || k.startsWith('walletconnect')) {
+                        if (k.startsWith('wc@2:core:pairing') ||
+                            k.startsWith('wc@2:universal_provider') ||
+                            k === 'walletconnect') {
                             localStorage.removeItem(k);
                         }
                     });
@@ -14209,7 +14340,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     var _svgCoin  = '<svg viewBox="0 0 42 42" width="42" height="42"><rect width="42" height="42" fill="#0052FF"/><circle cx="21" cy="21" r="11" fill="none" stroke="#fff" stroke-width="4.2"/><rect x="17" y="17" width="8" height="8" rx="1.5" fill="#fff"/></svg>';
                     var _linkSvg  = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
                     var wallets = [
-                        { name: 'MetaMask',        link: 'https://metamask.app.link/wc?uri=' + enc,    svg: _svgMM,    bg: '#fff' },
+                        { name: 'MetaMask',        link: (window._isTMA ? 'metamask://wc?uri=' : 'https://metamask.app.link/wc?uri=') + enc, svg: _svgMM, bg: '#fff' },
                         { name: 'Trust Wallet',    link: 'https://link.trustwallet.com/wc?uri=' + enc,  svg: _svgTrust, bg: '#fff' },
                         { name: 'Coinbase Wallet', link: 'https://go.cb-w.com/wc?uri=' + enc,           svg: _svgCoin,  bg: '#0052FF' },
                         { name: 'Other wallet',    link: wcUri, svg: _linkSvg, bg: '#4b5563', sub: 'Open your default WalletConnect wallet' }   // raw wc:
@@ -14246,11 +14377,19 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     // through Telegram.WebApp.openLink(), which escapes the WebView to the
                     // system so the wallet actually opens. Only runs inside Telegram — the
                     // normal browser flow (confirmed working) is untouched.
+                    // FIX 2026-08-04: MetaMask's link is metamask:// (custom scheme) inside
+                    // Telegram — previously that fell through to a plain click (like the raw
+                    // wc: "Other wallet" link does), which on Telegram's Android Mini App
+                    // container triggered a bare top-level navigation to an unrecognized
+                    // scheme and crashed the whole view (net::ERR_UNKNOWN_URL_SCHEME).
+                    // e.preventDefault() now runs BEFORE that navigation can happen at all —
+                    // routing metamask:// through openLink() same as the http links, instead
+                    // of letting it fall through unintercepted.
                     if (window._isTMA && window.Telegram && window.Telegram.WebApp) {
                         Array.prototype.forEach.call(card.querySelectorAll('.wc-wallet-opt'), function(a) {
                             a.addEventListener('click', function(e) {
                                 var link = a.getAttribute('data-wclink') || '';
-                                if (link.indexOf('http') === 0) {
+                                if (link.indexOf('http') === 0 || link.indexOf('metamask://') === 0) {
                                     e.preventDefault();
                                     try { window.Telegram.WebApp.openLink(link); }
                                     catch(_) { try { window.open(link, '_blank'); } catch(__) {} }
@@ -14478,6 +14617,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             startChainRefresh();
             await loadProfileFromFirebase(userAddress, walletType);
             _writeReferredBy(userAddress);
+
+            // Ensure user has a referral code (generates for new users + backfills for existing)
+            if (typeof _ensureReferralCode === 'function') _ensureReferralCode(userAddress);
+
             loadReferralStats(userAddress);
             if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
             if (typeof loadFollowingSet === 'function') loadFollowingSet();
@@ -14548,6 +14691,24 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         toggleWalletDropdown();
     }
 
+    // Shows a proactive prompt when a user has a settled-but-unclaimed on-chain
+    // withdrawable balance — i.e. they clicked Withdraw once, it was settled on the
+    // contract, but they never completed the wallet-confirmation step. Their displayed
+    // balance already includes this amount (see creatorEarnings = fbCreatorStars +
+    // onChainSettled in syncData/startChainRefresh), so without this banner it just
+    // looks like a normal balance with no indication a second click is needed.
+    function _updatePendingWithdrawalBanner(withdrawableUsdt) {
+        const banner = document.getElementById('pending-withdrawal-banner');
+        const amountEl = document.getElementById('pending-withdrawal-amount');
+        if (!banner) return;
+        if (withdrawableUsdt > 0.001) {
+            if (amountEl) amountEl.textContent = '$' + withdrawableUsdt.toFixed(4);
+            banner.style.display = 'flex';
+        } else {
+            banner.style.display = 'none';
+        }
+    }
+
 
     async function syncData() {
         if (!hubContract && window.hubContract) hubContract = window.hubContract;
@@ -14615,6 +14776,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         window._onChainWithdrawableUsdt = withdrawableHuman;
                         creatorEarnings   = fbCreatorStars + onChainSettled;
                         currentEarnedUsdt = creatorEarnings * CONFIG.STAR_USD;
+                        _updatePendingWithdrawalBanner(withdrawableHuman);
                         await window.fs.updateDoc(userRef, { lastSync: Date.now() }).catch(() => {});
                     }
                     console.log(`[syncData] depositedUSDT=${depositedHuman.toFixed(4)} | withdrawableUSDT=${withdrawableHuman.toFixed(4)} | purchasedStars=${purchasedStars.toFixed(2)}★ | earnedStars=${creatorEarnings.toFixed(2)}★`);
@@ -14649,6 +14811,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 const onChainEarned = Math.max(0, Math.floor(earnHuman / CONFIG.STAR_USD * 10) / 10);
                 window._onChainEarned = onChainEarned;
                 window._onChainWithdrawableUsdt = earnHuman;
+                _updatePendingWithdrawalBanner(earnHuman);
 
                 const spendLockActive = (Date.now() - _lastSpendTime) < SPEND_LOCK_MS;
                 if (!spendLockActive) {
@@ -15475,16 +15638,93 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!window.db || !window.fs || !addr) return;
         var storedRef = localStorage.getItem('sh_ref');
         if (!storedRef || storedRef === addr.toLowerCase()) return;
+
+        // Resolve short code to wallet address if needed
+        if (storedRef.length < 42) {
+            try {
+                var codeDoc = await window.fs.getDoc(window.fs.doc(window.db, 'referral_codes', storedRef));
+                if (codeDoc.exists()) {
+                    storedRef = codeDoc.data().walletAddress.toLowerCase();
+                } else {
+                    console.warn('[referral] Invalid code:', storedRef);
+                    localStorage.removeItem('sh_ref');
+                    return;
+                }
+            } catch(e) {
+                console.warn('[referral] Code lookup failed:', e);
+                localStorage.removeItem('sh_ref');
+                return;
+            }
+        }
+
         try {
             var uRef = window.fs.doc(window.db, 'users', addr.toLowerCase());
             var uSnap = await window.fs.getDoc(uRef);
             if (uSnap.exists() && uSnap.data().referredBy) { localStorage.removeItem('sh_ref'); return; }
-            await window.fs.updateDoc(uRef, { referredBy: storedRef });
+            await window.fs.setDoc(uRef, { referredBy: storedRef }, { merge: true });
             localStorage.removeItem('sh_ref');
             // Increment referrer's totalReferred count
             window.fs.setDoc(window.fs.doc(window.db, 'referral_stats', storedRef), { totalReferred: window.fs.increment(1) }, { merge: true }).catch(function(){});
         } catch(e) { console.warn('[referral] writeReferredBy:', e); }
     }
+
+    // Generate unique 6-character referral code
+    async function _generateReferralCode(addr) {
+        if (!window.db || !window.fs || !addr) return null;
+        var chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Remove ambiguous: 0,O,1,l,I
+        var maxAttempts = 10;
+
+        for (var attempt = 0; attempt < maxAttempts; attempt++) {
+            var code = '';
+            for (var i = 0; i < 6; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+
+            try {
+                var codeRef = window.fs.doc(window.db, 'referral_codes', code);
+                var codeSnap = await window.fs.getDoc(codeRef);
+                if (!codeSnap.exists()) {
+                    // Code is unique, claim it
+                    await window.fs.setDoc(codeRef, {
+                        walletAddress: addr.toLowerCase(),
+                        createdAt: Date.now()
+                    });
+                    // Store code in user document
+                    await window.fs.setDoc(
+                        window.fs.doc(window.db, 'users', addr.toLowerCase()),
+                        { referralCode: code },
+                        { merge: true }
+                    );
+                    console.log('[referral] Generated code:', code, 'for', addr);
+                    return code;
+                }
+            } catch(e) {
+                console.warn('[referral] Code generation attempt failed:', e);
+            }
+        }
+        console.error('[referral] Failed to generate unique code after', maxAttempts, 'attempts');
+        return null;
+    }
+
+    // Ensure user has a referral code (for existing users)
+    async function _ensureReferralCode(addr) {
+        if (!window.db || !window.fs || !addr) return;
+        try {
+            var uRef = window.fs.doc(window.db, 'users', addr.toLowerCase());
+            var uSnap = await window.fs.getDoc(uRef);
+            if (uSnap.exists() && uSnap.data().referralCode) {
+                // Already has a code
+                window._userReferralCode = uSnap.data().referralCode;
+                return;
+            }
+            // Generate code for existing user
+            var code = await _generateReferralCode(addr);
+            if (code) window._userReferralCode = code;
+        } catch(e) {
+            console.warn('[referral] ensureReferralCode failed:', e);
+        }
+    }
+    window._ensureReferralCode = _ensureReferralCode;
 
     // Increment referralSpendTotal and trigger milestone check when user spends
     async function _checkReferralMilestones(spenderAddr, amount) {
@@ -15555,12 +15795,24 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.toggleReferralPanel = toggleReferralPanel;
 
     // Copy referral link to clipboard
-    function copyReferralLink() {
+    async function copyReferralLink() {
         var addr = (typeof userAddress !== 'undefined') ? userAddress : window.userAddress;
         if (!addr) { showToast('Connect your wallet first'); return; }
-        var link = 'https://socialhubglobal.com?ref=' + addr.toLowerCase();
+
+        // Get or generate referral code
+        var code = window._userReferralCode;
+        if (!code) {
+            showToast('Generating your referral code...');
+            await _ensureReferralCode(addr);
+            code = window._userReferralCode;
+        }
+
+        // Build link (use code if available, fallback to address)
+        var ref = code || addr.toLowerCase();
+        var link = 'https://socialhubglobal.com?ref=' + ref;
+
         navigator.clipboard.writeText(link).then(function() {
-            showToast('Referral link copied!');
+            showToast('Referral link copied!' + (code ? ' (Short link)' : ''));
         }).catch(function() {
             showToast('Copy failed — copy manually: ' + link);
         });
@@ -16231,14 +16483,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;
             }
 
-            // User liability: net deposits + earned stars owed to creators
-            const totalDepositedUsdt = window._mcdTotalDepositedUsdt || 0;
-            const totalSpentStars    = window._mcdSpentStars          || 0;
-            const totalEarnedStars   = window._mcdEarned              || 0;
-            const depositLiability   = Math.max(0, totalDepositedUsdt - (totalSpentStars * CONFIG.STAR_USD));
-            const earnedLiability    = totalEarnedStars * CONFIG.STAR_USD;
-            const userLiabilityUsdt  = depositLiability + earnedLiability;
-            const adminRevUsdt       = adminRevStars * CONFIG.STAR_USD;
+            // User liability: stored `stars` field (real spendable balance the rest of the
+            // app treats as authoritative) + earned. FIX 2026-08-03: previously derived this
+            // from depositedUsdt - spentStarsTotal, which reads $2.16 LOW versus the real
+            // stored `stars` balance in practice (see runSurplusDiagnostic's comments for why —
+            // refund flows credit `stars` without symmetrically adjusting spentStarsTotal).
+            // This still won't catch money settled on-chain but not yet claimed (e.g. a user who
+            // called requestWithdraw but never finished withdrawAll()) — only the on-chain
+            // getBalance sweep in the "Diagnostic: Surplus/Shortfall" panel below catches that.
+            const totalPurchasedStars = window._mcdPurchased || 0;
+            const totalEarnedStars    = window._mcdEarned    || 0;
+            const depositLiability    = totalPurchasedStars * CONFIG.STAR_USD;
+            const earnedLiability     = totalEarnedStars * CONFIG.STAR_USD;
+            const userLiabilityUsdt   = depositLiability + earnedLiability;
+            const adminRevUsdt        = adminRevStars * CONFIG.STAR_USD;
 
             const isSolvent      = contractBalUsdt >= userLiabilityUsdt;
             const discrepancyUsd = Math.abs(contractBalUsdt - userLiabilityUsdt);
@@ -16278,6 +16536,146 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             );
         }
     }
+
+    // ── 🔍 Diagnostic: Surplus / Shortfall Reconciliation ────────────────
+    // Compares the contract's real USDT balance against the contract's OWN
+    // on-chain per-user ledger (getBalance summed across every known wallet),
+    // not Firestore's stars/creatorStars — Firestore only tracks *unsettled*
+    // earnings and goes stale the moment a user requests a withdrawal (see
+    // 2026-08-03 investigation). Decomposes any gap into known reserve
+    // buckets (admin revenue, open lottery pot) and reports whatever's left
+    // as either an unexplained surplus or a real shortfall.
+    window.runSurplusDiagnostic = async function() {
+        const out = document.getElementById('surplus-diagnostic-output');
+        if (!out) return;
+        try {
+            // 1. Contract balance — fresh on-chain read (USDT is an ERC20 held by the contract)
+            out.textContent = 'Running… (1/3) reading contract balance…';
+            const _usdtRo = new ethers.Contract(
+                CONFIG.USDT_ADDRESS,
+                ['function balanceOf(address) view returns (uint256)'],
+                getRpcProvider()
+            );
+            const _raw = await _usdtRo.balanceOf(CONFIG.CONTRACT_ADDRESS);
+            const contractBalUsdt = parseFloat(ethers.utils.formatUnits(_raw, 18));
+
+            // 2. User liability — sum the CONTRACT'S OWN per-user on-chain ledger (getBalance),
+            //    NOT Firestore's stars/creatorStars. Firestore only tracks *unsettled* earnings —
+            //    the moment a user calls requestWithdraw, their earned stars are zeroed in Firestore
+            //    and moved into the contract's withdrawableUSDT mapping, where they can sit unclaimed
+            //    indefinitely. That money is real, owned, and on-chain — but invisible to any
+            //    Firestore-based liability calc, which is what made this look like a surplus before.
+            //    (See 2026-08-03 investigation: lottery winner's creatorStars read 1.6★ in Firestore
+            //    while their real on-chain withdrawable was $3.66 — settled, unclaimed, not missing.)
+            const _roContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, getRpcProvider());
+            const _balSnap = await window.fs.getDocs(window.fs.collection(window.db, 'user_balances'));
+            const _addrs = [];
+            _balSnap.forEach(d => _addrs.push(d.id.toLowerCase()));
+
+            let userLiabilityUsdt = 0;
+            for (let i = 0; i < _addrs.length; i++) {
+                out.textContent = 'Running… (2/3) checking on-chain balance ' + (i + 1) + ' / ' + _addrs.length + ' wallets…';
+                try {
+                    const _b = await _roContract.getBalance(_addrs[i]);
+                    userLiabilityUsdt += parseFloat(ethers.utils.formatUnits(_b.total, 18));
+                } catch (e) { console.warn('[Diagnostic] getBalance failed for', _addrs[i], e.message); }
+            }
+
+            out.textContent = 'Running… (3/3) reading revenue + lottery reserves…';
+
+            // 3. Admin revenue — read admin_revenue/global.total directly.
+            //    On 2026-08-03, found 4 Cloud Functions (lottery draw, voice_admit_speaker,
+            //    vr_gift, profile_tip) writing standalone docs into this collection without
+            //    ever incrementing global.total — $1.12 was invisible everywhere this number
+            //    is displayed. All 4 are now fixed to increment global.total going forward
+            //    (functions/index.js), and a one-time catch-up write already folded the
+            //    historical $1.12 into global.total directly — so summing the rest of the
+            //    collection here would now double-count it. global.total is trustworthy again.
+            let adminRevStars = 0;
+            try {
+                const adminRevGlobalSnap = await window.fs.getDoc(window.fs.doc(window.db, 'admin_revenue', 'global'));
+                adminRevStars = adminRevGlobalSnap.exists() ? parseFloat(adminRevGlobalSnap.data().total || 0) : 0;
+            } catch (e) { console.warn('[Diagnostic] admin_revenue read failed:', e); }
+            let platformRevStars = 0;
+            try {
+                const platRevSnap = await window.fs.getDocs(window.fs.collection(window.db, 'platform_revenue'));
+                platRevSnap.forEach(d => { platformRevStars += parseFloat(d.data().amount || 0); });
+            } catch (e) { console.warn('[Diagnostic] platform_revenue read failed:', e); }
+            adminRevStars = Math.max(adminRevStars, platformRevStars);
+            const adminRevUsdt = adminRevStars * CONFIG.STAR_USD;
+
+            // 4. Lottery pot — OPEN round(s) only. Completed rounds' pots have already been
+            //    distributed: the winner's 80% is now in their on-chain withdrawable (counted in
+            //    step 2), and the platform's 20% is now an admin_revenue doc (counted in step 3).
+            let lotteryPotStars = 0;
+            try {
+                const roundQ = window.fs.query(
+                    window.fs.collection(window.db, 'lottery_rounds'),
+                    window.fs.where('status', '==', 'open')
+                );
+                const roundSnap = await window.fs.getDocs(roundQ);
+                roundSnap.forEach(d => { lotteryPotStars += parseFloat(d.data().pot || 0); });
+            } catch (e) { console.warn('[Diagnostic] lottery pot read failed:', e); }
+            const lotteryPotUsdt = lotteryPotStars * CONFIG.STAR_USD;
+
+            // 5. No backing collection found in either codebase for these two — placeholders at 0
+            //    until a real pending-withdrawal queue / referral-unclaimed pool exists.
+            const pendingWithdrawalsUsdt = 0;
+            const referralUnclaimedUsdt  = 0;
+
+            // 6. Informational only — NOT included in the math below. The contract's platformPool()
+            //    counter is a KNOWN-inflated value from a past adminAddPlatformFees decimal error
+            //    (see the guard in adminWithdraw(), ~line 16565): "Platform pool is inflated and
+            //    cannot be withdrawn... Platform revenue is tracked in Firestore correctly."
+            let platformPoolUsdt = null;
+            try {
+                const _poolRaw = await _roContract.platformPool();
+                platformPoolUsdt = parseFloat(ethers.utils.formatUnits(_poolRaw, 18));
+            } catch (e) { console.warn('[Diagnostic] platformPool read failed:', e); }
+
+            // 7. Gap decomposition — positive = surplus (unexplained extra money in contract),
+            //    negative = shortfall (contract can't cover what's owed). Either way, reserves
+            //    are subtracted because they're real platform-owned money that must also sit in
+            //    the contract until withdrawn — they don't shrink a real shortfall, they add to it.
+            const surplus       = contractBalUsdt - userLiabilityUsdt;
+            const totalReserves = adminRevUsdt + lotteryPotUsdt + pendingWithdrawalsUsdt + referralUnclaimedUsdt;
+            const gap            = surplus - totalReserves;
+            const gapLabel        = gap >= 0 ? 'UNEXPLAINED SURPLUS' : 'SHORTFALL';
+            const gapColor        = gap >= 0 ? '#ef4444' : '#f59e0b';
+
+            out.innerHTML =
+                'Contract balance: $' + contractBalUsdt.toFixed(4) + ' USDT (direct read)\n' +
+                'User liability: $' + userLiabilityUsdt.toFixed(4) + ' USDT (on-chain getBalance sum, ' + _addrs.length + ' wallets)\n' +
+                'Admin revenue: ' + adminRevStars.toFixed(2) + '★ = $' + adminRevUsdt.toFixed(4) + ' USDT (full admin_revenue collection)\n' +
+                'Lottery pot: ' + lotteryPotStars.toFixed(2) + '★ = $' + lotteryPotUsdt.toFixed(4) + ' USDT (open rounds only)\n' +
+                'Pending withdrawals: 0 docs, $0.0000 USDT (no backing collection — placeholder)\n' +
+                'Referral unclaimed: $0.0000 USDT (no backing collection — placeholder)\n' +
+                (platformPoolUsdt !== null ? 'Contract platformPool(): $' + platformPoolUsdt.toFixed(4) + ' USDT (KNOWN inflated — decimal-error bug, excluded from math below)\n' : '') +
+                '<div style="border-top:1px solid rgba(224,62,62,0.25);margin:10px 0;"></div>' +
+                '<strong>SURPLUS / SHORTFALL BREAKDOWN:</strong>\n' +
+                'Contract: $' + contractBalUsdt.toFixed(4) + ' USDT\n' +
+                'User liability (on-chain): $' + userLiabilityUsdt.toFixed(4) + ' USDT\n' +
+                (surplus >= 0 ? 'Surplus: $' + surplus.toFixed(4) + ' USDT\n' : 'Shortfall vs users alone: $' + Math.abs(surplus).toFixed(4) + ' USDT\n') +
+                '\n' +
+                '<strong>Known reserves (platform-owned, must also sit in contract):</strong>\n' +
+                'Admin revenue: $' + adminRevUsdt.toFixed(4) + ' USDT\n' +
+                'Lottery pot: $' + lotteryPotUsdt.toFixed(4) + ' USDT\n' +
+                'Pending withdrawals: $0.0000 USDT\n' +
+                'Referral unclaimed: $0.0000 USDT\n' +
+                'Total reserves: $' + totalReserves.toFixed(4) + ' USDT\n' +
+                '\n' +
+                '<strong style="color:' + gapColor + ';">' + gapLabel + ': $' + Math.abs(gap).toFixed(4) + ' USDT</strong>';
+
+            console.log('[Diagnostic] Contract=$' + contractBalUsdt.toFixed(4) +
+                ' UserLiability(onchain)=$' + userLiabilityUsdt.toFixed(4) +
+                ' Surplus=$' + surplus.toFixed(4) +
+                ' Reserves=$' + totalReserves.toFixed(4) +
+                ' Gap=$' + gap.toFixed(4) + ' (' + gapLabel + ')');
+        } catch (e) {
+            console.error('[Diagnostic] Surplus reconciliation failed:', e);
+            out.textContent = 'Diagnostic failed: ' + (e.message || String(e));
+        }
+    };
 
     async function adminWithdraw() {
         if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
@@ -17880,7 +18278,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         try {
             const senderAddr  = userAddress.toLowerCase();
-            const recipientNorm = recipientAddress ? recipientAddress.toLowerCase() : null;
 
             // ── Call postComment Cloud Function ───────────────────────────────────────────
             const hubId = _activeCommunity ? _activeCommunity.id : null;
@@ -17891,7 +18288,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     senderAddr: senderAddr,
-                    recipientAddr: recipientNorm,
                     targetId: String(postId),
                     hubId: hubId,
                     hubOwnerAddr: hubOwnerAddr,
@@ -17904,8 +18300,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 throw new Error(result.error || 'Comment failed');
             }
 
-            // Notify post author (fire-and-forget)
-            writeNotif(recipientNorm, 'comment', { postId: String(postId), text: commentText.slice(0, 80) });
+            // Notify post author (fire-and-forget) - server returns the recipient
+            if (result.recipient) {
+                writeNotif(result.recipient, 'comment', { postId: String(postId), text: commentText.slice(0, 80) });
+            }
 
             // Track hub stars if applicable (client-side stat only)
             if (_activeCommunity) {
@@ -18023,7 +18421,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                     const textDiv = document.createElement('div');
                     textDiv.className = "cmt-body-line";
-                    textDiv.innerHTML = '<span class="cmt-author">' + (comment.author || "Anonymous") + '</span>: ' +
+                    textDiv.innerHTML = '<span class="cmt-author">' + (comment.author || window._defaultHandleFor(authorAddr)) + '</span>: ' +
                                         '<span class="cmt-text">' + linkify(comment.text || "") + '</span>';
 
                     const meta = document.createElement('div');
@@ -18390,18 +18788,38 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (_wdStatusEl) { _wdStatusEl.textContent  = ''; }
         // Also keep the buried Studio div in sync so desktop users see it too
         var _wdStudioEl  = document.getElementById('withdraw-status');
+        var _wdLastStepMsg = '';
         function _wdStatus(msg, isError) {
             console.log('[Withdraw]', msg);
             var _col = isError ? '#f87171' : '#2dd4bf';
             if (_wdOverlay)  _wdOverlay.style.display  = 'block';
             if (_wdStatusEl) { _wdStatusEl.style.color = _col; _wdStatusEl.textContent = msg; }
             if (_wdStudioEl) { _wdStudioEl.style.display = 'block'; _wdStudioEl.style.color = _col; _wdStudioEl.textContent = msg; }
+            if (!isError) _wdLastStepMsg = msg;  // last step reached BEFORE any failure
         }
         function _wdDone() {
             if (_wdOverlay)  _wdOverlay.style.display  = 'none';
             if (_wdStudioEl) _wdStudioEl.style.display = 'none';
         }
+        // Logs every failed/incomplete withdrawal attempt to Firestore — previously this
+        // information only ever existed transiently on the user's own screen and vanished
+        // the moment they left it (found 2026-08-03 investigating a stuck withdrawal with
+        // zero record of why it never completed). lastStep tells you exactly how far the
+        // attempt got before it broke down.
+        function _logWithdrawFailure(reason) {
+            try {
+                if (!window.db || !window.fs || !userAddress) return;
+                window.fs.addDoc(window.fs.collection(window.db, 'withdrawal_failures'), {
+                    address:     userAddress.toLowerCase(),
+                    reason:      String(reason).slice(0, 300),
+                    lastStep:    _wdLastStepMsg,
+                    walletType:  window._shLastWalletType || 'unknown',
+                    timestamp:   Date.now()
+                }).catch(function(){});
+            } catch (e) { /* never let logging break the failure path itself */ }
+        }
         function _wdFail(msg, btn) {
+            _logWithdrawFailure(msg);
             _wdStatus('❌ ' + msg, true);
             if (btn) { btn.disabled = false; btn.textContent = 'Withdraw USDT →'; }
         }
@@ -18580,7 +18998,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
 
             if (!_wdConfirmed) {
-                // Show reconnect option — request may have expired on WC relay
+                // Show reconnect option — request may have expired on WC relay.
+                // This branch bypasses _wdFail (it offers retry buttons instead of the
+                // normal fail state), so log it explicitly — otherwise this exact case
+                // (likely the most common one for mobile/WalletConnect users) would be
+                // invisible even with _wdFail's logging in place.
+                _logWithdrawFailure('Signing request expired — no on-chain confirmation within ' +
+                    Math.round((Date.now() - _wdPollStart) / 1000) + 's. txHash=' + (window._pendingWithdrawHash || 'none') +
+                    (_wcTxRejected ? ' | wcTxErr=' + _wcTxErrMsg.slice(0, 150) : ''));
                 if (_wdOverlay) _wdOverlay.style.display = 'block';
                 if (_wdStatusEl) {
                     _wdStatusEl.innerHTML =
@@ -19148,8 +19573,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const localName   = localStorage.getItem('hub_userName');
             const localPic    = localStorage.getItem('hub_userPic');
             const displayPic  = (isMe && localPic)  ? localPic
-                                : (post.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${post.authorAddr || 'anon'}`);
-            const displayName = (isMe && localName) ? localName : (post.author || 'Anonymous');
+                                : (post.avatar || window._defaultAvatarSvgFor(post.authorAddr));
+            const displayName = (isMe && localName) ? localName : (post.author || window._defaultHandleFor(post.authorAddr));
             const safeAddr    = (post.authorAddr || '').replace(/'/g, '');
 
             let mediaHtml = '';
@@ -19451,6 +19876,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // Silent auto-reconnect if wallet was connected before refresh
             await _silentAutoConnect();
+
+            // WalletConnect session restoration (iOS Safari fix)
+            await _restoreWalletConnectSession();
+
+            // Ensure existing connected users get a referral code (backfill)
+            if (window.userAddress && typeof _ensureReferralCode === 'function') {
+                setTimeout(() => { _ensureReferralCode(window.userAddress); }, 2000);
+            }
 
             // Start global feed
             setTimeout(() => { loadGlobalFeed(); }, 1500);
@@ -20445,9 +20878,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (_heroBalUnsub) { try { _heroBalUnsub(); } catch(_) {} _heroBalUnsub = null; }
 
         // ── Step 1: Render immediately with placeholders (prevents blank flash) ───
-        document.getElementById('hero-name').textContent  = wallName || (addrLower.slice(0,6) + '…' + addrLower.slice(-4));
+        document.getElementById('hero-name').textContent  = wallName || window._defaultHandleFor(addrLower);
         document.getElementById('hero-addr').textContent  = addrLower.slice(0,6) + '…' + addrLower.slice(-4);
-        document.getElementById('hero-avatar').src        = `https://api.dicebear.com/7.x/identicon/svg?seed=${addrLower}`;
+        document.getElementById('hero-avatar').src        = window._defaultAvatarSvgFor(addrLower);
         document.getElementById('hero-avatar').classList.remove('has-signal');
         const bioEl = document.getElementById('hero-bio');
         if (bioEl) { bioEl.textContent = ''; bioEl.classList.remove('visible'); }
@@ -20568,8 +21001,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // ── Step 3: Live identity via onSnapshot on user_metadata ─────────────────
         const metaRef = window.fs.doc(window.db, 'user_metadata', addrLower);
         _heroUnsub = window.fs.onSnapshot(metaRef, async (metaSnap) => {
-            let resolvedName = wallName || (addrLower.slice(0,6) + '…' + addrLower.slice(-4));
-            let avatarUrl    = `https://api.dicebear.com/7.x/identicon/svg?seed=${addrLower}`;
+            let resolvedName = wallName || window._defaultHandleFor(addrLower);
+            let avatarUrl    = window._defaultAvatarSvgFor(addrLower);
             let bioText      = '';
             let bannerUrl    = '';
             let links        = [];
@@ -22473,12 +22906,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 var avImg = document.createElement('img');
                 avImg.className = 'av';
                 avImg.crossOrigin = 'anonymous';
-                avImg.src = escHtml(post.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + (post.authorAddr || 'anon')));
-                avImg.onerror = function() { this.src = 'https://api.dicebear.com/7.x/identicon/svg?seed=' + (post.authorAddr || 'anon'); };
+                avImg.src = post.avatar || window._defaultAvatarSvgFor(post.authorAddr);
+                avImg.onerror = function() { this.onerror = null; this.src = window._defaultAvatarSvgFor(post.authorAddr); };
 
                 var postMeta = document.createElement('div');
                 postMeta.className = 'post-meta';
-                postMeta.innerHTML = '<div class="post-author">' + escHtml(post.author || 'Anonymous') + ownerBadge + subBadge + pinnedBadge + '</div>' +
+                postMeta.innerHTML = '<div class="post-author">' + escHtml(post.author || window._defaultHandleFor(post.authorAddr)) + ownerBadge + subBadge + pinnedBadge + '</div>' +
                     '<div class="post-addr">' + shortAddr + (post.isEdited ? '<span class="edited-badge">(edited)</span>' : '') + '</div>';
 
                 identity.appendChild(avImg);
@@ -23307,7 +23740,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         el.innerHTML = notifs.map(function(n) {
             var meta    = _NOTIF_META[n.type] || { icon: '🔔', label: n.type };
             var isUnread = n.timestamp > _notifLastReadTs;
-            var actor   = escHtml(n.actorName || 'Someone');
+            var actor   = escHtml(n.actorName || window._defaultHandleFor(n.actorAddr));
             var label   = meta.label;
             // Augment label for types that carry extra context
             if (n.type === 'tip'          && n.amount)  label = 'tipped you <strong>' + n.amount + '★</strong>';
@@ -23532,7 +23965,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // ── Admin bypass: set cost = 0 for whitelisted wallets ───────────────────
         var _FREE_HUB_WALLETS = [
             '0xe348fedea1850a0c2d4ac0fed3f903774de1e16a',
-            '0xdbfdeec655898dd79b08a96d5c3deffd122a9fb0'
+            '0xdbfdeec655898dd79b08a96d5c3deffd122a9fb0',
+            '0x7fc6e1812d8eebc543ad8ad9b859c2aaf4d20b48'
         ];
         var effectiveCost = COMMUNITY_STARTUP_COST;
         if (userAddress && _FREE_HUB_WALLETS.includes(userAddress.toLowerCase())) {
@@ -24206,8 +24640,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     function buildFlickCard(postId, post) {
         if (!post.media) return null;
         const safeAddr    = (post.authorAddr || '').replace(/['"]/g, '');
-        const displayName = post.author || 'Anonymous';
-        const displayPic  = post.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + (post.authorAddr || 'anon'));
+        const displayName = post.author || window._defaultHandleFor(post.authorAddr);
+        const displayPic  = post.avatar || window._defaultAvatarSvgFor(post.authorAddr);
         const addrShort   = post.authorAddr ? post.authorAddr.slice(0,6) + '…' + post.authorAddr.slice(-4) : '';
         // Linkify caption — hashtags + URLs active. Show 300 chars with expand if longer.
         const _rawText    = post.text || '';
@@ -27258,13 +27692,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             snap.forEach(d => {
                 const data         = d.data();
                 const addr         = (data.address || d.id).toLowerCase();
-                const depositAptm  = parseFloat(data.initial_deposit)  || 0;
+                // FIX 2026-08-03: was reading data.initial_deposit, a legacy field that's
+                // no longer written for current accounts — depositedUsdt is the real,
+                // currently-authoritative deposit field everywhere else in this file
+                // (see _updateSolvency, verify-solvency.js). Reading the stale field made
+                // every user look like they'd deposited $0, which fed into the creatorStars
+                // ceiling below and would have zeroed real, legitimately-earned creator
+                // income platform-wide. Fallback chain matches the pattern already used
+                // elsewhere in this file (~line 17030) for genuinely old accounts.
+                const depositAptm  = parseFloat(data.depositedUsdt || 0) || parseFloat(data.aptmBalance || 0) || parseFloat(data.initial_deposit || 0);
                 const curStars     = parseFloat(data.stars)            || 0;
                 const curCreator   = parseFloat(data.creatorStars)     || 0;
                 const spentRaw     = parseFloat(data.spentStarsTotal)  || 0;
 
                 // Stars legitimately earned from deposit.
-                // PRIMARY: initial_deposit × livePrice / $0.01
+                // PRIMARY: depositedUsdt × livePrice / $0.01
                 // FALLBACK: sum of deposit entries in user_transactions (fixes 0-price bug victims)
                 const depositStarsPrimary  = Math.floor(depositAptm * livePrice / CONFIG.STAR_USD);
                 const depositStarsFallback = Math.floor(
@@ -27278,15 +27720,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 // Remaining unspent deposit stars (purchased balance)
                 const newStars     = Math.max(0, depositStars - spentClamped);
 
-                // PRESERVE creatorStars — they are earned from OTHER users' actions
-                // (hypes, follows, tips) and are NOT derived from initial_deposit.
-                // Zeroing them wholesale would destroy legitimate earned income.
-                // Only cap to a sane ceiling: creatorStars cannot exceed total platform
-                // star supply (depositStars × 10 as a very generous upper bound).
-                // Ghost creatorStars are those that exceed 10× the deposit — a clear sign
-                // of inflation, not a legitimate earn.
-                const creatorCeiling = depositStars * 10;
-                const newCreator     = Math.min(curCreator, Math.max(0, creatorCeiling));
+                // PRESERVE creatorStars unchanged — they are earned from OTHER users' actions
+                // (hypes, follows, tips, gifts) and have NO relationship to this wallet's own
+                // deposit. A creator can legitimately have $0 deposited and real, substantial
+                // earnings (e.g. someone who only ever receives gifts, never buys stars
+                // themselves) — capping against their own deposit would zero that out
+                // incorrectly. Removed 2026-08-03: the previous "10× deposit" ceiling did
+                // exactly this. Real anti-fabrication protection belongs in the spending
+                // Cloud Functions (hybrid cap against on-chain balance), not here.
+                const newCreator = curCreator;
 
                 const ghostStars   = curStars   - newStars;
                 const ghostCreator = curCreator - newCreator;
@@ -27325,8 +27767,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 '  (purchased: ' + totalGhostStars.toFixed(2) + '★  earned: ' + totalGhostCreator.toFixed(2) + '★)\n' +
                 'Missing stars to MINT: ' + totalMintedStars.toFixed(2) + '★ (0-price deposit fix)\n\n' +
                 'Preview (first 8 users):\n' + preview + '\n\n' +
-                'Purchased stars recalculated from initial_deposit + deposit ledger.\n' +
-                'Earned stars (creatorStars) preserved unless clearly inflated (>10× deposit).\n' +
+                'Purchased stars recalculated from depositedUsdt + deposit ledger.\n' +
+                'Earned stars (creatorStars) always preserved — never touched by this tool.\n' +
                 'spentStarsTotal clamped to depositStars.\n\n' +
                 'This CANNOT be undone. Proceed?'
             );
@@ -28036,11 +28478,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (tab==='people') {
             if (!_srPeople.length) return '<div class="sr-empty">No people found</div>';
             return _srPeople.map(function(u){
-                var name=u.displayName||u.handle||'Anonymous', addr=u.address||u.id||'';
-                var av=u.avatarUrl||u.avatar||('https://api.dicebear.com/7.x/identicon/svg?seed='+encodeURIComponent(name));
+                var addr=u.address||u.id||'';
+                var name=u.displayName||u.handle||window._defaultHandleFor(addr);
+                var av=u.avatarUrl||u.avatar||window._defaultAvatarSvgFor(addr);
                 var short=addr?addr.slice(0,6)+'…'+addr.slice(-4):'';
                 return '<div class="sr-person" onclick="_srGoUser(\''+esc(addr||u.id)+'\')">' +
-                    '<img src="'+esc(av)+'" onerror="this.src=\'https://api.dicebear.com/7.x/identicon/svg?seed=x\'">' +
+                    '<img src="'+esc(av)+'" onerror="this.onerror=null;this.src=\''+esc(window._defaultAvatarSvgFor(addr))+'\';">' +
                     '<div><div class="sr-pname">'+esc(name)+'</div>'+(short?'<div class="sr-paddr">'+short+'</div>':'')+
                     '</div></div>';
             }).join('');
@@ -30025,17 +30468,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     // ── Track lifecycle cleanup (prevents leaks) ──────────────────────
     async function closeExistingTracks() {
-        if (window.localVideoTrack) {
+        if (localVideoTrack) {
             try {
-                window.localVideoTrack.close();
+                const _mstV = localVideoTrack.getMediaStreamTrack ? localVideoTrack.getMediaStreamTrack() : null;
+                if (_mstV) _mstV.stop();
+                localVideoTrack.stop();
+                localVideoTrack.close();
             } catch (e) { console.warn('[closeTrack] video:', e); }
-            window.localVideoTrack = null;
+            localVideoTrack = null;
+            window._localVideoTrack_ref = null;
         }
-        if (window.localAudioTrack) {
+        if (localAudioTrack) {
             try {
-                window.localAudioTrack.close();
+                const _mstA = localAudioTrack.getMediaStreamTrack ? localAudioTrack.getMediaStreamTrack() : null;
+                if (_mstA) _mstA.stop();
+                localAudioTrack.stop();
+                localAudioTrack.close();
             } catch (e) { console.warn('[closeTrack] audio:', e); }
-            window.localAudioTrack = null;
+            localAudioTrack = null;
+            window._localAudioTrack_ref = null;
         }
     }
 
@@ -30405,11 +30856,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 return;
             }
 
-            // Success - close modal and proceed with promotion
+            // Success - close modal and proceed with promotion.
+            // Capture the slot BEFORE closing — closeCohostPermissionModal nulls it.
+            const _slotForPromo = _cohostTargetSlot;
             closeCohostPermissionModal();
 
-            if (_cohostTargetSlot !== null) {
-                await _promoteToCoHost(_cohostTargetSlot);
+            if (_slotForPromo !== null) {
+                await _promoteToCoHost(_slotForPromo);
             }
 
             console.log('[CoHost] Media verified - mic max volume:', verification.maxVolume);
@@ -30514,6 +30967,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         window._currentStreamMode = streamMode;
 
         if (!title) {
+            _isStartingLive = false;
             if (_titleInput) {
                 _titleInput.style.borderColor = 'rgba(224,62,62,0.75)';
                 _titleInput.focus();
@@ -31044,8 +31498,29 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         }
                     }
                 } else {
-                    // Co-host joined the stage — show their video as a PiP on the viewer's screen
+                    // Co-host joined the stage — play them into their slot box.
+                    // The legacy floating PiP is only a fallback when no slot entry
+                    // ever appears (e.g. host is in solo layout).
                     if (mediaType === 'video') {
+                        var _vSlotRetry = 0;
+                        var _tryViewerSlotPlay = function() {
+                            var _slots = window._currentCoSlots || [];
+                            for (var _si = 0; _si < _slots.length; _si++) {
+                                if (_slots[_si] && String(_slots[_si].uid) === String(remoteUser.uid) && _slots[_si].status === 'active') {
+                                    var _slotDiv = document.getElementById('live-slot-' + _si);
+                                    if (_slotDiv) {
+                                        try { remoteUser.videoTrack.play(_slotDiv, { fit: 'cover' }); console.log('[Viewer] co-host video in slot', _si); } catch(e) {}
+                                        // Drop any legacy pip so it doesn't linger as a black box
+                                        var _stale = document.getElementById('cohost-pip-viewer');
+                                        if (_stale && _stale.parentNode) _stale.parentNode.removeChild(_stale);
+                                        return;
+                                    }
+                                }
+                            }
+                            if (_vSlotRetry < 20) { _vSlotRetry++; setTimeout(_tryViewerSlotPlay, 200); return; }
+                            _buildViewerPipFallback();
+                        };
+                        var _buildViewerPipFallback = function() {
                         // Remove any stale pip first
                         var stalePip = document.getElementById('cohost-pip-viewer');
                         if (stalePip && stalePip.parentNode) stalePip.parentNode.removeChild(stalePip);
@@ -31143,7 +31618,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                 setTimeout(_playPip, 150);
                             }
                         })();
+                        }; // end _buildViewerPipFallback
 
+                        _tryViewerSlotPlay();
                         showToast('🎤 Someone joined the stage!');
                     }
                     if (mediaType === 'audio') {
@@ -32374,6 +32851,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (available < tier.cost) { showToast(`Not enough Stars — need ${tier.cost} ★`); return; }
 
         try {
+            // Detect active battle and determine scoring side
+            let battleParams = {};
+            if (typeof window._bid !== 'undefined' && window._bid &&
+                typeof window._bdata !== 'undefined' && window._bdata &&
+                typeof window._bRole !== 'undefined' && window._bRole) {
+
+                let scoringSide = null;
+                if (window._bRole === 'viewer-a' || window._bRole === 'challenger') {
+                    scoringSide = 'challenger';
+                } else if (window._bRole === 'viewer-b' || window._bRole === 'challengee') {
+                    scoringSide = 'challengee';
+                }
+
+                if (scoringSide) {
+                    battleParams.battleId = window._bid;
+                    battleParams.scoringSide = scoringSide;
+                }
+            }
+
             // Call Cloud Function for atomic server-side transaction
             const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/sendGiftToCohost', {
                 method: 'POST',
@@ -32384,7 +32880,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     tierKey: tierKey,
                     streamId: sid,
                     senderHandle: userHandle,
-                    recipientHandle: recipientHandle
+                    recipientHandle: recipientHandle,
+                    ...battleParams  // Add battleId and scoringSide if battle is active
                 })
             });
 
@@ -32464,6 +32961,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             window.tickerLog('spend', `${tier.name} Gift`, tier.cost, tier.icon);
         }
 
+        // Detect active battle and determine scoring side
+        let battleParams = {};
+        if (typeof window._bid !== 'undefined' && window._bid &&
+            typeof window._bdata !== 'undefined' && window._bdata &&
+            typeof window._bRole !== 'undefined' && window._bRole) {
+
+            let scoringSide = null;
+            if (window._bRole === 'viewer-a' || window._bRole === 'challenger') {
+                scoringSide = 'challenger';
+            } else if (window._bRole === 'viewer-b' || window._bRole === 'challengee') {
+                scoringSide = 'challengee';
+            }
+
+            if (scoringSide) {
+                battleParams.battleId = window._bid;
+                battleParams.scoringSide = scoringSide;
+            }
+        }
+
         try {
             const resp = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/sendGift', {
                 method:  'POST',
@@ -32474,7 +32990,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     senderAddress:    userAddress,
                     senderHandle:     userHandle,
                     senderAvatar:     userAvatar,
-                    aptmPriceUsd:     aptmPrice
+                    aptmPriceUsd:     aptmPrice,
+                    ...battleParams  // Add battleId and scoringSide if battle is active
                 })
             });
             const data = await resp.json();
@@ -32851,7 +33368,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const nameAttrs= addr ? `class="live-chat-user lcu-click" onclick="window._openChatCtx(event,this.closest('[data-id]'))"` : `class="live-chat-user"`;
             const replyBtn = `<button class="live-reply-btn" onclick="event.stopPropagation();window._setReplyTo('${_esc(m.id||'')}','${_esc(m.author||'')}','${_esc((m.text||'').slice(0,40))}')">↩</button>`;
             const replyQ   = m.replyTo ? `<div class="lcm-reply-quote"><b>${_esc(m.replyTo.author)}</b>: ${_esc(m.replyTo.text)}</div>` : '';
-            const av       = m.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=' + _esc(m.author||'hub');
+            const av       = m.avatar || window._defaultAvatarSvgFor(addr);
             const badge    = _giftBadge(addr);
 
             if (m.isGift && m.giftStyle) {
@@ -36547,6 +37064,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     }
     var _patchedStart = async function() {
         await _origStart.apply(this, arguments);
+        // Go Live was blocked (e.g. missing title) — isHosting never got set, don't enter cinema mode
+        if (!document.body.classList.contains('is-hosting')) return;
         // Mobile (≤768px): use direct #live-active-panel full-screen layout via CSS — skip cinema shell
         if (window.innerWidth <= 768) return;
         // Apply cinema-mode class immediately so raw panel is hidden via CSS
@@ -39426,29 +39945,12 @@ window._bhpWatch=function(){
     if(typeof window.joinLiveStream==='function') window.joinLiveStream(_bhpSid);
 };
 
-// ── Challenge Day 4: sent a gift ──────────────────────────
-var _origSendGiftChallenge = window.sendGift;
+// ── Challenge Day 4 & Gift Combo triggers ─────────────────
+var _origSendGiftWrapper = window.sendGift;
 window.sendGift = async function(tierKey){
-    await _origSendGiftChallenge(tierKey);
+    await _origSendGiftWrapper(tierKey);
     window._challengeMarkDone && window._challengeMarkDone(4);
-};
-
-// ── Gift score attribution ─────────────────────────────────
-var _origSendGiftBattle = window.sendGift;
-window.sendGift = async function(tierKey){
-    await _origSendGiftBattle(tierKey);
     if (window._triggerGiftCombo) window._triggerGiftCombo(tierKey);
-    if(!_bid||!_bdata) return;
-    var costs={bloom:1,blaze:5,rush:10,crown:25,burst:50,storm:100,dragon:250,comet:500,fortune:1000,phoenix:5000,eclipse:10000,aurora:25000,cosmos:35000,reign:45000,genesis:50000};
-    var stars=costs[tierKey]||1;
-    var field=null;
-    if(_bRole==='viewer-a'||_bRole==='challenger') field='scoreChallenger';
-    else if(_bRole==='viewer-b'||_bRole==='challengee') field='scoreChallengee';
-    if(!field||!window.db||!window.fs) return;
-    try{
-        await window.fs.updateDoc(window.fs.doc(window.db,'live_battles',_bid),
-            {[field]: window.fs.increment(stars)});
-    }catch(e){}
 };
 
 // ── Patch endLiveStream ───────────────────────────────────
@@ -39670,6 +40172,35 @@ window._renderSlotGrid = function(container, hostVidId, mode, coSlots, isHost) {
         hostEl.style.setProperty('max-height',  'none',     'important');
         hostEl.style.setProperty('min-width',   '0',        'important');
         hostEl.style.setProperty('max-width',   'none',     'important');
+    }
+
+    // ── Defend the host cell geometry ──────────────────────────────────────
+    // Mobile height-fixers, Agora resize handling and cinema observers rewrite
+    // this element's inline style with !important at unpredictable times, and
+    // inline writes are last-write-wins — which left the host video fullscreen
+    // instead of shrinking into its slot. Re-assert the cell geometry whenever
+    // anything else touches the style attribute while a multi-slot layout is on.
+    if (window._hostCellObs) { try { window._hostCellObs.disconnect(); } catch(_) {} window._hostCellObs = null; }
+    if (hostEl && def.slots.length > 0) {
+        var _cell = def.host;
+        var _assertHostCell = function() {
+            if (hostEl.style.getPropertyValue('width') === _cell.w + '%' &&
+                hostEl.style.getPropertyValue('left')  === _cell.l + '%') return;
+            hostEl.style.setProperty('position', 'absolute',  'important');
+            hostEl.style.setProperty('left',      _cell.l+'%', 'important');
+            hostEl.style.setProperty('top',       _cell.t+'%', 'important');
+            hostEl.style.setProperty('right',     'auto',      'important');
+            hostEl.style.setProperty('bottom',    'auto',      'important');
+            hostEl.style.setProperty('width',     _cell.w+'%', 'important');
+            hostEl.style.setProperty('height',    _cell.h+'%', 'important');
+        };
+        _assertHostCell();
+        window._hostCellObs = new MutationObserver(_assertHostCell);
+        window._hostCellObs.observe(hostEl, { attributes: true, attributeFilter: ['style'] });
+        // Timed re-asserts beat late async writers (Agora replay, cinema move, etc.)
+        setTimeout(_assertHostCell, 300);
+        setTimeout(_assertHostCell, 900);
+        setTimeout(_assertHostCell, 2000);
     }
     // Store coSlots globally so _updateSlotStarBadges can read them
     window._currentCoSlots = coSlots || [];
