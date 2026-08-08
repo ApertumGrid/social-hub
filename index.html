@@ -30435,6 +30435,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         setTimeout(_forceRemoteVideoFit, 900);
     }
 
+    // Extra safety net: a MutationObserver that re-applies the correct fit whenever
+    // Agora swaps the <video> element, catching any play() call site that doesn't
+    // pass an explicit fit option (there were a few — e.g. leaveCoHost's re-subscribe
+    // loop — that only ever specified fit at the handful of call sites above).
+    (function() {
+        var _rvForFit = document.getElementById('live-remote-video');
+        if (_rvForFit && !window._remoteVideoFitObs) {
+            window._remoteVideoFitObs = new MutationObserver(function() { _forceRemoteVideoFit(); });
+            window._remoteVideoFitObs.observe(_rvForFit, { childList: true, subtree: true });
+        }
+    })();
+
     // ── Helpers ───────────────────────────────────────────────────
     function $(id) { return document.getElementById(id); }
     function setText(id, val) { const el = $(id); if (el) el.textContent = val; }
@@ -31834,7 +31846,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 function _applyRvHeight(){var _lm=window._viewerLayoutMode;if(_rv&&(!_lm||_lm==='solo'||_lm==='presentation')){_rv.style.setProperty('position','absolute','important');_rv.style.setProperty('top','0','important');_rv.style.setProperty('right','0','important');_rv.style.setProperty('bottom','0','important');_rv.style.setProperty('left','0','important');_rv.style.setProperty('width','100%','important');_rv.style.setProperty('height','100%','important');}}
                 _applyRvHeight();
                 if(_rv && !window._rvStyleObs){var _rvBusy=false;window._rvStyleObs=new MutationObserver(function(){if(_rvBusy||!document.body.classList.contains('is-watching'))return;_rvBusy=true;_applyRvHeight();setTimeout(function(){_rvBusy=false;},50);});window._rvStyleObs.observe(_rv,{attributes:true,attributeFilter:['style']});}
-                function _fixAgoraChildren(){if(!_rv||!document.body.classList.contains('is-watching'))return;_rv.querySelectorAll('*').forEach(function(el){el.style.setProperty('position','absolute','important');el.style.setProperty('top','0','important');el.style.setProperty('left','0','important');el.style.setProperty('width','100%','important');el.style.setProperty('height','100%','important');el.style.setProperty('transform','none','important');if(el.tagName!=='VIDEO'){el.style.setProperty('overflow','visible','important');}if(el.tagName==='VIDEO'){el.style.setProperty('object-fit','cover','important');}});}
+                function _fixAgoraChildren(){if(!_rv||!document.body.classList.contains('is-watching'))return;_rv.querySelectorAll('*').forEach(function(el){el.style.setProperty('position','absolute','important');el.style.setProperty('top','0','important');el.style.setProperty('left','0','important');el.style.setProperty('width','100%','important');el.style.setProperty('height','100%','important');el.style.setProperty('transform','none','important');if(el.tagName!=='VIDEO'){el.style.setProperty('overflow','visible','important');}if(el.tagName==='VIDEO'){el.style.setProperty('object-fit',window._hostVideoFit?window._hostVideoFit():'cover','important');}});}
                 setTimeout(_fixAgoraChildren,800);
                 if(_rv && !window._rvChildObs){window._rvChildObs=new MutationObserver(function(){_fixAgoraChildren();});window._rvChildObs.observe(_rv,{childList:true,subtree:true});}
                 var _cc=document.getElementById('viewer-panel-chat-card');
@@ -34528,7 +34540,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             // In cinema mode live-remote-video is position:absolute so
                             // offsetWidth is 0 — don't gate on size, just play immediately
                             try {
-                                _trackRef.play(remoteEl);
+                                _trackRef.play(remoteEl, { fit: window._hostVideoFit() });
+                                window._liveHostVideoTrack = _trackRef;
                                 console.log('[CoHost] Host video playing in live-remote-video, uid:', ru.uid);
                             } catch(e) {
                                 if (_retry < 20) {
@@ -34600,7 +34613,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         if (ru2.uid === _myViewerUid) continue;
                         if (window._cohostPublishedUid && ru2.uid === window._cohostPublishedUid) continue;
                         if (ru2.videoTrack) {
-                            ru2.videoTrack.play(remoteEl, { fit: 'cover' });
+                            ru2.videoTrack.play(remoteEl, { fit: window._hostVideoFit() });
+                            window._liveHostVideoTrack = ru2.videoTrack;
                             console.log('[CoHost] Safety net: re-rendered host video uid:', ru2.uid);
                             break;
                         }
@@ -34658,7 +34672,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     try { await agoraClient.subscribe(_ru, 'audio'); if (_ru.audioTrack) _ru.audioTrack.play(); } catch(_) {}
                     if (_ru.videoTrack && _liveHostUid && _ru.uid === _liveHostUid) {
                         var _re = document.getElementById('live-remote-video');
-                        if (_re) { try { _ru.videoTrack.play(_re, { fit: 'cover' }); } catch(_) {} }
+                        if (_re) { try { _ru.videoTrack.play(_re, { fit: window._hostVideoFit() }); window._liveHostVideoTrack = _ru.videoTrack; } catch(_) {} }
                     }
                 }
             } catch(_leaveReSub) { console.warn('[CoHost] leave re-subscribe error:', _leaveReSub); }
