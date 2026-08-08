@@ -30874,7 +30874,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.openCohostPermissionModal = function(targetSlot) {
         _cohostTargetSlot = targetSlot;
         const modal = document.getElementById('cohost-permission-modal');
-        if (modal) modal.style.display = 'flex';
+        if (modal) {
+            // #app-shell has position:relative + z-index:5, which traps this modal's
+            // z-index:10002 inside its own stacking context. #cinema-shell (desktop
+            // cinema mode) lives outside #app-shell at z-index:50, so it painted over
+            // this modal even though 10002 > 50. Re-parent to <body> so the modal's
+            // z-index is compared against #cinema-shell directly.
+            if (modal.parentElement !== document.body) document.body.appendChild(modal);
+            modal.style.display = 'flex';
+        }
     };
 
     window.closeCohostPermissionModal = function() {
