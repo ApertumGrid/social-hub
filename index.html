@@ -1195,7 +1195,6 @@
                 max-height:none !important;
                 overflow-y:visible !important;
             }
-            #live-player-wrap.pres-mode #cohost-stage-wrap           { grid-column:1; grid-row:1; order:unset !important; }
             #live-player-wrap.pres-mode #live-remote-video-container  { grid-column:1; grid-row:1; order:unset !important; }
             #live-player-wrap.pres-mode .live-action-row              { grid-column:1; grid-row:2; order:unset !important; }
             #live-player-wrap.pres-mode #viewer-poll-card,
@@ -1804,7 +1803,6 @@
             font-size:1rem !important; padding:2px !important;
         }
         #cinema-controls .studio-btn-icon { font-size:0.8rem !important; }
-        #cinema-controls .studio-toolbar { display:contents !important; }
         /* Panels inside controls â€” displayed normally, no more fixed positioning */
         /* Host-only toggleable panels â€” hidden until button clicked */
         #cinema-controls-panels #poll-creator,
@@ -2119,8 +2117,13 @@
             #cinema-controls-panels #viewer-gift-panel .live-gift-head { display:none !important; }
         }
 
-        /* ── MOBILE HOST FULLSCREEN FALLBACK (MetaMask / non-cinema WebView) ── */
-        @media (max-width: 700px) {
+        /* ── MOBILE HOST FULLSCREEN FALLBACK (MetaMask / non-cinema WebView) ──
+           768px to match _patchedStart's JS go-live mobile check (was 700px —
+           the mismatch meant widths 701-768px got neither this fallback layout
+           nor the desktop cinema layout). Viewer's own path (_patchedJoin +
+           its mobile fullscreen CSS) is already consistently 900px, left as-is
+           — only the host side had a real CSS/JS mismatch here. ── */
+        @media (max-width: 768px) {
             body.is-hosting #topnav           { display: none !important; }
             body.is-hosting #mobile-dashboard  { display: none !important; }
             body.is-watching #mobile-dashboard { display: none !important; }
@@ -2401,6 +2404,19 @@
             display:flex; flex-wrap:wrap; gap:8px;
             padding:10px 0; margin-bottom:10px;
         }
+        /* #host-icon-strip already exposes every action (via its "more" drawer)
+           on every screen size, so the full labeled grid is now redundant and
+           would otherwise show alongside it — duplicated — once cinema mode
+           sweeps it into the desktop side panel. Both selectors are needed:
+           .studio-toolbar lives under #live-active-panel normally, but
+           enterCinema()/exitCinema() relocate it into #cinema-controls while
+           hosting on desktop. Ported from APTM — same duplicate-controls bug,
+           confirmed identical here (same unconditional #host-icon-strip show
+           rule, same display:contents escape hatch removed above). */
+        body.is-hosting .studio-toolbar,
+        body.is-hosting #cinema-controls .studio-toolbar {
+            display: none !important;
+        }
         .studio-btn {
             display:flex; align-items:center; gap:6px;
             padding:8px 14px; border-radius:50px;
@@ -2507,13 +2523,6 @@
         }
         #viewer-cohost-btn:hover { background:var(--purple-dim); }
         #viewer-cohost-btn.active { background:var(--purple); color:#fff; }
-        /* Co-host stage area (viewer promoted) */
-        #cohost-stage-wrap {
-            display:none; margin-bottom:10px;
-            background:#0d1117; border-radius:var(--radius-md);
-            overflow:hidden; position:relative; height:180px;
-        }
-        #cohost-local-video { width:100%; height:100%; }
 
         /* â”€â”€ PAID ADMISSION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         .paid-badge {
@@ -3973,47 +3982,47 @@
 
         .post-actions {
             display: flex; align-items: center;
-            gap: 0px;
+            gap: 6px;
             padding: 10px 0 4px;
             border-top: 1px solid rgba(255,255,255,0.06);
         }
         .pact {
-            display: flex; align-items: center; gap: 5px;
-            padding: 6px 10px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center; gap: 5px;
+            box-sizing: border-box;
+            min-height: 36px;
+            padding: 0 12px; border-radius: 999px;
             font-size: 0.72rem; font-weight: 700;
             cursor: pointer;
-            color: rgba(255,255,255,0.35);
-            background: none; border: none;
+            color: var(--text-muted);
+            background: var(--bg-hover);
+            border: 1px solid var(--border);
             transition: all 0.15s; position: relative;
         }
         .pact svg { flex-shrink: 0; transition: all 0.15s; }
         .pact-label, .pact-mobile-cost { display: none !important; }
 
-        /* Each action has its own permanent colour — visible at rest, brighter on hover */
-        .pact.pact-like  { color: rgba(255,77,109,0.55); }
-        .pact.pact-like:hover  { color: #ff4d6d; background: rgba(255,77,109,0.08); }
-        .pact.pact-like:hover svg path { stroke: #ff4d6d; }
+        /* One deliberate neutral state for every action — no per-icon colour.
+           The gold accent is reserved for an action's ACTIVE state only (e.g. pact-liked). */
+        .pact:hover {
+            color: var(--text-primary);
+            background: var(--bg-input);
+            border-color: var(--border-md);
+        }
 
-        .pact.pact-comment  { color: rgba(167,139,250,0.55); }
-        .pact.pact-comment:hover { color: #a78bfa; background: rgba(167,139,250,0.08); }
+        .pact.pact-liked {
+            color: var(--gold) !important;
+            background: rgba(240,180,41,0.10);
+            border-color: rgba(240,180,41,0.4);
+        }
+        .pact.pact-liked svg path { fill: var(--gold); stroke: var(--gold); }
 
-        .pact.signal  { color: rgba(45,212,191,0.55); }
-        .pact.signal:hover { color: #2dd4bf; background: rgba(45,212,191,0.08); }
-
-        .pact.boost  { color: rgba(240,180,41,0.55); }
-        .pact.boost:hover { color: #f0b429; background: rgba(240,180,41,0.08); }
-
-        .pact.rain  { color: rgba(96,165,250,0.55); }
-        .pact.rain:hover { color: #60a5fa; background: rgba(96,165,250,0.08); }
-
-        .pact.share  { color: rgba(255,255,255,0.3); }
-        .pact.share:hover { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.05); }
-
-        .pact.pact-liked { color: #ff4d6d !important; }
-        .pact.pact-liked svg path { fill: #ff4d6d; stroke: #ff4d6d; }
-
-        .pact.views { cursor: default; color: rgba(255,255,255,0.25); margin-left: auto; }
-        .pact.views:hover { background: none; color: rgba(255,255,255,0.25); }
+        .pact.views {
+            cursor: default; color: var(--text-muted);
+            margin-left: auto;
+            background: none; border: none; padding: 0 4px; min-height: auto;
+            font-weight: 600;
+        }
+        .pact.views:hover { background: none; color: var(--text-muted); border: none; }
         .pact-num { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; }
 
         /* â”€â”€ HUB TOTAL EARNINGS BADGE â”€â”€ */
@@ -4044,12 +4053,6 @@
            ðŸŒ§ï¸ RAIN BUTTON â€” post-level tipping with animation
         â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
         .pact.rain { position: relative; }
-        .pact.rain:hover {
-            color: var(--gold);
-            border-color: rgba(240,180,41,0.4);
-            background: rgba(240,180,41,0.07);
-            box-shadow: 0 0 12px rgba(240,180,41,0.22);
-        }
         .pact.rain > svg, .pact.rain > span { pointer-events: none; }
 
         /* Rain amount picker dropdown */
@@ -4158,12 +4161,6 @@
 
         /* â”€â”€ SHARE BUTTON & DROPDOWN â”€â”€ */
         .pact.share { position: relative; }
-        .pact.share:hover {
-            color: var(--text-primary);
-            border-color: rgba(124,92,191,0.35);
-            background: var(--purple-dim);
-            box-shadow: 0 0 10px rgba(124,92,191,0.18);
-        }
         /* Prevent SVG children eating the click â€” clicks must reach the parent div */
         .pact.share > svg, .pact.share > span { pointer-events: none; }
         .share-dropdown {
@@ -4262,9 +4259,11 @@
             .hero-action-btn[data-cost]::before,
             .comm-follow-btn[data-cost]::before { display: none; }
 
-            /* Compact post action bar on mobile */
-            .post-actions { gap: 1px; padding-top: 8px; }
-            .pact { padding: 5px 7px; gap: 4px; font-size: 0.7rem; }
+            /* Compact post action bar on mobile — same pill chrome, tighter spacing.
+               min-height:36px is inherited from the base .pact rule, not overridden here,
+               so the touch target stays comfortable even as horizontal padding shrinks. */
+            .post-actions { gap: 4px; padding-top: 8px; }
+            .pact { padding: 0 9px; gap: 4px; font-size: 0.7rem; }
         }
 
         /* â”€â”€ CATEGORY FILTER BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -5985,11 +5984,13 @@
            transition:all 0.12s on .cbtn, so we just extend those values.
            â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
-        /* Post Like button â€” pops red on click, springs back */
+        /* Post Like button â€” pops gold on click, springs back.
+           Uses the same accent as the resting liked state (var(--gold)) so the
+           post action bar keeps its single-accent rule: no red/blue mid-interaction flash. */
         .pact.like-active {
-            color: #ff4d6d !important;
-            border-color: rgba(255,77,109,0.35) !important;
-            background: rgba(255,77,109,0.08) !important;
+            color: var(--gold) !important;
+            border-color: rgba(240,180,41,0.4) !important;
+            background: rgba(240,180,41,0.10) !important;
         }
         .pact:active {
             transform: scale(0.88);
@@ -5998,24 +5999,25 @@
         /* Spring-back is handled by the existing transition:all 0.13s when
            :active is released â€” no extra rule needed. */
 
-        /* â”€â”€ STATE 1: Liked â€” solid red fill â”€â”€ */
+        /* â”€â”€ STATE 1: Liked â€” gold accent, matches the post action bar's single active colour â”€â”€ */
         .pact.pact-liked {
-            color: #fff !important;
-            background: linear-gradient(135deg, #ff4d6d, #ff1744) !important;
-            border-color: rgba(255,23,68,0.5) !important;
+            color: var(--gold) !important;
+            background: rgba(240,180,41,0.10) !important;
+            border-color: rgba(240,180,41,0.4) !important;
             font-weight: 700 !important;
         }
         .pact.pact-liked:hover {
-            background: linear-gradient(135deg, #ff6b81, #ff4d6d) !important;
-            border-color: rgba(255,77,109,0.7) !important;
+            background: rgba(240,180,41,0.16) !important;
+            border-color: rgba(240,180,41,0.6) !important;
         }
+        .pact.pact-liked svg path { fill: var(--gold); stroke: var(--gold); }
 
         /* â”€â”€ STATE 2+: Mega Hype â€” pulse glow animation â”€â”€ */
         @keyframes megaHypePulse {
-            0%   { box-shadow: 0 0 0 0 rgba(255,23,68,0.7); transform: scale(1); }
-            40%  { box-shadow: 0 0 0 8px rgba(255,23,68,0.25); transform: scale(1.08); }
-            70%  { box-shadow: 0 0 0 14px rgba(255,23,68,0.08); transform: scale(1.04); }
-            100% { box-shadow: 0 0 0 0 rgba(255,23,68,0); transform: scale(1); }
+            0%   { box-shadow: 0 0 0 0 rgba(240,180,41,0.7); transform: scale(1); }
+            40%  { box-shadow: 0 0 0 8px rgba(240,180,41,0.25); transform: scale(1.08); }
+            70%  { box-shadow: 0 0 0 14px rgba(240,180,41,0.08); transform: scale(1.04); }
+            100% { box-shadow: 0 0 0 0 rgba(240,180,41,0); transform: scale(1); }
         }
         .pact.pact-mega-hype {
             animation: megaHypePulse 0.55s ease-out forwards;
@@ -8904,7 +8906,6 @@ html body #profile-hero .hero-action-btn.btn-follow {
     max-height:calc(100vh - 60px)!important;
 }
 /* Video stays first */
-#cohost-stage-wrap           { order:1!important; }
 #live-remote-video-container { order:2!important; }
 
 /* Action row (hype/hand/stage/leave) â†’ right below video */
@@ -9467,10 +9468,18 @@ body.cinema-mode #btn-end-stream-toolbar { display:none!important; }
     }
     /* Stats row: hidden on mobile */
     body.is-hosting #bc-live-stats-row { display: none !important; }
-    /* Studio toolbar: 4-col grid */
+    /* Was showing the full toolbar as a compact 4-col grid on mobile — this is
+       the actual root cause of mobile hosts seeing the full button grid
+       instead of #host-icon-strip alone. This selector is ID-anchored
+       (#live-active-panel), so it beat the general body.is-hosting
+       .studio-toolbar hide rule elsewhere in this file, and it comes later in
+       the source than the OTHER #live-active-panel .studio-toolbar rule
+       (which does say display:none) at equal specificity, so it was always
+       winning that tie too. Matches APTM's equivalent rule, which correctly
+       says display:none. */
     body.is-hosting #live-active-panel .studio-toolbar {
+        display: none !important;
         flex: 0 0 auto !important;
-        display: grid !important;
         grid-template-columns: repeat(4, 1fr) !important;
         gap: 3px !important;
         padding: 3px !important;
@@ -12117,17 +12126,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 <div id="live-watch-panel">
                     <!-- Active stream player -->
                     <div id="live-player-wrap" style="display:none;">
-                        <!-- Co-host stage (shown when viewer is promoted to co-host) -->
-                        <div id="cohost-stage-wrap">
-                            <div id="cohost-local-video"></div>
-                            <div style="position:absolute;top:8px;left:12px;font-size:0.62rem;font-weight:700;color:rgba(255,255,255,0.8);background:rgba(0,0,0,0.5);padding:2px 8px;border-radius:50px;">🎤 YOU — ON STAGE</div>
-                            <button onclick="leaveCoHost()" style="position:absolute;top:8px;right:10px;background:rgba(224,62,62,0.85);border:none;color:#fff;border-radius:50px;padding:3px 10px;font-size:0.65rem;font-weight:700;cursor:pointer;">Leave Stage</button>
-                            <!-- Viewer mic/cam controls while on stage -->
-                            <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:10;">
-                                <button onclick="toggleCoHostMic()" style="background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;padding:3px 10px;font-size:0.65rem;font-weight:600;cursor:pointer;">🔇 Mute</button>
-                                <button onclick="toggleCoHostCam()" style="background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;padding:3px 10px;font-size:0.65rem;font-weight:600;cursor:pointer;">📷 Cam Off</button>
-                            </div>
-                        </div>
                         <!-- Stream info bar — outside the video box -->
                         <div id="live-stream-info-bar">
                             <div class="lsib-left" onclick="window._openCreatorProfile()" style="cursor:pointer;">
@@ -12205,6 +12203,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <!-- ★ TikTok-style FLOATING CHAT OVERLAY (viewer) — messages only, input stays in panel -->
                             <div class="stream-floating-chat" id="viewer-floating-chat" style="display:none;">
                                 <div class="sfc-feed" id="viewer-sfc-feed"></div>
+                            </div>
+
+                            <!-- Viewer icon strip — desktop-only on-video overlay; mobile uses
+                                 the compact .vwr-bar-btn set inline in .live-chat-input-row instead. -->
+                            <div id="viewer-icon-strip">
+                                <button class="his-btn" id="vis-sound-btn" onclick="_toggleViewerSound()" title="Sound">🔊</button>
+                                <button class="his-btn" onclick="_openViewerGiftDrawer()" title="Send a Gift">🎁</button>
+                                <button class="his-btn" id="vis-hand-btn" onclick="toggleRaiseHand()" title="Raise Hand">✋</button>
+                                <button class="his-btn" id="vis-stage-btn" onclick="requestCoHost()" title="Join Stage">🎤</button>
+                                <button class="his-btn" id="vis-leave-stage-btn" onclick="leaveCoHost()" title="Leave Stage" style="display:none;">🚪</button>
+                                <button class="his-btn" onclick="leaveLiveStream()" title="Leave" style="background:rgba(220,38,38,.35);border-color:rgba(220,38,38,.6);">✕</button>
                             </div>
 
                             <!-- Pinned comment overlay -->
@@ -12321,13 +12330,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div class="live-chat-input-row">
                                 <input type="text" id="live-chat-input" class="field" placeholder="Say something…" style="margin-top:0;" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" onkeydown="if(event.key==='Enter')sendLiveChat()">
                                 <button class="btn btn-purple btn-sm" onclick="sendLiveChat()">Send</button>
-                                <div id="viewer-icon-strip">
-                                    <button class="his-btn" onclick="_openViewerGiftDrawer()" title="Send a Gift">🎁</button>
-                                    <button class="his-btn" id="vis-sound-btn" onclick="_toggleViewerSound()" title="Sound">🔊</button>
-                                    <button class="his-btn" onclick="_shareStream()" title="Share Stream">📤</button>
-                                    <button class="his-btn" id="vis-stage-btn" onclick="requestCoHost()" title="Join Stage">🎤</button>
-                                    <button class="his-btn" onclick="leaveLiveStream()" title="Leave" style="background:rgba(220,38,38,.35);border-color:rgba(220,38,38,.6);">✕</button>
-                                </div>
+                                <button class="vwr-bar-btn" onclick="_openViewerGiftDrawer()" title="Gift">🎁</button>
+                                <button class="vwr-bar-btn" id="vwr-mic-btn" onclick="requestCoHost()" title="Join Stage">🎤</button>
+                                <button class="vwr-bar-btn" id="vwr-leave-stage-btn" onclick="leaveCoHost()" title="Leave Stage" style="display:none;">🚪</button>
+                                <button class="vwr-bar-btn vwr-bar-leave" onclick="leaveLiveStream()" title="Leave">✕</button>
                             </div>
                         </div>
                     </div>
@@ -13891,9 +13897,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var hasRabby = (window.ethereum && window.ethereum.isRabby)
                     || (window.ethereum && Array.isArray(window.ethereum.providers) && window.ethereum.providers.some(p => p.isRabby));
         if (mmStatus)    mmStatus.textContent    = hasMetaMask ? '✓ Detected' : 'Not installed';
-        if (xovaStatus)  xovaStatus.textContent  = hasXova     ? '✓ Detected' : 'Not installed';
         if (braveStatus) braveStatus.textContent = hasBrave    ? '✓ Detected' : 'Not installed';
         if (rabbyStatus) rabbyStatus.textContent = hasRabby    ? '✓ Detected' : 'Not installed';
+        if (xovaStatus) xovaStatus.textContent = hasXova     ? '✓ Detected' : 'Not installed';
 
         // Show correct section
         var connectSection   = document.getElementById('wdd-connect-section');
@@ -15123,8 +15129,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // ── Expose shared state for live engine IIFE ──────────────────
             window._liveUserAddress  = userAddress  || '';
-            window._liveUserHandle   = userHandle   || 'Anonymous';
-            window._liveUserAvatar   = userAvatar   || '';
+            window._liveUserHandle   = userHandle   || (userAddress ? window._defaultHandleFor(userAddress) : 'Anonymous');
+            window._liveUserAvatar   = userAvatar   || (userAddress ? window._defaultAvatarSvgFor(userAddress) : '');
             window._livePurchasedStars = parseFloat(purchasedStars) || 0;
             window._liveCreatorEarnings = parseFloat(creatorEarnings) || 0;
             window._liveAvailableStars = availStars;
@@ -19780,10 +19786,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <span class="pact-num" id="cc-${postId}" style="color:var(--purple-lt);"></span>
                     </div>
                     <div class="pact signal" data-cost="Costs 1 ★" onclick="promoteToSignal('${postId}')" title="Promote to Daily Signals (1★ — 24h)">
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M1 6c0 0 4-4 11-4s11 4 11 4"/><path d="M1 10c0 0 4-4 11-4s11 4 11 4"/><path d="M5 14c0 0 2.5-2.5 7-2.5s7 2.5 7 2.5"/><circle cx="12" cy="18" r="2" fill="currentColor"/></svg>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>
                     </div>
                     <div class="pact boost" data-cost="Costs 10 ★" onclick="boostPost('${postId}')" title="Boost to top of feed (10★)">
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
                     </div>
                     <div class="pact rain" onclick="toggleRainPicker('${postId}',event)" title="Rain Stars on this post">
                         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><line x1="16" y1="13" x2="16" y2="21"/><line x1="8" y1="13" x2="8" y2="21"/><line x1="12" y1="15" x2="12" y2="23"/><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/></svg>
@@ -25446,7 +25452,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             '</div>' +
             '<div class="mkt-card-body">' +
                 '<div class="mkt-card-title">' + availDot + escHtml(listing.title || '') + '</div>' +
-                '<div class="mkt-card-seller">' + verified + 'by ' + escHtml(listing.sellerName || 'Creator') + '</div>' +
+                '<div class="mkt-card-seller">' + verified + 'by ' + escHtml(listing.sellerName || window._defaultHandleFor(listing.sellerAddr)) + '</div>' +
                 '<div class="mkt-card-price">★ ' + (listing.priceStars || 0).toLocaleString() + '</div>' +
                 (stats ? '<div class="mkt-card-stats">' + stats + '</div>' : '') +
                 '<button class="mkt-buy-btn" onclick="event.stopPropagation();openListingDetail(\'' + id + '\',null)">View & Buy →</button>' +
@@ -25556,7 +25562,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             '</div>' +
             '<div style="font-size:1.1rem;font-weight:800;color:var(--text-primary);margin-bottom:4px;">' + escHtml(listing.title || '') + '</div>' +
             '<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:14px;">' +
-                'by ' + escHtml(listing.sellerName || 'Creator') +
+                'by ' + escHtml(listing.sellerName || window._defaultHandleFor(listing.sellerAddr)) +
                 (listing.soldCount ? ' · ' + listing.soldCount + ' sold' : '') +
                 (listing.avgRating ? ' · ⭐ ' + parseFloat(listing.avgRating).toFixed(1) + ' (' + (listing.reviewCount || 0) + ')' : '') +
             '</div>' +
@@ -30017,8 +30023,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const row = document.getElementById('vr-speakers-row');
         if (!row) return;
         row.innerHTML = '';
-        const hav    = escHtml(r.hostAvatar || '');
-        const hn     = escHtml(r.hostName || 'Host');
+        const hav    = escHtml(r.hostAvatar || (r.hostAddr ? window._defaultAvatarSvgFor(r.hostAddr) : ''));
+        const hn     = escHtml(r.hostName || (r.hostAddr ? window._defaultHandleFor(r.hostAddr) : 'Host'));
         const hAddr  = escHtml(r.hostAddr || '');
         const hUid   = _vrUidFromAddr(r.hostAddr);
         const myAddr = (userAddress || '').toLowerCase();
@@ -30336,7 +30342,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 const snap = await window.fs.getDoc(window.fs.doc(window.db, VR_COL, _vrRoomId)).catch(() => null);
                 if (snap && snap.exists()) {
                     const r = snap.data();
-                    _vrGiftTarget = { addr: r.hostAddr, name: r.hostName || 'Host' };
+                    _vrGiftTarget = { addr: r.hostAddr, name: r.hostName || (r.hostAddr ? window._defaultHandleFor(r.hostAddr) : 'Host') };
                     const lbl = document.getElementById('vr-gift-to-lbl');
                     if (lbl) lbl.textContent = '→ ' + (_vrGiftTarget.name);
                 }
@@ -30664,7 +30670,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 <div class="live-stream-card-body">
                     <div class="live-stream-card-title">${_esc(s.title || 'Untitled Stream')}</div>
                     <div class="live-stream-card-meta">
-                        ${_esc(s.hostName || 'Creator')} · ${_esc(s.category || 'General')} · ★ ${(s.starsEarned || 0).toFixed(1)} earned${s.streamMode === 'presentation' ? ' <span class="stream-mode-badge pres">📽 Presentation</span>' : ''}
+                        ${_esc(s.hostName || window._defaultHandleFor(s.hostAddr))} · ${_esc(s.category || 'General')} · ★ ${(s.starsEarned || 0).toFixed(1)} earned${s.streamMode === 'presentation' ? ' <span class="stream-mode-badge pres">📽 Presentation</span>' : ''}
                     </div>
                 </div>
             </div>
@@ -31177,7 +31183,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         // Read shared state from main IIFE bridge
         const userAddress = window._liveUserAddress || '';
-        const userHandle  = window._liveUserHandle  || 'Creator';
+        const userHandle  = window._liveUserHandle  || window._defaultHandleFor(userAddress);
         const userAvatar  = window._liveUserAvatar  || '';
 
         if (!userAddress) { _isStartingLive = false; showToast('Connect your wallet first to go live.'); return; }
@@ -31963,10 +31969,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             _showViewerFloatingChat();
 
             // Populate stream info
-            setText('live-stream-host-name', streamData.hostName || 'Creator');
+            setText('live-stream-host-name', streamData.hostName || window._defaultHandleFor(streamData.hostAddr));
             setText('live-stream-title-sm',  streamData.title    || '');
             // Store host name globally for slot star badge lookups
-            window._liveStreamHostName = streamData.hostName || 'Creator';
+            window._liveStreamHostName = streamData.hostName || window._defaultHandleFor(streamData.hostAddr);
             setText('live-creator-stars-watch', (streamData.starsEarned || 0).toFixed(1));
             // Populate viewer info bar and anchor it inside the video container as a top overlay.
             // Moved inside the video container to bypass flex/sticky/scroll layout issues —
@@ -31974,8 +31980,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             (function(){
                 var bar=document.getElementById('live-stream-info-bar');
                 if(!bar) return;
-                var av=document.getElementById('lsib-av'); if(av) av.src=streamData.hostAvatar||'';
-                var nm=document.getElementById('lsib-name'); if(nm) nm.textContent=streamData.hostName||'Creator';
+                var av=document.getElementById('lsib-av'); if(av) av.src=streamData.hostAvatar||window._defaultAvatarSvgFor(streamData.hostAddr);
+                var nm=document.getElementById('lsib-name'); if(nm) nm.textContent=streamData.hostName||window._defaultHandleFor(streamData.hostAddr);
                 var vc=document.getElementById('lsib-viewers'); if(vc) vc.textContent='👁 '+(streamData.viewers||0);
                 var fb=document.getElementById('lsib-follow');
                 if(fb){
@@ -32185,10 +32191,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (el && el.parentNode) el.parentNode.removeChild(el);
         });
 
-        // Hide co-host stage
-        const stageWrap = $('cohost-stage-wrap');
-        if (stageWrap) stageWrap.style.display = 'none';
-
         // Reset co-host request button
         const cohostBtn = $('viewer-cohost-btn');
         if (cohostBtn) { cohostBtn.innerHTML = '<span class="studio-btn-icon">🎤</span><span>Join Stage</span>'; cohostBtn.style.opacity = ''; cohostBtn.style.pointerEvents = ''; cohostBtn.classList.remove('active'); }
@@ -32328,7 +32330,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if(typeof window._battleFollow === 'function') await window._battleFollow(window._lsibHostAddr);
         if(fb) fb.style.display = 'none';
         if (_watchingStreamId && window.db && window.fs) {
-            var handle = window._liveUserHandle || 'Someone';
+            var handle = window._liveUserHandle || window._defaultHandleFor(window._liveUserAddress);
             var _fc = window.fs.collection, _ad = window.fs.addDoc, _st = window.fs.serverTimestamp;
             _ad(_fc(window.db, 'live_chat', _watchingStreamId, 'messages'), {
                 text: handle + ' just followed!',
@@ -32354,11 +32356,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // Populate immediately from data already in the info bar
         var nameEl = document.getElementById('lsib-name');
         var avEl   = document.getElementById('lsib-av');
-        setText('cp-name', nameEl ? nameEl.textContent : 'Creator');
+        setText('cp-name', nameEl ? nameEl.textContent : window._defaultHandleFor(_cpHostAddr));
         var addrShort = _cpHostAddr.slice(0,6) + '…' + _cpHostAddr.slice(-4);
         setText('cp-addr', addrShort);
         var cpAv = document.getElementById('cp-avatar');
-        if(cpAv) cpAv.src = avEl ? avEl.src : '';
+        if(cpAv) cpAv.src = avEl ? avEl.src : window._defaultAvatarSvgFor(_cpHostAddr);
         setText('cp-bio', '');
         setText('cp-followers', '—');
         setText('cp-following', '—');
@@ -32515,7 +32517,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             snap.forEach(function(doc, idx) {
                 var d = doc.data();
                 var rank = rows.length + 1;
-                var av = d.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + doc.id);
+                var av = d.avatar || window._defaultAvatarSvgFor(doc.id);
                 var stars = d.totalStars || 0;
                 var starsDisplay = stars >= 1000 ? (stars/1000).toFixed(1).replace(/\.0$/,'') + 'K' : stars.toFixed(1).replace(/\.0$/,'');
                 var rankCls = rank <= 3 ? 'vr-rank ' + rankColors[rank-1] : 'vr-rank';
@@ -32525,7 +32527,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     '<span class="' + rankCls + '">' + rankLabel + '</span>' +
                     '<img class="vr-av" src="' + _esc(av) + '" onerror="this.src=\'https://api.dicebear.com/7.x/identicon/svg?seed=hub\'">' +
                     '<div class="vr-info">' +
-                    '<div class="vr-name">' + _esc(d.name || 'Viewer') + '</div>' +
+                    '<div class="vr-name">' + _esc(d.name || window._defaultHandleFor(doc.id)) + '</div>' +
                     '<div class="vr-stars">' + rank + (rank===1?' st':rank===2?' nd':rank===3?' rd':' th') + ' place</div>' +
                     '</div>' +
                     '<span class="vr-score">★ ' + starsDisplay + '</span>' +
@@ -32578,7 +32580,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         // Read shared state from main IIFE bridge
         const userAddress = window._liveUserAddress || '';
-        const userHandle  = window._liveUserHandle  || 'Someone';
+        const userHandle  = window._liveUserHandle  || window._defaultHandleFor(window._liveUserAddress);
         const available   = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
 
         if (available < HYPE_STAR_COST) { showToast('Not enough Stars to Hype! Tap Buy Stars to top up.'); return; }
@@ -32775,13 +32777,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             wrapper.className = 'sfc-msg' + (m.isGift ? ' sfc-gift' : m.isHost ? ' sfc-host' : '');
 
             // Avatar
-            if (m.avatar) {
-                var av = document.createElement('img');
-                av.className = 'sfc-msg-av';
-                av.src = m.avatar;
-                av.onerror = function() { this.style.display='none'; };
-                wrapper.appendChild(av);
-            }
+            var av = document.createElement('img');
+            av.className = 'sfc-msg-av';
+            av.src = m.avatar || window._defaultAvatarSvgFor(m.senderAddr);
+            av.onerror = function() { this.style.display='none'; };
+            wrapper.appendChild(av);
 
             // Bubble
             var bubble = document.createElement('div');
@@ -32789,7 +32789,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             var uDiv = document.createElement('div');
             uDiv.className = 'sfc-msg-user' + (m.isHost ? ' host-user' : '');
-            uDiv.textContent = m.author || 'Viewer';
+            uDiv.textContent = m.author || window._defaultHandleFor(m.senderAddr);
             bubble.appendChild(uDiv);
 
             var tDiv = document.createElement('div');
@@ -33058,7 +33058,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 // ONLY accept exact UID match (no fallback)
                 if (r.status === 'approved' && uidMatch) {
                     addr = d.id; // docId IS the wallet address
-                    handle = r.handle || handle;
+                    handle = r.handle || window._defaultHandleFor(addr);
                 }
             });
             // Fail safely if no exact match found
@@ -33090,7 +33090,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!sid) { showToast('No active stream.'); return; }
 
         const userAddress = window._liveUserAddress || '';
-        const userHandle  = window._liveUserHandle  || 'Viewer';
+        const userHandle  = window._liveUserHandle  || window._defaultHandleFor(window._liveUserAddress);
         const userAvatar  = window._liveUserAvatar  || '';
         const available   = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
         if (!userAddress) { showToast('Connect your wallet to send gifts.'); return; }
@@ -33179,7 +33179,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!_watchingStreamId) { showToast('Join a stream first to send gifts.'); return; }
 
         const userAddress = window._liveUserAddress || '';
-        const userHandle  = window._liveUserHandle  || 'Viewer';
+        const userHandle  = window._liveUserHandle  || window._defaultHandleFor(window._liveUserAddress);
         const userAvatar  = window._liveUserAvatar  || '';
         const available   = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
 
@@ -33548,12 +33548,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         if (!myHandle || m.author !== myHandle) {
                             if (typeof window._triggerViewerGiftAnim === 'function') {
                                 // Small delay so DOM is ready
-                                setTimeout(function() { window._triggerViewerGiftAnim(m.giftTier, m.author); }, 150);
+                                setTimeout(function() { window._triggerViewerGiftAnim(m.giftTier, m.author || window._defaultHandleFor(m.senderAddr)); }, 150);
                             }
                         }
                     }
                     if (m.isFollow && typeof window._showFollowBanner === 'function') {
-                        window._showFollowBanner(m.author || 'Someone');
+                        window._showFollowBanner(m.author || window._defaultHandleFor(m.senderAddr));
                     }
                 }
             });
@@ -34365,7 +34365,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Notify streamer when a new stage request arrives
             if (pending.length > _prevPendingCount) {
                 const newest = pending[pending.length - 1];
-                showToast('🎤 ' + (newest.handle || 'Someone') + ' wants to join your stage! Tap Co-Host to approve.');
+                showToast('🎤 ' + (newest.handle || window._defaultHandleFor(newest.id)) + ' wants to join your stage! Tap Co-Host to approve.');
                 // Badge the Co-Host button so it's impossible to miss
                 var cohostBtn = document.getElementById('btn-cohost');
                 if (cohostBtn) { cohostBtn.classList.add('active-teal'); cohostBtn.innerHTML = '<span class="studio-btn-icon">🎤</span> Stage Requests 🔴'; }
@@ -34401,7 +34401,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                     var bannerText = document.createElement('span');
                     bannerText.id = 'cohost-banner-text';
-                    bannerText.textContent = '🎤 ' + (newest.handle || 'Someone') + ' wants to join your stage';
+                    bannerText.textContent = '🎤 ' + (newest.handle || window._defaultHandleFor(newest.id)) + ' wants to join your stage';
                     banner.appendChild(bannerText);
 
                     var approveAllBtn = document.createElement('button');
@@ -34504,7 +34504,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.requestCoHost = async function(slotIndex) {
         if (!_watchingStreamId || !window.db || !window.fs) return;
         const userAddress = window._liveUserAddress || '';
-        const userHandle  = window._liveUserHandle  || 'Viewer';
+        const userHandle  = window._liveUserHandle  || window._defaultHandleFor(window._liveUserAddress);
         if (!userAddress) { showToast('Connect wallet first.'); return; }
         if (isCoHost) { await window.leaveCoHost(); return; }
 
@@ -34660,7 +34660,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // ── Write our Agora UID to the assigned slot so all clients see us ──────
             var _myAgoraUid = String(agoraClient.uid);
             var _myAddr     = (window._liveUserAddress || '').toLowerCase();
-            var _myHandle   = window._liveUserHandle || 'Co-host';
+            var _myHandle   = window._liveUserHandle || window._defaultHandleFor(window._liveUserAddress);
             var _slotIdx    = (typeof targetSlot === 'number') ? targetSlot : -1;
             if (_watchingStreamId && window.db && window.fs) {
                 var _slotSnap = (window._currentCoSlots || []).slice();
@@ -34716,13 +34716,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 } catch(e) { console.warn('[CoHost] safety net error:', e); }
             }, 400);
 
-            var stageWrap = $('cohost-stage-wrap');
-            if (stageWrap) stageWrap.style.display = 'block';
-
             var btn = $('viewer-cohost-btn');
             if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🎤</span><span>Leave Stage</span>'; btn.style.opacity = ''; btn.style.pointerEvents = ''; btn.classList.add('active'); }
-            var visBtn = $('vis-stage-btn');
-            if (visBtn) { visBtn.textContent = '🎤'; visBtn.title = 'Leave Stage'; visBtn.style.background = 'rgba(220,38,38,.5)'; visBtn.style.borderColor = 'rgba(220,38,38,.7)'; }
+            // #vis-stage-btn/#vis-leave-stage-btn now swap via body.is-cohost CSS
+            // (matches APTM) — the old textContent/title/background toggle here
+            // never actually changed the icon, so nothing visibly indicated the
+            // state had changed on mobile where hover tooltips don't apply.
             isCoHost = true;
             document.body.classList.add('is-cohost');
             // Explicitly hide End Stream in both normal and cinema panel — CSS !important
@@ -34783,10 +34782,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
             }
 
-            // Hide cohost-stage-wrap and reset button labels
-            var stageWrap = $('cohost-stage-wrap');
-            if (stageWrap) stageWrap.style.display = 'none';
-
             // Reset mic/cam state flags and button labels for next session
             _cohostMicMuted = false;
             _cohostCamOff   = false;
@@ -34805,8 +34800,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 btn.style.pointerEvents = '';
                 btn.classList.remove('active');
             }
-            var visBtn = $('vis-stage-btn');
-            if (visBtn) { visBtn.textContent = '🎤'; visBtn.title = 'Join Stage'; visBtn.style.background = ''; visBtn.style.borderColor = ''; }
             // Clean up cohost request doc so host sees slot freed
             if (_watchingStreamId && window.db && window.fs) {
                 var userAddress = window._liveUserAddress || '';
@@ -34922,7 +34915,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.payStreamEntry = async function() {
         if (!_watchingStreamId || !window.db || !window.fs) return;
         const userAddress = window._liveUserAddress || '';
-        const userHandle  = window._liveUserHandle  || 'Viewer';
+        const userHandle  = window._liveUserHandle  || window._defaultHandleFor(window._liveUserAddress);
         if (!userAddress) { showToast('Connect wallet first.'); return; }
 
         const available = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
@@ -35715,7 +35708,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // ── RAISE HAND (viewer) ───────────────────────────────────────
     window.toggleRaiseHand = async function() {
         if (!_watchingStreamId || !window.db) return;
-        const userHandle = window._liveUserHandle || 'Viewer';
+        const userHandle = window._liveUserHandle || window._defaultHandleFor(window._liveUserAddress);
         const userAddr   = (window._liveUserAddress || '').toLowerCase();
         const btn = $('viewer-raise-hand-btn');
         handRaised = !handRaised;
@@ -35773,7 +35766,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (!card || !list) return;
             if (hands.length > _prevHandCount) {
                 const newest = hands[hands.length - 1];
-                showToast('✋ ' + (newest.handle || 'Someone') + ' raised their hand!');
+                showToast('✋ ' + (newest.handle || window._defaultHandleFor(newest.addr)) + ' raised their hand!');
             }
             _prevHandCount = hands.length;
             if (!hands.length) { card.style.display = 'none'; return; }
@@ -35781,7 +35774,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             list.innerHTML = hands.map(h =>
                 `<div class="hand-queue-item">
                     <span style="font-size:1rem;">✋</span>
-                    <span style="font-size:0.78rem;font-weight:600;color:var(--text-primary);flex:1;">${h.handle || 'Viewer'}</span>
+                    <span style="font-size:0.78rem;font-weight:600;color:var(--text-primary);flex:1;">${h.handle || window._defaultHandleFor(h.addr)}</span>
                     <span style="font-size:0.62rem;color:var(--text-muted);">${new Date(h.ts||0).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
                     <button onclick="dismissRaisedHand('${(h.addr||'').replace(/'/g,"\\'")}') " title="Dismiss" style="background:rgba(255,60,60,0.15);border:1px solid rgba(255,60,60,0.3);border-radius:6px;color:#ff6060;font-size:0.7rem;padding:2px 7px;cursor:pointer;margin-left:6px;flex-shrink:0;">✕</button>
                 </div>`
@@ -35800,7 +35793,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const { collection, addDoc, serverTimestamp } = window.fs;
         addDoc(collection(window.db, REACTIONS_COL, streamId, 'events'), {
             emoji, ts: serverTimestamp(),
-            sender: window._liveUserHandle || 'Viewer',
+            sender: window._liveUserHandle || window._defaultHandleFor(window._liveUserAddress),
             senderAddr: (window._liveUserAddress || Math.random().toString()).toLowerCase()
         }).catch(() => {});
     };
@@ -36248,13 +36241,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 var d = doc.data();
                 var rank = rows.length;
                 var medal = medals[rank] || ('#' + (rank + 1));
-                var av = d.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + doc.id);
+                var av = d.avatar || window._defaultAvatarSvgFor(doc.id);
                 var stars = d.totalStars || 0;
                 var starsDisplay = stars >= 1000 ? (stars/1000).toFixed(1).replace(/\.0$/,'') + 'K' : stars;
                 rows.push('<div class="lb-gifter-row">' +
                     '<span class="lb-rank-medal">' + medal + '</span>' +
                     '<img class="lb-gifter-av" src="' + _esc(av) + '" onerror="this.src=\'https://api.dicebear.com/7.x/identicon/svg?seed=hub\'">' +
-                    '<div class="lb-gifter-info"><div class="lb-gifter-name">' + _esc(d.name || 'Viewer') + '</div>' +
+                    '<div class="lb-gifter-info"><div class="lb-gifter-name">' + _esc(d.name || window._defaultHandleFor(doc.id)) + '</div>' +
                     '<div class="lb-gifter-stars">★ ' + starsDisplay + ' sent</div></div>' +
                     '</div>');
             });
@@ -36276,12 +36269,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 var d = doc.data();
                 if (!d.isGift) return;
                 if (rows.length >= 30) return;
-                var av = d.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + (d.author||'viewer'));
+                var av = d.avatar || window._defaultAvatarSvgFor(d.senderAddr);
                 rows.push('<div class="lb-gift-row">' +
                     '<span class="lb-gift-icon-big">' + (d.giftIcon || '🎁') + '</span>' +
                     '<div class="lb-gift-detail">' +
                     '<div class="lb-gift-tier-name">' + _esc(d.text || '') + '</div>' +
-                    '<div class="lb-gift-sender">from ' + _esc(d.author || 'Viewer') + '</div>' +
+                    '<div class="lb-gift-sender">from ' + _esc(d.author || window._defaultHandleFor(d.senderAddr)) + '</div>' +
                     '</div></div>');
             });
             empty.style.display = rows.length ? 'none' : '';
@@ -36463,7 +36456,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         await _origSendGift(tierKey);
         const tier = { bloom:1, blaze:5, rush:10, crown:25, burst:50, storm:100, dragon:250, comet:500, fortune:1000, phoenix:5000, eclipse:10000, aurora:25000, cosmos:35000, reign:45000, genesis:50000 }[tierKey] || 0;
         if (tier > 0) {
-            const handle = window._liveUserHandle || 'Viewer';
+            const handle = window._liveUserHandle || window._defaultHandleFor(window._liveUserAddress);
             _updateLeaderboard(handle, tier);
         }
     };
@@ -37102,10 +37095,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     var _videoPlaceholder = document.createComment('cinema-video-placeholder');
     var _chatPlaceholder  = document.createComment('cinema-chat-placeholder');
     var _inCinema = false;
+    // Which container enterCinema() actually moved — exitCinema() must restore
+    // this exact one, not guess based on which element merely exists in the
+    // DOM (both #live-broadcaster-video-container and #live-remote-video-container
+    // are always present, so an existence-based guess is wrong half the time).
+    var _activeVideoContainerId = null;
 
     function enterCinema(videoContainerId, chatFeedId) {
         if (_inCinema) return;
         _inCinema = true;
+        _activeVideoContainerId = videoContainerId;
 
         var videoEl = document.getElementById(videoContainerId);
         var feedEl  = document.getElementById(chatFeedId);
@@ -37224,8 +37223,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!_inCinema) return;
         _inCinema = false;
 
-        var videoEl        = document.getElementById('live-broadcaster-video-container') ||
-                             document.getElementById('live-remote-video-container');
+        // Was: document.getElementById('live-broadcaster-video-container') ||
+        //      document.getElementById('live-remote-video-container')
+        // Both containers always exist in the DOM (static markup, just hidden
+        // when unused), so that existence-based guess always resolved to the
+        // broadcaster's container — even when tearing down a VIEWER session,
+        // silently reinserting the wrong element and leaving the real moved
+        // element stranded. Use the ID enterCinema() actually moved instead.
+        var videoEl        = document.getElementById(_activeVideoContainerId);
+        _activeVideoContainerId = null;
         var cinemaVideoCol = document.getElementById('cinema-video-col');
         var cinemaChatCol  = document.getElementById('cinema-chat-col');
         var controlsBar    = document.getElementById('cinema-controls');
@@ -37315,6 +37321,19 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
     }
     var _patchedStart = async function() {
+        // Defensive teardown: startLiveStream() previously assumed a prior
+        // viewer session had already been fully torn down by leaveLiveStream()
+        // — not guaranteed (e.g. reaching Go Live without an explicit Leave).
+        // Leftover viewer state (is-watching class, the swept .live-action-row/
+        // #viewer-gift-panel still sitting in #cinema-shell) would otherwise
+        // persist alongside the new host UI. Tear both the viewer session and
+        // any stuck cinema-mode DOM/flag down first. Ported from APTM.
+        if (document.body.classList.contains('is-watching') && typeof window.leaveLiveStream === 'function') {
+            await window.leaveLiveStream();
+        }
+        if (_inCinema) {
+            exitCinema();
+        }
         await _origStart.apply(this, arguments);
         // Go Live was blocked (e.g. missing title) — isHosting never got set, don't enter cinema mode
         if (!document.body.classList.contains('is-hosting')) return;
@@ -37338,6 +37357,22 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
     }
     var _patchedJoin = async function() {
+        // Defensive teardown, reverse direction of the fix in _patchedStart:
+        // stale host state (is-hosting class, cinema mode's DOM/flag) could
+        // otherwise persist into a new viewer/co-host session if a previous
+        // broadcast wasn't fully torn down. Deliberately does NOT call
+        // endLiveStream() — it shows a blocking confirm() dialog and writes
+        // to Firestore, both wrong for a silent safety net here. Reaching
+        // this function while genuinely still hosting isn't reachable through
+        // the UI anyway (cinema mode hides #live-tabs for hosts too), so a
+        // stuck is-hosting class this far along is a leftover flag, not an
+        // actual live stream — safe to clear client-side only. Ported from APTM.
+        if (document.body.classList.contains('is-hosting')) {
+            document.body.classList.remove('is-hosting');
+        }
+        if (_inCinema) {
+            exitCinema();
+        }
         await _origJoin.apply(this, arguments);
         if (window.innerWidth <= 900) return; // mobile: TikTok layout handles full-screen, no cinema needed
         // Wait for the remote video container to have actual video content before
@@ -37386,6 +37421,45 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         await _origEnd.apply(this, arguments);
         exitCinema();
     };
+
+    // Reactively re-enter/exit cinema mode as the viewport crosses the mobile
+    // breakpoint mid-stream. enterCinema()/exitCinema() previously only ran
+    // once — at go-live or at join time — so resizing afterward (e.g. opening
+    // or closing DevTools) left the layout stuck in whichever mode was chosen
+    // at that moment, with no way back short of reloading the page. Ported
+    // from APTM, but with two breakpoints instead of one: unlike APTM (which
+    // used 768 uniformly for both roles), this file's host path already goes
+    // through _patchedStart at <=768 while the viewer path already goes
+    // through _patchedJoin at <=900 — both internally consistent with their
+    // own CSS already, so this mirrors each role's real threshold instead of
+    // forcing them to match each other.
+    var HOST_CINEMA_BREAKPOINT   = 768;
+    var VIEWER_CINEMA_BREAKPOINT = 900;
+    var _cinemaResizeTimer = null;
+    function _reconcileCinemaLayout() {
+        var isHosting  = document.body.classList.contains('is-hosting');
+        var isWatching = document.body.classList.contains('is-watching');
+        if (!isHosting && !isWatching) return;
+        var breakpoint = isHosting ? HOST_CINEMA_BREAKPOINT : VIEWER_CINEMA_BREAKPOINT;
+        var wantCinema = window.innerWidth > breakpoint;
+        if (wantCinema === _inCinema) return;
+        if (wantCinema) {
+            if (isHosting) {
+                enterCinema('live-broadcaster-video-container', 'live-broadcast-chat-feed');
+            } else {
+                var vc = document.getElementById('live-remote-video-container');
+                if (vc && vc.querySelector('video')) {
+                    enterCinema('live-remote-video-container', 'live-chat-feed');
+                }
+            }
+        } else {
+            exitCinema();
+        }
+    }
+    window.addEventListener('resize', function() {
+        clearTimeout(_cinemaResizeTimer);
+        _cinemaResizeTimer = setTimeout(_reconcileCinemaLayout, 200);
+    });
 
     // Wait for all functions to be defined then patch — runs ONCE.
     // _tryPatchDone prevents re-polling after the countdown IIFE has already
@@ -39142,8 +39216,13 @@ body.is-watching #cmd-orb, body.is-watching #cmd-wheel, body.is-watching #cmd-sc
 #live-broadcaster-video-container #battle-bar,
 #live-remote-video-container #battle-bar{position:absolute!important;top:0!important;bottom:auto!important;left:0!important;right:0!important;width:100%!important;max-width:none!important;transform:none!important;border-radius:0!important;animation:none!important;z-index:20!important;height:58px!important}
 /* Floating rematch pill */
-#battle-rematch-pill{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#dc2626,#7c3aed);color:#fff;border:none;border-radius:20px;padding:9px 24px;font-size:.84rem;font-weight:800;cursor:pointer;z-index:21;letter-spacing:.5px;box-shadow:0 4px 16px rgba(220,38,38,.4);animation:bBarIn .3s ease;white-space:nowrap}
-#battle-rematch-pill:hover{transform:translateX(-50%) scale(1.06)}
+/* Wrapper holding the rematch action + a separate dismiss button, so it can
+   be cleared without starting a new battle. Ported from APTM. */
+#battle-rematch-pill{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px;z-index:21;animation:bBarIn .3s ease}
+#battle-rematch-pill .brp-rematch{background:linear-gradient(135deg,#dc2626,#7c3aed);color:#fff;border:none;border-radius:20px;padding:9px 24px;font-size:.84rem;font-weight:800;cursor:pointer;letter-spacing:.5px;box-shadow:0 4px 16px rgba(220,38,38,.4);white-space:nowrap}
+#battle-rematch-pill .brp-rematch:hover{transform:scale(1.06)}
+#battle-rematch-pill .brp-dismiss{background:rgba(0,0,0,.5);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:50%;width:28px;height:28px;font-size:.72rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0}
+#battle-rematch-pill .brp-dismiss:hover{background:rgba(0,0,0,.75)}
 /* Mobile: clash bar slightly smaller */
 @media(max-width:480px){
 #battle-bar{height:52px!important}
@@ -39245,9 +39324,55 @@ body.has-battle .live-stream-overlay-top{display:none!important}
   /* Co-host on-stage floating control bar — replaced by slot tap popup, always hidden */
   body.is-watching.is-cohost #cohost-stage-bar{display:none!important}
 }
-/* Viewer icon strip */
-#viewer-icon-strip{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:10px;z-index:30}
-@media(max-width:700px){body.is-watching #viewer-icon-strip{display:flex}}
+/* Viewer icon strip — desktop-only on-video overlay, matching APTM's real,
+   confirmed architecture: APTM runs TWO separate implementations, not one
+   shared element. Desktop shows this absolute-positioned overlay on the
+   video (Sound, Gift, Raise Hand, Join/Leave Stage, Leave). Mobile hides
+   this entirely and instead shows the compact .vwr-bar-btn set inline in
+   .live-chat-input-row (Gift, Join/Leave Stage, Leave — see below).
+   Confirmed necessary by live desktop testing: forcing this same element
+   to live inline in the chat row (an earlier attempt, based on mobile-only
+   screenshot evidence) overflowed the narrow desktop chat column, clipping
+   the input field and cutting off buttons. */
+#viewer-icon-strip{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:10px;z-index:30;}
+body.is-watching #viewer-icon-strip{display:flex;}
+@media(max-width:768px){
+    body.is-watching #viewer-icon-strip{display:none!important;}
+}
+/* Raise Hand meaningless once on stage; Join Stage swaps for a real, separate
+   Leave Stage button instead of relying on a same-icon title/color-only change
+   — that JS-based approach (still in _promoteToCoHost()/leaveCoHost()) never
+   actually changed the icon, so nothing visibly indicated the state had
+   changed. Matches APTM's actual pattern exactly. */
+body.is-cohost #vis-hand-btn,
+body.is-cohost #vis-stage-btn { display: none !important; }
+/* #vis-leave-stage-btn's inline style="display:none" was the only thing
+   hiding it by default — defeated by the later, unconditional
+   .his-btn{display:flex!important} rule ("OPTION C — PREMIUM IMMERSIVE LIVE
+   UI" section), which has !important and so beats a non-important inline
+   style regardless of the inline style existing at all. Needs its own
+   ID-anchored !important rule to actually win by default; the is-cohost
+   variant then wins over THAT by adding a class on top of the same ID. */
+#vis-leave-stage-btn { display: none !important; }
+body.is-cohost #vis-leave-stage-btn { display: flex !important; }
+/* Viewer bottom bar buttons — hidden on desktop, shown mobile via the
+   body.is-watching rule inside the ≤768px block below. Mirrors APTM's
+   .vwr-bar-btn exactly (Gift, Join/Leave Stage, Leave only — no Sound/Raise
+   Hand duplicate, those stay desktop-only on the #viewer-icon-strip overlay). */
+.vwr-bar-btn { display: none; }
+/* Full labeled controls the icon strip replaces — hidden unconditionally
+   (not width-gated) and matched against both DOM positions, since
+   enterCinema()/exitCinema() relocate .live-action-row/#viewer-gift-panel
+   between #live-player-wrap and #cinema-controls-btns/#cinema-controls-panels
+   on desktop. ID-anchored selectors, not bare classes — cinema-mode styling
+   rules for these elements can carry tied or higher specificity. */
+body.is-watching #live-player-wrap .live-action-row,
+body.is-watching #cinema-controls-btns .live-action-row,
+body.is-watching #live-player-wrap #viewer-gift-panel,
+body.is-watching #cinema-controls-panels #viewer-gift-panel,
+body.is-watching #viewer-reactions-bar {
+    display: none !important;
+}
 /* Viewer gift drawer */
 #viewer-gift-backdrop{position:fixed;inset:0;z-index:9997;background:rgba(0,0,0,.45);display:none}
 #viewer-gift-backdrop.open{display:block}
@@ -39404,8 +39529,6 @@ body.has-battle .live-stream-overlay-top{display:none!important}
     body.is-watching #live-player-wrap #viewer-star-goal,
     body.is-watching #live-player-wrap #viewer-leaderboard{display:none!important;}
 
-    /* Co-host stage wrap: hidden on mobile — slot div handles self-view */
-    body.is-watching #cohost-stage-wrap{display:none!important;}
     /* Stage pill replaced by slot self-tap popup — always hidden */
     body.is-watching.is-cohost #cohost-stage-bar{display:none!important;}
 
@@ -39461,17 +39584,34 @@ body.has-battle .live-stream-overlay-top{display:none!important}
         font-size:0.72rem!important;font-weight:700!important;
         color:#fff!important;white-space:nowrap!important;flex-shrink:0!important;
     }
-
-    /* Icon strip: horizontal row in the input bar */
-    body.is-watching #viewer-icon-strip{
-        position:static!important;transform:none!important;
-        top:auto!important;right:auto!important;
-        display:flex!important;flex-direction:row!important;
-        align-items:center!important;gap:6px!important;flex-shrink:0!important;
+    /* Viewer bottom bar icon buttons — mobile-only compact set (Gift, Join/
+       Leave Stage, Leave), matching APTM's .vwr-bar-btn exactly. */
+    body.is-watching #live-player-wrap .vwr-bar-btn {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 38px !important;
+        height: 38px !important;
+        border-radius: 50% !important;
+        border: 1.5px solid rgba(255, 255, 255, 0.18) !important;
+        background: rgba(14, 10, 30, 0.8) !important;
+        font-size: 1.15rem !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
+        padding: 0 !important;
+        color: #fff !important;
     }
-    body.is-watching #viewer-icon-strip .his-btn{
-        width:36px!important;height:36px!important;font-size:0.95rem!important;flex-shrink:0!important;
+    body.is-watching #live-player-wrap .vwr-bar-leave {
+        background: rgba(220, 38, 38, 0.35) !important;
+        border-color: rgba(220, 38, 38, 0.6) !important;
     }
+    /* #vwr-mic-btn is #vis-stage-btn's mobile-only twin (same "Join Stage"
+       action, different component) — same is-cohost swap needed. Matches the
+       .vwr-bar-btn rule above on specificity (1 ID + 2 classes + type), so
+       this block must stay below it in source order to win the tie. */
+    body.is-watching.is-cohost #vwr-mic-btn { display: none !important; }
+    body.is-watching:not(.is-cohost) #vwr-leave-stage-btn { display: none !important; }
+    body.is-watching.is-cohost #vwr-leave-stage-btn { display: flex !important; }
 
     /* Floating chat hidden — panel chat handles all messages */
     body.is-watching .stream-floating-chat{display:none!important;}
@@ -39491,13 +39631,6 @@ body.has-battle .live-stream-overlay-top{display:none!important}
 .bcell.bl{background:linear-gradient(90deg,#5b21b6,#a78bfa)!important;box-shadow:0 0 8px rgba(124,92,191,0.75),0 0 18px rgba(124,92,191,0.3)!important;}
 .bcell.br{background:linear-gradient(90deg,#0284c7,#38bdf8)!important;box-shadow:0 0 8px rgba(14,165,233,0.75),0 0 18px rgba(14,165,233,0.3)!important;}
 
-/* ── CO-HOST STAGE JOIN ANIMATION ── */
-@keyframes stage-join-in{
-    0%{opacity:0;transform:scale(0.72) translateY(18px);}
-    55%{opacity:1;transform:scale(1.05) translateY(-3px);}
-    100%{opacity:1;transform:scale(1) translateY(0);}
-}
-#cohost-stage-wrap{animation:stage-join-in 0.5s cubic-bezier(0.34,1.56,0.64,1) both;}
 </style>
 
 <!-- Host more drawer (mobile icon strip) -->
@@ -39698,22 +39831,8 @@ window._closeViewerGiftDrawer = function(){
 };
 
 // ── Detect stream start/stop via polling ──────────────────
-var _tbWasMobile = false;
 setInterval(function(){
     var isHosting = document.body.classList.contains('is-hosting');
-    // JS toolbar hide — beats any CSS specificity or inline-style conflicts
-    if(window.innerWidth <= 700){
-        var _tb = document.querySelector('.studio-toolbar');
-        if(_tb){
-            if(isHosting && _tb.style.display !== 'none'){
-                _tb.style.setProperty('display','none','important');
-                _tbWasMobile = true;
-            } else if(!isHosting && _tbWasMobile){
-                _tb.style.display = '';
-                _tbWasMobile = false;
-            }
-        }
-    }
     var hSid = window._currentStreamId  || null;
     var vSid = window._watchingStreamId || null;
 
@@ -39723,21 +39842,6 @@ setInterval(function(){
         if(isWatching) document.body.classList.add('is-watching');
         else document.body.classList.remove('is-watching');
     }
-    if(window.innerWidth <= 700){
-        var _vAR = document.querySelector('#live-player-wrap .live-action-row');
-        var _vRB = document.getElementById('viewer-reactions-bar');
-        var _vGP = document.getElementById('viewer-gift-panel');
-        if(isWatching){
-            if(_vAR && _vAR.style.display !== 'none') _vAR.style.setProperty('display','none','important');
-            if(_vRB && _vRB.style.display !== 'none') _vRB.style.setProperty('display','none','important');
-            if(_vGP && _vGP.style.display !== 'none') _vGP.style.setProperty('display','none','important');
-        } else {
-            if(_vAR) _vAR.style.display = '';
-            if(_vRB) _vRB.style.display = '';
-            if(_vGP) _vGP.style.display = '';
-        }
-    }
-
     if(isHosting && hSid && hSid !== _lastHostSid){
         _lastHostSid = hSid; _lastViewSid = null;
         _startReqListener(hSid, 'host');
@@ -39839,16 +39943,16 @@ function _renderBar(b){
     if(b.challengeeAddr && _me===(b.challengeeAddr||'').toLowerCase()) flip=true;
     else if(b.challengerAddr && _me===(b.challengerAddr||'').toLowerCase()) flip=false;
     else flip=(_bRole==='viewer-b');
-    var lName   = flip ? (b.challengeeName||'Host B')   : (b.challengerName||'Host A');
+    var lAddr   = flip ? (b.challengeeAddr||'')         : (b.challengerAddr||'');
+    var lName   = flip ? (b.challengeeName||window._defaultHandleFor(lAddr)) : (b.challengerName||window._defaultHandleFor(lAddr));
     var lId     = flip ? 'b-score-b' : 'b-score-a';
     var lScore  = flip ? (b.scoreChallengee||0) : (b.scoreChallenger||0);
-    var lAddr   = flip ? (b.challengeeAddr||'')         : (b.challengerAddr||'');
     var lSid    = flip ? (b.challengeeStreamId||'')     : (b.challengerStreamId||'');
     var lAvatar = flip ? (b.challengeeAvatar||'')       : (b.challengerAvatar||'');
-    var rName   = flip ? (b.challengerName||'Host A')   : (b.challengeeName||'Host B');
+    var rAddr   = flip ? (b.challengerAddr||'')         : (b.challengeeAddr||'');
+    var rName   = flip ? (b.challengerName||window._defaultHandleFor(rAddr)) : (b.challengeeName||window._defaultHandleFor(rAddr));
     var rId     = flip ? 'b-score-a' : 'b-score-b';
     var rScore  = flip ? (b.scoreChallenger||0) : (b.scoreChallengee||0);
-    var rAddr   = flip ? (b.challengerAddr||'')         : (b.challengeeAddr||'');
     var rSid    = flip ? (b.challengerStreamId||'')     : (b.challengeeStreamId||'');
     var rAvatar = flip ? (b.challengerAvatar||'')       : (b.challengeeAvatar||'');
     bar.innerHTML =
@@ -39967,7 +40071,18 @@ function _startBListener(bid){
             _lastBattleData=d; _battleEnded=true;
             _bid=null; _bdata=null;
             var _eBar=document.getElementById('battle-bar'); if(_eBar) _eBar.style.display='none';
-            _showWinner(d);
+            // A natural conclusion (timer reached endsAt) shows the normal
+            // winner/rematch card to both sides. An early end (a participant
+            // ending their own stream mid-battle) shows the OTHER participant
+            // a distinct notice instead — not a rematch prompt, since the
+            // person who ended it is the one who left, not agreeing to a
+            // shared "what's next" moment. Whoever actually called endBattle
+            // still gets the normal card if their own listener somehow fires
+            // (e.g. they were the one who noticed a real disconnect). Ported
+            // from APTM.
+            var _myAddrEB=(window.userAddress||'').toLowerCase();
+            var _endedByOpponent = !!d.endedEarly && !!d.endedByAddr && (d.endedByAddr||'').toLowerCase()!==_myAddrEB;
+            if(_endedByOpponent){ _showOpponentEndedNotice(d); } else { _showWinner(d); }
         }
     });
 }
@@ -40015,19 +40130,42 @@ function _showWinner(b){
     var isTie = b.winnerId==='tie' || !b.winnerId;
     if(isTie){
         card.innerHTML='<span class="b-tie-icon">🤝</span><div class="b-tie-title">It\'s a Tie!</div>'+
-            '<div class="bw-scores"><div class="bw-si"><div class="bw-sn">'+sA+'★</div><div class="bw-sl">'+_esc(b.challengerName||'Host A')+'</div></div>'+
+            '<div class="bw-scores"><div class="bw-si"><div class="bw-sn">'+sA+'★</div><div class="bw-sl">'+_esc(b.challengerName||window._defaultHandleFor(b.challengerAddr))+'</div></div>'+
             '<div style="color:rgba(255,255,255,.3);align-self:center">vs</div>'+
-            '<div class="bw-si"><div class="bw-sn">'+sB+'★</div><div class="bw-sl">'+_esc(b.challengeeName||'Host B')+'</div></div></div>'+
+            '<div class="bw-si"><div class="bw-sn">'+sB+'★</div><div class="bw-sl">'+_esc(b.challengeeName||window._defaultHandleFor(b.challengeeAddr))+'</div></div></div>'+
             _bwBtns;
     } else {
-        var wName = b.winnerName || (b.winnerId==='challenger'?b.challengerName:b.challengeeName) || 'Winner';
-        card.innerHTML='<span class="bw-trophy">🏆</span><div class="bw-lbl">Battle Winner</div><div class="bw-name">'+_esc(wName)+'</div>'+
-            '<div class="bw-scores"><div class="bw-si"><div class="bw-sn">'+sA+'★</div><div class="bw-sl">'+_esc(b.challengerName||'Host A')+'</div></div>'+
+        var wAddr = b.winnerId==='challenger' ? b.challengerAddr : b.challengeeAddr;
+        var wName = b.winnerName || (b.winnerId==='challenger'?b.challengerName:b.challengeeName) || window._defaultHandleFor(wAddr);
+        var _isWinnerMe = !!wAddr && (window.userAddress||'').toLowerCase()===(wAddr||'').toLowerCase();
+        var _headline = _isWinnerMe ? 'You Won! 🎉' : (_esc(wName)+' Won!');
+        card.innerHTML='<span class="bw-trophy">🏆</span><div class="bw-lbl">Battle Winner</div><div class="bw-name">'+_headline+'</div>'+
+            '<div class="bw-scores"><div class="bw-si"><div class="bw-sn">'+sA+'★</div><div class="bw-sl">'+_esc(b.challengerName||window._defaultHandleFor(b.challengerAddr))+'</div></div>'+
             '<div style="color:rgba(255,255,255,.3);align-self:center">vs</div>'+
-            '<div class="bw-si"><div class="bw-sn">'+sB+'★</div><div class="bw-sl">'+_esc(b.challengeeName||'Host B')+'</div></div></div>'+
+            '<div class="bw-si"><div class="bw-sn">'+sB+'★</div><div class="bw-sl">'+_esc(b.challengeeName||window._defaultHandleFor(b.challengeeAddr))+'</div></div></div>'+
             _bwBtns;
         _launchConfetti();
     }
+    ov.style.display='flex';
+    setTimeout(function(){ ov.classList.add('active'); }, 40);
+}
+
+// Shown to the OTHER participant when one side ends the battle early (not a
+// natural timer conclusion) — reuses the same overlay/card shell as
+// _showWinner for visual consistency, but deliberately no confetti, no
+// winner/rematch framing. Its Close reuses the existing _endBattleSession()
+// (full teardown via _deactivate()) rather than _closeBattleWinner()'s "Keep
+// Talking" behavior — there's no one left to keep talking to, since the
+// opponent is the one who just ended their stream. Ported from APTM, adapted
+// to reuse this file's existing full-teardown handler instead of writing a
+// new one.
+function _showOpponentEndedNotice(b){
+    var ov = document.getElementById('battle-winner-overlay');
+    var card = document.getElementById('battle-winner-card');
+    if(!ov||!card) return;
+    _lastBattleData = b;
+    card.innerHTML='<span class="bw-trophy">⚔️</span><div class="bw-lbl">Battle Ended</div><div class="bw-name">Your Opponent Ended the Battle</div>'+
+        '<button class="bw-btn-end" onclick="window._endBattleSession()">← Close</button>';
     ov.style.display='flex';
     setTimeout(function(){ ov.classList.add('active'); }, 40);
 }
@@ -40044,10 +40182,22 @@ function _showRematchPill(){
     if(!document.body.classList.contains('is-hosting')) return;
     var container=document.getElementById('live-broadcaster-video-container');
     if(!container||document.getElementById('battle-rematch-pill')) return;
-    var pill=document.createElement('button');
+    // Wrapper holding the rematch action + a separate dismiss button — was a
+    // single <button> with no way to clear it short of clicking it (which
+    // starts a new battle) or ending the whole stream. Ported from APTM.
+    var pill=document.createElement('div');
     pill.id='battle-rematch-pill';
-    pill.innerHTML='⚔️ Rematch';
-    pill.onclick=function(){ _clearRematchPill(); window._rematchBattle(); };
+    var rematchBtn=document.createElement('button');
+    rematchBtn.className='brp-rematch';
+    rematchBtn.innerHTML='⚔️ Rematch';
+    rematchBtn.onclick=function(){ _clearRematchPill(); window._rematchBattle(); };
+    var dismissBtn=document.createElement('button');
+    dismissBtn.className='brp-dismiss';
+    dismissBtn.title='Dismiss';
+    dismissBtn.innerHTML='✕';
+    dismissBtn.onclick=function(e){ e.stopPropagation(); _clearRematchPill(); };
+    pill.appendChild(rematchBtn);
+    pill.appendChild(dismissBtn);
     container.appendChild(pill);
 }
 function _clearRematchPill(){
@@ -40070,7 +40220,7 @@ window._rematchBattle = async function(){
     var isC=(my===d.challengerAddr);
     var rTarget={streamId:isC?d.challengeeStreamId:d.challengerStreamId,
         addr:isC?d.challengeeAddr:d.challengerAddr,
-        name:isC?(d.challengeeName||'Host B'):(d.challengerName||'Host A'),
+        name:isC?(d.challengeeName||window._defaultHandleFor(d.challengeeAddr)):(d.challengerName||window._defaultHandleFor(d.challengerAddr)),
         avatar:isC?(d.challengeeAvatar||''):(d.challengerAvatar||'')};
     var rDur=d.durationSeconds||180;
     _clearRematchPill(); // remove pill since we're opening the modal
@@ -40148,6 +40298,56 @@ window._battleEndOnStreamLeave = async function(){
 };
 
 // ── Split screen: join opponent's Agora channel ───────────
+// Readiness loop for the opponent PiP: the element is often freshly created
+// (zero dimensions) the instant the video track arrives, or transiently
+// missing from the DOM entirely. Was a single blind 300ms retry only for the
+// zero-dimension case, with a hard no-retry bail-out if the pip wasn't found
+// at all — on a slower device/layout either case could leave the PiP stuck on
+// the "Connecting…" placeholder forever. Both cases now retry on the same
+// schedule; after ~3s the zero-dimension case gives up and plays anyway
+// rather than staying stuck silently, and the missing-pip case gives up with
+// a console.warn (matching this file's existing [Battle] logging style).
+// Ported from APTM.
+function _playBattleOpponentVideo(videoTrack, attempt){
+    attempt = attempt || 0;
+    var pip = document.getElementById('battle-opponent-pip');
+    if (!pip) {
+        if (attempt >= 10) {
+            console.warn('[Battle] opponent pip never appeared in the DOM after 3s, giving up');
+            return;
+        }
+        setTimeout(function(){ _playBattleOpponentVideo(videoTrack, attempt + 1); }, 300);
+        return;
+    }
+    pip.innerHTML = '<div class="bop-label">⚔️ Opponent</div>';
+    var w = pip.offsetWidth, h = pip.offsetHeight;
+    console.log('[Battle] pip dims', w, 'x', h, 'attempt', attempt);
+    if (w > 0 && h > 0) {
+        videoTrack.play(pip, { fit: 'cover' });
+        return;
+    }
+    if (attempt >= 10) {
+        console.warn('[Battle] opponent pip never reported real dimensions after 3s, playing anyway');
+        videoTrack.play(pip, { fit: 'cover' });
+        return;
+    }
+    setTimeout(function(){ _playBattleOpponentVideo(videoTrack, attempt + 1); }, 300);
+}
+
+// Shared by the user-published event AND the post-join remoteUsers fallback
+// below, so both paths subscribe/play identically.
+async function _handleBattleOpponentPublish(remoteUser, mediaType){
+    console.log('[Battle] opponent published mediaType=',mediaType,'uid=',remoteUser.uid);
+    try{
+        await _bViewerClient.subscribe(remoteUser,mediaType);
+        if(mediaType==='video'){
+            _bOpponentTrack=remoteUser.videoTrack;
+            _playBattleOpponentVideo(remoteUser.videoTrack);
+        }
+        if(mediaType==='audio'&&remoteUser.audioTrack) remoteUser.audioTrack.play();
+    }catch(e){ console.error('[Battle] subscribe error:',e); }
+}
+
 async function _joinBattleOpponent(oppSid){
     console.log('[Battle] _joinBattleOpponent oppSid=',oppSid,'AgoraRTC=',!!window.AgoraRTC,'client=',!!_bViewerClient);
     if(_bViewerClient||!window.AgoraRTC) return;
@@ -40164,29 +40364,8 @@ async function _joinBattleOpponent(oppSid){
         // level:1 = low-latency audience (matches existing viewer join)
         await _bViewerClient.setClientRole('audience',{level:1});
 
-        _bViewerClient.on('user-published',async function(remoteUser,mediaType){
-            console.log('[Battle] opponent published mediaType=',mediaType,'uid=',remoteUser.uid);
-            try{
-                await _bViewerClient.subscribe(remoteUser,mediaType);
-                if(mediaType==='video'){
-                    _bOpponentTrack=remoteUser.videoTrack;
-                    var pip=document.getElementById('battle-opponent-pip');
-                    if(pip){
-                        pip.innerHTML='<div class="bop-label">⚔️ Opponent</div>';
-                        var w=pip.offsetWidth, h=pip.offsetHeight;
-                        console.log('[Battle] pip dims',w,'x',h);
-                        if(w>0&&h>0){
-                            remoteUser.videoTrack.play(pip, { fit: 'cover' });
-                        } else {
-                            setTimeout(function(){
-                                var p2=document.getElementById('battle-opponent-pip');
-                                if(p2) remoteUser.videoTrack.play(p2, { fit: 'cover' });
-                            },300);
-                        }
-                    }
-                }
-                if(mediaType==='audio'&&remoteUser.audioTrack) remoteUser.audioTrack.play();
-            }catch(e){ console.error('[Battle] subscribe error:',e); }
+        _bViewerClient.on('user-published',function(remoteUser,mediaType){
+            _handleBattleOpponentPublish(remoteUser,mediaType);
         });
         _bViewerClient.on('user-left',function(){
             var pip=document.getElementById('battle-opponent-pip');
@@ -40205,6 +40384,27 @@ async function _joinBattleOpponent(oppSid){
         await _bViewerClient.join('e26e79a0f99446f991beb0d6c68271a3',oppChannel,tokenData.token,tokenData.uid||null);
         console.log('[Battle] joined opponent channel');
         _showBattleSplit();
+
+        // Fallback: user-published isn't guaranteed to fire for a user who was
+        // already publishing before we joined/attached the listener — same
+        // class of gap the co-host promotion code already works around
+        // elsewhere in this file ("Agora internally unsubscribes... and does
+        // NOT re-fire user-published"). Check remoteUsers directly for
+        // anything the event missed. Guarded on videoTrack/audioTrack already
+        // being set, so this can't double-subscribe against the event handler
+        // whichever one wins the race. Ported from APTM.
+        setTimeout(async function(){
+            if(!_bViewerClient) return;
+            try{
+                var _existing=_bViewerClient.remoteUsers||[];
+                console.log('[Battle] remoteUsers fallback check, count=',_existing.length);
+                for(var _ei=0;_ei<_existing.length;_ei++){
+                    var _eu=_existing[_ei];
+                    if(_eu.hasVideo && !_eu.videoTrack) await _handleBattleOpponentPublish(_eu,'video');
+                    if(_eu.hasAudio && !_eu.audioTrack) await _handleBattleOpponentPublish(_eu,'audio');
+                }
+            }catch(_fallbackErr){ console.warn('[Battle] remoteUsers fallback error:',_fallbackErr); }
+        }, 300);
     }catch(e){
         console.error('[Battle] _joinBattleOpponent failed:',e.message,e);
         if(typeof showToast==='function') showToast('⚠️ Battle stream error: '+e.message);
@@ -40351,8 +40551,8 @@ window.openBattleModal = async function(){
         }
         list.innerHTML=hosts.map(function(h){
             return '<div class="b-host-item" onclick="window._pickBattleTarget(\''+h.id+'\',\''+encodeURIComponent(h.hostAddr||'')+'\',\''+encodeURIComponent(h.hostName||'')+'\',\''+encodeURIComponent(h.hostAvatar||'')+'\',this)">'+
-                '<img class="b-host-av" src="'+(h.hostAvatar||'')+'" onerror="this.style.display=\'none\'">'+
-                '<div class="b-host-info"><div class="b-host-name">'+_esc(h.hostName||h.hostAddr||'Host')+'</div>'+
+                '<img class="b-host-av" src="'+(h.hostAvatar||window._defaultAvatarSvgFor(h.hostAddr))+'" onerror="this.style.display=\'none\'">'+
+                '<div class="b-host-info"><div class="b-host-name">'+_esc(h.hostName||window._defaultHandleFor(h.hostAddr))+'</div>'+
                 '<div class="b-host-meta"><span class="b-live-dot"></span>'+_esc(h.title||'Live')+'&nbsp;·&nbsp;'+(h.viewerCount||0)+' viewers</div></div></div>';
         }).join('');
     }catch(e){
@@ -40408,8 +40608,8 @@ function _showReqBanner(req){
     var nm=document.getElementById('battle-req-name');
     var dt=document.getElementById('battle-req-detail');
     var id=document.getElementById('battle-req-id');
-    if(av) av.src=req.challengerAvatar||'';
-    if(nm) nm.textContent=req.challengerName||req.challengerAddr||'Someone';
+    if(av) av.src=req.challengerAvatar||window._defaultAvatarSvgFor(req.challengerAddr);
+    if(nm) nm.textContent=req.challengerName||window._defaultHandleFor(req.challengerAddr);
     if(dt) dt.textContent='wants a '+(req.duration===60?'1 min':req.duration===180?'3 min':'5 min')+' battle ⚔️';
     if(id) id.value=req.battleId||'';
     var banner=document.getElementById('battle-request-banner');
@@ -40579,13 +40779,11 @@ window._renderSlotGrid = function(container, hostVidId, mode, coSlots, isHost) {
                 var cov = document.createElement('div');
                 cov.className = 'slot-cam-off';
                 cov.style.cssText = 'position:absolute;inset:0;background:#0a0810;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:4;gap:6px;';
-                var avHtml = sd.avatar
-                    ? '<img src="'+sd.avatar+'" style="width:58px;height:58px;border-radius:50%;object-fit:cover;border:2px solid rgba(124,92,191,0.5);" />'
-                    : '<div style="font-size:2.2rem;line-height:1;">👤</div>';
+                var avHtml = '<img src="'+(sd.avatar || window._defaultAvatarSvgFor(sd.address))+'" style="width:58px;height:58px;border-radius:50%;object-fit:cover;border:2px solid rgba(124,92,191,0.5);" />';
                 cov.innerHTML = avHtml + '<div style="font-size:0.55rem;color:rgba(255,255,255,0.38);font-weight:600;letter-spacing:0.5px;">CAM OFF</div>';
                 el.appendChild(cov);
             }
-            if (sd.name) { var nm = document.createElement('div'); nm.className = 'slot-name'; nm.textContent = sd.name; el.appendChild(nm); }
+            var nm = document.createElement('div'); nm.className = 'slot-name'; nm.textContent = sd.name || window._defaultHandleFor(sd.address); el.appendChild(nm);
             // ⭐ TikTok-style gift-received badge (updated by _updateSlotStarBadges)
             var _sgBadge = document.createElement('div');
             _sgBadge.className = 'slot-stars-badge';
@@ -40710,7 +40908,7 @@ window._openSlotAction = function(slotData, slotEl, isHost) {
         return;
     }
 
-    var name = slotData.name || 'Co-host';
+    var name = slotData.name || window._defaultHandleFor(slotData.address);
 
     slotEl.style.outline = '2px solid rgba(124,92,191,0.85)';
     slotEl.style.outlineOffset = '-2px';
