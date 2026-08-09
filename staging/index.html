@@ -410,6 +410,10 @@
         /* Sapphire gem stays as-is â€” it's the icon colour, exactly what Option B keeps */
         .gem-sapphire { background:radial-gradient(circle at 35% 30%,#6baeff,#2255cc 40%,#0d2a7a 80%,#060e30); box-shadow:0 4px 14px rgba(30,80,220,.5),inset 0 -2px 4px rgba(0,0,50,.5); }
         .gem-ruby { background:radial-gradient(circle at 35% 30%,#ff8888,#cc2222 40%,#880808 80%,#300202); box-shadow:0 4px 14px rgba(180,20,20,.6),inset 0 -2px 4px rgba(80,0,0,.5); }
+        /* Referenced by several small status dots (.lbtn-live-pulse, .vault-live-dot,
+           the desktop/mobile Live nav dots) but was never actually defined anywhere
+           in this file — those dots have silently never animated. */
+        @keyframes vaultPulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.35; transform:scale(0.8); } }
         .lbtn-live-pulse { position:absolute; top:-2px; right:-2px; width:9px; height:9px; border-radius:50%; background:#e03e3e; box-shadow:0 0 5px #e03e3e; animation:vaultPulse 1.8s ease infinite; }
         .lbtn.lbtn-active { transform:translateY(-2px); }
         /* Active state â€” same neutral silver glow for all cards */
@@ -744,6 +748,16 @@
         #composer-card:not(.composer-collapsed) .composer-trigger-pill { display: none; }
         /* Show name/sub only when expanded */
         #composer-card:not(.composer-collapsed) .composer-row > div:last-child { display: block !important; }
+        /* â”€â”€ Hub composer collapsed state â€” same compact trigger pattern as the main composer â”€â”€ */
+        #comm-composer-card.comm-composer-collapsed .composer-body { display: none; }
+        #comm-composer-card.comm-composer-collapsed .composer-row  { margin-bottom: 0; cursor: pointer; }
+        #comm-composer-card.comm-composer-collapsed { cursor: pointer; padding: 10px 14px; }
+        #comm-composer-card.comm-composer-collapsed .composer-sub::after {
+            content: '  âœ¦ tap to broadcast again';
+            color: var(--teal);
+        }
+        #comm-composer-card:not(.comm-composer-collapsed) .composer-trigger-pill { display: none; }
+        #comm-composer-card:not(.comm-composer-collapsed) .composer-row > div:last-child { display: block !important; }
         /* â”€â”€ FIX 1: Signals bar only visible on home tab â”€â”€ */
         #signals-bar.signals-hidden,
         #category-bar.signals-hidden { display: none !important; }
@@ -1181,7 +1195,6 @@
                 max-height:none !important;
                 overflow-y:visible !important;
             }
-            #live-player-wrap.pres-mode #cohost-stage-wrap           { grid-column:1; grid-row:1; order:unset !important; }
             #live-player-wrap.pres-mode #live-remote-video-container  { grid-column:1; grid-row:1; order:unset !important; }
             #live-player-wrap.pres-mode .live-action-row              { grid-column:1; grid-row:2; order:unset !important; }
             #live-player-wrap.pres-mode #viewer-poll-card,
@@ -1790,7 +1803,6 @@
             font-size:1rem !important; padding:2px !important;
         }
         #cinema-controls .studio-btn-icon { font-size:0.8rem !important; }
-        #cinema-controls .studio-toolbar { display:contents !important; }
         /* Panels inside controls â€” displayed normally, no more fixed positioning */
         /* Host-only toggleable panels â€” hidden until button clicked */
         #cinema-controls-panels #poll-creator,
@@ -2105,8 +2117,13 @@
             #cinema-controls-panels #viewer-gift-panel .live-gift-head { display:none !important; }
         }
 
-        /* ── MOBILE HOST FULLSCREEN FALLBACK (MetaMask / non-cinema WebView) ── */
-        @media (max-width: 700px) {
+        /* ── MOBILE HOST FULLSCREEN FALLBACK (MetaMask / non-cinema WebView) ──
+           768px to match _patchedStart's JS go-live mobile check (was 700px —
+           the mismatch meant widths 701-768px got neither this fallback layout
+           nor the desktop cinema layout). Viewer's own path (_patchedJoin +
+           its mobile fullscreen CSS) is already consistently 900px, left as-is
+           — only the host side had a real CSS/JS mismatch here. ── */
+        @media (max-width: 768px) {
             body.is-hosting #topnav           { display: none !important; }
             body.is-hosting #mobile-dashboard  { display: none !important; }
             body.is-watching #mobile-dashboard { display: none !important; }
@@ -2387,6 +2404,19 @@
             display:flex; flex-wrap:wrap; gap:8px;
             padding:10px 0; margin-bottom:10px;
         }
+        /* #host-icon-strip already exposes every action (via its "more" drawer)
+           on every screen size, so the full labeled grid is now redundant and
+           would otherwise show alongside it — duplicated — once cinema mode
+           sweeps it into the desktop side panel. Both selectors are needed:
+           .studio-toolbar lives under #live-active-panel normally, but
+           enterCinema()/exitCinema() relocate it into #cinema-controls while
+           hosting on desktop. Ported from APTM — same duplicate-controls bug,
+           confirmed identical here (same unconditional #host-icon-strip show
+           rule, same display:contents escape hatch removed above). */
+        body.is-hosting .studio-toolbar,
+        body.is-hosting #cinema-controls .studio-toolbar {
+            display: none !important;
+        }
         .studio-btn {
             display:flex; align-items:center; gap:6px;
             padding:8px 14px; border-radius:50px;
@@ -2493,13 +2523,6 @@
         }
         #viewer-cohost-btn:hover { background:var(--purple-dim); }
         #viewer-cohost-btn.active { background:var(--purple); color:#fff; }
-        /* Co-host stage area (viewer promoted) */
-        #cohost-stage-wrap {
-            display:none; margin-bottom:10px;
-            background:#0d1117; border-radius:var(--radius-md);
-            overflow:hidden; position:relative; height:180px;
-        }
-        #cohost-local-video { width:100%; height:100%; }
 
         /* â”€â”€ PAID ADMISSION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         .paid-badge {
@@ -5142,6 +5165,19 @@
                 flex-shrink: 0 !important;
             }
 
+            /* Mobile dashboard Live button — small pulsing dot badge, only shown
+               while at least one stream is genuinely active (see the ambient
+               live-status listener). Not decorative — it reflects real state. */
+            #mdash-live { position: relative !important; }
+            .mdash-live-dot {
+                display: none;
+                position: absolute; top: 4px; right: 14px;
+                width: 7px; height: 7px; border-radius: 50%;
+                background: #e03e3e; box-shadow: 0 0 6px #e03e3e;
+                animation: vaultPulse 1.8s ease infinite;
+            }
+            #mdash-live.live-pulse-active .mdash-live-dot { display: block; }
+
             .mdash-btn {
                 flex: 1 !important;
                 padding: 10px 3px !important;
@@ -7655,7 +7691,7 @@ html.dark #topnav-live-btn { border-color:rgba(239,68,68,.45) !important; backgr
     position: relative !important;
     overflow: hidden !important;
     text-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
-    animation: live-btn-pulse 2s ease-in-out infinite !important;
+    animation: none !important;
     transition: transform 0.15s, filter 0.15s !important;
 }
 }
@@ -7665,7 +7701,7 @@ html.dark #topnav-live-btn { border-color:rgba(239,68,68,.45) !important; backgr
     top: 0 !important; left: 0 !important;
     width: 40% !important; height: 100% !important;
     background: rgba(255,255,255,0.22) !important;
-    animation: btn-shimmer 2.5s ease-in-out infinite 1s !important;
+    animation: none !important;
     pointer-events: none !important;
 }
 #topnav-live-btn:hover {
@@ -7675,8 +7711,14 @@ html.dark #topnav-live-btn { border-color:rgba(239,68,68,.45) !important; backgr
 #topnav-live-btn span[style*="border-radius:50%"] {
     background: rgba(255,255,255,0.9) !important;
     box-shadow: 0 0 8px rgba(255,255,255,0.9) !important;
-    animation: vaultPulse 1.4s ease infinite !important;
+    animation: none !important;
+    opacity: 0.4 !important;
 }
+/* Only pulse/shimmer/glow the Live nav button while at least one stream is
+   genuinely active — driven by the ambient live-status listener, not decorative. */
+body.someone-live #topnav-live-btn { animation: live-btn-pulse 2s ease-in-out infinite !important; }
+body.someone-live #topnav-live-btn::after { animation: btn-shimmer 2.5s ease-in-out infinite 1s !important; }
+body.someone-live #topnav-live-btn span[style*="border-radius:50%"] { animation: vaultPulse 1.4s ease infinite !important; opacity: 1 !important; }
 
 
 /* ═══ sh-logo-override ══════════════════════════════════════════════════════ */
@@ -8871,7 +8913,6 @@ html body #profile-hero .hero-action-btn.btn-follow {
     max-height:calc(100vh - 60px)!important;
 }
 /* Video stays first */
-#cohost-stage-wrap           { order:1!important; }
 #live-remote-video-container { order:2!important; }
 
 /* Action row (hype/hand/stage/leave) â†’ right below video */
@@ -10124,7 +10165,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 </div>
             </div>
             <button id="topnav-live-btn" onclick="_lbtnActivate(document.getElementById('nav-live'));switchPage('live',document.getElementById('nav-live'))" title="Go Live" style="align-items:center;gap:7px;padding:8px 16px;border-radius:50px;border:1.5px solid rgba(224,62,62,0.45);background:rgba(224,62,62,0.10);color:#e03e3e;font-family:var(--font-body);font-size:0.78rem;font-weight:700;cursor:pointer;transition:all 0.18s;flex-shrink:0;white-space:nowrap;display:none;">
-                <span style="width:8px;height:8px;border-radius:50%;background:#e03e3e;box-shadow:0 0 6px #e03e3e;animation:vaultPulse 1.8s ease infinite;flex-shrink:0;"></span>
+                <span style="width:8px;height:8px;border-radius:50%;background:#e03e3e;box-shadow:0 0 6px #e03e3e;flex-shrink:0;"></span>
                 Live Stream
             </button>
             <button id="platform-qr-btn" onclick="openPlatformQR()" title="Share SocialHub — scan to visit">📲</button>
@@ -10175,6 +10216,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div class="wdd-option-text">
                                 <span class="wdd-name">XOVA Wallet</span>
                                 <span class="wdd-sub" id="wdd-xova-status">Mobile &amp; Extension</span>
+                            </div>
+                        </button>
+                        <button id="wdd-brave-btn" class="wdd-option" onclick="_connectWithProvider('brave');toggleWalletDropdown()">
+                            <div class="wdd-logo" style="display:flex;align-items:center;justify-content:center;background:#FB542B;font-size:1.05rem;">🦁</div>
+                            <div class="wdd-option-text">
+                                <span class="wdd-name">Brave Wallet</span>
+                                <span class="wdd-sub" id="wdd-brave-status">Browser extension</span>
+                            </div>
+                        </button>
+                        <button id="wdd-rabby-btn" class="wdd-option" onclick="_connectWithProvider('rabby');toggleWalletDropdown()">
+                            <div class="wdd-logo" style="display:flex;align-items:center;justify-content:center;background:#7084FF;font-size:1.05rem;">🐰</div>
+                            <div class="wdd-option-text">
+                                <span class="wdd-name">Rabby Wallet</span>
+                                <span class="wdd-sub" id="wdd-rabby-status">Browser extension</span>
                             </div>
                         </button>
                         <button class="wdd-option" onclick="_connectWithProvider('walletconnect');toggleWalletDropdown()">
@@ -10239,6 +10294,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         </button>
         <button class="mdash-btn"        id="mdash-live"        onclick="showMobileTab('live')">
             <span class="mbtn-icon">🔴</span>Live
+            <span class="mdash-live-dot" id="mdash-live-dot"></span>
         </button>
     </div>
 
@@ -11749,7 +11805,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             </div>
                         </div>
                         <div class="comm-member-chip" id="comm-member-chip">⬡ 0 Members</div>
-                        <button class="comm-follow-btn" id="comm-follow-btn" data-cost="Costs 1 ★" onclick="commFollowHub()"><span class="pact-label">+ Follow Hub</span></button>
+                        <button class="comm-follow-btn" id="comm-follow-btn" data-cost="Costs 1 ★" onclick="commFollowHub()">+ Follow Hub</button>
                         <button class="comm-edit-btn" id="comm-edit-btn" style="display:none;" onclick="toggleCommEditPanel()">✎ Edit Hub</button>
                         <button class="hub-sub-btn" id="comm-sub-btn" style="display:none;" onclick="commSubscribeToHub()">★ Subscribe</button>
                     </div>
@@ -11800,10 +11856,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div style="border-top:1px solid var(--border); padding-top:12px; margin-bottom:12px;">
                             <div style="font-size:0.72rem; font-weight:700; color:var(--text-secondary); margin-bottom:8px; letter-spacing:0.3px;">✏ WHO CAN POST</div>
                             <div style="display:flex; gap:8px; margin-bottom:8px;">
-                                <button type="button" id="comm-edit-pm-open"  class="btn btn-teal" style="flex:1; font-size:0.73rem;" onclick="commEditPostingMode('open')">Everyone</button>
+                                <button type="button" id="comm-edit-pm-followers" class="btn btn-teal" style="flex:1; font-size:0.73rem;" onclick="commEditPostingMode('followers_only')">Followers Only</button>
+                                <button type="button" id="comm-edit-pm-open"  class="btn"          style="flex:1; font-size:0.73rem;" onclick="commEditPostingMode('open')">Everyone</button>
                                 <button type="button" id="comm-edit-pm-owner" class="btn"          style="flex:1; font-size:0.73rem;" onclick="commEditPostingMode('owner_only')">Owner Only</button>
                             </div>
-                            <input type="hidden" id="comm-edit-posting-mode" value="open">
+                            <input type="hidden" id="comm-edit-posting-mode" value="followers_only">
                             <div id="comm-edit-fee-row" style="display:flex; align-items:center; gap:8px; font-size:0.73rem; color:var(--text-secondary);">
                                 Posting fee:
                                 <input type="number" id="comm-edit-posting-fee" class="field" min="0" max="9999" value="0" style="width:70px; padding:4px 8px; font-size:0.73rem;">
@@ -11852,15 +11909,19 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             </div>
                         </div>
                     </div>
-                    <div class="card" id="comm-composer-card" style="border-color:rgba(45,212,191,0.28); margin-bottom:16px;">
-                        <div class="composer-row">
+                    <div class="card comm-composer-collapsed" id="comm-composer-card" style="border-color:rgba(45,212,191,0.28); margin-bottom:16px;">
+                        <div class="composer-row" onclick="_expandCommComposer()" title="Click to compose a signal">
                             <img id="comm-pb-avatar" class="av" src="https://api.dicebear.com/7.x/identicon/svg?seed=Hub">
-                            <div>
+                            <div class="composer-trigger-pill" id="comm-composer-trigger-pill">
+                                <span>What's your signal to this Hub?</span>
+                            </div>
+                            <div style="display:none;">
                                 <div class="composer-name" id="comm-pb-handle">Anonymous_Creator</div>
                                 <div class="composer-sub" id="comm-composer-sub">Broadcasting to the Hub</div>
                             </div>
                         </div>
 
+                        <div class="composer-body">
                         <textarea id="comm-post-text" class="field"
                                   placeholder="What's your signal to this Hub?"
                                   rows="3"
@@ -11912,6 +11973,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <button id="comm-visibility-btn" class="comm-visibility-btn" onclick="togglePostVisibility()">&#128065; Everyone</button>
                         </div>
                         <button class="btn btn-teal" id="comm-broadcast-btn" onclick="handleCommBroadcast()">◈ Broadcast to Hub</button>
+                        </div>
                     </div>
                     <!-- ── End Community Composer ── -->
 
@@ -11971,10 +12033,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div style="margin-bottom:12px;">
                             <div style="font-size:0.68rem; font-weight:700; color:var(--text-secondary); margin-bottom:8px; letter-spacing:0.3px;">✏ WHO CAN POST</div>
                             <div style="display:flex; gap:8px; margin-bottom:8px;">
-                                <button type="button" id="comm-create-pm-open"  class="btn btn-teal" style="flex:1; font-size:0.73rem;" onclick="commCreatePostingMode('open')">Everyone</button>
+                                <button type="button" id="comm-create-pm-followers" class="btn btn-teal" style="flex:1; font-size:0.73rem;" onclick="commCreatePostingMode('followers_only')">Followers Only</button>
+                                <button type="button" id="comm-create-pm-open"  class="btn"          style="flex:1; font-size:0.73rem;" onclick="commCreatePostingMode('open')">Everyone</button>
                                 <button type="button" id="comm-create-pm-owner" class="btn"          style="flex:1; font-size:0.73rem;" onclick="commCreatePostingMode('owner_only')">Owner Only</button>
                             </div>
-                            <input type="hidden" id="comm-create-posting-mode" value="open">
+                            <input type="hidden" id="comm-create-posting-mode" value="followers_only">
                             <div id="comm-create-fee-row" style="display:flex; align-items:center; gap:8px; font-size:0.73rem; color:var(--text-secondary);">
                                 Posting fee:
                                 <input type="number" id="comm-create-posting-fee" class="field" min="0" max="9999" value="0" style="width:70px; padding:4px 8px; font-size:0.73rem;">
@@ -12062,17 +12125,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 <div id="live-watch-panel">
                     <!-- Active stream player -->
                     <div id="live-player-wrap" style="display:none;">
-                        <!-- Co-host stage (shown when viewer is promoted to co-host) -->
-                        <div id="cohost-stage-wrap">
-                            <div id="cohost-local-video"></div>
-                            <div style="position:absolute;top:8px;left:12px;font-size:0.62rem;font-weight:700;color:rgba(255,255,255,0.8);background:rgba(0,0,0,0.5);padding:2px 8px;border-radius:50px;">🎤 YOU — ON STAGE</div>
-                            <button onclick="leaveCoHost()" style="position:absolute;top:8px;right:10px;background:rgba(224,62,62,0.85);border:none;color:#fff;border-radius:50px;padding:3px 10px;font-size:0.65rem;font-weight:700;cursor:pointer;">Leave Stage</button>
-                            <!-- Viewer mic/cam controls while on stage -->
-                            <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:10;">
-                                <button onclick="toggleCoHostMic()" style="background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;padding:3px 10px;font-size:0.65rem;font-weight:600;cursor:pointer;">🔇 Mute</button>
-                                <button onclick="toggleCoHostCam()" style="background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;padding:3px 10px;font-size:0.65rem;font-weight:600;cursor:pointer;">📷 Cam Off</button>
-                            </div>
-                        </div>
                         <!-- Stream info bar — outside the video box -->
                         <div id="live-stream-info-bar">
                             <div class="lsib-left" onclick="window._openCreatorProfile()" style="cursor:pointer;">
@@ -12270,6 +12322,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                     <button class="his-btn" onclick="_openViewerGiftDrawer()" title="Send a Gift">🎁</button>
                                     <button class="his-btn" id="vis-sound-btn" onclick="_toggleViewerSound()" title="Sound">🔊</button>
                                     <button class="his-btn" onclick="_shareStream()" title="Share Stream">📤</button>
+                                    <button class="his-btn" id="vis-hand-btn" onclick="toggleRaiseHand()" title="Raise Hand">✋</button>
                                     <button class="his-btn" id="vis-stage-btn" onclick="requestCoHost()" title="Join Stage">🎤</button>
                                     <button class="his-btn" onclick="leaveLiveStream()" title="Leave" style="background:rgba(220,38,38,.35);border-color:rgba(220,38,38,.6);">✕</button>
                                 </div>
@@ -13817,8 +13870,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (isOpen) { dd.style.display = 'none'; return; }
 
         // Update detected status labels before opening
-        var mmStatus   = document.getElementById('wdd-mm-status');
-        var xovaStatus = document.getElementById('wdd-xova-status');
+        var mmStatus    = document.getElementById('wdd-mm-status');
+        var xovaStatus  = document.getElementById('wdd-xova-status');
+        var braveStatus = document.getElementById('wdd-brave-status');
+        var rabbyStatus = document.getElementById('wdd-rabby-status');
         var hasMetaMask = (window.ethereum && window.ethereum.isMetaMask)
                        || (window.ethereum && Array.isArray(window.ethereum.providers) && window.ethereum.providers.some(p => p.isMetaMask));
         // XOVA is connectable only if we can actually reach its provider —
@@ -13826,7 +13881,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var hasXova = (window.xova && (window.xova.ethereum || typeof window.xova.request === 'function'))
                    || (window.ethereum && window.ethereum.isXova)
                    || (window.ethereum && Array.isArray(window.ethereum.providers) && window.ethereum.providers.some(p => p.isXova));
-        if (mmStatus)   mmStatus.textContent   = hasMetaMask ? '✓ Detected' : 'Not installed';
+        // Brave Wallet and Rabby both inject a MetaMask-compatible window.ethereum but
+        // set their own flag (isBraveWallet / isRabby) instead of isMetaMask — checking
+        // only isMetaMask previously made both show "Not installed" even when present.
+        var hasBrave = (window.ethereum && window.ethereum.isBraveWallet)
+                    || (window.ethereum && Array.isArray(window.ethereum.providers) && window.ethereum.providers.some(p => p.isBraveWallet));
+        var hasRabby = (window.ethereum && window.ethereum.isRabby)
+                    || (window.ethereum && Array.isArray(window.ethereum.providers) && window.ethereum.providers.some(p => p.isRabby));
+        if (mmStatus)    mmStatus.textContent    = hasMetaMask ? '✓ Detected' : 'Not installed';
+        if (braveStatus) braveStatus.textContent = hasBrave    ? '✓ Detected' : 'Not installed';
+        if (rabbyStatus) rabbyStatus.textContent = hasRabby    ? '✓ Detected' : 'Not installed';
         if (xovaStatus) xovaStatus.textContent = hasXova     ? '✓ Detected' : 'Not installed';
 
         // Show correct section
@@ -13910,8 +13974,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             address.toLowerCase() === CONFIG.OWNER_ADDRESS.toLowerCase() ? '' : 'none';
         // Start notification listener for this wallet
         try { if (typeof subscribeToNotifs === 'function') subscribeToNotifs(address); } catch(_) {}
-        // Show buy section on lottery card now that wallet is connected
-        if (_lotteryRound) _renderLotteryCard(_lotteryRound);
+        // Show buy section on lottery card now that wallet is connected.
+        // Uses the narrow wallet-gate refresh, NOT a full _renderLotteryCard repaint — see
+        // _refreshLotteryWalletGate for why (stale-pot regression bug, fixed 2026-08-08).
+        if (typeof _refreshLotteryWalletGate === 'function') _refreshLotteryWalletGate();
         // Firebase Analytics: Track wallet connection
         try {
             if (window.analytics && window.logEvent) {
@@ -14100,9 +14166,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window._silentAutoConnect = _silentAutoConnect;
 
     // ── WalletConnect session restoration on page load ────────────────────────
-    // iOS Safari aggressively unloads background tabs. When user returns from
-    // MetaMask app, Safari may fully reload the page. This function restores
-    // WalletConnect sessions using the SDK's built-in restoration from localStorage.
+    // Mobile browsers (Chrome and Safari, both Android and iOS) routinely reload
+    // the page — pull-to-refresh, or navigating away and back. This function
+    // restores WalletConnect sessions using the SDK's built-in restoration from
+    // localStorage, so the user doesn't have to reconnect from scratch every time.
     async function _restoreWalletConnectSession() {
         try {
             // Check if WalletConnect session exists in localStorage
@@ -14113,6 +14180,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             } catch(_) {}
 
             if (!hasWCSession) return;
+
+            // Clear stale PAIRING keys before attempting restore — same fix already
+            // applied to manual reconnect (see _connectWithProvider). A dead/expired
+            // pairing left in localStorage can confuse init() into a bad state that
+            // then blocks the *next* manual "Connect Wallet" click too, forcing the
+            // user to disconnect from MetaMask's own side to unstick it.
+            try {
+                Object.keys(localStorage).forEach(function(k) {
+                    if (k.startsWith('wc@2:core:pairing') ||
+                        k.startsWith('wc@2:universal_provider') ||
+                        k === 'walletconnect') {
+                        localStorage.removeItem(k);
+                    }
+                });
+            } catch(_) {}
 
             // Load WalletConnect SDK
             if (!window._WCEthProviderClass) {
@@ -14140,7 +14222,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // Check if session was actually restored (not just initialized)
             if (!wcProv.connected || !wcProv.accounts || wcProv.accounts.length === 0) {
-                // No active session, clean exit
+                // No active session — clean up any leftover session/pairing keys so a
+                // subsequent manual "Connect Wallet" click starts fully fresh instead
+                // of colliding with orphaned WalletConnect state.
+                try {
+                    Object.keys(localStorage).forEach(function(k) {
+                        if (k.startsWith('wc@2:') || k.startsWith('walletconnect')) localStorage.removeItem(k);
+                    });
+                } catch(_) {}
                 return;
             }
 
@@ -14272,6 +14361,34 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
                 const _xovaOnBSC = await _ensureBSCChain(eth);
                 if (!_xovaOnBSC) return;
+            } else if (walletType === 'brave') {
+                // Brave Wallet injects a MetaMask-compatible window.ethereum and sets
+                // isBraveWallet — never isMetaMask. Never fall back to generic
+                // window.ethereum here: if the user has MetaMask installed too and
+                // Brave isn't actually the active/injecting wallet, silently grabbing
+                // whatever's on window.ethereum would connect the wrong wallet under
+                // the "Brave Wallet" banner.
+                if (window.ethereum && window.ethereum.isBraveWallet) {
+                    eth = window.ethereum;
+                } else if (window.ethereum && Array.isArray(window.ethereum.providers)) {
+                    eth = window.ethereum.providers.find(p => p.isBraveWallet) || null;
+                }
+                if (!eth) {
+                    showToast('Brave Wallet not found. Open this page in the Brave browser with Brave Wallet enabled.');
+                    return;
+                }
+            } else if (walletType === 'rabby') {
+                // Same reasoning as Brave above — Rabby sets isRabby, never isMetaMask,
+                // and we never want to silently fall back to a different injected wallet.
+                if (window.ethereum && window.ethereum.isRabby) {
+                    eth = window.ethereum;
+                } else if (window.ethereum && Array.isArray(window.ethereum.providers)) {
+                    eth = window.ethereum.providers.find(p => p.isRabby) || null;
+                }
+                if (!eth) {
+                    showToast('Rabby Wallet not found. Please install the Rabby extension.');
+                    return;
+                }
             } else if (walletType === 'walletconnect') {
                 // ── WalletConnect v2 ─────────────────────────────────────
                 // Lazily import WalletConnect EthereumProvider from CDN
@@ -14625,7 +14742,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (typeof loadGlobalFeed === 'function') loadGlobalFeed();
             if (typeof loadFollowingSet === 'function') loadFollowingSet();
 
-            showToast('Connected via ' + (walletType === 'xova' ? 'XOVA Wallet' : walletType === 'walletconnect' ? 'WalletConnect' : 'MetaMask') + ' ✓');
+            showToast('Connected via ' + ({ xova: 'XOVA Wallet', walletconnect: 'WalletConnect', brave: 'Brave Wallet', rabby: 'Rabby Wallet' }[walletType] || 'MetaMask') + ' ✓');
             window._wcConnecting = false;
         } catch(err) {
             window._wcConnecting = false;
@@ -15004,8 +15121,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // ── Expose shared state for live engine IIFE ──────────────────
             window._liveUserAddress  = userAddress  || '';
-            window._liveUserHandle   = userHandle   || 'Anonymous';
-            window._liveUserAvatar   = userAvatar   || '';
+            window._liveUserHandle   = userHandle   || (userAddress ? window._defaultHandleFor(userAddress) : 'Anonymous');
+            window._liveUserAvatar   = userAvatar   || (userAddress ? window._defaultAvatarSvgFor(userAddress) : '');
             window._livePurchasedStars = parseFloat(purchasedStars) || 0;
             window._liveCreatorEarnings = parseFloat(creatorEarnings) || 0;
             window._liveAvailableStars = availStars;
@@ -15187,6 +15304,31 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             return '<a href="' + safeUrl + '" target="_blank" rel="noopener noreferrer" class="hero-link-pill">🔗 ' + safeLabel + '</a>';
         }).join('');
     }
+
+    async function _uploadAvatarFile(inputEl) {
+        const file = inputEl && inputEl.files && inputEl.files[0];
+        if (!file) return;
+        if (!window.storage || !window.fsStorage) {
+            return alert('Firebase Storage not ready. Try again in a moment.');
+        }
+        const statusEl = document.getElementById('avatar-upload-status');
+        if (statusEl) { statusEl.style.display = ''; statusEl.textContent = 'Uploading…'; }
+        try {
+            const path      = 'media/' + Date.now() + '_avatar_' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const storRef   = window.fsStorage.ref(window.storage, path);
+            const task      = window.fsStorage.uploadBytesResumable(storRef, file);
+            await new Promise((resolve, reject) => task.on('state_changed', null, reject, resolve));
+            const downloadURL = await window.fsStorage.getDownloadURL(task.snapshot.ref);
+            const ai = document.getElementById('avatar-input');
+            if (ai) ai.value = downloadURL;
+            if (statusEl) { statusEl.textContent = '✓ Uploaded'; setTimeout(() => { statusEl.style.display = 'none'; }, 2500); }
+        } catch(e) {
+            if (statusEl) statusEl.textContent = 'Upload failed — paste a URL instead';
+            console.warn('Avatar upload:', e);
+        }
+        inputEl.value = '';
+    }
+    window._uploadAvatarFile = _uploadAvatarFile;
 
     async function _uploadBannerFile(inputEl) {
         const file = inputEl && inputEl.files && inputEl.files[0];
@@ -17333,7 +17475,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             }
 
             logTransaction('settle', safeWithdrawAptm, {
-                from: addr, to: 'wallet',
+                from: addr, to: addr,
                 description: 'Settled ' + totalStarsDisplay.toFixed(2) + '★ → ' + safeWithdrawAptm.toFixed(4) + ' USDT to wallet'
             });
             showToast('Settled! ' + safeWithdrawAptm.toFixed(4) + ' USDT → wallet ✓');
@@ -19038,7 +19180,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 } catch(e) { console.warn('[Withdraw] Firebase zero failed:', e); }
             }
 
-            logTransaction('settle', totalUsdt, { from: addr, to: 'wallet', description: 'Withdrew $' + fmtUsdt(totalUsdt) + ' USDT to wallet' });
+            logTransaction('settle', totalUsdt, { from: addr, to: addr, description: 'Withdrew $' + fmtUsdt(totalUsdt) + ' USDT to wallet' });
             updateUI(); updateDrawerUI();
             if (_clickedBtn) { _clickedBtn.disabled = false; _clickedBtn.textContent = 'Withdraw USDT →'; }
             _wdStatus('✅ Withdrawal complete! $' + fmtUsdt(totalUsdt) + ' USDT sent to your wallet. Block: ' + (receipt ? receipt.blockNumber : '?'));
@@ -19875,10 +20017,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             setTimeout(() => { subscribeAnchorCount(); }, 800);
 
             // Silent auto-reconnect if wallet was connected before refresh
-            await _silentAutoConnect();
+            try { await _silentAutoConnect(); } catch(e) { console.warn('[AutoConnect] threw:', e.message); }
 
-            // WalletConnect session restoration (iOS Safari fix)
-            await _restoreWalletConnectSession();
+            // WalletConnect session restoration — mobile browsers reload the page
+            // often (pull-to-refresh, tab switch away and back); this restores an
+            // existing session so the user isn't dropped back to "Connect Wallet".
+            try { await _restoreWalletConnectSession(); } catch(e) { console.warn('[WC Restore] threw:', e.message); }
 
             // Ensure existing connected users get a referral code (backfill)
             if (window.userAddress && typeof _ensureReferralCode === 'function') {
@@ -19966,7 +20110,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (typeof showMobileTab === 'function') showMobileTab('home');
 
         // 2. Try to resolve a display name for this wallet.
-        let wallName = targetAddr.slice(0, 6) + '…' + targetAddr.slice(-4);
+        // Seeds with the same deterministic generated name the People list already
+        // shows (window._defaultHandleFor) instead of the raw truncated address —
+        // otherwise this pre-resolved value gets passed into showProfileHero() as
+        // an already-truthy parameter, silently bypassing the fallback added there.
+        let wallName = window._defaultHandleFor(targetAddr);
         if (userAddress && targetAddr.toLowerCase() === userAddress.toLowerCase()) {
             wallName = userAddress ? (userHandle || wallName) : wallName;
         } else if (window.db) {
@@ -21395,6 +21543,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window._expandComposer  = _expandComposer;
     window._collapseComposer = _collapseComposer;
 
+    // ── Hub composer collapse / expand — same pattern as the main composer ──
+    function _expandCommComposer() {
+        const card = document.getElementById('comm-composer-card');
+        if (!card) return;
+        card.classList.remove('comm-composer-collapsed');
+        card.removeAttribute('title');
+        const ta = document.getElementById('comm-post-text');
+        if (ta) setTimeout(function() { ta.focus(); }, 60);
+    }
+
+    function _collapseCommComposer() {
+        const card = document.getElementById('comm-composer-card');
+        if (!card) return;
+        card.classList.add('comm-composer-collapsed');
+        card.setAttribute('title', 'Click to write a new broadcast');
+    }
+    window._expandCommComposer  = _expandCommComposer;
+    window._collapseCommComposer = _collapseCommComposer;
+
     // ── Founder / free-poster whitelist ──────────────────────────────────────
     // Wallets in this list create Feed posts, Daily Signals, Flicks and Hub
     // posts with NO star cost — so the founder can seed the platform with zero
@@ -22115,12 +22282,22 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const isAdmin     = userAddress && userAddress.toLowerCase() === CONFIG.OWNER_ADDRESS.toLowerCase();
         const isHubOwnerD = _activeCommunity && userAddress &&
                             userAddress.toLowerCase() === (_activeCommunity.ownerId || '').toLowerCase();
-        const postingMode = (_activeCommunity && _activeCommunity.postingMode) || 'open';
+        const postingMode = (_activeCommunity && _activeCommunity.postingMode) || 'followers_only';
         const postingFee  = parseFloat((_activeCommunity && _activeCommunity.postingFee) || 0);
+        const commIdD     = ((_activeCommunity && _activeCommunity.id) || '').toLowerCase();
+        const isFollowingD = commIdD && _followingSet.has(commIdD);
 
         // Owner-only hub: block non-owners from seeing the composer
         if (postingMode === 'owner_only' && !isHubOwnerD && !isAdmin) {
             el.textContent = '🔒 Owner posts only — guests cannot broadcast here';
+            el.style.color = 'rgba(239,68,68,0.8)';
+            if (btn) btn.disabled = true;
+            return;
+        }
+
+        // Followers-only hub: block non-followers from posting
+        if (postingMode === 'followers_only' && !isHubOwnerD && !isAdmin && !isFollowingD) {
+            el.textContent = '🔒 Follow this Hub to post here';
             el.style.color = 'rgba(239,68,68,0.8)';
             if (btn) btn.disabled = true;
             return;
@@ -22148,25 +22325,29 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
     function commCreatePostingMode(mode) {
         var pmInput = document.getElementById('comm-create-posting-mode');
+        var btnFol  = document.getElementById('comm-create-pm-followers');
         var btnOpen = document.getElementById('comm-create-pm-open');
         var btnOwn  = document.getElementById('comm-create-pm-owner');
         var feeRow  = document.getElementById('comm-create-fee-row');
         if (pmInput) pmInput.value = mode;
+        if (btnFol)  btnFol.className  = 'btn' + (mode === 'followers_only' ? ' btn-teal' : '');
         if (btnOpen) btnOpen.className = 'btn' + (mode === 'open'       ? ' btn-teal' : '');
         if (btnOwn)  btnOwn.className  = 'btn' + (mode === 'owner_only' ? ' btn-teal' : '');
-        if (feeRow)  feeRow.style.display = mode === 'open' ? 'flex' : 'none';
+        if (feeRow)  feeRow.style.display = (mode === 'open' || mode === 'followers_only') ? 'flex' : 'none';
     }
     window.commCreatePostingMode = commCreatePostingMode;
 
     function commEditPostingMode(mode) {
         var pmInput = document.getElementById('comm-edit-posting-mode');
+        var btnFol  = document.getElementById('comm-edit-pm-followers');
         var btnOpen = document.getElementById('comm-edit-pm-open');
         var btnOwn  = document.getElementById('comm-edit-pm-owner');
         var feeRow  = document.getElementById('comm-edit-fee-row');
         if (pmInput) pmInput.value = mode;
+        if (btnFol)  btnFol.className  = 'btn' + (mode === 'followers_only' ? ' btn-teal' : '');
         if (btnOpen) btnOpen.className = 'btn' + (mode === 'open'       ? ' btn-teal' : '');
         if (btnOwn)  btnOwn.className  = 'btn' + (mode === 'owner_only' ? ' btn-teal' : '');
-        if (feeRow)  feeRow.style.display = mode === 'open' ? 'flex' : 'none';
+        if (feeRow)  feeRow.style.display = (mode === 'open' || mode === 'followers_only') ? 'flex' : 'none';
     }
     window.commEditPostingMode = commEditPostingMode;
 
@@ -22192,8 +22373,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const _isHubOwner = userAddress.toLowerCase() === (_activeCommunity.ownerId || '').toLowerCase();
 
         // ── Posting mode guard ────────────────────────────────────────────────
-        if ((_activeCommunity.postingMode || 'open') === 'owner_only' && !_isHubOwner && !isAdmin) {
+        const _postingMode = _activeCommunity.postingMode || 'followers_only';
+        if (_postingMode === 'owner_only' && !_isHubOwner && !isAdmin) {
             return showToast('Only the Hub owner can post here.');
+        }
+        if (_postingMode === 'followers_only' && !_isHubOwner && !isAdmin &&
+            !_followingSet.has((_activeCommunity.id || '').toLowerCase())) {
+            return showToast('Follow this Hub before posting.');
         }
         let mediaUrl   = '';
         let feeAmount  = CONFIG.FEES.TEXT;
@@ -22315,6 +22501,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (progWrap) progWrap.style.display = 'none';
             if (fPrev)    fPrev.style.display    = 'none';
             commSelectedFile = null;
+            if (typeof _collapseCommComposer === 'function') _collapseCommComposer();
 
             // Reset preview
             ['comm-preview-img','comm-preview-iframe','comm-preview-video'].forEach(function(id) {
@@ -23243,7 +23430,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (_cm) { _cm.value = Array.isArray(_activeCommunity.coMods) ? _activeCommunity.coMods.join('\n') : ''; _cm.style.height = 'auto'; _cm.style.height = Math.min(_cm.scrollHeight, 200) + 'px'; }
             var _pf = document.getElementById('comm-edit-posting-fee');
             if (_pf) _pf.value = String(_activeCommunity.postingFee || 0);
-            commEditPostingMode(_activeCommunity.postingMode || 'open');
+            commEditPostingMode(_activeCommunity.postingMode || 'followers_only');
         }
     }
     window.toggleCommEditPanel = toggleCommEditPanel;
@@ -23357,7 +23544,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (subPrice > 500) subPrice = 500;
         var coModsRaw   = (document.getElementById('comm-edit-comods')?.value || '');
         var coMods      = coModsRaw.split(/[\n,]+/).map(function(a) { return a.trim().toLowerCase(); }).filter(function(a) { return a.startsWith('0x') && a.length >= 10; });
-        var postingMode = (document.getElementById('comm-edit-posting-mode')?.value || 'open');
+        var postingMode = (document.getElementById('comm-edit-posting-mode')?.value || 'followers_only');
         var postingFee  = parseFloat(document.getElementById('comm-edit-posting-fee')?.value || '0');
         if (isNaN(postingFee) || postingFee < 0) postingFee = 0;
         if (!name) return showToast('Hub name cannot be empty.');
@@ -23931,7 +24118,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         var imgPos      = (document.getElementById('comm-create-img-position')?.value || '50% 50%').trim();
         var alias       = (document.getElementById('comm-alias-input')?.value || '').trim().toLowerCase();
         var website     = _normalizeWebsiteUrl(document.getElementById('comm-website-input')?.value || '');
-        var postingMode = (document.getElementById('comm-create-posting-mode')?.value || 'open');
+        var postingMode = (document.getElementById('comm-create-posting-mode')?.value || 'followers_only');
         var postingFee  = parseFloat(document.getElementById('comm-create-posting-fee')?.value || '0');
         if (isNaN(postingFee) || postingFee < 0) postingFee = 0;
 
@@ -25257,7 +25444,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             '</div>' +
             '<div class="mkt-card-body">' +
                 '<div class="mkt-card-title">' + availDot + escHtml(listing.title || '') + '</div>' +
-                '<div class="mkt-card-seller">' + verified + 'by ' + escHtml(listing.sellerName || 'Creator') + '</div>' +
+                '<div class="mkt-card-seller">' + verified + 'by ' + escHtml(listing.sellerName || window._defaultHandleFor(listing.sellerAddr)) + '</div>' +
                 '<div class="mkt-card-price">★ ' + (listing.priceStars || 0).toLocaleString() + '</div>' +
                 (stats ? '<div class="mkt-card-stats">' + stats + '</div>' : '') +
                 '<button class="mkt-buy-btn" onclick="event.stopPropagation();openListingDetail(\'' + id + '\',null)">View & Buy →</button>' +
@@ -25367,7 +25554,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             '</div>' +
             '<div style="font-size:1.1rem;font-weight:800;color:var(--text-primary);margin-bottom:4px;">' + escHtml(listing.title || '') + '</div>' +
             '<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:14px;">' +
-                'by ' + escHtml(listing.sellerName || 'Creator') +
+                'by ' + escHtml(listing.sellerName || window._defaultHandleFor(listing.sellerAddr)) +
                 (listing.soldCount ? ' · ' + listing.soldCount + ' sold' : '') +
                 (listing.avgRating ? ' · ⭐ ' + parseFloat(listing.avgRating).toFixed(1) + ' (' + (listing.reviewCount || 0) + ')' : '') +
             '</div>' +
@@ -28954,8 +29141,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 <!-- ════════════════════════════════════════════════════════════════
      EDIT IDENTITY MODAL — triggered from hero ✎ Edit Identity button
 ════════════════════════════════════════════════════════════════ -->
-<div id="edit-identity-overlay" style="display:none; position:fixed; inset:0; z-index:6000; background:rgba(0,0,0,0.55); align-items:center; justify-content:center; overflow-y:auto; padding:16px 0;" onclick="if(event.target===this) closeHeroEditForm()">
-    <div style="background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius-lg); padding:24px; width:min(440px,92vw); box-shadow:0 8px 32px rgba(0,0,0,0.25); position:relative;">
+<div id="edit-identity-overlay" style="display:none; position:fixed; inset:0; z-index:6000; background:rgba(0,0,0,0.55); align-items:center; justify-content:center; padding:20px;" onclick="if(event.target===this) closeHeroEditForm()">
+    <div style="background:var(--bg-panel); border:1px solid var(--border); border-radius:var(--radius-lg); padding:24px; width:min(440px,92vw); max-height:90vh; overflow-y:auto; -webkit-overflow-scrolling:touch; box-shadow:0 8px 32px rgba(0,0,0,0.25); position:relative;">
         <button onclick="closeHeroEditForm()" style="position:absolute;top:14px;right:14px;background:none;border:none;font-size:1rem;color:var(--text-muted);cursor:pointer;" title="Close">✕</button>
         <div style="font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:4px;">✎ Edit Identity</div>
         <div id="edit-identity-gate-hint" style="display:none; font-size:0.72rem; color:var(--teal); background:var(--teal-dim); border:1px solid rgba(45,212,191,0.3); border-radius:8px; padding:8px 10px; margin-bottom:10px;">⚡ Set your display name &amp; avatar to start broadcasting.</div>
@@ -28966,8 +29153,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         <input type="text" id="handle-input" class="field" placeholder="@Username" style="margin-top:0;margin-bottom:14px;">
 
         <!-- Avatar -->
-        <div style="font-size:0.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Profile Picture</div>
-        <input type="text" id="avatar-input" class="field" placeholder="Paste image URL" style="margin-top:0;margin-bottom:14px;">
+        <div style="font-size:0.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Profile Picture</div>
+        <div style="font-size:0.67rem;color:var(--text-muted);opacity:0.7;margin-bottom:8px;">Recommended size: 400 × 400 px — square images work best.</div>
+        <input type="file" id="avatar-file-input" accept="image/jpeg,image/jpg,image/png" style="display:none;" onchange="_uploadAvatarFile(this)">
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <button type="button" onclick="document.getElementById('avatar-file-input').click()" style="flex:1;padding:8px 0;border-radius:8px;border:1px dashed rgba(124,92,191,0.4);background:rgba(124,92,191,0.06);color:var(--purple-lt);font-size:0.75rem;font-weight:600;cursor:pointer;">📷 Upload Photo</button>
+        </div>
+        <input type="text" id="avatar-input" class="field" placeholder="Or paste an image URL" style="margin-top:0;margin-bottom:0;">
+        <div id="avatar-upload-status" style="font-size:0.7rem;color:var(--teal);margin-top:6px;margin-bottom:14px;display:none;"></div>
 
         <!-- Banner -->
         <div style="font-size:0.68rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Cover Banner <span style="font-weight:400;text-transform:none;color:var(--text-muted);letter-spacing:0;">(optional — shows behind your avatar)</span></div>
@@ -29623,7 +29816,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             <div class="vr-card-meta">
                 <span>👥 ${r.listenerCount||0}</span>
                 <span>⭐ ${parseFloat(r.starsEarned||0).toFixed(1)}★</span>
-                ${r.handRaisePrice ? `<span>🙋 ${r.handRaisePrice}★ to speak</span>` : ''}
+                <span>🙋 ${r.handRaisePrice > 0 ? r.handRaisePrice + '★ to speak' : 'Free to speak'}</span>
             </div>
             <button class="vr-join-btn" onclick="event.stopPropagation();window.joinVoiceRoom('${roomId}',false)">${lbl}</button>
         </div>`;
@@ -29634,7 +29827,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const titleEl = document.getElementById('vr-new-title');
         const priceEl = document.getElementById('vr-new-price');
         const title   = (titleEl ? titleEl.value.trim() : '') || 'Voice Room';
-        const price   = Math.max(1, parseInt(priceEl ? priceEl.value : '5') || 5);
+        // `|| 5` would silently turn a host-chosen 0 (free stage access) into 5 —
+        // 0 is falsy in JS but is a legitimate configured price here.
+        const _priceParsed = parseInt(priceEl ? priceEl.value : '5', 10);
+        const price   = Number.isFinite(_priceParsed) ? Math.max(0, _priceParsed) : 5;
         closeStartRoomModal();
         showToast('Opening room…');
         try {
@@ -29819,8 +30015,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const row = document.getElementById('vr-speakers-row');
         if (!row) return;
         row.innerHTML = '';
-        const hav    = escHtml(r.hostAvatar || '');
-        const hn     = escHtml(r.hostName || 'Host');
+        const hav    = escHtml(r.hostAvatar || (r.hostAddr ? window._defaultAvatarSvgFor(r.hostAddr) : ''));
+        const hn     = escHtml(r.hostName || (r.hostAddr ? window._defaultHandleFor(r.hostAddr) : 'Host'));
         const hAddr  = escHtml(r.hostAddr || '');
         const hUid   = _vrUidFromAddr(r.hostAddr);
         const myAddr = (userAddress || '').toLowerCase();
@@ -29961,16 +30157,26 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         } catch(e) { console.error('[sendVRChat]', e); }
     };
 
+    // In-flight guards below are UX/defense-in-depth only — the authoritative fix
+    // against duplicate charges is the atomic status-check-and-flip transaction in
+    // the admitSpeakerVR Cloud Function. These just stop a double-click/double-tap
+    // from firing a second HTTP request in the first place.
+    var _vrRaiseHandInFlight = false;
+    var _vrAdmitInFlight     = {}; // keyed by roomId+'_'+reqAddr
+
     window.vrRaiseHand = async function() {
         if (!userAddress || !_vrRoomId || _vrIsHost || _vrIsSpeaker) return;
         if (!window.db || !window.fs) return;
-        const roomSnap = await window.fs.getDoc(window.fs.doc(window.db, VR_COL, _vrRoomId)).catch(() => null);
-        if (!roomSnap || !roomSnap.exists()) return;
-        const _rdVR  = roomSnap.data();
-        if (_rdVR.stageRequestsOpen === false) { showToast('Host has closed stage requests'); return; }
-        const price = parseFloat(_rdVR.handRaisePrice || 1);
-        if (parseFloat(window._liveAvailableStars || 0) < price) { showToast('Not enough Stars'); return; }
+        if (_vrRaiseHandInFlight) return;
+        _vrRaiseHandInFlight = true;
         try {
+            const roomSnap = await window.fs.getDoc(window.fs.doc(window.db, VR_COL, _vrRoomId)).catch(() => null);
+            if (!roomSnap || !roomSnap.exists()) return;
+            const _rdVR  = roomSnap.data();
+            if (_rdVR.stageRequestsOpen === false) { showToast('Host has closed stage requests'); return; }
+            // `|| 1` would silently charge 1★ to raise a hand in a room the host set to free (0).
+            const price = Number.isFinite(_rdVR.handRaisePrice) ? _rdVR.handRaisePrice : 1;
+            if (parseFloat(window._liveAvailableStars || 0) < price) { showToast('Not enough Stars'); return; }
             const res  = await fetch(VR_CF_BASE + 'raiseHandVR', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ roomId: _vrRoomId, userAddr: userAddress, userName: userHandle||'Anonymous', userAvatar: userAvatar||'', bidStars: price })
@@ -29981,10 +30187,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const btn = document.getElementById('vr-ctrl-hand');
             if (btn) { btn.style.opacity = '0.45'; btn.style.pointerEvents = 'none'; }
         } catch(e) { showToast('Could not raise hand'); }
+        finally { _vrRaiseHandInFlight = false; }
     };
 
     window.vrAdmitSpeaker = async function(roomId, reqAddr) {
         if (!_vrIsHost || !userAddress) return;
+        const _key = roomId + '_' + reqAddr;
+        if (_vrAdmitInFlight[_key]) return;
+        _vrAdmitInFlight[_key] = true;
         showToast('Admitting…');
         try {
             const res  = await fetch(VR_CF_BASE + 'admitSpeakerVR', {
@@ -29995,6 +30205,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (data.error) { showToast(data.error); return; }
             showToast('Speaker admitted');
         } catch(e) { showToast('Could not admit speaker'); }
+        finally { delete _vrAdmitInFlight[_key]; }
     };
 
     window.vrToggleRequests = async function() {
@@ -30123,7 +30334,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 const snap = await window.fs.getDoc(window.fs.doc(window.db, VR_COL, _vrRoomId)).catch(() => null);
                 if (snap && snap.exists()) {
                     const r = snap.data();
-                    _vrGiftTarget = { addr: r.hostAddr, name: r.hostName || 'Host' };
+                    _vrGiftTarget = { addr: r.hostAddr, name: r.hostName || (r.hostAddr ? window._defaultHandleFor(r.hostAddr) : 'Host') };
                     const lbl = document.getElementById('vr-gift-to-lbl');
                     if (lbl) lbl.textContent = '→ ' + (_vrGiftTarget.name);
                 }
@@ -30299,6 +30510,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         setTimeout(_forceRemoteVideoFit, 900);
     }
 
+    // Extra safety net: a MutationObserver that re-applies the correct fit whenever
+    // Agora swaps the <video> element, catching any play() call site that doesn't
+    // pass an explicit fit option (there were a few — e.g. leaveCoHost's re-subscribe
+    // loop — that only ever specified fit at the handful of call sites above).
+    (function() {
+        var _rvForFit = document.getElementById('live-remote-video');
+        if (_rvForFit && !window._remoteVideoFitObs) {
+            window._remoteVideoFitObs = new MutationObserver(function() { _forceRemoteVideoFit(); });
+            window._remoteVideoFitObs.observe(_rvForFit, { childList: true, subtree: true });
+        }
+    })();
+
     // ── Helpers ───────────────────────────────────────────────────
     function $(id) { return document.getElementById(id); }
     function setText(id, val) { const el = $(id); if (el) el.textContent = val; }
@@ -30439,7 +30662,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 <div class="live-stream-card-body">
                     <div class="live-stream-card-title">${_esc(s.title || 'Untitled Stream')}</div>
                     <div class="live-stream-card-meta">
-                        ${_esc(s.hostName || 'Creator')} · ${_esc(s.category || 'General')} · ★ ${(s.starsEarned || 0).toFixed(1)} earned${s.streamMode === 'presentation' ? ' <span class="stream-mode-badge pres">📽 Presentation</span>' : ''}
+                        ${_esc(s.hostName || window._defaultHandleFor(s.hostAddr))} · ${_esc(s.category || 'General')} · ★ ${(s.starsEarned || 0).toFixed(1)} earned${s.streamMode === 'presentation' ? ' <span class="stream-mode-badge pres">📽 Presentation</span>' : ''}
                     </div>
                 </div>
             </div>
@@ -30464,6 +30687,25 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         } catch(e) {
             console.error('[Live] track.play() error:', e);
         }
+    }
+
+    // ── Camera/mic error messaging + retry-race mitigation ─────────────────
+    // NotReadableError ("Could not start video source") happens when the OS/browser
+    // hasn't yet released the camera hardware from a just-closed track — track.stop()/
+    // close() don't synchronously free the hardware, so immediately re-acquiring right
+    // after (as every Enable/Try Again path used to) can race that release.
+    // Used by enableCameraAndMic and enableCohostMedia.
+    function _mediaErrorMessage(e) {
+        if (e.name === 'NotAllowedError' || e.message?.includes('Permission')) {
+            return 'Camera/microphone permission denied. Please allow access in your browser settings and try again.';
+        }
+        if (e.name === 'NotReadableError') {
+            return 'Camera is in use by another app or browser tab. Close it, then tap Try Again.';
+        }
+        return e.message || 'Failed to access camera/microphone. Please try again.';
+    }
+    function _delayForCameraRelease() {
+        return new Promise(function(resolve) { setTimeout(resolve, 350); });
     }
 
     // ── Track lifecycle cleanup (prevents leaks) ──────────────────────
@@ -30679,6 +30921,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // Close any existing tracks first
             await closeExistingTracks();
+            await _delayForCameraRelease();
 
             // Acquire tracks (synchronously in this click handler)
             [localAudioTrack, localVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
@@ -30734,9 +30977,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             console.error('[Live] Permission error:', e);
             await closeExistingTracks();
 
-            const msg = e.name === 'NotAllowedError' || e.message?.includes('Permission')
-                ? 'Camera/microphone permission denied. Please allow access in your browser settings and try again.'
-                : e.message || 'Failed to access camera/microphone. Please try again.';
+            const msg = _mediaErrorMessage(e);
 
             showPermissionError(msg, 'enableCameraAndMic');
 
@@ -30758,7 +30999,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.openCohostPermissionModal = function(targetSlot) {
         _cohostTargetSlot = targetSlot;
         const modal = document.getElementById('cohost-permission-modal');
-        if (modal) modal.style.display = 'flex';
+        if (modal) {
+            // #app-shell has position:relative + z-index:5, which traps this modal's
+            // z-index:10002 inside its own stacking context. #cinema-shell (desktop
+            // cinema mode) lives outside #app-shell at z-index:50, so it painted over
+            // this modal even though 10002 > 50. Re-parent to <body> so the modal's
+            // z-index is compared against #cinema-shell directly.
+            if (modal.parentElement !== document.body) document.body.appendChild(modal);
+            modal.style.display = 'flex';
+        }
     };
 
     window.closeCohostPermissionModal = function() {
@@ -30814,6 +31063,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 try { cohostAudioTrack.close(); } catch(_) {}
                 cohostAudioTrack = null;
             }
+            await _delayForCameraRelease();
 
             // Acquire tracks (synchronously in this click handler)
             [cohostAudioTrack, cohostVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
@@ -30874,9 +31124,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (cohostVideoTrack) { try { cohostVideoTrack.close(); } catch(_) {} cohostVideoTrack = null; }
             if (cohostAudioTrack) { try { cohostAudioTrack.close(); } catch(_) {} cohostAudioTrack = null; }
 
-            const msg = e.name === 'NotAllowedError' || e.message?.includes('Permission')
-                ? 'Camera/microphone permission denied. Please allow access in your browser settings and try again.'
-                : e.message || 'Failed to access camera/microphone. Please try again.';
+            const msg = _mediaErrorMessage(e);
 
             if (errorDiv) {
                 errorDiv.innerHTML = `
@@ -30927,7 +31175,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         // Read shared state from main IIFE bridge
         const userAddress = window._liveUserAddress || '';
-        const userHandle  = window._liveUserHandle  || 'Creator';
+        const userHandle  = window._liveUserHandle  || window._defaultHandleFor(userAddress);
         const userAvatar  = window._liveUserAvatar  || '';
 
         if (!userAddress) { _isStartingLive = false; showToast('Connect your wallet first to go live.'); return; }
@@ -31690,7 +31938,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 function _applyRvHeight(){var _lm=window._viewerLayoutMode;if(_rv&&(!_lm||_lm==='solo'||_lm==='presentation')){_rv.style.setProperty('position','absolute','important');_rv.style.setProperty('top','0','important');_rv.style.setProperty('right','0','important');_rv.style.setProperty('bottom','0','important');_rv.style.setProperty('left','0','important');_rv.style.setProperty('width','100%','important');_rv.style.setProperty('height','100%','important');}}
                 _applyRvHeight();
                 if(_rv && !window._rvStyleObs){var _rvBusy=false;window._rvStyleObs=new MutationObserver(function(){if(_rvBusy||!document.body.classList.contains('is-watching'))return;_rvBusy=true;_applyRvHeight();setTimeout(function(){_rvBusy=false;},50);});window._rvStyleObs.observe(_rv,{attributes:true,attributeFilter:['style']});}
-                function _fixAgoraChildren(){if(!_rv||!document.body.classList.contains('is-watching'))return;_rv.querySelectorAll('*').forEach(function(el){el.style.setProperty('position','absolute','important');el.style.setProperty('top','0','important');el.style.setProperty('left','0','important');el.style.setProperty('width','100%','important');el.style.setProperty('height','100%','important');el.style.setProperty('transform','none','important');if(el.tagName!=='VIDEO'){el.style.setProperty('overflow','visible','important');}if(el.tagName==='VIDEO'){el.style.setProperty('object-fit','cover','important');}});}
+                function _fixAgoraChildren(){if(!_rv||!document.body.classList.contains('is-watching'))return;_rv.querySelectorAll('*').forEach(function(el){el.style.setProperty('position','absolute','important');el.style.setProperty('top','0','important');el.style.setProperty('left','0','important');el.style.setProperty('width','100%','important');el.style.setProperty('height','100%','important');el.style.setProperty('transform','none','important');if(el.tagName!=='VIDEO'){el.style.setProperty('overflow','visible','important');}if(el.tagName==='VIDEO'){el.style.setProperty('object-fit',window._hostVideoFit?window._hostVideoFit():'cover','important');}});}
                 setTimeout(_fixAgoraChildren,800);
                 if(_rv && !window._rvChildObs){window._rvChildObs=new MutationObserver(function(){_fixAgoraChildren();});window._rvChildObs.observe(_rv,{childList:true,subtree:true});}
                 var _cc=document.getElementById('viewer-panel-chat-card');
@@ -31713,10 +31961,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             _showViewerFloatingChat();
 
             // Populate stream info
-            setText('live-stream-host-name', streamData.hostName || 'Creator');
+            setText('live-stream-host-name', streamData.hostName || window._defaultHandleFor(streamData.hostAddr));
             setText('live-stream-title-sm',  streamData.title    || '');
             // Store host name globally for slot star badge lookups
-            window._liveStreamHostName = streamData.hostName || 'Creator';
+            window._liveStreamHostName = streamData.hostName || window._defaultHandleFor(streamData.hostAddr);
             setText('live-creator-stars-watch', (streamData.starsEarned || 0).toFixed(1));
             // Populate viewer info bar and anchor it inside the video container as a top overlay.
             // Moved inside the video container to bypass flex/sticky/scroll layout issues —
@@ -31724,8 +31972,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             (function(){
                 var bar=document.getElementById('live-stream-info-bar');
                 if(!bar) return;
-                var av=document.getElementById('lsib-av'); if(av) av.src=streamData.hostAvatar||'';
-                var nm=document.getElementById('lsib-name'); if(nm) nm.textContent=streamData.hostName||'Creator';
+                var av=document.getElementById('lsib-av'); if(av) av.src=streamData.hostAvatar||window._defaultAvatarSvgFor(streamData.hostAddr);
+                var nm=document.getElementById('lsib-name'); if(nm) nm.textContent=streamData.hostName||window._defaultHandleFor(streamData.hostAddr);
                 var vc=document.getElementById('lsib-viewers'); if(vc) vc.textContent='👁 '+(streamData.viewers||0);
                 var fb=document.getElementById('lsib-follow');
                 if(fb){
@@ -31935,10 +32183,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (el && el.parentNode) el.parentNode.removeChild(el);
         });
 
-        // Hide co-host stage
-        const stageWrap = $('cohost-stage-wrap');
-        if (stageWrap) stageWrap.style.display = 'none';
-
         // Reset co-host request button
         const cohostBtn = $('viewer-cohost-btn');
         if (cohostBtn) { cohostBtn.innerHTML = '<span class="studio-btn-icon">🎤</span><span>Join Stage</span>'; cohostBtn.style.opacity = ''; cohostBtn.style.pointerEvents = ''; cohostBtn.classList.remove('active'); }
@@ -32078,7 +32322,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if(typeof window._battleFollow === 'function') await window._battleFollow(window._lsibHostAddr);
         if(fb) fb.style.display = 'none';
         if (_watchingStreamId && window.db && window.fs) {
-            var handle = window._liveUserHandle || 'Someone';
+            var handle = window._liveUserHandle || window._defaultHandleFor(window._liveUserAddress);
             var _fc = window.fs.collection, _ad = window.fs.addDoc, _st = window.fs.serverTimestamp;
             _ad(_fc(window.db, 'live_chat', _watchingStreamId, 'messages'), {
                 text: handle + ' just followed!',
@@ -32104,11 +32348,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         // Populate immediately from data already in the info bar
         var nameEl = document.getElementById('lsib-name');
         var avEl   = document.getElementById('lsib-av');
-        setText('cp-name', nameEl ? nameEl.textContent : 'Creator');
+        setText('cp-name', nameEl ? nameEl.textContent : window._defaultHandleFor(_cpHostAddr));
         var addrShort = _cpHostAddr.slice(0,6) + '…' + _cpHostAddr.slice(-4);
         setText('cp-addr', addrShort);
         var cpAv = document.getElementById('cp-avatar');
-        if(cpAv) cpAv.src = avEl ? avEl.src : '';
+        if(cpAv) cpAv.src = avEl ? avEl.src : window._defaultAvatarSvgFor(_cpHostAddr);
         setText('cp-bio', '');
         setText('cp-followers', '—');
         setText('cp-following', '—');
@@ -32265,7 +32509,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             snap.forEach(function(doc, idx) {
                 var d = doc.data();
                 var rank = rows.length + 1;
-                var av = d.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + doc.id);
+                var av = d.avatar || window._defaultAvatarSvgFor(doc.id);
                 var stars = d.totalStars || 0;
                 var starsDisplay = stars >= 1000 ? (stars/1000).toFixed(1).replace(/\.0$/,'') + 'K' : stars.toFixed(1).replace(/\.0$/,'');
                 var rankCls = rank <= 3 ? 'vr-rank ' + rankColors[rank-1] : 'vr-rank';
@@ -32275,7 +32519,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     '<span class="' + rankCls + '">' + rankLabel + '</span>' +
                     '<img class="vr-av" src="' + _esc(av) + '" onerror="this.src=\'https://api.dicebear.com/7.x/identicon/svg?seed=hub\'">' +
                     '<div class="vr-info">' +
-                    '<div class="vr-name">' + _esc(d.name || 'Viewer') + '</div>' +
+                    '<div class="vr-name">' + _esc(d.name || window._defaultHandleFor(doc.id)) + '</div>' +
                     '<div class="vr-stars">' + rank + (rank===1?' st':rank===2?' nd':rank===3?' rd':' th') + ' place</div>' +
                     '</div>' +
                     '<span class="vr-score">★ ' + starsDisplay + '</span>' +
@@ -32328,7 +32572,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         // Read shared state from main IIFE bridge
         const userAddress = window._liveUserAddress || '';
-        const userHandle  = window._liveUserHandle  || 'Someone';
+        const userHandle  = window._liveUserHandle  || window._defaultHandleFor(window._liveUserAddress);
         const available   = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
 
         if (available < HYPE_STAR_COST) { showToast('Not enough Stars to Hype! Tap Buy Stars to top up.'); return; }
@@ -32525,13 +32769,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             wrapper.className = 'sfc-msg' + (m.isGift ? ' sfc-gift' : m.isHost ? ' sfc-host' : '');
 
             // Avatar
-            if (m.avatar) {
-                var av = document.createElement('img');
-                av.className = 'sfc-msg-av';
-                av.src = m.avatar;
-                av.onerror = function() { this.style.display='none'; };
-                wrapper.appendChild(av);
-            }
+            var av = document.createElement('img');
+            av.className = 'sfc-msg-av';
+            av.src = m.avatar || window._defaultAvatarSvgFor(m.senderAddr);
+            av.onerror = function() { this.style.display='none'; };
+            wrapper.appendChild(av);
 
             // Bubble
             var bubble = document.createElement('div');
@@ -32539,7 +32781,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             var uDiv = document.createElement('div');
             uDiv.className = 'sfc-msg-user' + (m.isHost ? ' host-user' : '');
-            uDiv.textContent = m.author || 'Viewer';
+            uDiv.textContent = m.author || window._defaultHandleFor(m.senderAddr);
             bubble.appendChild(uDiv);
 
             var tDiv = document.createElement('div');
@@ -32808,7 +33050,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 // ONLY accept exact UID match (no fallback)
                 if (r.status === 'approved' && uidMatch) {
                     addr = d.id; // docId IS the wallet address
-                    handle = r.handle || handle;
+                    handle = r.handle || window._defaultHandleFor(addr);
                 }
             });
             // Fail safely if no exact match found
@@ -32840,7 +33082,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!sid) { showToast('No active stream.'); return; }
 
         const userAddress = window._liveUserAddress || '';
-        const userHandle  = window._liveUserHandle  || 'Viewer';
+        const userHandle  = window._liveUserHandle  || window._defaultHandleFor(window._liveUserAddress);
         const userAvatar  = window._liveUserAvatar  || '';
         const available   = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
         if (!userAddress) { showToast('Connect your wallet to send gifts.'); return; }
@@ -32929,7 +33171,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!_watchingStreamId) { showToast('Join a stream first to send gifts.'); return; }
 
         const userAddress = window._liveUserAddress || '';
-        const userHandle  = window._liveUserHandle  || 'Viewer';
+        const userHandle  = window._liveUserHandle  || window._defaultHandleFor(window._liveUserAddress);
         const userAvatar  = window._liveUserAvatar  || '';
         const available   = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
 
@@ -33298,12 +33540,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         if (!myHandle || m.author !== myHandle) {
                             if (typeof window._triggerViewerGiftAnim === 'function') {
                                 // Small delay so DOM is ready
-                                setTimeout(function() { window._triggerViewerGiftAnim(m.giftTier, m.author); }, 150);
+                                setTimeout(function() { window._triggerViewerGiftAnim(m.giftTier, m.author || window._defaultHandleFor(m.senderAddr)); }, 150);
                             }
                         }
                     }
                     if (m.isFollow && typeof window._showFollowBanner === 'function') {
-                        window._showFollowBanner(m.author || 'Someone');
+                        window._showFollowBanner(m.author || window._defaultHandleFor(m.senderAddr));
                     }
                 }
             });
@@ -34115,7 +34357,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Notify streamer when a new stage request arrives
             if (pending.length > _prevPendingCount) {
                 const newest = pending[pending.length - 1];
-                showToast('🎤 ' + (newest.handle || 'Someone') + ' wants to join your stage! Tap Co-Host to approve.');
+                showToast('🎤 ' + (newest.handle || window._defaultHandleFor(newest.id)) + ' wants to join your stage! Tap Co-Host to approve.');
                 // Badge the Co-Host button so it's impossible to miss
                 var cohostBtn = document.getElementById('btn-cohost');
                 if (cohostBtn) { cohostBtn.classList.add('active-teal'); cohostBtn.innerHTML = '<span class="studio-btn-icon">🎤</span> Stage Requests 🔴'; }
@@ -34151,7 +34393,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
                     var bannerText = document.createElement('span');
                     bannerText.id = 'cohost-banner-text';
-                    bannerText.textContent = '🎤 ' + (newest.handle || 'Someone') + ' wants to join your stage';
+                    bannerText.textContent = '🎤 ' + (newest.handle || window._defaultHandleFor(newest.id)) + ' wants to join your stage';
                     banner.appendChild(bannerText);
 
                     var approveAllBtn = document.createElement('button');
@@ -34254,7 +34496,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.requestCoHost = async function(slotIndex) {
         if (!_watchingStreamId || !window.db || !window.fs) return;
         const userAddress = window._liveUserAddress || '';
-        const userHandle  = window._liveUserHandle  || 'Viewer';
+        const userHandle  = window._liveUserHandle  || window._defaultHandleFor(window._liveUserAddress);
         if (!userAddress) { showToast('Connect wallet first.'); return; }
         if (isCoHost) { await window.leaveCoHost(); return; }
 
@@ -34384,7 +34626,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             // In cinema mode live-remote-video is position:absolute so
                             // offsetWidth is 0 — don't gate on size, just play immediately
                             try {
-                                _trackRef.play(remoteEl);
+                                _trackRef.play(remoteEl, { fit: window._hostVideoFit() });
+                                window._liveHostVideoTrack = _trackRef;
                                 console.log('[CoHost] Host video playing in live-remote-video, uid:', ru.uid);
                             } catch(e) {
                                 if (_retry < 20) {
@@ -34409,7 +34652,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // ── Write our Agora UID to the assigned slot so all clients see us ──────
             var _myAgoraUid = String(agoraClient.uid);
             var _myAddr     = (window._liveUserAddress || '').toLowerCase();
-            var _myHandle   = window._liveUserHandle || 'Co-host';
+            var _myHandle   = window._liveUserHandle || window._defaultHandleFor(window._liveUserAddress);
             var _slotIdx    = (typeof targetSlot === 'number') ? targetSlot : -1;
             if (_watchingStreamId && window.db && window.fs) {
                 var _slotSnap = (window._currentCoSlots || []).slice();
@@ -34456,16 +34699,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         if (ru2.uid === _myViewerUid) continue;
                         if (window._cohostPublishedUid && ru2.uid === window._cohostPublishedUid) continue;
                         if (ru2.videoTrack) {
-                            ru2.videoTrack.play(remoteEl, { fit: 'cover' });
+                            ru2.videoTrack.play(remoteEl, { fit: window._hostVideoFit() });
+                            window._liveHostVideoTrack = ru2.videoTrack;
                             console.log('[CoHost] Safety net: re-rendered host video uid:', ru2.uid);
                             break;
                         }
                     }
                 } catch(e) { console.warn('[CoHost] safety net error:', e); }
             }, 400);
-
-            var stageWrap = $('cohost-stage-wrap');
-            if (stageWrap) stageWrap.style.display = 'block';
 
             var btn = $('viewer-cohost-btn');
             if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🎤</span><span>Leave Stage</span>'; btn.style.opacity = ''; btn.style.pointerEvents = ''; btn.classList.add('active'); }
@@ -34514,7 +34755,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     try { await agoraClient.subscribe(_ru, 'audio'); if (_ru.audioTrack) _ru.audioTrack.play(); } catch(_) {}
                     if (_ru.videoTrack && _liveHostUid && _ru.uid === _liveHostUid) {
                         var _re = document.getElementById('live-remote-video');
-                        if (_re) { try { _ru.videoTrack.play(_re, { fit: 'cover' }); } catch(_) {} }
+                        if (_re) { try { _ru.videoTrack.play(_re, { fit: window._hostVideoFit() }); window._liveHostVideoTrack = _ru.videoTrack; } catch(_) {} }
                     }
                 }
             } catch(_leaveReSub) { console.warn('[CoHost] leave re-subscribe error:', _leaveReSub); }
@@ -34530,10 +34771,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     window.fs.updateDoc(window.fs.doc(window.db, 'live_streams', _watchingStreamId), { coSlots: _leaveSlots }).catch(function(){});
                 }
             }
-
-            // Hide cohost-stage-wrap and reset button labels
-            var stageWrap = $('cohost-stage-wrap');
-            if (stageWrap) stageWrap.style.display = 'none';
 
             // Reset mic/cam state flags and button labels for next session
             _cohostMicMuted = false;
@@ -34670,7 +34907,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.payStreamEntry = async function() {
         if (!_watchingStreamId || !window.db || !window.fs) return;
         const userAddress = window._liveUserAddress || '';
-        const userHandle  = window._liveUserHandle  || 'Viewer';
+        const userHandle  = window._liveUserHandle  || window._defaultHandleFor(window._liveUserAddress);
         if (!userAddress) { showToast('Connect wallet first.'); return; }
 
         const available = typeof window._liveTotalSpendable === 'number' ? window._liveTotalSpendable : 0;
@@ -35463,7 +35700,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // ── RAISE HAND (viewer) ───────────────────────────────────────
     window.toggleRaiseHand = async function() {
         if (!_watchingStreamId || !window.db) return;
-        const userHandle = window._liveUserHandle || 'Viewer';
+        const userHandle = window._liveUserHandle || window._defaultHandleFor(window._liveUserAddress);
         const userAddr   = (window._liveUserAddress || '').toLowerCase();
         const btn = $('viewer-raise-hand-btn');
         handRaised = !handRaised;
@@ -35521,7 +35758,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (!card || !list) return;
             if (hands.length > _prevHandCount) {
                 const newest = hands[hands.length - 1];
-                showToast('✋ ' + (newest.handle || 'Someone') + ' raised their hand!');
+                showToast('✋ ' + (newest.handle || window._defaultHandleFor(newest.addr)) + ' raised their hand!');
             }
             _prevHandCount = hands.length;
             if (!hands.length) { card.style.display = 'none'; return; }
@@ -35529,7 +35766,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             list.innerHTML = hands.map(h =>
                 `<div class="hand-queue-item">
                     <span style="font-size:1rem;">✋</span>
-                    <span style="font-size:0.78rem;font-weight:600;color:var(--text-primary);flex:1;">${h.handle || 'Viewer'}</span>
+                    <span style="font-size:0.78rem;font-weight:600;color:var(--text-primary);flex:1;">${h.handle || window._defaultHandleFor(h.addr)}</span>
                     <span style="font-size:0.62rem;color:var(--text-muted);">${new Date(h.ts||0).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
                     <button onclick="dismissRaisedHand('${(h.addr||'').replace(/'/g,"\\'")}') " title="Dismiss" style="background:rgba(255,60,60,0.15);border:1px solid rgba(255,60,60,0.3);border-radius:6px;color:#ff6060;font-size:0.7rem;padding:2px 7px;cursor:pointer;margin-left:6px;flex-shrink:0;">✕</button>
                 </div>`
@@ -35548,7 +35785,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const { collection, addDoc, serverTimestamp } = window.fs;
         addDoc(collection(window.db, REACTIONS_COL, streamId, 'events'), {
             emoji, ts: serverTimestamp(),
-            sender: window._liveUserHandle || 'Viewer',
+            sender: window._liveUserHandle || window._defaultHandleFor(window._liveUserAddress),
             senderAddr: (window._liveUserAddress || Math.random().toString()).toLowerCase()
         }).catch(() => {});
     };
@@ -35996,13 +36233,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 var d = doc.data();
                 var rank = rows.length;
                 var medal = medals[rank] || ('#' + (rank + 1));
-                var av = d.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + doc.id);
+                var av = d.avatar || window._defaultAvatarSvgFor(doc.id);
                 var stars = d.totalStars || 0;
                 var starsDisplay = stars >= 1000 ? (stars/1000).toFixed(1).replace(/\.0$/,'') + 'K' : stars;
                 rows.push('<div class="lb-gifter-row">' +
                     '<span class="lb-rank-medal">' + medal + '</span>' +
                     '<img class="lb-gifter-av" src="' + _esc(av) + '" onerror="this.src=\'https://api.dicebear.com/7.x/identicon/svg?seed=hub\'">' +
-                    '<div class="lb-gifter-info"><div class="lb-gifter-name">' + _esc(d.name || 'Viewer') + '</div>' +
+                    '<div class="lb-gifter-info"><div class="lb-gifter-name">' + _esc(d.name || window._defaultHandleFor(doc.id)) + '</div>' +
                     '<div class="lb-gifter-stars">★ ' + starsDisplay + ' sent</div></div>' +
                     '</div>');
             });
@@ -36024,12 +36261,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 var d = doc.data();
                 if (!d.isGift) return;
                 if (rows.length >= 30) return;
-                var av = d.avatar || ('https://api.dicebear.com/7.x/identicon/svg?seed=' + (d.author||'viewer'));
+                var av = d.avatar || window._defaultAvatarSvgFor(d.senderAddr);
                 rows.push('<div class="lb-gift-row">' +
                     '<span class="lb-gift-icon-big">' + (d.giftIcon || '🎁') + '</span>' +
                     '<div class="lb-gift-detail">' +
                     '<div class="lb-gift-tier-name">' + _esc(d.text || '') + '</div>' +
-                    '<div class="lb-gift-sender">from ' + _esc(d.author || 'Viewer') + '</div>' +
+                    '<div class="lb-gift-sender">from ' + _esc(d.author || window._defaultHandleFor(d.senderAddr)) + '</div>' +
                     '</div></div>');
             });
             empty.style.display = rows.length ? 'none' : '';
@@ -36211,7 +36448,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         await _origSendGift(tierKey);
         const tier = { bloom:1, blaze:5, rush:10, crown:25, burst:50, storm:100, dragon:250, comet:500, fortune:1000, phoenix:5000, eclipse:10000, aurora:25000, cosmos:35000, reign:45000, genesis:50000 }[tierKey] || 0;
         if (tier > 0) {
-            const handle = window._liveUserHandle || 'Viewer';
+            const handle = window._liveUserHandle || window._defaultHandleFor(window._liveUserAddress);
             _updateLeaderboard(handle, tier);
         }
     };
@@ -36850,10 +37087,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     var _videoPlaceholder = document.createComment('cinema-video-placeholder');
     var _chatPlaceholder  = document.createComment('cinema-chat-placeholder');
     var _inCinema = false;
+    // Which container enterCinema() actually moved — exitCinema() must restore
+    // this exact one, not guess based on which element merely exists in the
+    // DOM (both #live-broadcaster-video-container and #live-remote-video-container
+    // are always present, so an existence-based guess is wrong half the time).
+    var _activeVideoContainerId = null;
 
     function enterCinema(videoContainerId, chatFeedId) {
         if (_inCinema) return;
         _inCinema = true;
+        _activeVideoContainerId = videoContainerId;
 
         var videoEl = document.getElementById(videoContainerId);
         var feedEl  = document.getElementById(chatFeedId);
@@ -36972,8 +37215,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!_inCinema) return;
         _inCinema = false;
 
-        var videoEl        = document.getElementById('live-broadcaster-video-container') ||
-                             document.getElementById('live-remote-video-container');
+        // Was: document.getElementById('live-broadcaster-video-container') ||
+        //      document.getElementById('live-remote-video-container')
+        // Both containers always exist in the DOM (static markup, just hidden
+        // when unused), so that existence-based guess always resolved to the
+        // broadcaster's container — even when tearing down a VIEWER session,
+        // silently reinserting the wrong element and leaving the real moved
+        // element stranded. Use the ID enterCinema() actually moved instead.
+        var videoEl        = document.getElementById(_activeVideoContainerId);
+        _activeVideoContainerId = null;
         var cinemaVideoCol = document.getElementById('cinema-video-col');
         var cinemaChatCol  = document.getElementById('cinema-chat-col');
         var controlsBar    = document.getElementById('cinema-controls');
@@ -37063,6 +37313,19 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
     }
     var _patchedStart = async function() {
+        // Defensive teardown: startLiveStream() previously assumed a prior
+        // viewer session had already been fully torn down by leaveLiveStream()
+        // — not guaranteed (e.g. reaching Go Live without an explicit Leave).
+        // Leftover viewer state (is-watching class, the swept .live-action-row/
+        // #viewer-gift-panel still sitting in #cinema-shell) would otherwise
+        // persist alongside the new host UI. Tear both the viewer session and
+        // any stuck cinema-mode DOM/flag down first. Ported from APTM.
+        if (document.body.classList.contains('is-watching') && typeof window.leaveLiveStream === 'function') {
+            await window.leaveLiveStream();
+        }
+        if (_inCinema) {
+            exitCinema();
+        }
         await _origStart.apply(this, arguments);
         // Go Live was blocked (e.g. missing title) — isHosting never got set, don't enter cinema mode
         if (!document.body.classList.contains('is-hosting')) return;
@@ -37086,6 +37349,22 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         }
     }
     var _patchedJoin = async function() {
+        // Defensive teardown, reverse direction of the fix in _patchedStart:
+        // stale host state (is-hosting class, cinema mode's DOM/flag) could
+        // otherwise persist into a new viewer/co-host session if a previous
+        // broadcast wasn't fully torn down. Deliberately does NOT call
+        // endLiveStream() — it shows a blocking confirm() dialog and writes
+        // to Firestore, both wrong for a silent safety net here. Reaching
+        // this function while genuinely still hosting isn't reachable through
+        // the UI anyway (cinema mode hides #live-tabs for hosts too), so a
+        // stuck is-hosting class this far along is a leftover flag, not an
+        // actual live stream — safe to clear client-side only. Ported from APTM.
+        if (document.body.classList.contains('is-hosting')) {
+            document.body.classList.remove('is-hosting');
+        }
+        if (_inCinema) {
+            exitCinema();
+        }
         await _origJoin.apply(this, arguments);
         if (window.innerWidth <= 900) return; // mobile: TikTok layout handles full-screen, no cinema needed
         // Wait for the remote video container to have actual video content before
@@ -37135,6 +37414,45 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         exitCinema();
     };
 
+    // Reactively re-enter/exit cinema mode as the viewport crosses the mobile
+    // breakpoint mid-stream. enterCinema()/exitCinema() previously only ran
+    // once — at go-live or at join time — so resizing afterward (e.g. opening
+    // or closing DevTools) left the layout stuck in whichever mode was chosen
+    // at that moment, with no way back short of reloading the page. Ported
+    // from APTM, but with two breakpoints instead of one: unlike APTM (which
+    // used 768 uniformly for both roles), this file's host path already goes
+    // through _patchedStart at <=768 while the viewer path already goes
+    // through _patchedJoin at <=900 — both internally consistent with their
+    // own CSS already, so this mirrors each role's real threshold instead of
+    // forcing them to match each other.
+    var HOST_CINEMA_BREAKPOINT   = 768;
+    var VIEWER_CINEMA_BREAKPOINT = 900;
+    var _cinemaResizeTimer = null;
+    function _reconcileCinemaLayout() {
+        var isHosting  = document.body.classList.contains('is-hosting');
+        var isWatching = document.body.classList.contains('is-watching');
+        if (!isHosting && !isWatching) return;
+        var breakpoint = isHosting ? HOST_CINEMA_BREAKPOINT : VIEWER_CINEMA_BREAKPOINT;
+        var wantCinema = window.innerWidth > breakpoint;
+        if (wantCinema === _inCinema) return;
+        if (wantCinema) {
+            if (isHosting) {
+                enterCinema('live-broadcaster-video-container', 'live-broadcast-chat-feed');
+            } else {
+                var vc = document.getElementById('live-remote-video-container');
+                if (vc && vc.querySelector('video')) {
+                    enterCinema('live-remote-video-container', 'live-chat-feed');
+                }
+            }
+        } else {
+            exitCinema();
+        }
+    }
+    window.addEventListener('resize', function() {
+        clearTimeout(_cinemaResizeTimer);
+        _cinemaResizeTimer = setTimeout(_reconcileCinemaLayout, 200);
+    });
+
     // Wait for all functions to be defined then patch — runs ONCE.
     // _tryPatchDone prevents re-polling after the countdown IIFE has already
     // changed window.startLiveStream, which would cause _origStart to capture
@@ -37163,6 +37481,91 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     }
     checkLiveBtn();
     window.addEventListener('resize', checkLiveBtn);
+})();
+
+// ── Ambient "someone is live" indicator ───────────────────────────
+// Drives the pulsing red dot/glow on the desktop Live nav button and the
+// small badge dot on the mobile dashboard Live button. Both used to pulse
+// unconditionally (purely decorative) regardless of whether anyone was
+// actually broadcasting — this makes the pulse genuinely reflect whether
+// at least one stream is currently active.
+(function() {
+    function _applyLiveAmbientState(anyLive) {
+        document.body.classList.toggle('someone-live', anyLive);
+        var mBtn = document.getElementById('mdash-live');
+        if (mBtn) mBtn.classList.toggle('live-pulse-active', anyLive);
+    }
+    function _startLiveAmbientListener() {
+        if (!window.db || !window.fs) { setTimeout(_startLiveAmbientListener, 800); return; }
+        try {
+            var col = window.fs.collection(window.db, 'live_streams');
+            var q   = window.fs.query(col, window.fs.where('active', '==', true));
+            window.fs.onSnapshot(q, function(snap) {
+                var now = Date.now();
+                var MAX_AGE = 6 * 60 * 60 * 1000; // matches loadStreamBrowser's zombie-stream cutoff
+                var anyLive = false;
+                snap.forEach(function(d) {
+                    var data = d.data();
+                    var startMs = (data.startedAt && data.startedAt.toMillis && data.startedAt.toMillis()) || (data.startedAt && data.startedAt.seconds * 1000) || 0;
+                    var age = startMs ? now - startMs : 0;
+                    if (age < MAX_AGE) anyLive = true;
+                });
+                _applyLiveAmbientState(anyLive);
+            }, function(err) { console.warn('[LiveAmbient] listener error:', err); });
+        } catch (e) { console.warn('[LiveAmbient] init error:', e); }
+    }
+    document.addEventListener('DOMContentLoaded', function() { setTimeout(_startLiveAmbientListener, 1000); });
+})();
+
+// ── Live stream deep-link resolver ────────────────────────────────
+// Handles ?stream=<id> links — generated by the in-app Share Stream button
+// (copyLiveStreamLink / shareLiveNative / shareLiveToWhatsApp) and by the
+// "went live" notification webhook — by auto-joining that specific stream
+// on load. Previously nothing anywhere read this param, so both the share
+// button and the notification link just opened the homepage. Mirrors the
+// existing ?hub= deep-link resolver's session-guard pattern so normal
+// in-app navigation doesn't re-trigger it.
+(function() {
+    function _waitForStreamDeps(timeoutMs) {
+        return new Promise(function(resolve) {
+            var waited = 0;
+            var iv = setInterval(function() {
+                waited += 100;
+                var ready = window.db && window.fs && typeof window.joinLiveStream === 'function';
+                if (ready || waited >= timeoutMs) {
+                    clearInterval(iv);
+                    resolve(!!ready);
+                }
+            }, 100);
+        });
+    }
+    async function resolveStreamDeepLink() {
+        var params   = new URLSearchParams(window.location.search);
+        var streamId = params.get('stream');
+        if (!streamId) return;
+
+        var sessionKey = 'stream_deeplink_resolved_' + streamId;
+        try {
+            if (sessionStorage.getItem(sessionKey)) {
+                console.log('[deepLink] stream already resolved this session — skipping');
+                return;
+            }
+            sessionStorage.setItem(sessionKey, '1');
+        } catch (_) {}
+
+        var ready = await _waitForStreamDeps(6000);
+        if (!ready) { console.warn('[deepLink] Firebase/joinLiveStream not ready for stream deep-link'); return; }
+
+        try {
+            if (typeof window.switchPage === 'function') {
+                window.switchPage('live', document.getElementById('nav-live'));
+            }
+            window.joinLiveStream(streamId);
+        } catch (e) {
+            console.warn('[deepLink] stream resolve error:', e.message);
+        }
+    }
+    window.addEventListener('load', function() { setTimeout(resolveStreamDeepLink, 900); });
 })();
 
 // ── VIEWER COUNT BUMP ANIMATION ──────────────────────────────────
@@ -37220,8 +37623,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         btn.id = 'cinema-shortcut-btn';
         btn.title = 'Cinema Mode';
         btn.innerHTML = '⛶ Cinema';
+        // top:58px (not 10px) — #live-stream-info-bar sits at top:0 with the share/
+        // leaderboard buttons in its top-right corner at z-index:18; at top:10px this
+        // button (z-index:25) painted directly over them on hover, blocking the share
+        // button. Dropping below the info bar's ~52px height clears the overlap.
         btn.style.cssText = [
-            'position:absolute', 'top:10px', 'right:10px', 'z-index:25',
+            'position:absolute', 'top:58px', 'right:10px', 'z-index:25',
             'background:rgba(0,0,0,0.55)', 'backdrop-filter:blur(8px)',
             'border:1px solid rgba(255,255,255,0.18)', 'color:rgba(255,255,255,0.85)',
             'border-radius:20px', 'padding:4px 12px', 'font-size:0.62rem',
@@ -38244,7 +38651,7 @@ function _copyReplayLink(link) {
         <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:6px;">Room title</div>
         <input id="vr-new-title" class="field" placeholder="What are we talking about?" style="margin-bottom:14px;margin-top:0;" maxlength="80">
         <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:6px;">🙋 Hand raise price (★ to speak)</div>
-        <input id="vr-new-price" class="field" type="number" value="5" min="1" max="500" style="margin-bottom:18px;margin-top:0;">
+        <input id="vr-new-price" class="field" type="number" value="5" min="0" max="500" style="margin-bottom:18px;margin-top:0;">
         <div style="display:flex;gap:8px;">
             <button class="btn btn-teal" style="flex:1;" onclick="startVoiceRoom()">Open Room</button>
             <button class="btn btn-outline" style="flex:1;" onclick="closeStartRoomModal()">Cancel</button>
@@ -38801,8 +39208,13 @@ body.is-watching #cmd-orb, body.is-watching #cmd-wheel, body.is-watching #cmd-sc
 #live-broadcaster-video-container #battle-bar,
 #live-remote-video-container #battle-bar{position:absolute!important;top:0!important;bottom:auto!important;left:0!important;right:0!important;width:100%!important;max-width:none!important;transform:none!important;border-radius:0!important;animation:none!important;z-index:20!important;height:58px!important}
 /* Floating rematch pill */
-#battle-rematch-pill{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#dc2626,#7c3aed);color:#fff;border:none;border-radius:20px;padding:9px 24px;font-size:.84rem;font-weight:800;cursor:pointer;z-index:21;letter-spacing:.5px;box-shadow:0 4px 16px rgba(220,38,38,.4);animation:bBarIn .3s ease;white-space:nowrap}
-#battle-rematch-pill:hover{transform:translateX(-50%) scale(1.06)}
+/* Wrapper holding the rematch action + a separate dismiss button, so it can
+   be cleared without starting a new battle. Ported from APTM. */
+#battle-rematch-pill{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px;z-index:21;animation:bBarIn .3s ease}
+#battle-rematch-pill .brp-rematch{background:linear-gradient(135deg,#dc2626,#7c3aed);color:#fff;border:none;border-radius:20px;padding:9px 24px;font-size:.84rem;font-weight:800;cursor:pointer;letter-spacing:.5px;box-shadow:0 4px 16px rgba(220,38,38,.4);white-space:nowrap}
+#battle-rematch-pill .brp-rematch:hover{transform:scale(1.06)}
+#battle-rematch-pill .brp-dismiss{background:rgba(0,0,0,.5);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:50%;width:28px;height:28px;font-size:.72rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0}
+#battle-rematch-pill .brp-dismiss:hover{background:rgba(0,0,0,.75)}
 /* Mobile: clash bar slightly smaller */
 @media(max-width:480px){
 #battle-bar{height:52px!important}
@@ -38904,9 +39316,36 @@ body.has-battle .live-stream-overlay-top{display:none!important}
   /* Co-host on-stage floating control bar — replaced by slot tap popup, always hidden */
   body.is-watching.is-cohost #cohost-stage-bar{display:none!important}
 }
-/* Viewer icon strip */
-#viewer-icon-strip{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:10px;z-index:30}
-@media(max-width:700px){body.is-watching #viewer-icon-strip{display:flex}}
+/* Viewer icon strip — lives inside .live-chat-input-row (confirmed via DOM
+   position, not on-video like APTM's equivalent), so a horizontal-row layout
+   is its correct rendering at every width, not a mobile-only special case —
+   the old base rule (position:absolute/column, meant for an on-video overlay)
+   was never actually reachable outside the narrower mobile override that
+   replaced it. Shown on every screen size when watching, mirroring
+   #host-icon-strip's "show on all screens when hosting" pattern. Its gift
+   drawer (#viewer-gift-drawer) covers gifts + reactions, and it now includes
+   Raise Hand, so nothing in .live-action-row/#viewer-gift-panel/
+   #viewer-reactions-bar is left uncovered once those are hidden below.
+   Ported from APTM. */
+#viewer-icon-strip{position:static;transform:none;top:auto;right:auto;display:none;flex-direction:row;align-items:center;gap:6px;flex-shrink:0;z-index:30}
+body.is-watching #viewer-icon-strip{display:flex;}
+/* Raise Hand is meaningless once already on stage. Unlike APTM, #vis-stage-btn
+   itself needs no separate CSS here — _promoteToCoHost()/leaveCoHost() already
+   update its title/background directly via JS (pre-existing in this file). */
+body.is-cohost #vis-hand-btn { display: none !important; }
+/* Full labeled controls the icon strip replaces — hidden unconditionally
+   (not width-gated) and matched against both DOM positions, since
+   enterCinema()/exitCinema() relocate .live-action-row/#viewer-gift-panel
+   between #live-player-wrap and #cinema-controls-btns/#cinema-controls-panels
+   on desktop. ID-anchored selectors, not bare classes — cinema-mode styling
+   rules for these elements can carry tied or higher specificity. */
+body.is-watching #live-player-wrap .live-action-row,
+body.is-watching #cinema-controls-btns .live-action-row,
+body.is-watching #live-player-wrap #viewer-gift-panel,
+body.is-watching #cinema-controls-panels #viewer-gift-panel,
+body.is-watching #viewer-reactions-bar {
+    display: none !important;
+}
 /* Viewer gift drawer */
 #viewer-gift-backdrop{position:fixed;inset:0;z-index:9997;background:rgba(0,0,0,.45);display:none}
 #viewer-gift-backdrop.open{display:block}
@@ -39063,8 +39502,6 @@ body.has-battle .live-stream-overlay-top{display:none!important}
     body.is-watching #live-player-wrap #viewer-star-goal,
     body.is-watching #live-player-wrap #viewer-leaderboard{display:none!important;}
 
-    /* Co-host stage wrap: hidden on mobile — slot div handles self-view */
-    body.is-watching #cohost-stage-wrap{display:none!important;}
     /* Stage pill replaced by slot self-tap popup — always hidden */
     body.is-watching.is-cohost #cohost-stage-bar{display:none!important;}
 
@@ -39121,13 +39558,8 @@ body.has-battle .live-stream-overlay-top{display:none!important}
         color:#fff!important;white-space:nowrap!important;flex-shrink:0!important;
     }
 
-    /* Icon strip: horizontal row in the input bar */
-    body.is-watching #viewer-icon-strip{
-        position:static!important;transform:none!important;
-        top:auto!important;right:auto!important;
-        display:flex!important;flex-direction:row!important;
-        align-items:center!important;gap:6px!important;flex-shrink:0!important;
-    }
+    /* Icon strip position/display is now unconditional (see base rule above) —
+       only the mobile-specific compact button size stays scoped here. */
     body.is-watching #viewer-icon-strip .his-btn{
         width:36px!important;height:36px!important;font-size:0.95rem!important;flex-shrink:0!important;
     }
@@ -39150,13 +39582,6 @@ body.has-battle .live-stream-overlay-top{display:none!important}
 .bcell.bl{background:linear-gradient(90deg,#5b21b6,#a78bfa)!important;box-shadow:0 0 8px rgba(124,92,191,0.75),0 0 18px rgba(124,92,191,0.3)!important;}
 .bcell.br{background:linear-gradient(90deg,#0284c7,#38bdf8)!important;box-shadow:0 0 8px rgba(14,165,233,0.75),0 0 18px rgba(14,165,233,0.3)!important;}
 
-/* ── CO-HOST STAGE JOIN ANIMATION ── */
-@keyframes stage-join-in{
-    0%{opacity:0;transform:scale(0.72) translateY(18px);}
-    55%{opacity:1;transform:scale(1.05) translateY(-3px);}
-    100%{opacity:1;transform:scale(1) translateY(0);}
-}
-#cohost-stage-wrap{animation:stage-join-in 0.5s cubic-bezier(0.34,1.56,0.64,1) both;}
 </style>
 
 <!-- Host more drawer (mobile icon strip) -->
@@ -39357,22 +39782,8 @@ window._closeViewerGiftDrawer = function(){
 };
 
 // ── Detect stream start/stop via polling ──────────────────
-var _tbWasMobile = false;
 setInterval(function(){
     var isHosting = document.body.classList.contains('is-hosting');
-    // JS toolbar hide — beats any CSS specificity or inline-style conflicts
-    if(window.innerWidth <= 700){
-        var _tb = document.querySelector('.studio-toolbar');
-        if(_tb){
-            if(isHosting && _tb.style.display !== 'none'){
-                _tb.style.setProperty('display','none','important');
-                _tbWasMobile = true;
-            } else if(!isHosting && _tbWasMobile){
-                _tb.style.display = '';
-                _tbWasMobile = false;
-            }
-        }
-    }
     var hSid = window._currentStreamId  || null;
     var vSid = window._watchingStreamId || null;
 
@@ -39382,21 +39793,6 @@ setInterval(function(){
         if(isWatching) document.body.classList.add('is-watching');
         else document.body.classList.remove('is-watching');
     }
-    if(window.innerWidth <= 700){
-        var _vAR = document.querySelector('#live-player-wrap .live-action-row');
-        var _vRB = document.getElementById('viewer-reactions-bar');
-        var _vGP = document.getElementById('viewer-gift-panel');
-        if(isWatching){
-            if(_vAR && _vAR.style.display !== 'none') _vAR.style.setProperty('display','none','important');
-            if(_vRB && _vRB.style.display !== 'none') _vRB.style.setProperty('display','none','important');
-            if(_vGP && _vGP.style.display !== 'none') _vGP.style.setProperty('display','none','important');
-        } else {
-            if(_vAR) _vAR.style.display = '';
-            if(_vRB) _vRB.style.display = '';
-            if(_vGP) _vGP.style.display = '';
-        }
-    }
-
     if(isHosting && hSid && hSid !== _lastHostSid){
         _lastHostSid = hSid; _lastViewSid = null;
         _startReqListener(hSid, 'host');
@@ -39498,16 +39894,16 @@ function _renderBar(b){
     if(b.challengeeAddr && _me===(b.challengeeAddr||'').toLowerCase()) flip=true;
     else if(b.challengerAddr && _me===(b.challengerAddr||'').toLowerCase()) flip=false;
     else flip=(_bRole==='viewer-b');
-    var lName   = flip ? (b.challengeeName||'Host B')   : (b.challengerName||'Host A');
+    var lAddr   = flip ? (b.challengeeAddr||'')         : (b.challengerAddr||'');
+    var lName   = flip ? (b.challengeeName||window._defaultHandleFor(lAddr)) : (b.challengerName||window._defaultHandleFor(lAddr));
     var lId     = flip ? 'b-score-b' : 'b-score-a';
     var lScore  = flip ? (b.scoreChallengee||0) : (b.scoreChallenger||0);
-    var lAddr   = flip ? (b.challengeeAddr||'')         : (b.challengerAddr||'');
     var lSid    = flip ? (b.challengeeStreamId||'')     : (b.challengerStreamId||'');
     var lAvatar = flip ? (b.challengeeAvatar||'')       : (b.challengerAvatar||'');
-    var rName   = flip ? (b.challengerName||'Host A')   : (b.challengeeName||'Host B');
+    var rAddr   = flip ? (b.challengerAddr||'')         : (b.challengeeAddr||'');
+    var rName   = flip ? (b.challengerName||window._defaultHandleFor(rAddr)) : (b.challengeeName||window._defaultHandleFor(rAddr));
     var rId     = flip ? 'b-score-a' : 'b-score-b';
     var rScore  = flip ? (b.scoreChallenger||0) : (b.scoreChallengee||0);
-    var rAddr   = flip ? (b.challengerAddr||'')         : (b.challengeeAddr||'');
     var rSid    = flip ? (b.challengerStreamId||'')     : (b.challengeeStreamId||'');
     var rAvatar = flip ? (b.challengerAvatar||'')       : (b.challengeeAvatar||'');
     bar.innerHTML =
@@ -39626,7 +40022,18 @@ function _startBListener(bid){
             _lastBattleData=d; _battleEnded=true;
             _bid=null; _bdata=null;
             var _eBar=document.getElementById('battle-bar'); if(_eBar) _eBar.style.display='none';
-            _showWinner(d);
+            // A natural conclusion (timer reached endsAt) shows the normal
+            // winner/rematch card to both sides. An early end (a participant
+            // ending their own stream mid-battle) shows the OTHER participant
+            // a distinct notice instead — not a rematch prompt, since the
+            // person who ended it is the one who left, not agreeing to a
+            // shared "what's next" moment. Whoever actually called endBattle
+            // still gets the normal card if their own listener somehow fires
+            // (e.g. they were the one who noticed a real disconnect). Ported
+            // from APTM.
+            var _myAddrEB=(window.userAddress||'').toLowerCase();
+            var _endedByOpponent = !!d.endedEarly && !!d.endedByAddr && (d.endedByAddr||'').toLowerCase()!==_myAddrEB;
+            if(_endedByOpponent){ _showOpponentEndedNotice(d); } else { _showWinner(d); }
         }
     });
 }
@@ -39674,19 +40081,42 @@ function _showWinner(b){
     var isTie = b.winnerId==='tie' || !b.winnerId;
     if(isTie){
         card.innerHTML='<span class="b-tie-icon">🤝</span><div class="b-tie-title">It\'s a Tie!</div>'+
-            '<div class="bw-scores"><div class="bw-si"><div class="bw-sn">'+sA+'★</div><div class="bw-sl">'+_esc(b.challengerName||'Host A')+'</div></div>'+
+            '<div class="bw-scores"><div class="bw-si"><div class="bw-sn">'+sA+'★</div><div class="bw-sl">'+_esc(b.challengerName||window._defaultHandleFor(b.challengerAddr))+'</div></div>'+
             '<div style="color:rgba(255,255,255,.3);align-self:center">vs</div>'+
-            '<div class="bw-si"><div class="bw-sn">'+sB+'★</div><div class="bw-sl">'+_esc(b.challengeeName||'Host B')+'</div></div></div>'+
+            '<div class="bw-si"><div class="bw-sn">'+sB+'★</div><div class="bw-sl">'+_esc(b.challengeeName||window._defaultHandleFor(b.challengeeAddr))+'</div></div></div>'+
             _bwBtns;
     } else {
-        var wName = b.winnerName || (b.winnerId==='challenger'?b.challengerName:b.challengeeName) || 'Winner';
-        card.innerHTML='<span class="bw-trophy">🏆</span><div class="bw-lbl">Battle Winner</div><div class="bw-name">'+_esc(wName)+'</div>'+
-            '<div class="bw-scores"><div class="bw-si"><div class="bw-sn">'+sA+'★</div><div class="bw-sl">'+_esc(b.challengerName||'Host A')+'</div></div>'+
+        var wAddr = b.winnerId==='challenger' ? b.challengerAddr : b.challengeeAddr;
+        var wName = b.winnerName || (b.winnerId==='challenger'?b.challengerName:b.challengeeName) || window._defaultHandleFor(wAddr);
+        var _isWinnerMe = !!wAddr && (window.userAddress||'').toLowerCase()===(wAddr||'').toLowerCase();
+        var _headline = _isWinnerMe ? 'You Won! 🎉' : (_esc(wName)+' Won!');
+        card.innerHTML='<span class="bw-trophy">🏆</span><div class="bw-lbl">Battle Winner</div><div class="bw-name">'+_headline+'</div>'+
+            '<div class="bw-scores"><div class="bw-si"><div class="bw-sn">'+sA+'★</div><div class="bw-sl">'+_esc(b.challengerName||window._defaultHandleFor(b.challengerAddr))+'</div></div>'+
             '<div style="color:rgba(255,255,255,.3);align-self:center">vs</div>'+
-            '<div class="bw-si"><div class="bw-sn">'+sB+'★</div><div class="bw-sl">'+_esc(b.challengeeName||'Host B')+'</div></div></div>'+
+            '<div class="bw-si"><div class="bw-sn">'+sB+'★</div><div class="bw-sl">'+_esc(b.challengeeName||window._defaultHandleFor(b.challengeeAddr))+'</div></div></div>'+
             _bwBtns;
         _launchConfetti();
     }
+    ov.style.display='flex';
+    setTimeout(function(){ ov.classList.add('active'); }, 40);
+}
+
+// Shown to the OTHER participant when one side ends the battle early (not a
+// natural timer conclusion) — reuses the same overlay/card shell as
+// _showWinner for visual consistency, but deliberately no confetti, no
+// winner/rematch framing. Its Close reuses the existing _endBattleSession()
+// (full teardown via _deactivate()) rather than _closeBattleWinner()'s "Keep
+// Talking" behavior — there's no one left to keep talking to, since the
+// opponent is the one who just ended their stream. Ported from APTM, adapted
+// to reuse this file's existing full-teardown handler instead of writing a
+// new one.
+function _showOpponentEndedNotice(b){
+    var ov = document.getElementById('battle-winner-overlay');
+    var card = document.getElementById('battle-winner-card');
+    if(!ov||!card) return;
+    _lastBattleData = b;
+    card.innerHTML='<span class="bw-trophy">⚔️</span><div class="bw-lbl">Battle Ended</div><div class="bw-name">Your Opponent Ended the Battle</div>'+
+        '<button class="bw-btn-end" onclick="window._endBattleSession()">← Close</button>';
     ov.style.display='flex';
     setTimeout(function(){ ov.classList.add('active'); }, 40);
 }
@@ -39703,10 +40133,22 @@ function _showRematchPill(){
     if(!document.body.classList.contains('is-hosting')) return;
     var container=document.getElementById('live-broadcaster-video-container');
     if(!container||document.getElementById('battle-rematch-pill')) return;
-    var pill=document.createElement('button');
+    // Wrapper holding the rematch action + a separate dismiss button — was a
+    // single <button> with no way to clear it short of clicking it (which
+    // starts a new battle) or ending the whole stream. Ported from APTM.
+    var pill=document.createElement('div');
     pill.id='battle-rematch-pill';
-    pill.innerHTML='⚔️ Rematch';
-    pill.onclick=function(){ _clearRematchPill(); window._rematchBattle(); };
+    var rematchBtn=document.createElement('button');
+    rematchBtn.className='brp-rematch';
+    rematchBtn.innerHTML='⚔️ Rematch';
+    rematchBtn.onclick=function(){ _clearRematchPill(); window._rematchBattle(); };
+    var dismissBtn=document.createElement('button');
+    dismissBtn.className='brp-dismiss';
+    dismissBtn.title='Dismiss';
+    dismissBtn.innerHTML='✕';
+    dismissBtn.onclick=function(e){ e.stopPropagation(); _clearRematchPill(); };
+    pill.appendChild(rematchBtn);
+    pill.appendChild(dismissBtn);
     container.appendChild(pill);
 }
 function _clearRematchPill(){
@@ -39729,7 +40171,7 @@ window._rematchBattle = async function(){
     var isC=(my===d.challengerAddr);
     var rTarget={streamId:isC?d.challengeeStreamId:d.challengerStreamId,
         addr:isC?d.challengeeAddr:d.challengerAddr,
-        name:isC?(d.challengeeName||'Host B'):(d.challengerName||'Host A'),
+        name:isC?(d.challengeeName||window._defaultHandleFor(d.challengeeAddr)):(d.challengerName||window._defaultHandleFor(d.challengerAddr)),
         avatar:isC?(d.challengeeAvatar||''):(d.challengerAvatar||'')};
     var rDur=d.durationSeconds||180;
     _clearRematchPill(); // remove pill since we're opening the modal
@@ -39807,6 +40249,56 @@ window._battleEndOnStreamLeave = async function(){
 };
 
 // ── Split screen: join opponent's Agora channel ───────────
+// Readiness loop for the opponent PiP: the element is often freshly created
+// (zero dimensions) the instant the video track arrives, or transiently
+// missing from the DOM entirely. Was a single blind 300ms retry only for the
+// zero-dimension case, with a hard no-retry bail-out if the pip wasn't found
+// at all — on a slower device/layout either case could leave the PiP stuck on
+// the "Connecting…" placeholder forever. Both cases now retry on the same
+// schedule; after ~3s the zero-dimension case gives up and plays anyway
+// rather than staying stuck silently, and the missing-pip case gives up with
+// a console.warn (matching this file's existing [Battle] logging style).
+// Ported from APTM.
+function _playBattleOpponentVideo(videoTrack, attempt){
+    attempt = attempt || 0;
+    var pip = document.getElementById('battle-opponent-pip');
+    if (!pip) {
+        if (attempt >= 10) {
+            console.warn('[Battle] opponent pip never appeared in the DOM after 3s, giving up');
+            return;
+        }
+        setTimeout(function(){ _playBattleOpponentVideo(videoTrack, attempt + 1); }, 300);
+        return;
+    }
+    pip.innerHTML = '<div class="bop-label">⚔️ Opponent</div>';
+    var w = pip.offsetWidth, h = pip.offsetHeight;
+    console.log('[Battle] pip dims', w, 'x', h, 'attempt', attempt);
+    if (w > 0 && h > 0) {
+        videoTrack.play(pip, { fit: 'cover' });
+        return;
+    }
+    if (attempt >= 10) {
+        console.warn('[Battle] opponent pip never reported real dimensions after 3s, playing anyway');
+        videoTrack.play(pip, { fit: 'cover' });
+        return;
+    }
+    setTimeout(function(){ _playBattleOpponentVideo(videoTrack, attempt + 1); }, 300);
+}
+
+// Shared by the user-published event AND the post-join remoteUsers fallback
+// below, so both paths subscribe/play identically.
+async function _handleBattleOpponentPublish(remoteUser, mediaType){
+    console.log('[Battle] opponent published mediaType=',mediaType,'uid=',remoteUser.uid);
+    try{
+        await _bViewerClient.subscribe(remoteUser,mediaType);
+        if(mediaType==='video'){
+            _bOpponentTrack=remoteUser.videoTrack;
+            _playBattleOpponentVideo(remoteUser.videoTrack);
+        }
+        if(mediaType==='audio'&&remoteUser.audioTrack) remoteUser.audioTrack.play();
+    }catch(e){ console.error('[Battle] subscribe error:',e); }
+}
+
 async function _joinBattleOpponent(oppSid){
     console.log('[Battle] _joinBattleOpponent oppSid=',oppSid,'AgoraRTC=',!!window.AgoraRTC,'client=',!!_bViewerClient);
     if(_bViewerClient||!window.AgoraRTC) return;
@@ -39823,29 +40315,8 @@ async function _joinBattleOpponent(oppSid){
         // level:1 = low-latency audience (matches existing viewer join)
         await _bViewerClient.setClientRole('audience',{level:1});
 
-        _bViewerClient.on('user-published',async function(remoteUser,mediaType){
-            console.log('[Battle] opponent published mediaType=',mediaType,'uid=',remoteUser.uid);
-            try{
-                await _bViewerClient.subscribe(remoteUser,mediaType);
-                if(mediaType==='video'){
-                    _bOpponentTrack=remoteUser.videoTrack;
-                    var pip=document.getElementById('battle-opponent-pip');
-                    if(pip){
-                        pip.innerHTML='<div class="bop-label">⚔️ Opponent</div>';
-                        var w=pip.offsetWidth, h=pip.offsetHeight;
-                        console.log('[Battle] pip dims',w,'x',h);
-                        if(w>0&&h>0){
-                            remoteUser.videoTrack.play(pip, { fit: 'cover' });
-                        } else {
-                            setTimeout(function(){
-                                var p2=document.getElementById('battle-opponent-pip');
-                                if(p2) remoteUser.videoTrack.play(p2, { fit: 'cover' });
-                            },300);
-                        }
-                    }
-                }
-                if(mediaType==='audio'&&remoteUser.audioTrack) remoteUser.audioTrack.play();
-            }catch(e){ console.error('[Battle] subscribe error:',e); }
+        _bViewerClient.on('user-published',function(remoteUser,mediaType){
+            _handleBattleOpponentPublish(remoteUser,mediaType);
         });
         _bViewerClient.on('user-left',function(){
             var pip=document.getElementById('battle-opponent-pip');
@@ -39864,6 +40335,27 @@ async function _joinBattleOpponent(oppSid){
         await _bViewerClient.join('e26e79a0f99446f991beb0d6c68271a3',oppChannel,tokenData.token,tokenData.uid||null);
         console.log('[Battle] joined opponent channel');
         _showBattleSplit();
+
+        // Fallback: user-published isn't guaranteed to fire for a user who was
+        // already publishing before we joined/attached the listener — same
+        // class of gap the co-host promotion code already works around
+        // elsewhere in this file ("Agora internally unsubscribes... and does
+        // NOT re-fire user-published"). Check remoteUsers directly for
+        // anything the event missed. Guarded on videoTrack/audioTrack already
+        // being set, so this can't double-subscribe against the event handler
+        // whichever one wins the race. Ported from APTM.
+        setTimeout(async function(){
+            if(!_bViewerClient) return;
+            try{
+                var _existing=_bViewerClient.remoteUsers||[];
+                console.log('[Battle] remoteUsers fallback check, count=',_existing.length);
+                for(var _ei=0;_ei<_existing.length;_ei++){
+                    var _eu=_existing[_ei];
+                    if(_eu.hasVideo && !_eu.videoTrack) await _handleBattleOpponentPublish(_eu,'video');
+                    if(_eu.hasAudio && !_eu.audioTrack) await _handleBattleOpponentPublish(_eu,'audio');
+                }
+            }catch(_fallbackErr){ console.warn('[Battle] remoteUsers fallback error:',_fallbackErr); }
+        }, 300);
     }catch(e){
         console.error('[Battle] _joinBattleOpponent failed:',e.message,e);
         if(typeof showToast==='function') showToast('⚠️ Battle stream error: '+e.message);
@@ -40010,8 +40502,8 @@ window.openBattleModal = async function(){
         }
         list.innerHTML=hosts.map(function(h){
             return '<div class="b-host-item" onclick="window._pickBattleTarget(\''+h.id+'\',\''+encodeURIComponent(h.hostAddr||'')+'\',\''+encodeURIComponent(h.hostName||'')+'\',\''+encodeURIComponent(h.hostAvatar||'')+'\',this)">'+
-                '<img class="b-host-av" src="'+(h.hostAvatar||'')+'" onerror="this.style.display=\'none\'">'+
-                '<div class="b-host-info"><div class="b-host-name">'+_esc(h.hostName||h.hostAddr||'Host')+'</div>'+
+                '<img class="b-host-av" src="'+(h.hostAvatar||window._defaultAvatarSvgFor(h.hostAddr))+'" onerror="this.style.display=\'none\'">'+
+                '<div class="b-host-info"><div class="b-host-name">'+_esc(h.hostName||window._defaultHandleFor(h.hostAddr))+'</div>'+
                 '<div class="b-host-meta"><span class="b-live-dot"></span>'+_esc(h.title||'Live')+'&nbsp;·&nbsp;'+(h.viewerCount||0)+' viewers</div></div></div>';
         }).join('');
     }catch(e){
@@ -40067,8 +40559,8 @@ function _showReqBanner(req){
     var nm=document.getElementById('battle-req-name');
     var dt=document.getElementById('battle-req-detail');
     var id=document.getElementById('battle-req-id');
-    if(av) av.src=req.challengerAvatar||'';
-    if(nm) nm.textContent=req.challengerName||req.challengerAddr||'Someone';
+    if(av) av.src=req.challengerAvatar||window._defaultAvatarSvgFor(req.challengerAddr);
+    if(nm) nm.textContent=req.challengerName||window._defaultHandleFor(req.challengerAddr);
     if(dt) dt.textContent='wants a '+(req.duration===60?'1 min':req.duration===180?'3 min':'5 min')+' battle ⚔️';
     if(id) id.value=req.battleId||'';
     var banner=document.getElementById('battle-request-banner');
@@ -40238,13 +40730,11 @@ window._renderSlotGrid = function(container, hostVidId, mode, coSlots, isHost) {
                 var cov = document.createElement('div');
                 cov.className = 'slot-cam-off';
                 cov.style.cssText = 'position:absolute;inset:0;background:#0a0810;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:4;gap:6px;';
-                var avHtml = sd.avatar
-                    ? '<img src="'+sd.avatar+'" style="width:58px;height:58px;border-radius:50%;object-fit:cover;border:2px solid rgba(124,92,191,0.5);" />'
-                    : '<div style="font-size:2.2rem;line-height:1;">👤</div>';
+                var avHtml = '<img src="'+(sd.avatar || window._defaultAvatarSvgFor(sd.address))+'" style="width:58px;height:58px;border-radius:50%;object-fit:cover;border:2px solid rgba(124,92,191,0.5);" />';
                 cov.innerHTML = avHtml + '<div style="font-size:0.55rem;color:rgba(255,255,255,0.38);font-weight:600;letter-spacing:0.5px;">CAM OFF</div>';
                 el.appendChild(cov);
             }
-            if (sd.name) { var nm = document.createElement('div'); nm.className = 'slot-name'; nm.textContent = sd.name; el.appendChild(nm); }
+            var nm = document.createElement('div'); nm.className = 'slot-name'; nm.textContent = sd.name || window._defaultHandleFor(sd.address); el.appendChild(nm);
             // ⭐ TikTok-style gift-received badge (updated by _updateSlotStarBadges)
             var _sgBadge = document.createElement('div');
             _sgBadge.className = 'slot-stars-badge';
@@ -40369,7 +40859,7 @@ window._openSlotAction = function(slotData, slotEl, isHost) {
         return;
     }
 
-    var name = slotData.name || 'Co-host';
+    var name = slotData.name || window._defaultHandleFor(slotData.address);
 
     slotEl.style.outline = '2px solid rgba(124,92,191,0.85)';
     slotEl.style.outlineOffset = '-2px';
@@ -41485,6 +41975,29 @@ function _renderLotteryCard(round) {
             if (lc) lc.style.transform = 'rotate(-90deg)';
         }
     } catch(_) {}
+}
+
+// Toggle buy-vs-connect UI on wallet connect/reconnect WITHOUT repainting
+// pot/tickets/countdown from the cached _lotteryRound object. _lotteryRound
+// is only kept fresh by the single lottery_rounds onSnapshot listener set up
+// once in loadLottery() — if that listener missed a beat (tab backgrounded,
+// laptop sleep, WalletConnect relay hiccup) around the same time a reconnect
+// fires, a full _renderLotteryCard(_lotteryRound) here would paint a
+// stale, lower pot/ticket count over the correct on-screen value until the
+// listener's next legitimate update. This only touches the wallet-gated bits.
+function _refreshLotteryWalletGate() {
+    var round = _lotteryRound;
+    if (!round) return;
+    var buyEl = document.getElementById('lottery-buy-section');
+    var conEl = document.getElementById('lottery-connect-prompt');
+    if (userAddress) {
+        if (buyEl) buyEl.style.display = 'block';
+        if (conEl) conEl.style.display = 'none';
+        _loadMyLotteryTickets(round.id, round.totalTickets || 1);
+    } else {
+        if (buyEl) buyEl.style.display = 'none';
+        if (conEl) conEl.style.display = 'block';
+    }
 }
 
 function _updateLotteryCountdown(endsAt) {
