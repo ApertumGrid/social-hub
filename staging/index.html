@@ -9475,10 +9475,18 @@ body.cinema-mode #btn-end-stream-toolbar { display:none!important; }
     }
     /* Stats row: hidden on mobile */
     body.is-hosting #bc-live-stats-row { display: none !important; }
-    /* Studio toolbar: 4-col grid */
+    /* Was showing the full toolbar as a compact 4-col grid on mobile — this is
+       the actual root cause of mobile hosts seeing the full button grid
+       instead of #host-icon-strip alone. This selector is ID-anchored
+       (#live-active-panel), so it beat the general body.is-hosting
+       .studio-toolbar hide rule elsewhere in this file, and it comes later in
+       the source than the OTHER #live-active-panel .studio-toolbar rule
+       (which does say display:none) at equal specificity, so it was always
+       winning that tie too. Matches APTM's equivalent rule, which correctly
+       says display:none. */
     body.is-hosting #live-active-panel .studio-toolbar {
+        display: none !important;
         flex: 0 0 auto !important;
-        display: grid !important;
         grid-template-columns: repeat(4, 1fr) !important;
         gap: 3px !important;
         padding: 3px !important;
@@ -12204,6 +12212,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                 <div class="sfc-feed" id="viewer-sfc-feed"></div>
                             </div>
 
+                            <!-- Viewer icon strip — mirrors host strip. Moved here from
+                                 .live-chat-input-row to match APTM's real structure: an
+                                 on-video overlay, not sharing space with the chat input. -->
+                            <div id="viewer-icon-strip">
+                                <button class="his-btn" id="vis-sound-btn" onclick="_toggleViewerSound()" title="Sound">🔊</button>
+                                <button class="his-btn" onclick="_openViewerGiftDrawer()" title="Send a Gift">🎁</button>
+                                <button class="his-btn" id="vis-hand-btn" onclick="toggleRaiseHand()" title="Raise Hand">✋</button>
+                                <button class="his-btn" id="vis-stage-btn" onclick="requestCoHost()" title="Join Stage">🎤</button>
+                                <button class="his-btn" id="vis-leave-stage-btn" onclick="leaveCoHost()" title="Leave Stage" style="display:none;">🚪</button>
+                                <button class="his-btn" onclick="leaveLiveStream()" title="Leave" style="background:rgba(220,38,38,.35);border-color:rgba(220,38,38,.6);">✕</button>
+                            </div>
+
                             <!-- Pinned comment overlay -->
                             <div id="live-pinned-comment">
                                 <div class="lpc-pin">📌 Pinned</div>
@@ -12318,14 +12338,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div class="live-chat-input-row">
                                 <input type="text" id="live-chat-input" class="field" placeholder="Say something…" style="margin-top:0;" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" onkeydown="if(event.key==='Enter')sendLiveChat()">
                                 <button class="btn btn-purple btn-sm" onclick="sendLiveChat()">Send</button>
-                                <div id="viewer-icon-strip">
-                                    <button class="his-btn" onclick="_openViewerGiftDrawer()" title="Send a Gift">🎁</button>
-                                    <button class="his-btn" id="vis-sound-btn" onclick="_toggleViewerSound()" title="Sound">🔊</button>
-                                    <button class="his-btn" onclick="_shareStream()" title="Share Stream">📤</button>
-                                    <button class="his-btn" id="vis-hand-btn" onclick="toggleRaiseHand()" title="Raise Hand">✋</button>
-                                    <button class="his-btn" id="vis-stage-btn" onclick="requestCoHost()" title="Join Stage">🎤</button>
-                                    <button class="his-btn" onclick="leaveLiveStream()" title="Leave" style="background:rgba(220,38,38,.35);border-color:rgba(220,38,38,.6);">✕</button>
-                                </div>
+                                <!-- Share Stream has no equivalent slot in APTM's bottom bar
+                                     (it doesn't have this feature at all) — kept here since the
+                                     row stays focused on chat/Send/Share, everything else moved
+                                     to the on-video icon strip above. -->
+                                <button class="vwr-bar-btn" onclick="_shareStream()" title="Share Stream">📤</button>
                             </div>
                         </div>
                     </div>
@@ -34710,8 +34727,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             var btn = $('viewer-cohost-btn');
             if (btn) { btn.innerHTML = '<span class="studio-btn-icon">🎤</span><span>Leave Stage</span>'; btn.style.opacity = ''; btn.style.pointerEvents = ''; btn.classList.add('active'); }
-            var visBtn = $('vis-stage-btn');
-            if (visBtn) { visBtn.textContent = '🎤'; visBtn.title = 'Leave Stage'; visBtn.style.background = 'rgba(220,38,38,.5)'; visBtn.style.borderColor = 'rgba(220,38,38,.7)'; }
+            // #vis-stage-btn/#vis-leave-stage-btn now swap via body.is-cohost CSS
+            // (matches APTM) — the old textContent/title/background toggle here
+            // never actually changed the icon, so nothing visibly indicated the
+            // state had changed on mobile where hover tooltips don't apply.
             isCoHost = true;
             document.body.classList.add('is-cohost');
             // Explicitly hide End Stream in both normal and cinema panel — CSS !important
@@ -34790,8 +34809,6 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 btn.style.pointerEvents = '';
                 btn.classList.remove('active');
             }
-            var visBtn = $('vis-stage-btn');
-            if (visBtn) { visBtn.textContent = '🎤'; visBtn.title = 'Join Stage'; visBtn.style.background = ''; visBtn.style.borderColor = ''; }
             // Clean up cohost request doc so host sees slot freed
             if (_watchingStreamId && window.db && window.fs) {
                 var userAddress = window._liveUserAddress || '';
@@ -39316,23 +39333,29 @@ body.has-battle .live-stream-overlay-top{display:none!important}
   /* Co-host on-stage floating control bar — replaced by slot tap popup, always hidden */
   body.is-watching.is-cohost #cohost-stage-bar{display:none!important}
 }
-/* Viewer icon strip — lives inside .live-chat-input-row (confirmed via DOM
-   position, not on-video like APTM's equivalent), so a horizontal-row layout
-   is its correct rendering at every width, not a mobile-only special case —
-   the old base rule (position:absolute/column, meant for an on-video overlay)
-   was never actually reachable outside the narrower mobile override that
-   replaced it. Shown on every screen size when watching, mirroring
+/* Viewer icon strip — on-video overlay, matching APTM's real structure
+   (previously lived inside .live-chat-input-row here; moved back to the video
+   container in HTML too — see the port-verification pass for why the earlier
+   "it's correct where it is" conclusion was wrong: cramming 6 icons plus the
+   chat input and Send into one row was never going to fit on real mobile
+   widths). Shown on every screen size when watching, mirroring
    #host-icon-strip's "show on all screens when hosting" pattern. Its gift
    drawer (#viewer-gift-drawer) covers gifts + reactions, and it now includes
    Raise Hand, so nothing in .live-action-row/#viewer-gift-panel/
-   #viewer-reactions-bar is left uncovered once those are hidden below.
-   Ported from APTM. */
-#viewer-icon-strip{position:static;transform:none;top:auto;right:auto;display:none;flex-direction:row;align-items:center;gap:6px;flex-shrink:0;z-index:30}
+   #viewer-reactions-bar is left uncovered once those are hidden below. */
+#viewer-icon-strip{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:10px;z-index:30}
 body.is-watching #viewer-icon-strip{display:flex;}
-/* Raise Hand is meaningless once already on stage. Unlike APTM, #vis-stage-btn
-   itself needs no separate CSS here — _promoteToCoHost()/leaveCoHost() already
-   update its title/background directly via JS (pre-existing in this file). */
-body.is-cohost #vis-hand-btn { display: none !important; }
+/* Raise Hand meaningless once on stage; Join Stage swaps for a real, separate
+   Leave Stage button instead of relying on a same-icon title/color-only change
+   — that JS-based approach (still in _promoteToCoHost()/leaveCoHost()) never
+   actually changed the icon, so nothing visibly indicated the state had
+   changed. Matches APTM's actual pattern exactly. */
+body.is-cohost #vis-hand-btn,
+body.is-cohost #vis-stage-btn { display: none !important; }
+body.is-cohost #vis-leave-stage-btn { display: flex !important; }
+/* Bottom bar Share Stream button — hidden by default, shown only in the
+   mobile viewer layout (matches APTM's .vwr-bar-btn base). */
+.vwr-bar-btn { display: none; }
 /* Full labeled controls the icon strip replaces — hidden unconditionally
    (not width-gated) and matched against both DOM positions, since
    enterCinema()/exitCinema() relocate .live-action-row/#viewer-gift-panel
@@ -39558,10 +39581,23 @@ body.is-watching #viewer-reactions-bar {
         color:#fff!important;white-space:nowrap!important;flex-shrink:0!important;
     }
 
-    /* Icon strip position/display is now unconditional (see base rule above) —
-       only the mobile-specific compact button size stays scoped here. */
-    body.is-watching #viewer-icon-strip .his-btn{
-        width:36px!important;height:36px!important;font-size:0.95rem!important;flex-shrink:0!important;
+    /* Viewer bottom bar icon button (Share Stream) — mirrors APTM's .vwr-bar-btn
+       styling exactly, mobile-only since the chat input row only needs this
+       treatment when it's the compact bottom bar layout. */
+    body.is-watching #live-player-wrap .vwr-bar-btn {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 38px !important;
+        height: 38px !important;
+        border-radius: 50% !important;
+        border: 1.5px solid rgba(255, 255, 255, 0.18) !important;
+        background: rgba(14, 10, 30, 0.8) !important;
+        font-size: 1.15rem !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
+        padding: 0 !important;
+        color: #fff !important;
     }
 
     /* Floating chat hidden — panel chat handles all messages */
