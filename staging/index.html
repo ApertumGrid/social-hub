@@ -12205,6 +12205,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                                 <div class="sfc-feed" id="viewer-sfc-feed"></div>
                             </div>
 
+                            <!-- Viewer icon strip — desktop-only on-video overlay; mobile uses
+                                 the compact .vwr-bar-btn set inline in .live-chat-input-row instead. -->
+                            <div id="viewer-icon-strip">
+                                <button class="his-btn" id="vis-sound-btn" onclick="_toggleViewerSound()" title="Sound">🔊</button>
+                                <button class="his-btn" onclick="_openViewerGiftDrawer()" title="Send a Gift">🎁</button>
+                                <button class="his-btn" id="vis-hand-btn" onclick="toggleRaiseHand()" title="Raise Hand">✋</button>
+                                <button class="his-btn" id="vis-stage-btn" onclick="requestCoHost()" title="Join Stage">🎤</button>
+                                <button class="his-btn" id="vis-leave-stage-btn" onclick="leaveCoHost()" title="Leave Stage" style="display:none;">🚪</button>
+                                <button class="his-btn" onclick="leaveLiveStream()" title="Leave" style="background:rgba(220,38,38,.35);border-color:rgba(220,38,38,.6);">✕</button>
+                            </div>
+
                             <!-- Pinned comment overlay -->
                             <div id="live-pinned-comment">
                                 <div class="lpc-pin">📌 Pinned</div>
@@ -12319,14 +12330,10 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                             <div class="live-chat-input-row">
                                 <input type="text" id="live-chat-input" class="field" placeholder="Say something…" style="margin-top:0;" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" onkeydown="if(event.key==='Enter')sendLiveChat()">
                                 <button class="btn btn-purple btn-sm" onclick="sendLiveChat()">Send</button>
-                                <div id="viewer-icon-strip">
-                                    <button class="his-btn" id="vis-sound-btn" onclick="_toggleViewerSound()" title="Sound">🔊</button>
-                                    <button class="his-btn" onclick="_openViewerGiftDrawer()" title="Send a Gift">🎁</button>
-                                    <button class="his-btn" id="vis-hand-btn" onclick="toggleRaiseHand()" title="Raise Hand">✋</button>
-                                    <button class="his-btn" id="vis-stage-btn" onclick="requestCoHost()" title="Join Stage">🎤</button>
-                                    <button class="his-btn" id="vis-leave-stage-btn" onclick="leaveCoHost()" title="Leave Stage" style="display:none;">🚪</button>
-                                    <button class="his-btn" onclick="leaveLiveStream()" title="Leave" style="background:rgba(220,38,38,.35);border-color:rgba(220,38,38,.6);">✕</button>
-                                </div>
+                                <button class="vwr-bar-btn" onclick="_openViewerGiftDrawer()" title="Gift">🎁</button>
+                                <button class="vwr-bar-btn" id="vwr-mic-btn" onclick="requestCoHost()" title="Join Stage">🎤</button>
+                                <button class="vwr-bar-btn" id="vwr-leave-stage-btn" onclick="leaveCoHost()" title="Leave Stage" style="display:none;">🚪</button>
+                                <button class="vwr-bar-btn vwr-bar-leave" onclick="leaveLiveStream()" title="Leave">✕</button>
                             </div>
                         </div>
                     </div>
@@ -39317,24 +39324,20 @@ body.has-battle .live-stream-overlay-top{display:none!important}
   /* Co-host on-stage floating control bar — replaced by slot tap popup, always hidden */
   body.is-watching.is-cohost #cohost-stage-bar{display:none!important}
 }
-/* Viewer icon strip — lives inline in .live-chat-input-row, next to Send,
-   confirmed by direct screenshot comparison against APTM's real live
-   rendering. Earlier placements (a dedicated row between video and chat, an
-   on-video overlay) were both based on misreadings and have been reverted.
-   Crowding is no longer a problem since only 3 buttons show on mobile (Gift,
-   Join/Leave Stage, Leave — Sound/Raise Hand are desktop-only, see below).
-   Shown on every screen size when watching, mirroring #host-icon-strip's
-   "show on all screens when hosting" pattern. Its gift drawer
-   (#viewer-gift-drawer) covers gifts + reactions, so nothing in
-   .live-action-row/#viewer-gift-panel/#viewer-reactions-bar is left
-   uncovered once those are hidden below. */
-#viewer-icon-strip{display:none;flex-direction:row;align-items:center;gap:6px;flex-shrink:0;}
+/* Viewer icon strip — desktop-only on-video overlay, matching APTM's real,
+   confirmed architecture: APTM runs TWO separate implementations, not one
+   shared element. Desktop shows this absolute-positioned overlay on the
+   video (Sound, Gift, Raise Hand, Join/Leave Stage, Leave). Mobile hides
+   this entirely and instead shows the compact .vwr-bar-btn set inline in
+   .live-chat-input-row (Gift, Join/Leave Stage, Leave — see below).
+   Confirmed necessary by live desktop testing: forcing this same element
+   to live inline in the chat row (an earlier attempt, based on mobile-only
+   screenshot evidence) overflowed the narrow desktop chat column, clipping
+   the input field and cutting off buttons. */
+#viewer-icon-strip{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;gap:10px;z-index:30;}
 body.is-watching #viewer-icon-strip{display:flex;}
-/* Sound + Raise Hand: desktop-only. Mobile keeps exactly Gift, Join/Leave
-   Stage, Leave — matches APTM's actual confirmed mobile layout; there's no
-   room for more, and neither is needed there (Ashley: "we don't need it"). */
 @media(max-width:768px){
-    #vis-sound-btn, #vis-hand-btn { display: none !important; }
+    body.is-watching #viewer-icon-strip{display:none!important;}
 }
 /* Raise Hand meaningless once on stage; Join Stage swaps for a real, separate
    Leave Stage button instead of relying on a same-icon title/color-only change
@@ -39352,6 +39355,11 @@ body.is-cohost #vis-stage-btn { display: none !important; }
    variant then wins over THAT by adding a class on top of the same ID. */
 #vis-leave-stage-btn { display: none !important; }
 body.is-cohost #vis-leave-stage-btn { display: flex !important; }
+/* Viewer bottom bar buttons — hidden on desktop, shown mobile via the
+   body.is-watching rule inside the ≤768px block below. Mirrors APTM's
+   .vwr-bar-btn exactly (Gift, Join/Leave Stage, Leave only — no Sound/Raise
+   Hand duplicate, those stay desktop-only on the #viewer-icon-strip overlay). */
+.vwr-bar-btn { display: none; }
 /* Full labeled controls the icon strip replaces — hidden unconditionally
    (not width-gated) and matched against both DOM positions, since
    enterCinema()/exitCinema() relocate .live-action-row/#viewer-gift-panel
@@ -39576,6 +39584,34 @@ body.is-watching #viewer-reactions-bar {
         font-size:0.72rem!important;font-weight:700!important;
         color:#fff!important;white-space:nowrap!important;flex-shrink:0!important;
     }
+    /* Viewer bottom bar icon buttons — mobile-only compact set (Gift, Join/
+       Leave Stage, Leave), matching APTM's .vwr-bar-btn exactly. */
+    body.is-watching #live-player-wrap .vwr-bar-btn {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 38px !important;
+        height: 38px !important;
+        border-radius: 50% !important;
+        border: 1.5px solid rgba(255, 255, 255, 0.18) !important;
+        background: rgba(14, 10, 30, 0.8) !important;
+        font-size: 1.15rem !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
+        padding: 0 !important;
+        color: #fff !important;
+    }
+    body.is-watching #live-player-wrap .vwr-bar-leave {
+        background: rgba(220, 38, 38, 0.35) !important;
+        border-color: rgba(220, 38, 38, 0.6) !important;
+    }
+    /* #vwr-mic-btn is #vis-stage-btn's mobile-only twin (same "Join Stage"
+       action, different component) — same is-cohost swap needed. Matches the
+       .vwr-bar-btn rule above on specificity (1 ID + 2 classes + type), so
+       this block must stay below it in source order to win the tie. */
+    body.is-watching.is-cohost #vwr-mic-btn { display: none !important; }
+    body.is-watching:not(.is-cohost) #vwr-leave-stage-btn { display: none !important; }
+    body.is-watching.is-cohost #vwr-leave-stage-btn { display: flex !important; }
 
     /* Floating chat hidden — panel chat handles all messages */
     body.is-watching .stream-floating-chat{display:none!important;}
