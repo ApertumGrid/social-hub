@@ -30780,8 +30780,13 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const minDisplayMs = 1500; // Minimum 1.5 seconds so user can see it
 
         let maxVolume = 0;
-        const samples = 10;
         const sampleInterval = 50; // ms
+        // Sample for the full banner display time, not a fixed short window —
+        // the banner promises 1.5s+ to react, but sampling used to stop at
+        // 500ms (10 samples), failing people who hadn't started talking yet
+        // by then. Real reports: mic worked fine, still got "No sound
+        // detected" — a timing mismatch, not an actual silent mic.
+        const samples = Math.ceil(minDisplayMs / sampleInterval);
 
         for (let i = 0; i < samples; i++) {
             try {
@@ -31348,7 +31353,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         })();
 
                     }
-                    if (mediaType === 'audio') remoteUser.audioTrack.play();
+                    if (mediaType === 'audio') {
+                        try {
+                            remoteUser.audioTrack.play();
+                        } catch(audioErr) {
+                            console.warn('[CoHost] Audio autoplay blocked — showing unmute prompt', audioErr);
+                            _showUnmutePrompt(remoteUser.audioTrack);
+                        }
+                    }
                     showToast('🎤 Co-host joined the stage!');
                 } catch(e) { console.warn('[CoHost] host subscribe error:', e); }
             });
@@ -34506,7 +34518,17 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         const userAddress = window._liveUserAddress || '';
         const userHandle  = window._liveUserHandle  || window._defaultHandleFor(window._liveUserAddress);
         if (!userAddress) { showToast('Connect wallet first.'); return; }
-        if (isCoHost) { await window.leaveCoHost(); return; }
+        // This function is shared by the dedicated Join/Leave Stage toggle button
+        // (called with no slotIndex) AND clicking an empty grid box to request that
+        // specific slot (called with a real slotIndex). The "already on stage → leave"
+        // shortcut only makes sense for the toggle button — a co-host tapping an
+        // unrelated empty box was silently leaving the stage instead of doing nothing,
+        // since this guard didn't check which of the two callers it was.
+        if (isCoHost) {
+            if (typeof slotIndex === 'number') { showToast("You're already on stage."); return; }
+            await window.leaveCoHost();
+            return;
+        }
 
         // Find target slot
         var slots = window._currentCoSlots || [];
