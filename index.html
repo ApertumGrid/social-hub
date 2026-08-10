@@ -991,6 +991,27 @@
         .vr-role-badge { font-size:0.46rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; padding:1px 6px; border-radius:4px; }
         .vr-role-badge.host { background:rgba(240,180,41,0.14); color:var(--gold); border:1px solid rgba(240,180,41,0.28); }
         .vr-role-badge.speaker { background:rgba(124,92,191,0.14); color:var(--purple-lt); border:1px solid rgba(124,92,191,0.28); }
+
+        /* Join announcement banner — slides in near the top when anyone enters */
+        #vr-join-banner {
+            position:absolute; top:64px; left:50%; transform:translateX(-50%) translateY(-14px);
+            display:flex; align-items:center; gap:8px;
+            background:linear-gradient(135deg,rgba(28,20,52,0.95),rgba(16,12,34,0.95));
+            border:1px solid rgba(240,180,41,0.28); border-radius:30px;
+            padding:5px 16px 5px 5px; box-shadow:0 6px 24px rgba(0,0,0,0.45);
+            opacity:0; pointer-events:none; z-index:20; max-width:82%;
+            transition:opacity 0.25s ease, transform 0.25s ease;
+        }
+        #vr-join-banner.show { opacity:1; transform:translateX(-50%) translateY(0); }
+        #vr-join-banner img { width:26px; height:26px; border-radius:50%; object-fit:cover; flex-shrink:0; }
+        #vr-join-banner span { font-size:0.72rem; color:var(--text-secondary); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        #vr-join-banner span b { color:var(--gold); }
+
+        /* Speaker stage entrance — plays once when someone is newly admitted */
+        @keyframes vr-speaker-pop { 0%{ transform:scale(0.4); opacity:0; } 55%{ transform:scale(1.12); opacity:1; } 100%{ transform:scale(1); opacity:1; } }
+        @keyframes vr-speaker-glow { 0%{ box-shadow:0 0 0 0 rgba(124,92,191,0.55), 0 0 0 0 rgba(240,180,41,0.4); } 60%{ box-shadow:0 0 0 22px rgba(124,92,191,0), 0 0 0 12px rgba(240,180,41,0); } 100%{ box-shadow:0 0 0 0 rgba(124,92,191,0), 0 0 0 0 rgba(240,180,41,0); } }
+        .vr-speaker-enter { animation:vr-speaker-pop 0.5s cubic-bezier(0.34,1.56,0.64,1) both; }
+        .vr-speaker-enter .vr-orb { animation:vr-speaker-glow 0.9s ease-out 0.05s both; }
         /* Queue */
         #vr-queue-strip { margin:8px 14px 0; padding:8px 12px; background:rgba(124,92,191,0.06); border:1px solid rgba(124,92,191,0.15); border-radius:12px; flex-shrink:0; }
         .vr-q-label { font-size:0.58rem; color:var(--purple-lt); text-transform:uppercase; letter-spacing:1px; font-weight:700; margin-bottom:8px; }
@@ -29826,8 +29847,15 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     let _vrRoomUnsub   = null;
     let _vrChatUnsub   = null;
     let _vrQueueUnsub  = null;
+    let _vrListenerUnsub = null;
     let _vrGiftOpen    = false;
     let _vrPrevQueueSize = 0;
+    let _vrListenersReady    = false; // true after the first presence snapshot — skips banners for people already in the room when we join
+    let _vrLatestRoomData    = null;
+    let _vrLatestPresenceSnap = null;
+    let _vrKnownSpeakerAddrs = null;  // null = not yet initialized (first render since joining)
+    let _vrJoinBannerQueue   = [];
+    let _vrJoinBannerShowing = false;
 
     function _vrDoorbellSound() {
         try {
@@ -29962,6 +29990,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             await _vrConnectAgora(roomId, token, uid, _vrIsHost);
             _vrSubscribeRoom(roomId);
             _vrSubscribeChat(roomId);
+            _vrSubscribeListeners(roomId);
             if (_vrIsHost) _vrSubscribeQueue(roomId);
             if (window.db && window.fs) {
                 window.fs.setDoc(
@@ -30093,8 +30122,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
             }
 
+            _vrLatestRoomData = r;
             _vrRenderSpeakers(r);
-            _vrRenderListeners(roomId, r);
+            _vrRenderListenerGrid(roomId);
         });
     }
 
@@ -30124,15 +30154,24 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 <div class="vr-role-badge host">HOST</div>
                 ${hostBalHtml}
             </div>`);
+        // Track which speakers were already on stage so a re-render triggered by an
+        // unrelated room-doc change (e.g. stars ticking up) doesn't replay the
+        // "took the stage" entrance animation for people already up there. On the
+        // very first render since joining, nobody counts as a new arrival.
+        const isFirstSpeakerRender = _vrKnownSpeakerAddrs === null;
+        const nextKnownSpeakers = new Set();
         (r.currentSpeakers || []).forEach(sp => {
             const sUid  = _vrUidFromAddr(sp.addr);
             const sAddr = escHtml(sp.addr || '');
+            const sAddrLower = (sp.addr || '').toLowerCase();
             const sName = escHtml(sp.name || 'Speaker');
             const sAv   = escHtml(sp.avatar || '');
-            const isSpeakerMe = myAddr && (sp.addr || '').toLowerCase() === myAddr;
+            const isSpeakerMe = myAddr && sAddrLower === myAddr;
             const spkBalHtml  = isSpeakerMe ? `<div class="vr-orb-balance">` + '★ ' + `${_myBal}</div>` : '';
+            const isNewArrival = !isFirstSpeakerRender && !_vrKnownSpeakerAddrs.has(sAddrLower);
+            nextKnownSpeakers.add(sAddrLower);
             row.insertAdjacentHTML('beforeend', `
-                <div class="vr-orb-wrap" onclick="vrOpenOrbPopup('${sAddr}','${sName}','${sAv}')" style="cursor:pointer;">
+                <div class="vr-orb-wrap${isNewArrival ? ' vr-speaker-enter' : ''}" onclick="vrOpenOrbPopup('${sAddr}','${sName}','${sAv}')" style="cursor:pointer;">
                     <div class="vr-orb vr-orb-speaker" data-uid="${sUid}">
                         <img src="${sAv}" onerror="this.src='https://placehold.co/64/7c5cbf/fff?text=S'">
                         <div class="vr-orb-ring spk"></div>
@@ -30142,34 +30181,91 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     ${spkBalHtml}
                 </div>`);
         });
+        _vrKnownSpeakerAddrs = nextKnownSpeakers;
     }
-    function _vrRenderListeners(roomId, r) {
+    // ── Join announcement banner ────────────────────────────────────────────
+    // Queued so a burst of joins doesn't overlap/garble mid-animation; capped
+    // so a very busy room doesn't build up a growing backlog of stale toasts.
+    function _vrShowJoinBanner(name, avatar) {
+        if (_vrJoinBannerQueue.length >= 5) return;
+        _vrJoinBannerQueue.push({ name, avatar });
+        _vrDrainJoinBannerQueue();
+    }
+    function _vrDrainJoinBannerQueue() {
+        if (_vrJoinBannerShowing || !_vrJoinBannerQueue.length) return;
+        const next = _vrJoinBannerQueue.shift();
+        const el  = document.getElementById('vr-join-banner');
+        const av  = document.getElementById('vr-jb-av');
+        const txt = document.getElementById('vr-jb-text');
+        if (!el || !av || !txt) return;
+        av.onerror = function() { this.src = 'https://placehold.co/26/1a1535/fff?text=?'; };
+        av.src = next.avatar || 'https://placehold.co/26/1a1535/fff?text=?';
+        txt.innerHTML = '<b>' + escHtml(next.name) + '</b> joined';
+        _vrJoinBannerShowing = true;
+        el.classList.add('show');
+        setTimeout(function() {
+            el.classList.remove('show');
+            setTimeout(function() {
+                _vrJoinBannerShowing = false;
+                _vrDrainJoinBannerQueue();
+            }, 260); // matches CSS transition-out duration
+        }, 2400);
+    }
+
+    // ── Listener presence — live subscription (not a one-time fetch) so we can
+    // detect genuinely NEW arrivals via docChanges() and announce them. ─────
+    function _vrSubscribeListeners(roomId) {
+        if (_vrListenerUnsub) { try { _vrListenerUnsub(); } catch(_) {} _vrListenerUnsub = null; }
+        _vrListenersReady = false;
+        _vrLatestPresenceSnap = null;
         if (!window.db || !window.fs) return;
+        _vrListenerUnsub = window.fs.onSnapshot(
+            window.fs.collection(window.db, VR_LISTEN, roomId, 'presence'),
+            snap => {
+                // Skip the very first snapshot — that's "who's already here", not new
+                // joins, so we don't banner-spam for everyone already in the room.
+                if (_vrListenersReady) {
+                    snap.docChanges().forEach(ch => {
+                        if (ch.type !== 'added') return;
+                        const l = ch.doc.data();
+                        if ((l.addr || '').toLowerCase() === (userAddress || '').toLowerCase()) return;
+                        _vrShowJoinBanner(l.name || 'Someone', l.avatar || '');
+                    });
+                }
+                _vrListenersReady = true;
+                _vrLatestPresenceSnap = snap;
+                _vrRenderListenerGrid(roomId);
+            },
+            err => console.error('[vrListeners]', err.code)
+        );
+    }
+
+    function _vrRenderListenerGrid(roomId) {
+        if (!window.db || !window.fs || !_vrLatestPresenceSnap) return;
         // Build set of on-stage addresses so they're excluded from the listener grid
+        const r = _vrLatestRoomData || {};
         const stageAddrs = new Set([(r.hostAddr || '').toLowerCase()]);
         (r.currentSpeakers || []).forEach(s => stageAddrs.add((s.addr || '').toLowerCase()));
-        window.fs.getDocs(window.fs.collection(window.db, VR_LISTEN, roomId, 'presence')).then(snap => {
-            const grid = document.getElementById('vr-listener-grid');
-            const lbl  = document.getElementById('vr-listener-label');
-            if (!grid) return;
-            grid.innerHTML = '';
-            const MAX = 24;
-            let shown = 0, listenerCount = 0;
-            snap.forEach(doc => {
-                const l = doc.data();
-                if (stageAddrs.has((l.addr || '').toLowerCase())) return; // skip host + speakers
-                listenerCount++;
-                if (shown >= MAX) return;
-                grid.insertAdjacentHTML('beforeend', `<img class="vr-l-av" src="${escHtml(l.avatar||'')}" title="${escHtml(l.name||'')}" onerror="this.src='https://placehold.co/32/1a1535/fff?text=?'">`);
-                shown++;
-            });
-            const extra = listenerCount - shown;
-            if (extra > 0) grid.insertAdjacentHTML('beforeend', `<div class="vr-l-more">+${extra}</div>`);
-            if (lbl) lbl.textContent = `Listening (${listenerCount})`;
-            if (_vrIsHost && window.db && window.fs) {
-                window.fs.updateDoc(window.fs.doc(window.db, VR_COL, roomId), { listenerCount }).catch(() => {});
-            }
-        }).catch(() => {});
+        const grid = document.getElementById('vr-listener-grid');
+        const lbl  = document.getElementById('vr-listener-label');
+        if (!grid) return;
+        grid.innerHTML = '';
+        const MAX = 24;
+        let shown = 0, listenerCount = 0;
+        _vrLatestPresenceSnap.forEach(doc => {
+            const l = doc.data();
+            if (stageAddrs.has((l.addr || '').toLowerCase())) return; // skip host + speakers
+            listenerCount++;
+            if (shown >= MAX) return;
+            grid.insertAdjacentHTML('beforeend', `<img class="vr-l-av" src="${escHtml(l.avatar||'')}" title="${escHtml(l.name||'')}" onerror="this.src='https://placehold.co/32/1a1535/fff?text=?'">`);
+            shown++;
+        });
+        const extra = listenerCount - shown;
+        if (extra > 0) grid.insertAdjacentHTML('beforeend', `<div class="vr-l-more">+${extra}</div>`);
+        if (lbl) lbl.textContent = `Listening (${listenerCount})`;
+        if (_vrIsHost && window.db && window.fs) {
+            window.fs.updateDoc(window.fs.doc(window.db, VR_COL, roomId), { listenerCount }).catch(() => {});
+        }
     }
 
     function _vrSubscribeQueue(roomId) {
@@ -30511,14 +30607,19 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (_vrRoomUnsub)  { try { _vrRoomUnsub();  } catch(_) {} _vrRoomUnsub  = null; }
         if (_vrChatUnsub)  { try { _vrChatUnsub();  } catch(_) {} _vrChatUnsub  = null; }
         if (_vrQueueUnsub) { try { _vrQueueUnsub(); } catch(_) {} _vrQueueUnsub = null; }
+        if (_vrListenerUnsub) { try { _vrListenerUnsub(); } catch(_) {} _vrListenerUnsub = null; }
         if (userAddress && _vrRoomId && window.db && window.fs) {
             window.fs.deleteDoc(window.fs.doc(window.db, VR_LISTEN, _vrRoomId, 'presence', userAddress.toLowerCase())).catch(() => {});
         }
         _vrRoomId = null; _vrIsHost = false; _vrIsSpeaker = false; _vrMuted = false; _vrGiftOpen = false; _vrGiftTarget = null; _vrOrbTarget = null;
+        _vrListenersReady = false; _vrLatestRoomData = null; _vrLatestPresenceSnap = null; _vrKnownSpeakerAddrs = null;
+        _vrJoinBannerQueue = []; _vrJoinBannerShowing = false;
         const popup = document.getElementById('vr-orb-popup');
         if (popup) popup.classList.remove('open');
         const ov = document.getElementById('vr-room-overlay');
         if (ov) ov.style.display = 'none';
+        const jb = document.getElementById('vr-join-banner');
+        if (jb) jb.classList.remove('show');
     }
 
     // Agora App ID shared with live streams
@@ -38886,6 +38987,12 @@ function _copyReplayLink(link) {
         </div>
         <span id="vr-stars-counter">⭐ 0★</span>
         <button class="vr-close-btn" onclick="vrLeave()">✕</button>
+    </div>
+
+    <!-- Join announcement banner -->
+    <div id="vr-join-banner">
+        <img id="vr-jb-av" src="" alt="">
+        <span id="vr-jb-text"></span>
     </div>
 
     <!-- Speaker Stage -->
