@@ -1471,10 +1471,14 @@
             gap: 0;
         }
         .stream-floating-chat.chat-hidden { display: none !important; }
-        /* On mobile in cinema mode, hide the video overlay chat â€” use panel chat instead */
-        @media(max-width:700px){
-            body.cinema-mode .stream-floating-chat { display:none !important; }
-        }
+        /* Desktop: the video overlay chat is retired in favour of the real,
+           scrollable feed in #cinema-chat-col (see "Desktop: real chat feed"
+           below) — chat was covering people's faces in multi-tile co-host/
+           battle layouts. Unconditional (not width-gated): cinema-mode only
+           ever exists at desktop widths (mobile has its own separate,
+           untouched fullscreen layout), so this also covers the narrow
+           mobile-cinema edge case the old ≤700px-only rule handled. */
+        body.cinema-mode .stream-floating-chat { display:none !important; }
 
         /* Toggle button (streamer only) */
         .sfc-toggle-btn {
@@ -1741,11 +1745,26 @@
             border-radius:0 !important; border:none !important; background:transparent !important;
             overflow:hidden;
         }
-        /* Desktop: panel feed hidden â€” messages go to floating overlay */
+        /* Desktop: real chat feed is the primary chat surface — fills the
+           column, scrolls independently. Click-name (_openChatCtx) and host
+           pin (#ctx-pin/_ctxPin) already work on these exact elements, since
+           renderChatFeed() builds them the same way for every layout. */
         #cinema-chat-col .live-chat-feed,
         #cinema-chat-col #live-broadcast-chat-feed,
-        #cinema-chat-col #live-chat-feed { display:none !important; }
+        #cinema-chat-col #live-chat-feed {
+            display:flex !important; flex-direction:column;
+            justify-content: flex-end;
+            flex:1 1 0; min-height:0; max-height:none;
+            overflow-y:auto;
+            padding:8px 10px;
+        }
         #cinema-chat-col .live-chat-head { display:none !important; }
+        /* Reply bar (#live-reply-bar, shown via inline style.display when
+           _setReplyTo() runs) and the input row must never be squeezed by
+           the feed's flex-grow above — without this they were reported
+           invisible on desktop even though _replyTarget was set correctly. */
+        #cinema-chat-col #live-reply-bar,
+        #cinema-chat-col .live-chat-input-row { flex-shrink:0 !important; }
         /* Mobile: show a compact chat feed inside cinema-chat-col instead of floating overlay */
         @media(max-width:700px){
             #cinema-chat-col .live-chat-feed,
@@ -8927,20 +8946,32 @@ html body #profile-hero .hero-action-btn.btn-follow {
     border-left:1px solid rgba(110,65,230,0.16)!important;
 }
 #cinema-controls {
-    order:2!important; flex:1 1 auto!important; min-height:0!important;
-    max-height:none!important; overflow-y:auto!important; overflow-x:hidden!important;
+    order:2!important; flex:0 0 auto!important; min-height:44px!important;
+    max-height:55%!important; overflow-y:auto!important; overflow-x:hidden!important;
     scrollbar-width:thin!important; scrollbar-color:rgba(120,80,220,0.3) transparent!important;
     display:flex!important; flex-direction:column!important;
     background:radial-gradient(ellipse 120% 60% at 50% 110%,rgba(80,20,200,0.14) 0%,transparent 70%),linear-gradient(180deg,#0b0918,#080614)!important;
     border-top:1px solid rgba(120,70,240,0.2)!important;
 }
-#cinema-controls-panels { flex:1!important; overflow-y:visible!important; max-height:none!important; padding:4px 8px 8px!important; }
+#cinema-controls-panels { flex:0 0 auto!important; overflow-y:visible!important; max-height:none!important; padding:4px 8px 8px!important; }
 #cinema-controls-panels > * { margin-bottom:8px!important; }
 #cinema-end-btn-wrap { order:4!important; flex-shrink:0!important; background:linear-gradient(180deg,#090714,#060510)!important; border-top:1px solid rgba(175,25,25,0.22)!important; padding:8px 10px!important; }
-#cinema-chat-col .live-chat-card { order:3!important; flex-shrink:0!important; flex:0 0 auto!important; border-radius:0!important; border:none!important; border-top:1px solid rgba(110,65,230,0.18)!important; background:transparent!important; }
+/* Chat card is now the primary growing/scrolling element in the column —
+   was flex:0 0 auto (content-sized, i.e. effectively just the input row
+   since the feed below was display:none), which is why the feed rule right
+   below this used to hide it entirely and the whole column read as empty
+   space above the input bar. */
+#cinema-chat-col .live-chat-card { order:3!important; flex:1 1 auto!important; min-height:0!important; border-radius:0!important; border:none!important; border-top:1px solid rgba(110,65,230,0.18)!important; background:transparent!important; }
 #cinema-chat-col .live-chat-feed,
-#cinema-chat-col #live-broadcast-chat-feed { display:none!important; }
+#cinema-chat-col #live-broadcast-chat-feed {
+    display:flex!important; flex-direction:column!important;
+    justify-content:flex-end!important;
+    flex:1 1 auto!important; min-height:0!important; max-height:none!important;
+    overflow-y:auto!important; padding:8px 10px!important;
+}
 #cinema-chat-col .live-chat-head { display:none!important; }
+#cinema-chat-col #live-reply-bar,
+#cinema-chat-col .live-chat-input-row { flex-shrink:0!important; }
 #cinema-chat-col .live-chat-input-row { background:rgba(10,8,20,0.95)!important; border-top:1px solid rgba(100,65,210,0.2)!important; padding:10px!important; }
 #cinema-chat-col .live-chat-input-row .field { background:rgba(255,255,255,0.05)!important; border:1px solid rgba(110,75,210,0.25)!important; color:rgba(210,200,245,0.9)!important; border-radius:10px!important; }
 #cinema-chat-col .live-chat-input-row .field::placeholder { color:rgba(135,105,205,0.45)!important; }
@@ -9656,8 +9687,9 @@ body.cinema-mode #btn-end-stream-toolbar { display:none!important; }
         flex: 1 !important;
         min-width: 0 !important;
     }
-    /* Show floating chat overlay ON the video (viewer messages float bottom-left) */
-    body.cinema-mode.is-hosting #bc-floating-chat { display:block !important; }
+    /* Floating chat force-show removed — desktop host chat now lives in the
+       real, scrollable #cinema-chat-col feed (260px slim panel) instead of
+       overlaying the video, matching the viewer-side fix. */
     /* Show timer + stars pills on the video on desktop too */
     body.cinema-mode.is-hosting #host-mobile-topleft { display:flex !important; }
     /* Ensure stats row stays hidden (duplicated by pills overlay) */
@@ -18011,12 +18043,22 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // Show the edit modal with a contextual prompt, then call cb() after save.
     // cb is stored globally so saveProfile() can invoke it after syncing.
     let _profileGateCb = null;
-    function _requireProfile(cb) {
+    const _PROFILE_GATE_HINTS = {
+        comment:   '⚡ Set your display name & avatar to post a comment.',
+        broadcast: '⚡ Set your display name & avatar to start broadcasting.'
+    };
+    function _requireProfile(cb, reason) {
         _profileGateCb = cb || null;
         openHeroEditForm();
-        // Add a hint banner inside the modal
+        // Add a hint banner inside the modal — text depends on what actually
+        // triggered the gate. This used to always say "start broadcasting"
+        // even when triggered by trying to comment, which read as broken/
+        // unrelated to whatever the person was actually doing.
         const hint = document.getElementById('edit-identity-gate-hint');
-        if (hint) hint.style.display = 'block';
+        if (hint) {
+            hint.textContent = _PROFILE_GATE_HINTS[reason] || _PROFILE_GATE_HINTS.broadcast;
+            hint.style.display = 'block';
+        }
     }
 
     window.openHeroEditForm  = openHeroEditForm;
@@ -18405,7 +18447,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         if (!_hasCompleteProfile()) {
             isActionPending = false;
             if (feedEl) feedEl.style.pointerEvents = '';
-            _requireProfile(() => addComment(recipientAddress, postId, isReply, parentId));
+            _requireProfile(() => addComment(recipientAddress, postId, isReply, parentId), 'comment');
             return;
         }
 
@@ -21602,7 +21644,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         // ── Profile gate: require name + avatar before first broadcast ───────────
         if (!_hasCompleteProfile()) {
-            _requireProfile(() => handleBroadcastWithSignal());
+            _requireProfile(() => handleBroadcastWithSignal(), 'broadcast');
             return;
         }
 
@@ -27006,6 +27048,27 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             return showToast('Community ID missing — cannot follow.');
         }
 
+        // ── Optimistic UI ────────────────────────────────────────────────
+        // The server (followHub CF) is the sole source of truth for the toggle
+        // and owns 100% of the money movement — this only guesses the direction
+        // from the local _followingSet cache so the button/toast update instantly,
+        // then corrects or rolls back once the real result comes back.
+        const _optWasFollowing = _followingSet.has(commId);
+        if (!_optWasFollowing && getTotalSpendableStars() < 1) {
+            isActionPending = false;
+            if (followBtn) followBtn.disabled = false;
+            return showToast('Not enough Stars! Deposit USDT.');
+        }
+        if (_optWasFollowing) {
+            _followingSet.delete(commId);
+            if (followBtn) { followBtn.textContent = '+ Follow Hub'; followBtn.classList.remove('following'); }
+            showToast('Unfollowed ' + (_activeCommunity.name || 'Hub') + '.');
+        } else {
+            _followingSet.add(commId);
+            if (followBtn) { followBtn.textContent = '✓ Following Hub'; followBtn.classList.add('following'); }
+            showToast('Following ' + (_activeCommunity.name || 'Hub') + '! 0.9★ sent to creator.');
+        }
+
         try {
             // Call Cloud Function to handle follow/unfollow toggle
             const response = await fetch('https://us-central1-socialhub-33014.cloudfunctions.net/followHub', {
@@ -27026,19 +27089,21 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const action = result.action; // 'followed' or 'unfollowed'
 
             if (action === 'unfollowed') {
-                // ── UNFOLLOW ───────────────────────────────
+                // ── UNFOLLOW ─── UI already applied optimistically if guess matched;
+                // reconcile in case the server's toggle direction differed.
                 _followingSet.delete(commId);
                 if (followBtn) { followBtn.textContent = '+ Follow Hub'; followBtn.classList.remove('following'); }
-                showToast('Unfollowed ' + (_activeCommunity.name || 'Hub') + '.');
+                if (_optWasFollowing !== true) showToast('Unfollowed ' + (_activeCommunity.name || 'Hub') + '.');
                 if (typeof loadMyNetwork === 'function') loadMyNetwork();
 
             } else if (action === 'followed') {
-                // ── FOLLOW ───────────────────────────────
+                // ── FOLLOW ─── UI already applied optimistically if guess matched;
+                // reconcile in case the server's toggle direction differed.
                 if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Hub Follow', 1, '■');
 
                 _followingSet.add(commId);
                 if (followBtn) { followBtn.textContent = '✓ Following Hub'; followBtn.classList.add('following'); }
-                showToast('Following ' + (_activeCommunity.name || 'Hub') + '! 0.9★ sent to creator.');
+                if (_optWasFollowing !== false) showToast('Following ' + (_activeCommunity.name || 'Hub') + '! 0.9★ sent to creator.');
                 writeNotif(creatorAddr, 'follow', { hubName: _activeCommunity.name || commId, communityId: commId });
                 if (typeof loadMyNetwork === 'function') loadMyNetwork();
             } else {
@@ -27068,6 +27133,14 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         } catch (e) {
             console.error('[commFollowHub]', e);
+            // Roll back the optimistic guess to whatever it was before this attempt.
+            if (_optWasFollowing) {
+                _followingSet.add(commId);
+                if (followBtn) { followBtn.textContent = '✓ Following Hub'; followBtn.classList.add('following'); }
+            } else {
+                _followingSet.delete(commId);
+                if (followBtn) { followBtn.textContent = '+ Follow Hub'; followBtn.classList.remove('following'); }
+            }
             showToast('Follow failed. Please try again.');
         }
 
@@ -32373,7 +32446,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             _ad(_fc(window.db, 'live_chat', _watchingStreamId, 'messages'), {
                 text: handle + ' just followed!',
                 author: handle,
-                senderAddr: (window.userAddress || '').toLowerCase(),
+                address: (window.userAddress || '').toLowerCase(),
                 isFollow: true,
                 ts: _st()
             }).catch(function(){});
@@ -32703,6 +32776,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             addDoc(collection(window.db, LIVE_CHAT_COL, _watchingStreamId, 'messages'), {
                 author:   userHandle,
                 avatar:   userAvatar || '',
+                address:  userAddress.toLowerCase(),
                 text:     `⚡ ${userHandle} hyped the stream!`,
                 ts:       serverTimestamp(),
                 isSystem: false,
@@ -33013,7 +33087,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 author:     window._liveUserHandle  || (window.userAddress || '').slice(0,8) + '…',
                 avatar:     window._liveUserAvatar  || '',
                 text:       text.slice(0, 500),
-                senderAddr: (window.userAddress || '').toLowerCase(),
+                address:    (window.userAddress || '').toLowerCase(),
                 ts:         serverTimestamp(),
                 isSystem:   false
             });
@@ -33200,7 +33274,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             // Post chat message (client-side, cosmetic)
             const { collection, addDoc, serverTimestamp } = window.fs;
             addDoc(collection(window.db, LIVE_CHAT_COL, sid, 'messages'), {
-                author:userHandle, avatar:userAvatar,
+                author:userHandle, avatar:userAvatar, address:userAddress.toLowerCase(),
                 text:`${tier.icon} ${userHandle} gifted ${tier.name} to ${recipientHandle}! (${tier.cost} ★)`,
                 ts:serverTimestamp(), isGift:true, giftTier:tierKey, giftIcon:tier.icon, giftStyle:tier.chatStyle
             }).catch(() => {});
@@ -33700,7 +33774,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (addr && window._mutedLiveAddrs && window._mutedLiveAddrs.has(addr)) return '';
             const da       = `data-id="${_esc(m.id||'')}" data-addr="${_esc(addr)}" data-author="${_esc(m.author||'')}" data-text="${_esc((m.text||'').slice(0,80))}" data-avatar="${_esc(m.avatar||'')}"`;
             const nameAttrs= addr ? `class="live-chat-user lcu-click" onclick="window._openChatCtx(event,this.closest('[data-id]'))"` : `class="live-chat-user"`;
-            const replyBtn = `<button class="live-reply-btn" onclick="event.stopPropagation();window._setReplyTo('${_esc(m.id||'')}','${_esc(m.author||'')}','${_esc((m.text||'').slice(0,40))}')">↩</button>`;
+            const replyBtn = `<button class="live-reply-btn" onclick="event.stopPropagation();var _m=this.closest('[data-id]');window._setReplyTo(_m.dataset.id,_m.dataset.author,_m.dataset.text.slice(0,40))">↩</button>`;
             const replyQ   = m.replyTo ? `<div class="lcm-reply-quote"><b>${_esc(m.replyTo.author)}</b>: ${_esc(m.replyTo.text)}</div>` : '';
             if (addr && m.avatar) window._chatAvatarCache[addr] = m.avatar;
             const av       = m.avatar || _resolveChatAvatar(addr) || window._defaultAvatarSvgFor(addr);
@@ -36170,6 +36244,43 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         _patchStreamDocUnsub = onSnapshot(doc(window.db, LIVE_COL, streamId), snap => {
             if (!snap.exists()) return;
             const d = snap.data();
+
+            // ── Restored from the original subscribeStreamDoc() above (line ~33707) —
+            //    that function is dead code: this later same-name declaration silently
+            //    shadows it via JS function-hoisting, so its onSnapshot callback never
+            //    ran. window._isLiveHosting was never set anywhere else, which is why
+            //    the chat context menu's Pin/Mute/Ban never appeared for anyone, and
+            //    the pinned-comment overlay never displayed what got pinned. ──
+            window._isLiveHosting       = isHosting;
+            window._currentHostStreamId = isHosting ? currentStreamId : null;
+
+            if (!isHosting) {
+                var _pw = document.getElementById('live-player-wrap');
+                if (_pw) _pw.classList.toggle('pres-mode', d.streamMode === 'presentation');
+            }
+
+            var lpcEl = document.getElementById('live-pinned-comment');
+            if (lpcEl) {
+                if (d.pinnedComment && d.pinnedComment.text) {
+                    var lpcAuth = document.getElementById('lpc-author');
+                    var lpcTxt  = document.getElementById('lpc-text');
+                    if (lpcAuth) lpcAuth.textContent = d.pinnedComment.author || '';
+                    if (lpcTxt)  lpcTxt.textContent  = d.pinnedComment.text;
+                    lpcEl.style.display = 'block';
+                } else {
+                    lpcEl.style.display = 'none';
+                }
+            }
+            document.body.classList.toggle('host-viewing', !!isHosting);
+
+            if (!isHosting && d.bannedViewers && Array.isArray(d.bannedViewers)) {
+                var myAddr = (window._liveUserAddress || '').toLowerCase();
+                if (myAddr && d.bannedViewers.indexOf(myAddr) !== -1) {
+                    showToast('You have been removed from this stream.');
+                    leaveLiveStream();
+                    return;
+                }
+            }
 
             setText('live-watch-viewers',       '👁 ' + (d.viewers || 0));
             setText('live-creator-stars-watch',  (d.starsEarned || 0).toFixed(1));
@@ -39570,9 +39681,10 @@ body.is-watching #viewer-reactions-bar {
     body.cinema-mode.is-hosting #host-mobile-topleft { display:flex !important; align-items:center; gap:8px; }
     body.cinema-mode.is-hosting #live-broadcast-viewers { display:inline-flex !important; }
     body.cinema-mode.is-hosting #stream-health { display:flex !important; }
-    body.cinema-mode.is-hosting #bc-floating-chat { display:flex !important; }
-    body.cinema-mode.is-hosting #bc-floating-chat .sfc-feed { max-height:50vh; }
-    body.cinema-mode.is-hosting #bc-floating-chat .sfc-feed:empty + * { display:none; }
+    /* #bc-floating-chat force-show removed — desktop chat now lives in
+       #cinema-chat-col's real feed instead (see body.cinema-mode
+       .stream-floating-chat hide rule near .stream-floating-chat's
+       definition), so this would otherwise re-show the retired overlay. */
 }
 
 /* ── VIEWER MOBILE LAYOUT — Streamer Style (mirrors host layout) ── */
