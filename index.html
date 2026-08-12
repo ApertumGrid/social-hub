@@ -11302,6 +11302,16 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         </div>
                     </div>
                     <button id="admin-withdraw-btn" onclick="adminWithdraw()">⬇ Withdraw Platform Fees → Treasury (adminWithdrawToTreasury)</button>
+                    <button id="admin-correct-pool-btn" onclick="adminCorrectPlatformPool()"
+                            style="display:flex;align-items:center;justify-content:center;gap:8px;
+                                   width:100%;margin-top:8px;padding:10px 18px;
+                                   background:rgba(240,180,41,0.1);border:1px solid rgba(240,180,41,0.4);
+                                   border-radius:var(--radius-md);color:#f0b429;
+                                   font-family:var(--font-body);font-size:0.78rem;font-weight:700;
+                                   cursor:pointer;letter-spacing:0.3px;"
+                            title="Owner-only: corrects the platformPool counter to 0. Does NOT move any USDT.">
+                        🛠 Correct Platform Pool (adminSetPlatformPool → 0)
+                    </button>
                     <button id="admin-reconcile-btn" onclick="adminReconcile()"
                             style="display:flex;align-items:center;justify-content:center;gap:8px;
                                    width:100%;margin-top:8px;padding:10px 18px;
@@ -13593,6 +13603,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         "function getBalance(address user) view returns (uint256 deposited, uint256 withdrawable, uint256 total)",
         "function adminWithdrawToTreasury() external",
         "function adminAddPlatformFees(uint256 amount) external",
+        "function adminSetPlatformPool(uint256 amount) external",
         "function platformPool() view returns (uint256)",
         "function nonces(address user) view returns (uint256)",
         "function paused() view returns (bool)",
@@ -17008,6 +17019,96 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 "  • Connected wallet is PLATFORM_ADMIN on the contract\n" +
                 "  • Contract has claimable platform revenue\n" +
                 "  • You are calling adminWithdraw() — not userWithdraw()"
+            );
+        }
+    }
+
+    // ── Correct Platform Pool — owner-only bookkeeping fix ────────────────
+    // adminSetPlatformPool() does NOT move any USDT. It only overwrites the
+    // platformPool counter. Built for exactly this situation: platformPool()
+    // reads $55.30 on-chain but the contract's real USDT balance is $10.53 —
+    // confirmed via runSurplusDiagnostic() + a per-wallet liability audit to
+    // be the same $1.96 historical, pre-Cloud-Function-migration shortfall
+    // documented 2026-07-26 (SESSION_NOTES.md), not an active leak. There is
+    // no legitimate uncommitted platform revenue currently free to claim, so
+    // the correction target is 0, not a recomputed "real" pool value.
+    async function adminCorrectPlatformPool() {
+        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
+        if (!userAddress || userAddress.toLowerCase() !== CONFIG.OWNER_ADDRESS.toLowerCase()) {
+            return alert("Owner only — adminSetPlatformPool() is onlyOwner on the contract.");
+        }
+
+        let poolUsdt = 0;
+        try {
+            const roContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, getRpcProvider());
+            const poolRaw = await roContract.platformPool();
+            poolUsdt = parseFloat(ethers.utils.formatUnits(poolRaw, 18));
+        } catch (e) {
+            return alert("Could not read platformPool(): " + e.message);
+        }
+
+        if (poolUsdt <= 0) {
+            return alert("platformPool() is already 0 — nothing to correct.");
+        }
+
+        const confirmed = await _shConfirm(
+            `Correct Platform Pool\n` +
+            `${'─'.repeat(30)}\n` +
+            `Current platformPool(): $${poolUsdt.toFixed(4)} USDT\n` +
+            `New platformPool():     $0.0000 USDT\n\n` +
+            `Calls: adminSetPlatformPool(0)\n\n` +
+            `This does NOT move any USDT. It only overwrites the internal\n` +
+            `platformPool counter — no tokens transfer, no user balance is\n` +
+            `touched, treasury and contract USDT balance are unaffected.\n\n` +
+            `Setting to 0 because reconciliation (runSurplusDiagnostic +\n` +
+            `per-wallet audit, contamination excluded) found no legitimate\n` +
+            `uncommitted platform revenue currently free to claim — the\n` +
+            `$1.88 real shortfall matches the known $1.96 historical,\n` +
+            `pre-migration gap documented 2026-07-26, not new activity.\n\n` +
+            `Proceed?`
+        );
+        if (!confirmed) return;
+
+        if (window._shLastEth) {
+            const onBSC = await _ensureBSCChain(window._shLastEth);
+            if (!onBSC) return;
+        }
+
+        showToast("Calling adminSetPlatformPool(0) on contract…");
+
+        try {
+            console.log("[AdminCorrectPool] Sending adminSetPlatformPool(0) tx… (old value: " + poolUsdt.toFixed(4) + ")");
+            const tx = await hubContract.adminSetPlatformPool(0, { gasLimit: 100000 });
+            console.log("[AdminCorrectPool] Tx submitted:", tx.hash);
+            showToast("Correction submitted — waiting for on-chain confirmation…");
+
+            const receipt = await tx.wait();
+            if (!receipt || receipt.status !== 1) {
+                console.error("[AdminCorrectPool] Tx reverted. Receipt:", receipt);
+                return alert(
+                    "Platform pool correction reverted on-chain.\n" +
+                    "Block: " + (receipt ? receipt.blockNumber : "unknown") + "\n\n" +
+                    "No counters changed. Nothing was moved either way."
+                );
+            }
+            console.log(`[AdminCorrectPool] Confirmed. Block: ${receipt.blockNumber}, Gas: ${receipt.gasUsed.toString()}`);
+
+            logTransaction('admin_correction', 0, {
+                from: userAddress, to: 'contract-state',
+                description: `platformPool() corrected from $${poolUsdt.toFixed(4)} to $0.0000 via adminSetPlatformPool() — historical pre-migration shortfall, no USDT moved`
+            });
+
+            showToast(`✓ platformPool corrected to $0 — block ${receipt.blockNumber}`);
+            if (window.runSurplusDiagnostic) runSurplusDiagnostic();
+
+        } catch (e) {
+            console.error("[AdminCorrectPool] Threw:", e);
+            alert(
+                "Platform pool correction failed:\n\n" +
+                (e.reason || e.message || String(e)).slice(0, 300) + "\n\n" +
+                "Ensure:\n" +
+                "  • Connected wallet is the contract OWNER (not just platformAdmin)\n" +
+                "  • You are calling adminSetPlatformPool() — this is onlyOwner"
             );
         }
     }
