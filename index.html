@@ -14438,6 +14438,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     showToast('Brave Wallet not found. Open this page in the Brave browser with Brave Wallet enabled.');
                     return;
                 }
+                const _braveOnBSC = await _ensureBSCChain(eth);
+                if (!_braveOnBSC) return;
             } else if (walletType === 'rabby') {
                 // Same reasoning as Brave above — Rabby sets isRabby, never isMetaMask,
                 // and we never want to silently fall back to a different injected wallet.
@@ -14450,6 +14452,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     showToast('Rabby Wallet not found. Please install the Rabby extension.');
                     return;
                 }
+                const _rabbyOnBSC = await _ensureBSCChain(eth);
+                if (!_rabbyOnBSC) return;
             } else if (walletType === 'walletconnect') {
                 // ── WalletConnect v2 ─────────────────────────────────────
                 // Lazily import WalletConnect EthereumProvider from CDN
@@ -14655,6 +14659,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 }
                 if (!eth) eth = await _waitForEthereum(4000);
                 if (!eth) { showToast('No wallet detected. Please install MetaMask.'); return; }
+                const _mmOnBSC = await _ensureBSCChain(eth);
+                if (!_mmOnBSC) return;
             }
 
             provider    = new ethers.providers.Web3Provider(eth);
@@ -16929,6 +16935,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             `Proceed?`
         );
         if (!confirmed) return;
+
+        if (window._shLastEth) {
+            const onBSC = await _ensureBSCChain(window._shLastEth);
+            if (!onBSC) return;
+        }
 
         showToast("Calling adminWithdrawToTreasury() on contract…");
 
