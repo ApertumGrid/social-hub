@@ -11334,6 +11334,47 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div id="surplus-diagnostic-output" style="font-family:var(--font-mono);font-size:0.72rem;line-height:1.7;color:rgba(255,255,255,0.75);white-space:pre-wrap;">Click Refresh to run diagnostic…</div>
                     </div>
 
+                    <!-- 🚨 TEMPORARY — platformPool correction sequence (2026-08 shortfall fix).
+                         Built for the verified $55.30 platformPool() vs $10.53 real-balance bug
+                         (see runSurplusDiagnostic above). DELETE THIS ENTIRE BLOCK, plus the five
+                         admin* functions it calls, once the sequence has been run successfully
+                         and adminWithdrawToTreasury() works correctly again — it has no purpose
+                         after that. -->
+                    <div id="admin-platformpool-fix-block" style="margin-top:16px;padding:16px;background:rgba(239,68,68,0.05);border:2px solid rgba(239,68,68,0.4);border-radius:12px;">
+                        <div style="font-size:0.82rem;font-weight:800;color:#ef4444;letter-spacing:0.3px;margin-bottom:4px;">🚨 TEMPORARY — PlatformPool Fix Sequence</div>
+                        <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:14px;line-height:1.6;">
+                            Owner-only, each step needs its own confirmation. Buttons are ordered top to
+                            bottom in the exact order to click them — deposit() (used inside Restore Backing)
+                            reverts while the contract is paused, so Unpause runs before Restore Backing.
+                            Delete this whole block from the code once the sequence is done.
+                        </div>
+                        <button id="admin-pause-btn" onclick="adminPauseContract()"
+                                style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:6px;padding:10px 18px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.45);border-radius:var(--radius-md);color:#f59e0b;font-family:var(--font-body);font-size:0.78rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;"
+                                title="Owner-only: setPaused(true). Blocks user deposit/withdraw until Unpause.">
+                            1. ⏸ Pause Contract (setPaused → true)
+                        </button>
+                        <button id="admin-emergency-drain-btn" onclick="adminEmergencyDrain()"
+                                style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:8px;padding:10px 18px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.55);border-radius:var(--radius-md);color:#ef4444;font-family:var(--font-body);font-size:0.78rem;font-weight:800;cursor:pointer;letter-spacing:0.3px;"
+                                title="Owner-only, irreversible: emergencyDrain(). Sweeps the ENTIRE real contract balance to the owner wallet and zeroes platformPool. Requires paused == true.">
+                            2. 🆘 Emergency Drain (sweeps entire real balance → owner)
+                        </button>
+                        <button id="admin-unpause-btn" onclick="adminUnpauseContract()"
+                                style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:8px;padding:10px 18px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.4);border-radius:var(--radius-md);color:#22c55e;font-family:var(--font-body);font-size:0.78rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;"
+                                title="Owner-only: setPaused(false). Restores normal deposit/withdraw for all users. Must run before Restore Backing — deposit() reverts while paused.">
+                            3. ▶ Unpause Contract (setPaused → false)
+                        </button>
+                        <button id="admin-restore-backing-btn" onclick="adminRestoreBackingAndClearClaim()"
+                                style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:8px;padding:10px 18px;background:rgba(45,212,191,0.1);border:1px solid rgba(45,212,191,0.4);border-radius:var(--radius-md);color:var(--teal);font-family:var(--font-body);font-size:0.78rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;"
+                                title="Owner-only, two transactions: deposit() the real verified user liability, then adminDeductDeposit() the same amount from the owner's own claim. Requires paused == false.">
+                            4. 🔄 Restore Backing + Clear My Claim
+                        </button>
+                        <button id="admin-add-platform-revenue-btn" onclick="adminAddCorrectPlatformRevenue()"
+                                style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:8px;padding:10px 18px;background:rgba(240,180,41,0.1);border:1px solid rgba(240,180,41,0.4);border-radius:var(--radius-md);color:#f0b429;font-family:var(--font-body);font-size:0.78rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;"
+                                title="Owner/admin-only: adminAddPlatformFees(). Reads admin_revenue/global.total live and lets you confirm the exact amount before adding it to platformPool.">
+                            5. ➕ Add Correct Platform Revenue (adminAddPlatformFees)
+                        </button>
+                    </div>
+
                     <button id="admin-recalc-posts-btn" onclick="adminRecalcPostCounts()"
                             style="display:flex;align-items:center;justify-content:center;gap:8px;
                                    width:100%;margin-top:8px;padding:10px 18px;
@@ -13604,6 +13645,9 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
         "function adminWithdrawToTreasury() external",
         "function adminAddPlatformFees(uint256 amount) external",
         "function adminSetPlatformPool(uint256 amount) external",
+        "function adminDeductDeposit(address user, uint256 amount) external",
+        "function setPaused(bool _paused) external",
+        "function emergencyDrain() external",
         "function platformPool() view returns (uint256)",
         "function nonces(address user) view returns (uint256)",
         "function paused() view returns (bool)",
@@ -17082,12 +17126,37 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             console.log("[AdminCorrectPool] Tx submitted:", tx.hash);
             showToast("Correction submitted — waiting for on-chain confirmation…");
 
-            const receipt = await tx.wait();
-            if (!receipt || receipt.status !== 1) {
+            // Bounded wait — bare tx.wait() hangs forever with zero feedback if the
+            // tx never actually gets mined (e.g. dropped from mempool). Poll BSC
+            // directly instead, same pattern settleStarsToWallet() already uses,
+            // so a stuck/dropped tx surfaces as a clear message instead of an
+            // infinite spinner.
+            let receipt = null;
+            const _acpRoProvider = getRpcProvider();
+            for (let _i = 0; _i < 36; _i++) {
+                try {
+                    receipt = await _acpRoProvider.getTransactionReceipt(tx.hash);
+                    if (receipt) break;
+                } catch (_) {}
+                await new Promise(r => setTimeout(r, 5000));
+                showToast("Waiting for confirmation… " + ((_i + 1) * 5) + "s (tx: " + tx.hash.slice(0, 10) + "…)");
+            }
+
+            if (!receipt) {
+                return alert(
+                    "No confirmation after 3 minutes.\n\n" +
+                    "Transaction hash: " + tx.hash + "\n\n" +
+                    "This does NOT necessarily mean it failed — check this hash on a BSC " +
+                    "block explorer. platformPool() has not changed as of this check. " +
+                    "If the hash isn't found there either, it was never actually broadcast " +
+                    "and nothing happened — safe to try again."
+                );
+            }
+            if (receipt.status !== 1) {
                 console.error("[AdminCorrectPool] Tx reverted. Receipt:", receipt);
                 return alert(
                     "Platform pool correction reverted on-chain.\n" +
-                    "Block: " + (receipt ? receipt.blockNumber : "unknown") + "\n\n" +
+                    "Block: " + receipt.blockNumber + "\n\n" +
                     "No counters changed. Nothing was moved either way."
                 );
             }
@@ -17110,6 +17179,409 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 "  • Connected wallet is the contract OWNER (not just platformAdmin)\n" +
                 "  • You are calling adminSetPlatformPool() — this is onlyOwner"
             );
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 🚨 TEMPORARY — platformPool fix sequence (2026-08). Owner-only.
+    // Delete this whole block, plus #admin-platformpool-fix-block above,
+    // once the sequence has run successfully and adminWithdrawToTreasury()
+    // works correctly again.
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Bounded receipt poll shared by all five steps below — same pattern
+    // adminCorrectPlatformPool() already uses, so a dropped/slow tx surfaces
+    // as a clear message instead of an infinite spinner.
+    async function _adminPollReceipt(txHash) {
+        const rpc = getRpcProvider();
+        for (let i = 0; i < 36; i++) {
+            try {
+                const receipt = await rpc.getTransactionReceipt(txHash);
+                if (receipt) return receipt;
+            } catch (_) {}
+            await new Promise(r => setTimeout(r, 5000));
+            showToast("Waiting for confirmation… " + ((i + 1) * 5) + "s (tx: " + txHash.slice(0, 10) + "…)");
+        }
+        return null;
+    }
+
+    // ── Step 1: Pause ──────────────────────────────────────────────────
+    async function adminPauseContract() {
+        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
+        if (!userAddress || userAddress.toLowerCase() !== CONFIG.OWNER_ADDRESS.toLowerCase()) {
+            return alert("Owner only — setPaused() is onlyOwner on the contract.");
+        }
+
+        let alreadyPaused = false;
+        try {
+            const roContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, getRpcProvider());
+            alreadyPaused = await roContract.paused();
+        } catch (e) {
+            return alert("Could not read paused(): " + e.message);
+        }
+        if (alreadyPaused) return alert("Contract is already paused.");
+
+        const confirmed = await _shConfirm(
+            `Pause Contract\n` +
+            `${'─'.repeat(30)}\n` +
+            `Calls: setPaused(true)\n\n` +
+            `Blocks deposit(), userWithdraw(), creatorWithdraw(), withdrawAll()\n` +
+            `for ALL users until Unpause is run. Required before Emergency Drain —\n` +
+            `emergencyDrain() reverts unless the contract is already paused.\n\n` +
+            `TEMPORARY ADMIN TOOL — platformPool fix sequence, step 1.\n\n` +
+            `Proceed?`
+        );
+        if (!confirmed) return;
+
+        if (window._shLastEth) {
+            const onBSC = await _ensureBSCChain(window._shLastEth);
+            if (!onBSC) return;
+        }
+
+        showToast("Calling setPaused(true) on contract…");
+        try {
+            const tx = await hubContract.setPaused(true, { gasLimit: 80000 });
+            showToast("Pause submitted — waiting for on-chain confirmation…");
+            const receipt = await _adminPollReceipt(tx.hash);
+            if (!receipt) return alert("No confirmation after 3 minutes.\n\nTx hash: " + tx.hash + "\n\nCheck this hash on a BSC block explorer before retrying.");
+            if (receipt.status !== 1) return alert("Pause reverted on-chain. Block: " + receipt.blockNumber);
+
+            logTransaction('admin_correction', 0, {
+                from: userAddress, to: 'contract-state',
+                description: `Contract paused via setPaused(true) — platformPool fix sequence step 1`
+            });
+            showToast(`✓ Contract paused — block ${receipt.blockNumber}`);
+            if (window.runSurplusDiagnostic) runSurplusDiagnostic();
+        } catch (e) {
+            alert("Pause failed:\n\n" + (e.reason || e.message || String(e)).slice(0, 300));
+        }
+    }
+
+    // ── Step 2: Emergency Drain ───────────────────────────────────────
+    async function adminEmergencyDrain() {
+        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
+        if (!userAddress || userAddress.toLowerCase() !== CONFIG.OWNER_ADDRESS.toLowerCase()) {
+            return alert("Owner only — emergencyDrain() is onlyOwner on the contract.");
+        }
+
+        let isPaused = false, contractUsdt = 0, poolUsdt = 0;
+        try {
+            const roContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, getRpcProvider());
+            const usdtRo = new ethers.Contract(CONFIG.USDT_ADDRESS, usdtAbi, getRpcProvider());
+            const [pausedNow, balRaw, poolRaw] = await Promise.all([
+                roContract.paused(),
+                usdtRo.balanceOf(CONFIG.CONTRACT_ADDRESS),
+                roContract.platformPool()
+            ]);
+            isPaused     = pausedNow;
+            contractUsdt = parseFloat(ethers.utils.formatUnits(balRaw, 18));
+            poolUsdt     = parseFloat(ethers.utils.formatUnits(poolRaw, 18));
+        } catch (e) {
+            return alert("Could not read contract state: " + e.message);
+        }
+
+        if (!isPaused) {
+            return alert("Contract is not paused. emergencyDrain() requires paused == true.\n\nRun 'Pause Contract' first.");
+        }
+        if (contractUsdt <= 0) {
+            return alert("Real contract USDT balance is $0 — nothing to drain.");
+        }
+
+        const confirmed = await _shConfirm(
+            `⚠️ EMERGENCY DRAIN — READ CAREFULLY\n` +
+            `${'─'.repeat(30)}\n` +
+            `This sweeps the ENTIRE real contract USDT balance to the OWNER\n` +
+            `WALLET (${CONFIG.OWNER_ADDRESS}) and zeroes platformPool in the\n` +
+            `same transaction. Irreversible once confirmed.\n\n` +
+            `Real contract balance (live, just read): $${contractUsdt.toFixed(4)} USDT\n` +
+            `Current platformPool() (will become $0):  $${poolUsdt.toFixed(4)} USDT\n\n` +
+            `After this the contract holds $0.00 USDT. Every user's deposited/\n` +
+            `withdrawable ledger balance stays recorded on-chain but is backed\n` +
+            `by nothing until you run 'Restore Backing + Clear My Claim' next.\n` +
+            `Do not stop the sequence here.\n\n` +
+            `Calls: emergencyDrain()\n\n` +
+            `TEMPORARY ADMIN TOOL — platformPool fix sequence, step 2.\n\n` +
+            `Proceed?`
+        );
+        if (!confirmed) return;
+
+        if (window._shLastEth) {
+            const onBSC = await _ensureBSCChain(window._shLastEth);
+            if (!onBSC) return;
+        }
+
+        showToast("Calling emergencyDrain() on contract…");
+        try {
+            const tx = await hubContract.emergencyDrain({ gasLimit: 150000 });
+            showToast("Drain submitted — waiting for on-chain confirmation…");
+            const receipt = await _adminPollReceipt(tx.hash);
+            if (!receipt) return alert("No confirmation after 3 minutes.\n\nTx hash: " + tx.hash + "\n\nCheck this hash on a BSC block explorer before retrying — do NOT click Drain again until you've confirmed the first one didn't land.");
+            if (receipt.status !== 1) return alert("Emergency drain reverted on-chain. Block: " + receipt.blockNumber + "\n\nNo funds moved.");
+
+            logTransaction('admin_correction', contractUsdt, {
+                from: 'contract', to: userAddress,
+                description: `Emergency drain — $${contractUsdt.toFixed(4)} USDT swept to owner, platformPool zeroed — platformPool fix sequence step 2`
+            });
+            showToast(`✓ Drained $${contractUsdt.toFixed(4)} USDT to owner wallet — block ${receipt.blockNumber}. Unpause, then run 'Restore Backing' next.`);
+            if (window.runSurplusDiagnostic) runSurplusDiagnostic();
+        } catch (e) {
+            alert("Emergency drain failed:\n\n" + (e.reason || e.message || String(e)).slice(0, 300));
+        }
+    }
+
+    // ── Step 4: Restore Backing + Clear My Claim (combined, two txs) ──
+    async function adminRestoreBackingAndClearClaim() {
+        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
+        if (!userAddress || userAddress.toLowerCase() !== CONFIG.OWNER_ADDRESS.toLowerCase()) {
+            return alert("Owner only — this restores backing from the owner's own wallet.");
+        }
+
+        let isPaused = true;
+        try {
+            const roContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, getRpcProvider());
+            isPaused = await roContract.paused();
+        } catch (e) {
+            return alert("Could not read paused(): " + e.message);
+        }
+        if (isPaused) {
+            return alert("Contract is currently paused. deposit() reverts while paused — run 'Unpause Contract' first, then come back to this step.");
+        }
+
+        // Live wallet scan — same method runSurplusDiagnostic() above uses,
+        // excluding OWNER_ADDRESS automatically (owner can't owe themselves).
+        // Does NOT auto-exclude other contamination (e.g. round-number test
+        // deposits with no other activity) — review the breakdown before
+        // entering the final amount.
+        showToast("Scanning all known wallets on-chain for real user liability…");
+        let breakdown = [];
+        let suggestedTotal = 0;
+        try {
+            const roContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, getRpcProvider());
+            const balSnap = await window.fs.getDocs(window.fs.collection(window.db, 'user_balances'));
+            const addrs = [];
+            balSnap.forEach(d => addrs.push(d.id.toLowerCase()));
+            for (const addr of addrs) {
+                if (addr === CONFIG.OWNER_ADDRESS.toLowerCase()) continue;
+                try {
+                    const b = await roContract.getBalance(addr);
+                    const total = parseFloat(ethers.utils.formatUnits(b.total, 18));
+                    if (total > 0) { breakdown.push({ addr, total }); suggestedTotal += total; }
+                } catch (_) {}
+            }
+        } catch (e) {
+            return alert("Live wallet scan failed: " + e.message);
+        }
+
+        const breakdownText = breakdown.map(r => `  ${r.addr}: $${r.total.toFixed(4)}`).join('\n') || '  (none found)';
+        alert(
+            `Live on-chain liability scan (just now, OWNER_ADDRESS excluded):\n\n` +
+            breakdownText + `\n\n` +
+            `Raw total: $${suggestedTotal.toFixed(4)} USDT\n\n` +
+            `Review this list for any wallet that isn't a real user (e.g. a\n` +
+            `round-number test deposit with no other activity) before entering\n` +
+            `the final amount on the next screen.`
+        );
+
+        const amtStr = prompt(
+            `Enter the exact real USDT amount to restore as backing.\n` +
+            `Raw scanned total (owner excluded): $${suggestedTotal.toFixed(4)}\n` +
+            `Adjust if the breakdown above includes non-real-user wallets.`,
+            suggestedTotal.toFixed(4)
+        );
+        if (amtStr === null) return;
+        const amount = parseFloat(amtStr);
+        if (!Number.isFinite(amount) || amount <= 0) return alert("Invalid amount.");
+        const amountWei = ethers.utils.parseUnits(amount.toFixed(4), 18);
+
+        const confirmed = await _shConfirm(
+            `Restore Backing + Clear My Claim\n` +
+            `${'─'.repeat(30)}\n` +
+            `Amount: $${amount.toFixed(4)} USDT\n\n` +
+            `Step A — deposit(${amount.toFixed(4)}):\n` +
+            `  Sends $${amount.toFixed(4)} real USDT from your owner wallet into\n` +
+            `  the contract. Restores real backing for other users' balances.\n` +
+            `  This temporarily credits YOUR OWN depositedUSDT ledger entry by\n` +
+            `  the same amount.\n\n` +
+            `Step B — adminDeductDeposit(owner, ${amount.toFixed(4)}):\n` +
+            `  Runs immediately after Step A confirms. Removes that same\n` +
+            `  $${amount.toFixed(4)} claim from your own depositedUSDT ledger, so\n` +
+            `  you are not left owed anything from the deposit you just made.\n\n` +
+            `Net effect: the contract's real USDT balance goes up by\n` +
+            `$${amount.toFixed(4)}; your own ledger balance ends unchanged.\n\n` +
+            `Two on-chain transactions, run in sequence.\n\n` +
+            `TEMPORARY ADMIN TOOL — platformPool fix sequence, step 4.\n\n` +
+            `Proceed?`
+        );
+        if (!confirmed) return;
+
+        if (window._shLastEth) {
+            const onBSC = await _ensureBSCChain(window._shLastEth);
+            if (!onBSC) return;
+        }
+
+        try {
+            // ── Step A: approve (if needed) + deposit ──────────────────
+            const usdtRo      = new ethers.Contract(CONFIG.USDT_ADDRESS, usdtAbi, getRpcProvider());
+            const usdtSigner  = new ethers.Contract(CONFIG.USDT_ADDRESS, usdtAbi, signer);
+            const allowance   = await usdtRo.allowance(userAddress, CONFIG.CONTRACT_ADDRESS);
+            if (allowance.lt(amountWei)) {
+                showToast("Approving USDT…");
+                const approveTx = await usdtSigner.approve(CONFIG.CONTRACT_ADDRESS, ethers.constants.MaxUint256, { gasLimit: 100000 });
+                const approveReceipt = await _adminPollReceipt(approveTx.hash);
+                if (!approveReceipt || approveReceipt.status !== 1) return alert("USDT approval failed or unconfirmed — nothing else was run.");
+            }
+
+            showToast("Step A — calling deposit()…");
+            const depTx = await hubContract.deposit(amountWei, { gasLimit: 150000 });
+            const depReceipt = await _adminPollReceipt(depTx.hash);
+            if (!depReceipt) return alert("Deposit: no confirmation after 3 minutes.\n\nTx hash: " + depTx.hash + "\n\nSTOP — check this hash on a block explorer before retrying or running Step B manually.");
+            if (depReceipt.status !== 1) return alert("Deposit reverted on-chain. Block: " + depReceipt.blockNumber + "\n\nNo USDT moved, no claim created. Safe to retry.");
+
+            logTransaction('admin_correction', amount, {
+                from: userAddress, to: 'contract',
+                description: `Restore backing step A — deposit($${amount.toFixed(4)}) — platformPool fix sequence step 4a`
+            });
+            showToast("Step A confirmed — calling Step B: adminDeductDeposit()…");
+
+            // ── Step B: deduct the claim just created ───────────────────
+            const dedTx = await hubContract.adminDeductDeposit(userAddress, amountWei, { gasLimit: 100000 });
+            const dedReceipt = await _adminPollReceipt(dedTx.hash);
+            if (!dedReceipt) return alert("⚠️ Deposit confirmed but adminDeductDeposit has NO confirmation after 3 minutes.\n\nYou currently have a $" + amount.toFixed(4) + " claim on your own deposit — check tx hash " + dedTx.hash + " before doing anything else, then retry Step B manually if it never landed.");
+            if (dedReceipt.status !== 1) return alert("⚠️ Deposit confirmed but adminDeductDeposit REVERTED — block " + dedReceipt.blockNumber + ".\n\nYou currently have a $" + amount.toFixed(4) + " claim on your own deposit. Do not proceed to the next step — investigate and re-run adminDeductDeposit before moving on.");
+
+            logTransaction('admin_correction', -amount, {
+                from: 'contract', to: userAddress,
+                description: `Restore backing step B — adminDeductDeposit(owner, $${amount.toFixed(4)}) — claim cleared — platformPool fix sequence step 4b`
+            });
+            showToast(`✓ Restored $${amount.toFixed(4)} USDT backing, claim cleared — blocks ${depReceipt.blockNumber} / ${dedReceipt.blockNumber}`);
+            if (window.runSurplusDiagnostic) runSurplusDiagnostic();
+        } catch (e) {
+            alert("Restore backing failed:\n\n" + (e.reason || e.message || String(e)).slice(0, 300));
+        }
+    }
+
+    // ── Step 5: Add Correct Platform Revenue ───────────────────────────
+    async function adminAddCorrectPlatformRevenue() {
+        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
+        if (!userAddress || userAddress.toLowerCase() !== CONFIG.OWNER_ADDRESS.toLowerCase()) {
+            return alert("Owner/admin only — adminAddPlatformFees() is onlyAdmin on the contract.");
+        }
+
+        let revenueStars = 0;
+        try {
+            const revSnap = await window.fs.getDoc(window.fs.doc(window.db, 'admin_revenue', 'global'));
+            revenueStars = revSnap.exists() ? parseFloat(revSnap.data().total || 0) : 0;
+        } catch (e) {
+            return alert("Could not read admin_revenue/global: " + e.message);
+        }
+        const revenueUsdt = revenueStars * CONFIG.STAR_USD;
+        if (revenueUsdt <= 0) return alert("admin_revenue/global.total is $0 — nothing to add.");
+
+        let poolUsdt = 0;
+        try {
+            const roContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, getRpcProvider());
+            const poolRaw = await roContract.platformPool();
+            poolUsdt = parseFloat(ethers.utils.formatUnits(poolRaw, 18));
+        } catch (_) {}
+
+        const amtStr = prompt(
+            `Enter the exact USDT amount to add to platformPool.\n` +
+            `Live admin_revenue/global.total (just read): ${revenueStars.toFixed(2)}★ = $${revenueUsdt.toFixed(4)}`,
+            revenueUsdt.toFixed(4)
+        );
+        if (amtStr === null) return;
+        const amount = parseFloat(amtStr);
+        if (!Number.isFinite(amount) || amount <= 0) return alert("Invalid amount.");
+
+        const confirmed = await _shConfirm(
+            `Add Correct Platform Revenue\n` +
+            `${'─'.repeat(30)}\n` +
+            `Live admin_revenue/global.total: ${revenueStars.toFixed(2)}★ = $${revenueUsdt.toFixed(4)} USDT\n` +
+            `Amount to add:                    $${amount.toFixed(4)} USDT\n` +
+            `Current platformPool() (just read): $${poolUsdt.toFixed(4)} USDT\n` +
+            `New platformPool() after:           $${(poolUsdt + amount).toFixed(4)} USDT\n\n` +
+            `Calls: adminAddPlatformFees(${amount.toFixed(4)})\n` +
+            `Does NOT move any USDT — only increments the platformPool counter.\n` +
+            `Real USDT to cover this must already be in the contract (from the\n` +
+            `Restore Backing step) for adminWithdrawToTreasury() to work after.\n\n` +
+            `TEMPORARY ADMIN TOOL — platformPool fix sequence, step 5.\n\n` +
+            `Proceed?`
+        );
+        if (!confirmed) return;
+
+        if (window._shLastEth) {
+            const onBSC = await _ensureBSCChain(window._shLastEth);
+            if (!onBSC) return;
+        }
+
+        const amountWei = ethers.utils.parseUnits(amount.toFixed(4), 18);
+        showToast("Calling adminAddPlatformFees() on contract…");
+        try {
+            const tx = await hubContract.adminAddPlatformFees(amountWei, { gasLimit: 100000 });
+            showToast("Submitted — waiting for on-chain confirmation…");
+            const receipt = await _adminPollReceipt(tx.hash);
+            if (!receipt) return alert("No confirmation after 3 minutes.\n\nTx hash: " + tx.hash);
+            if (receipt.status !== 1) return alert("adminAddPlatformFees reverted on-chain. Block: " + receipt.blockNumber);
+
+            logTransaction('admin_correction', amount, {
+                from: 'contract-state', to: 'contract-state',
+                description: `platformPool corrected: added $${amount.toFixed(4)} real platform revenue via adminAddPlatformFees() — platformPool fix sequence step 5`
+            });
+            showToast(`✓ Added $${amount.toFixed(4)} to platformPool — block ${receipt.blockNumber}`);
+            if (window.runSurplusDiagnostic) runSurplusDiagnostic();
+        } catch (e) {
+            alert("adminAddPlatformFees failed:\n\n" + (e.reason || e.message || String(e)).slice(0, 300));
+        }
+    }
+
+    // ── Step 3: Unpause ─────────────────────────────────────────────────
+    async function adminUnpauseContract() {
+        if (!hubContract || !signer || !provider) return alert("Connect Wallet First");
+        if (!userAddress || userAddress.toLowerCase() !== CONFIG.OWNER_ADDRESS.toLowerCase()) {
+            return alert("Owner only — setPaused() is onlyOwner on the contract.");
+        }
+
+        let isPaused = true;
+        try {
+            const roContract = new ethers.Contract(CONFIG.CONTRACT_ADDRESS, abi, getRpcProvider());
+            isPaused = await roContract.paused();
+        } catch (e) {
+            return alert("Could not read paused(): " + e.message);
+        }
+        if (!isPaused) return alert("Contract is already unpaused.");
+
+        const confirmed = await _shConfirm(
+            `Unpause Contract\n` +
+            `${'─'.repeat(30)}\n` +
+            `Calls: setPaused(false)\n\n` +
+            `Restores normal deposit()/userWithdraw()/creatorWithdraw()/withdrawAll()\n` +
+            `for all users. Runs before Restore Backing — deposit() reverts while paused.\n\n` +
+            `TEMPORARY ADMIN TOOL — platformPool fix sequence, step 3.\n\n` +
+            `Proceed?`
+        );
+        if (!confirmed) return;
+
+        if (window._shLastEth) {
+            const onBSC = await _ensureBSCChain(window._shLastEth);
+            if (!onBSC) return;
+        }
+
+        showToast("Calling setPaused(false) on contract…");
+        try {
+            const tx = await hubContract.setPaused(false, { gasLimit: 80000 });
+            showToast("Unpause submitted — waiting for on-chain confirmation…");
+            const receipt = await _adminPollReceipt(tx.hash);
+            if (!receipt) return alert("No confirmation after 3 minutes.\n\nTx hash: " + tx.hash);
+            if (receipt.status !== 1) return alert("Unpause reverted on-chain. Block: " + receipt.blockNumber);
+
+            logTransaction('admin_correction', 0, {
+                from: userAddress, to: 'contract-state',
+                description: `Contract unpaused via setPaused(false) — platformPool fix sequence step 3`
+            });
+            showToast(`✓ Contract unpaused — block ${receipt.blockNumber}`);
+            if (window.runSurplusDiagnostic) runSurplusDiagnostic();
+        } catch (e) {
+            alert("Unpause failed:\n\n" + (e.reason || e.message || String(e)).slice(0, 300));
         }
     }
 
