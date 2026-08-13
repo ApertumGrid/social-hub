@@ -4778,6 +4778,35 @@
         .mcd-solvency.solvent   .mcd-sol-ratio { color: #22c55e; }
         .mcd-solvency.insolvent .mcd-sol-ratio { color: #ef4444; }
         .mcd-sol-sub { font-size: 0.6rem; color: var(--text-muted); margin-top: 1px; }
+        .mcd-sol-adminrev {
+            font-family: var(--font-mono); font-size: 0.68rem; font-weight: 800;
+            color: var(--gold); margin-top: 5px; letter-spacing: 0.3px;
+        }
+        .mcd-comp-wrap {
+            margin: -4px 0 16px; padding: 10px 14px; border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02);
+        }
+        .mcd-comp-text {
+            font-family: var(--font-mono); font-size: 0.66rem; color: var(--text-secondary);
+            margin-bottom: 8px; line-height: 1.5;
+        }
+        .mcd-comp-bar {
+            display: flex; width: 100%; height: 10px; border-radius: 6px; overflow: hidden;
+            background: rgba(255,255,255,0.05); margin-bottom: 8px;
+        }
+        .mcd-comp-seg { height: 100%; transition: width 0.4s; }
+        .mcd-comp-owed     { background: #f59e0b; }
+        .mcd-comp-adminrev { background: var(--gold); }
+        .mcd-comp-buffer   { background: #2dd4bf; }
+        .mcd-comp-legend {
+            display: flex; gap: 14px; flex-wrap: wrap;
+            font-family: var(--font-mono); font-size: 0.58rem; color: var(--text-muted);
+            letter-spacing: 0.4px;
+        }
+        .mcd-comp-dot {
+            display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+            margin-right: 4px; vertical-align: middle;
+        }
 
         /* Tokenomics */
         .tok-section { font-family: var(--font-mono-gem); font-size: 0.56rem; color: #f59e0b; letter-spacing: 2.5px; text-transform: uppercase; margin: 18px 0 8px; font-weight: 700; }
@@ -11188,6 +11217,22 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         <div class="mcd-sol-right">
                             <div class="mcd-sol-ratio" id="mcd-sol-ratio">— / —</div>
                             <div class="mcd-sol-sub">Contract USDT / Liability USDT</div>
+                            <div class="mcd-sol-adminrev" id="mcd-sol-adminrev"></div>
+                        </div>
+                    </div>
+
+                    <!-- Surplus composition breakdown -->
+                    <div class="mcd-comp-wrap" id="mcd-comp-wrap" style="display:none;">
+                        <div class="mcd-comp-text" id="mcd-comp-text"></div>
+                        <div class="mcd-comp-bar" id="mcd-comp-bar">
+                            <div class="mcd-comp-seg mcd-comp-owed" id="mcd-comp-seg-owed"></div>
+                            <div class="mcd-comp-seg mcd-comp-adminrev" id="mcd-comp-seg-adminrev"></div>
+                            <div class="mcd-comp-seg mcd-comp-buffer" id="mcd-comp-seg-buffer"></div>
+                        </div>
+                        <div class="mcd-comp-legend">
+                            <span><i class="mcd-comp-dot mcd-comp-owed"></i>Owed to users</span>
+                            <span><i class="mcd-comp-dot mcd-comp-adminrev"></i>Platform revenue (withdrawable)</span>
+                            <span><i class="mcd-comp-dot mcd-comp-buffer"></i>Buffer</span>
                         </div>
                     </div>
 
@@ -16717,6 +16762,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             const statusEl = document.getElementById('mcd-sol-status');
             const detailEl = document.getElementById('mcd-sol-detail');
             const ratioEl  = document.getElementById('mcd-sol-ratio');
+            const adminRevLineEl = document.getElementById('mcd-sol-adminrev');
+            const compWrapEl     = document.getElementById('mcd-comp-wrap');
+            const compTextEl     = document.getElementById('mcd-comp-text');
+            const compOwedEl     = document.getElementById('mcd-comp-seg-owed');
+            const compAdminEl    = document.getElementById('mcd-comp-seg-adminrev');
+            const compBufferEl   = document.getElementById('mcd-comp-seg-buffer');
 
             if (!provider) {
                 if (bar) bar.className = 'mcd-solvency loading';
@@ -16771,6 +16822,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             if (bar) bar.className = 'mcd-solvency ' + (isSolvent ? 'solvent' : 'insolvent');
             if (ratioEl) ratioEl.textContent =
                 '$' + contractBalUsdt.toFixed(2) + ' USDT / $' + userLiabilityUsdt.toFixed(2) + ' USDT owed';
+            if (adminRevLineEl) adminRevLineEl.textContent =
+                '$' + adminRevUsdt.toFixed(2) + ' platform revenue — withdrawable';
 
             const pendingEl = document.getElementById('mcd-pending');
             if (pendingEl) pendingEl.textContent = '$' + userLiabilityUsdt.toFixed(2) + ' USDT';
@@ -16782,6 +16835,23 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     ' · Deposits owed: $' + depositLiability.toFixed(2) +
                     ' · Earned owed: $' + earnedLiability.toFixed(2) +
                     ' · Admin rev: $' + adminRevUsdt.toFixed(2) + ' USDT';
+
+                // Surplus composition — how much of the surplus is legitimate,
+                // already-accounted-for platform revenue vs genuine extra buffer.
+                const bufferUsdt = Math.max(0, discrepancyUsd - adminRevUsdt);
+                if (compWrapEl && contractBalUsdt > 0) {
+                    compWrapEl.style.display = '';
+                    if (compTextEl) compTextEl.textContent =
+                        '$' + contractBalUsdt.toFixed(2) + ' total = $' + userLiabilityUsdt.toFixed(2) +
+                        ' owed to users + $' + adminRevUsdt.toFixed(2) + ' platform revenue (withdrawable) + $' +
+                        bufferUsdt.toFixed(2) + ' buffer';
+                    const owedPct   = Math.min(100, (userLiabilityUsdt / contractBalUsdt) * 100);
+                    const adminPct  = Math.min(100 - owedPct, (adminRevUsdt / contractBalUsdt) * 100);
+                    const bufferPct = Math.max(0, 100 - owedPct - adminPct);
+                    if (compOwedEl)   compOwedEl.style.width   = owedPct.toFixed(2) + '%';
+                    if (compAdminEl)  compAdminEl.style.width  = adminPct.toFixed(2) + '%';
+                    if (compBufferEl) compBufferEl.style.width = bufferPct.toFixed(2) + '%';
+                }
             } else {
                 if (statusEl) statusEl.textContent = 'RESERVE DISCREPANCY';
                 if (detailEl) detailEl.textContent =
@@ -16789,6 +16859,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                     ' · Coverage: ' + coverageRatio + '%' +
                     ' · Users owed: $' + userLiabilityUsdt.toFixed(2) + ' USDT' +
                     ' · Admin rev: $' + adminRevUsdt.toFixed(2) + ' USDT';
+                if (compWrapEl) compWrapEl.style.display = 'none';
             }
 
             console.log(
@@ -29644,45 +29715,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             var creatorCut = result.creatorCut;
             var platformCut = result.platformCut;
 
-            // Update local balance state after CF confirms
-            await window.fs.addDoc(
-                window.fs.collection(window.db, 'user_transactions'),
-                {
-                    type:           'spend',
-                    amount:         amount,
-                    fromAddress:    senderAddr,
-                    toAddress:      recipient,
-                    address:        senderAddr,
-                    description:    'Rained ' + amount + '\u2605 on a post (' + recipient.slice(0,8) + '\u2026)',
-                    postId:         postId,
-                    timestamp:      Date.now(),
-                    schema_version: 2
-                }
-            );
+            // Balance deduction, creator credit, platform revenue, the ledger
+            // entries, and the post's rainTotal counter are all already handled
+            // server-side by rainOnPost — the client only reflects the result.
+            //
+            // FIX 2026-08-13: this used to also deduct/credit/log everything a
+            // second time client-side (a leftover from before this action was
+            // migrated to a Cloud Function). Confirmed via a real 2026-07-24
+            // event that this double-processing actually fired: sender was
+            // charged 20★ instead of 10★, recipient credited 18★ instead of
+            // 9★, platform credited 2★ instead of 1★. Removed the redundant
+            // deductStars / creditCreatorStars / logTransaction / logAdminRevenue
+            // / rainTotal-increment calls — server response is now trusted as-is.
 
-            // ── STEP B: Deduct from sender ────────────────────────────
-            await deductStars(amount);
-            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Rain', amount, '\ud83c\udf27');
-
-            // ── STEP C: 80% to creator ────────────────────────────────
-            await creditCreatorStars(recipient, creatorCut);
-            logTransaction('earn', creatorCut, {
-                from:        senderAddr,
-                to:          recipient,
-                description: 'Rain received on post (' + amount + '\u2605 \u2192 ' + creatorCut.toFixed(2) + '\u2605 after 90/10 split)',
-                postId:      postId,
-                communityId: _activeCommunity ? _activeCommunity.id : null
-            });
-
-            // ── STEP D: 20% platform revenue ─────────────────────────
-            logAdminRevenue(senderAddr, 'rain_post', platformCut);
-
-            // ── STEP E: Increment rainTotal on the post document ──────
-            var collection = _activeCommunity ? 'posts' : 'posts';
-            window.fs.updateDoc(
-                window.fs.doc(window.db, collection, postId),
-                { rainTotal: window.fs.increment(amount) }
-            ).catch(function(){});
+            if (typeof window.tickerLog === 'function') window.tickerLog('spend', 'Rain', amount, '🌧');
 
             // ── STEP F: Update rain badge on card ─────────────────────
             var badgeEl = document.getElementById('rain-total-' + postId);
