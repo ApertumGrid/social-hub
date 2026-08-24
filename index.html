@@ -4318,9 +4318,6 @@
             overflow-x: auto;
             flex-shrink: 0;
             scrollbar-width: none;
-            position: sticky;
-            top: 0;
-            z-index: 10;
         }
         #category-bar::-webkit-scrollbar { display: none; }
         /* â”€â”€ CATEGORY BADGE on post cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -31443,7 +31440,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 console.log('[Live] Re-attaching broadcaster video after tab switch');
                 // Use the correct track — screen or camera
                 const activeTrack = isScreenSharing ? screenTrack : localVideoTrack;
-                if (activeTrack) _playInContainer(activeTrack, 'live-broadcaster-video');
+                if (activeTrack) _playInContainer(activeTrack, 'live-broadcaster-video', !isScreenSharing && _currentFacingMode === 'user');
 
                 // Re-sync PiP camera if screen sharing
                 if (isScreenSharing && localVideoTrack) {
@@ -31547,13 +31544,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     //  2. Never clear innerHTML — Agora manages its own <video> inside the container.
     //  3. Container must be visible (non-zero size) before calling track.play().
     //  4. If already playing in the same container, track.play() is idempotent — safe to call again.
-    function _playInContainer(track, containerId) {
+    // `mirror` is explicit opt-in, not left to Agora's internal default: pass
+    // true/false to force our own CSS transform on the container Agora fills,
+    // or omit it entirely to leave any existing transform untouched (used by
+    // callers that aren't the local camera feed, e.g. remote/reaction targets).
+    function _playInContainer(track, containerId, mirror) {
         if (!track) { console.warn('[Live] _playInContainer: no track'); return; }
         const el = typeof containerId === 'string' ? $(containerId) : containerId;
         if (!el) { console.warn('[Live] _playInContainer: element not found:', containerId); return; }
         console.log('[Live] Playing track into', containerId, '— dims:', el.offsetWidth, 'x', el.offsetHeight);
         try {
             track.play(el);
+            if (mirror !== undefined) el.style.transform = mirror ? 'scaleX(-1)' : '';
         } catch(e) {
             console.error('[Live] track.play() error:', e);
         }
@@ -31796,10 +31798,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
             // Close any existing tracks first
             await closeExistingTracks();
+            _releasePreLiveRawStream();
             await _delayForCameraRelease();
 
             // Acquire tracks (synchronously in this click handler)
-            [localAudioTrack, localVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks();
+            [localAudioTrack, localVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks(undefined, { facingMode: _currentFacingMode });
             window._localVideoTrack_ref = localVideoTrack;
             window._localAudioTrack_ref = localAudioTrack;
 
@@ -32184,11 +32187,18 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (curState === 'DISCONNECTED') showToast('Stream connection lost. Refresh to restart.');
             });
 
-            // 3. Publish tracks (require tracks to already exist, verified by enableCameraAndMic)
+            // 3. Publish tracks (create if not already previewed)
             if (!localVideoTrack || !localAudioTrack) {
-                _isStartingLive = false;
-                showToast('Please enable camera & microphone first.');
-                return;
+                // Release any raw preview stream left open by the pre-live flip
+                // toggle before requesting our own — otherwise this opens a
+                // second, independent camera connection while the first is
+                // still active, and honors the toggle's actual selection
+                // instead of silently defaulting to front camera.
+                _releasePreLiveRawStream();
+                await _delayForCameraRelease();
+                [localAudioTrack, localVideoTrack] = await window.AgoraRTC.createMicrophoneAndCameraTracks(undefined, { facingMode: _currentFacingMode });
+                window._localVideoTrack_ref = localVideoTrack;
+                window._localAudioTrack_ref = localAudioTrack;
             }
             if (localVideoTrack && !localVideoTrack.enabled) { await localVideoTrack.setEnabled(true); }
             if (localAudioTrack && !localAudioTrack.enabled) { await localAudioTrack.setEnabled(true); }
@@ -32276,11 +32286,11 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             (function _retryPlay(attempts) {
                 const vc = document.getElementById('live-broadcaster-video');
                 if (vc && (vc.offsetWidth > 0 || vc.offsetHeight > 0)) {
-                    _playInContainer(localVideoTrack, 'live-broadcaster-video');
+                    _playInContainer(localVideoTrack, 'live-broadcaster-video', _currentFacingMode === 'user');
                 } else if (attempts < 15) {
                     setTimeout(() => _retryPlay(attempts + 1), 150);
                 } else {
-                    _playInContainer(localVideoTrack, 'live-broadcaster-video');
+                    _playInContainer(localVideoTrack, 'live-broadcaster-video', _currentFacingMode === 'user');
                 }
             })(0);
 
@@ -32330,7 +32340,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
 
         } catch(e) {
             console.error('[Live] Go live error:', e);
-            showToast('Stream error: ' + (e.message || String(e)));
+            showToast(_mediaErrorMessage(e));
             isHosting = false;
             document.body.classList.remove('is-hosting');
         } finally {
@@ -35057,7 +35067,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.forceVideoPlay = function() {
         if (!localVideoTrack) { console.warn('[forceVideoPlay] No localVideoTrack'); return; }
         console.log('[forceVideoPlay] Forcing replay into live-broadcaster-video');
-        _playInContainer(localVideoTrack, 'live-broadcaster-video');
+        _playInContainer(localVideoTrack, 'live-broadcaster-video', _currentFacingMode === 'user');
     };
 
     console.log('[SocialHub] Live Stream Engine initialised — Agora App ID:', AGORA_APP_ID);
@@ -36210,7 +36220,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                         await localVideoTrack.setEnabled(false);
                     }
                     // Play camera in main container
-                    _playInContainer(localVideoTrack, 'live-broadcaster-video');
+                    _playInContainer(localVideoTrack, 'live-broadcaster-video', _currentFacingMode === 'user');
                 }
 
                 // Hide PiP
@@ -36263,8 +36273,8 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
                 if (screenAudioTrack) toPublish.push(screenAudioTrack);
                 await agoraClient.publish(toPublish);
 
-                // Play screen in main container
-                _playInContainer(screenTrack, 'live-broadcaster-video');
+                // Play screen in main container — never mirrored, regardless of camera facing mode
+                _playInContainer(screenTrack, 'live-broadcaster-video', false);
 
                 // PiP camera (small overlay)
                 const pip = $('pip-camera-overlay');
@@ -36407,6 +36417,20 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     // ── FLIP CAMERA (mobile — front ↔ rear) ──────────────────────
     var _currentFacingMode = 'user'; // 'user' = front, 'environment' = rear
 
+    // Stops and releases the raw getUserMedia preview stream created by
+    // preFlipCamera(), if any. Must run before anything else independently
+    // requests the camera (Go Live's or Enable Camera & Mic's track creation),
+    // otherwise the browser/Agora sees two concurrent, uncoordinated opens on
+    // the same camera — which throws NotReadableError, especially on rear
+    // cameras that enforce a stricter single-consumer hardware lock.
+    function _releasePreLiveRawStream() {
+        var vid = document.getElementById('live-local-video');
+        if (vid && vid.srcObject) {
+            try { vid.srcObject.getTracks().forEach(function(t){ t.stop(); }); } catch(_) {}
+            vid.srcObject = null;
+        }
+    }
+
     // Flip while live — unpublish, swap track, republish
     window.flipCamera = async function() {
         if (!localVideoTrack) { showToast('Start your stream first.'); return; }
@@ -36425,7 +36449,12 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
             });
 
             var container = document.getElementById('live-broadcaster-video');
-            if (container) localVideoTrack.play(container);
+            if (container) {
+                localVideoTrack.play(container);
+                // Explicit CSS mirror, not Agora's internal guess — front camera
+                // mirrored (selfie convention), rear camera never mirrored.
+                container.style.transform = (_currentFacingMode === 'user') ? 'scaleX(-1)' : '';
+            }
 
             await agoraClient.publish([localVideoTrack]);
 
@@ -36443,11 +36472,7 @@ html.dark #daily-signal-card p { font-family: var(--font-serif-gem) !important; 
     window.preFlipCamera = function() {
         _currentFacingMode = _currentFacingMode === 'user' ? 'environment' : 'user';
         var label = _currentFacingMode === 'user' ? 'Front' : 'Rear';
-        var vid = document.getElementById('live-local-video');
-        if (vid && vid.srcObject) {
-            vid.srcObject.getTracks().forEach(function(t){ t.stop(); });
-            vid.srcObject = null;
-        }
+        _releasePreLiveRawStream();
         if (localVideoTrack) { localVideoTrack.stop(); localVideoTrack.close(); localVideoTrack = null; }
         navigator.mediaDevices.getUserMedia({
             video: { facingMode: _currentFacingMode }, audio: false
